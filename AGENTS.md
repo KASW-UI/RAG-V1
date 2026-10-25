@@ -27,7 +27,7 @@
 | `docs/File_Tree/` · 三方对照 | **14 份 + `_INDEX.md`** 文件树（源树路径镜像）· **13 份**域文档（C 列 **549/549**、A 列 **482/482** 覆盖 **100%**；**75 条落点缺口** 🔴13） |
 | 三档台账 | DRIFT **10 域全部未建立**（实现开始后逐条填）· Intentional_Deviations **4 条**（like/comment 各 2）· Pitfalls P-01~P-07 |
 
-**已完成**：树结构、pom、proto、application.yml、断言清单、三方对照。**未完成**：全部实现（⇒ 走 §1.0c 从 RAG 抄）。
+**已完成**：树结构、pom、proto、application.yml、断言清单、三方对照、**GitHub 仓**。**未完成**：全部实现（⇒ 走 §1.0c 从 RAG 抄）。
 
 ✅ **2026-10-26 · D7**（proto 集中 + 模块打平 + 包压平）⇒ 详见 [`docs/决策记录.md`](docs/决策记录.md) **D7**；**§1.0c**：RAG 实现可作抄写来源（Mapping_Table B↔C = 路线图）。
 
@@ -64,7 +64,7 @@ RAG-V1 仓库路径：`/Users/pr/Documents/GitHub/RAG-V1`。
 |---|---|---|
 | **Sea-RideTheWind_golang** | `/Users/pr/Documents/java&golang/Sea-RideTheWind_golang` | **唯一真源** —— 已冻结，所有行为的唯一判定标准（go-zero + GORM） |
 | **RAG**（第一版） | `/Users/pr/Documents/java&golang/RAG`（分支 `do-my-own-gh`） | ⚠️ **不是行为基准**（五域 `NOT EQUIVALENT`）—— 却是**实现复用的主力来源**（951 文件 / 157K 行实现 + 数百测试 + 逐条 DRIFT 台账）⇒ **抄实现，回 Go 复核语义**（§1.0c） |
-| **RAG-V1**（本仓库） | `/Users/pr/Documents/GitHub/RAG-V1` | **Spring Boot 惯用形态的重做** —— Go 行为用 Spring 生态重新组织（MP 分层 + starter 化 + api/rpc 合并压平，D1 + D7） |
+| **RAG-V1**（本仓库） | 本地 `/Users/pr/Documents/GitHub/RAG-V1` · GitHub `github.com/KASW-UI/RAG-V1` | **Spring Boot 惯用形态的重做** —— Go 行为用 Spring 生态重新组织（MP 分层 + starter 化 + api/rpc 合并压平，D1 + D7） |
 
 ⚠️ **禁止把 RAG 的实现当 Go 的替身**（§3.1 对照陷阱）—— RAG 自身就有 11 处已坐实的回归。**但这不等于「不可抄」** ⇒ 见 §1.0c。
 
