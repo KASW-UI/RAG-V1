@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.rag</groupId><artifactId>RAG-V1</artifactId><version>1.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>service</artifactId>
+    <packaging>pom</packaging>
+    <name>service</name>
+    <description>全部业务域 —— 每个业务域一个 jar 模块（api + rpc 合并），域内契约类（错误码 + 事件 DTO）落在域自身的 contract 包下；proto（L1）统一由根级 proto 模块承载</description>
+
+    <modules>
+        <module>article</module>
+        <module>comment</module>
+        <module>favorite</module>
+        <module>follow</module>
+        <module>hot</module>
+        <module>like</module>
+        <module>message</module>
+        <module>task</module>
+        <module>users</module>
+    </modules>
+</project>

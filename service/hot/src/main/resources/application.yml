@@ -1,0 +1,48 @@
+# =============================================================================
+# Hot 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程）
+# =============================================================================
+spring:
+  application:
+    name: hot-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:first_db}
+    username: ${POSTGRES_USER:admin}
+    password: ${POSTGRES_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:nacos:8848}
+
+server:
+  port: ${HOT_HTTP_PORT:8895}
+
+grpc:
+  server:
+    port: ${HOT_GRPC_PORT:8083}
+    address: 0.0.0.0
+    reflection-service-enabled: false
+  client:
+    # ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而 Go zrpc 是明文 gRPC。
+    #    不写会静默变 TLS —— 见《完全spring化的文件树》§9.1 断言 A4。
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.rag: INFO

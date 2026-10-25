@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.rag</groupId><artifactId>RAG-V1</artifactId><version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>proto</artifactId>
+    <name>proto</name>
+    <description>根级 proto 契约模块 —— 集中承载 10 个业务域的 .proto（L1 外部契约），生成 protobuf + gRPC Java 代码</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.grpc</groupId><artifactId>grpc-stub</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId><artifactId>grpc-protobuf</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.protobuf</groupId><artifactId>protobuf-java</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>javax.annotation</groupId><artifactId>javax.annotation-api</artifactId><scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <extensions>
+            <!--
+              build extension 不继承 pluginManagement 的版本（实测：省略 <version> 会报
+              "Unresolveable build extension: Error resolving version for plugin 'kr.motd.maven:os-maven-plugin'"），
+              故此处显式写版本，与 service/*/contract 的既有写法一致。
+              另注：根 pom 的 pluginManagement 里 os-maven-plugin 用了错误 groupId（org.xolstice.maven.plugins），
+              实际 groupId 是 kr.motd.maven —— 该条目在本模块用不到，不在本任务改动范围内。
+            -->
+            <extension>
+                <groupId>kr.motd.maven</groupId><artifactId>os-maven-plugin</artifactId><version>1.7.1</version>
+            </extension>
+        </extensions>
+        <plugins>
+            <plugin>
+                <groupId>org.xolstice.maven.plugins</groupId>
+                <artifactId>protobuf-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals><goal>compile</goal><goal>compile-custom</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
