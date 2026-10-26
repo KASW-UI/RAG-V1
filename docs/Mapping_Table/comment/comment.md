@@ -401,7 +401,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/comment" -name '*.java' \
 | 模块 | C 列 `.java` 数 | 本表覆盖 | 覆盖率 |
 |---|---|---|---|
 | `service/comment/src/main/java/com/rag/comment/contract/` | 5 | 5 | **100%**（`CodeError` / `CommentKafkaMsg` / `ErrCodes` / `ErrMsg` / `GrpcErrFactory`） |
-| `service/comment/src/main/java/com/rag/comment/`（技术角色包） | 63 | 63 | **100%**（advice 2 + wiring 5 + client 2 + config 3 + controller 1 + domain/entity 7 + domain/service 3 + dto 16 + exception 1 + grpc 2 + interceptor 1 + mapper 7 + messaging 4 + metrics 1 + service 8） |
+| `service/comment/src/main/java/com/rag/comment/`（技术角色包） | 69 | 69 | **100%**（根 1 + advice 2 + wiring 5 + client 2 + config 3 + contract 5 + controller 1 + domain/entity 7 + domain/service 3 + dto 16 + exception 1 + grpc 2 + interceptor 1 + mapper 7 + messaging 4 + metrics 1 + service 8） |
 | `service/comment/src/main/java/com/rag/comment/CommentServiceApplication.java`（启动类） | 1 | 1 | **100%** |
 | **合计** | **69** | **69** | **100%** |
 

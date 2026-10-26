@@ -391,7 +391,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/like" -name '*.java' \
 | 模块 | C 列 `.java` 数 | 本表覆盖 | 覆盖率 |
 |---|---|---|---|
 | `service/like/src/main/java/com/rag/like/contract/` | 7 | 7 | 100% |
-| `service/like/src/main/java/com/rag/like/`（技术角色包，含 `advice` 2 / `wiring` 5 / `client` 1 / `config` 3 / `controller` 1 / `domain/entity` 5 / `domain/service` 2 / `dto` 15 / `exception` 1 / `grpc` 1 / `interceptor` 1 / `mapper` 5 / `messaging` 2 / `metrics` 3 / `service` 12） | 59 | 59 | 100% |
+| `service/like/src/main/java/com/rag/like/`（技术角色包，含 根 1 / `advice` 2 / `wiring` 5 / `client` 1 / `config` 3 / `contract` 7 / `controller` 1 / `domain/entity` 5 / `domain/service` 2 / `dto` 15 / `exception` 1 / `grpc` 1 / `interceptor` 1 / `mapper` 5 / `messaging` 2 / `metrics` 3 / `service` 12） | 67 | 67 | 100% |
 | `service/like/src/main/java/com/rag/like/LikeServiceApplication.java` | 1 | 1 | 100% |
 | **合计** | **67** | **67** | **100%** |
 
