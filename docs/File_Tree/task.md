@@ -11,7 +11,7 @@
 | artifactId | `task-service` |
 | 根包 | `com.rag.task` |
 | Go 出处 | `service/task/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `bootstrap` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
 
 ## 二、依赖
 
@@ -41,9 +41,6 @@
 │   │   │               ├── advice/
 │   │   │               │   ├── TaskApiExceptionHandler.java
 │   │   │               │   └── TaskApiResponseAdvice.java
-│   │   │               ├── bootstrap/
-│   │   │               │   ├── NacosRegistration.java
-│   │   │               │   └── TaskSchemaGate.java
 │   │   │               ├── config/
 │   │   │               │   ├── GoStyleRawBodyArgumentProcessor.java
 │   │   │               │   ├── TaskApiJsonBodyConfig.java
@@ -78,6 +75,9 @@
 │   │   │               │   ├── TaskDefs.java
 │   │   │               │   ├── TaskProgressWriter.java
 │   │   │               │   └── TaskRedisKeys.java
+│   │   │               ├── wiring/
+│   │   │               │   ├── NacosRegistration.java
+│   │   │               │   └── TaskSchemaGate.java
 │   │   │               └── TaskServiceApplication.java    # @SpringBootApplication + @EnableDiscoveryClient —— api 与 rpc 合并后的唯一入口。
 │   │   └── resources/
 │   │       ├── db/

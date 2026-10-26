@@ -59,7 +59,7 @@
 | A Go | B RAG | C RAG-V1 | 映射类型 | 备注 |
 |---|---|---|---|---|
 | `service/hot/api/`（`hotcenter.go` + `internal/{config,handler,logic,metrics,svc,types}`） | `service/hot/hot-api/` | `service/hot/`（`service/hot/src/main/java/com/rag/hot/advice + service/hot/src/main/java/com/rag/hot/config + service/hot/src/main/java/com/rag/hot/controller + service/hot/src/main/java/com/rag/hot/dto + service/hot/src/main/java/com/rag/hot/metrics + service/hot/src/main/java/com/rag/hot/service` 子包） | 1:1 | **D1**：api 侧不再独立成模块，收进 `hot-service` 的 `api/` 子包 |
-| `service/hot/rpc/`（`hot.go` + `internal/{config,logic,metrics,mqs,server,svc}` + `pb/`） | `service/hot/hot-rpc/` | `service/hot/`（`service/hot/src/main/java/com/rag/hot/bootstrap + service/hot/src/main/java/com/rag/hot/client + service/hot/src/main/java/com/rag/hot/config + service/hot/src/main/java/com/rag/hot/domain/model + service/hot/src/main/java/com/rag/hot/grpc + service/hot/src/main/java/com/rag/hot/metrics + service/hot/src/main/java/com/rag/hot/service` 子包） | 1:1 | **D1**：同上；`pb/`（生成物）移到根级 `proto/` |
+| `service/hot/rpc/`（`hot.go` + `internal/{config,logic,metrics,mqs,server,svc}` + `pb/`） | `service/hot/hot-rpc/` | `service/hot/`（`service/hot/src/main/java/com/rag/hot/wiring + service/hot/src/main/java/com/rag/hot/client + service/hot/src/main/java/com/rag/hot/config + service/hot/src/main/java/com/rag/hot/domain/model + service/hot/src/main/java/com/rag/hot/grpc + service/hot/src/main/java/com/rag/hot/metrics + service/hot/src/main/java/com/rag/hot/service` 子包） | 1:1 | **D1**：同上；`pb/`（生成物）移到根级 `proto/` |
 | `service/hot/common/`（**只有** `errmsg.go` 一个文件） | `service/hot/hot-common/`（`errmsg/`） | `service/hot/src/main/java/com/rag/hot/contract/`（`contract/`） | 1:1 | ⚠️ **模块名与职责都变了**：B 的 `hot-common` 只装 errmsg；C 的域内 `contract/` 包 = **错误契约 + 事件 DTO**；proto 另落根级 `proto/` |
 | `service/hot/heavykeeper/`（域私有算法包） | `service/hot/hot-rpc/.../domain/HeavyKeeper.java` | `service/hot/src/main/java/com/rag/hot/domain/model/HeavyKeeper.java` | 1:1 | 见 §4；C 的落点由 `第二轮深挖-契约盘点` §六 T-6 判定为「位置待定，性质明确」 |
 | `proto/hot.proto`（**仓库根** `proto/`） | `service/hot/hot-rpc/.../pb/hot.pb.go` + `hot_grpc.pb.go`（生成物） | `proto/src/main/proto/hot.proto`（生成物） | 1:1 | 逐字节一致；仅 option 块表达层差异（`go_package` → `java_package` + `java_multiple_files`） |
@@ -87,7 +87,7 @@
 | `hot/api/metrics/` | `metrics/` | 与 rpc 侧合并 |
 | `hot/api/service/` | `service/` | 与 rpc 侧合并 |
 | `hot/common/errmsg/` | `contract/` | 错误码（`CodeError` / `ErrCodes` / `ErrMsg` / `GrpcErrorMapper`）|
-| `hot/rpc/bootstrap/` | `bootstrap/` | 直接压平 |
+| `hot/rpc/bootstrap/` | `wiring/` | 直接压平 |
 | `hot/rpc/config/` | `config/` | 合并（`HotKafkaConfig` 等）|
 | `hot/rpc/domain/`（`HeavyKeeper`） | `domain/model/` | **非 Entity ⇒ 落 `domain/model/`** |
 | `hot/rpc/metrics/` | `metrics/` | 合并 |
@@ -130,20 +130,20 @@
 | `service/hot/api/internal/logic/hot/getHotArticlesLogic.go:93`（`sem := make(chan struct{}, 8)`）+ `:100-110`（goroutine 池） | `hot-api/.../config/HotHydrationExecutorConfiguration.java` | `service/hot/src/main/java/com/rag/hot/config/HotHydrationExecutorConfiguration.java` | 1:1 | Go 的裸 goroutine 无 Java 等价物 ⇒ 落成 `ThreadPoolTaskExecutor`（有界池 + 自带生命周期） |
 | **无对应物**（Go 侧 hot 域零中间件、零 CORS：`routes.go:16-25` 的 `AddRoutes` **没有** `WithJwt`） | **无对应类**（B 侧 `FileTree/hot/api.md` §12.5「刻意不建」） | `service/hot/src/main/java/com/rag/hot/config/WebMvcConfig.java` | C 新增 | 🔴 **待确认 / 疑似多余** —— C 的该类 javadoc 写「注册 JwtAuthInterceptor + public 路径白名单」，与「hot 域全部端点免鉴权」**直接矛盾**；且 `File_Tree/hot/hot-service.md` §四 自己也写「本域**不该有** `*JwtAuthInterceptor`」⇒ **C 树内部自相矛盾**，需拍板 |
 
-### 1.3 `hot-service` · `bootstrap + client + config + domain/model + grpc + metrics + service` —— 领域 / 服务端能力层
+### 1.3 `hot-service` · `wiring + client + config + domain/model + grpc + metrics + service` —— 领域 / 服务端能力层
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
 | `service/hot/rpc/internal/server/hot_service_server.go:11-46`（5 个方法分发） | `hot-rpc/.../service/impl/HotServiceGrpcImpl.java` | `service/hot/src/main/java/com/rag/hot/grpc/HotGrpcService.java` | 1:1 | `@GrpcService`；5 个 override（`GetHotArticles` + 4 个互动） |
 | `service/hot/rpc/internal/logic/get_hot_articles_logic.go:33-66` | `hot-rpc/.../service/HotRankingQueryService.java` | `service/hot/src/main/java/com/rag/hot/service/HotRankingQueryService.java` | 1:1 | 唯一有逻辑的 rpc 方法；`redis.Nil` → 空 items（不能冒泡）、`uint32(score)` **向零截断**（不能 `Math.round`） |
 | `service/hot/rpc/internal/logic/like_article_logic.go:42-45` + `comment_article_logic.go:29-31` + `coin_article_logic.go:34-37` + `share_article_logic.go:34-37` | `hot-rpc/.../service/InteractionStubService.java` | `service/hot/src/main/java/com/rag/hot/service/InteractionStubService.java` | N:1 | ⚠️ **不对称**：like / coin / share → `UNIMPLEMENTED`；**comment → `success=true`**（Go 侧既定行为，照抄不得「修齐」） |
-| `service/hot/rpc/internal/mqs/hot_handler.go`（415 行，**本域 rpc 侧的核心**） | `hot-rpc/.../mq/HotEventConsumer.java` + `HotPartitionSketchRegistry.java` + `HotRedisSnapshotStore.java` + `HotMergeScheduler.java`（+ `HotEventConsumer`） | **无对应物**（C 列 `service/hot/src/main/java/com/rag/hot/bootstrap + service/hot/src/main/java/com/rag/hot/client + service/hot/src/main/java/com/rag/hot/config + service/hot/src/main/java/com/rag/hot/domain/model + service/hot/src/main/java/com/rag/hot/grpc + service/hot/src/main/java/com/rag/hot/metrics + service/hot/src/main/java/com/rag/hot/service` 下 **0 个** `mq/` 落点） | 1:N | 🔴 **C 列最大缺口**：Go 侧这一文件承载 ① Kafka 消费 ② 分区 sketch 生命周期（assign 回灌 / revoke 落盘）③ Redis 影子 + `RENAME` 原子快照 ④ 跨分片合并求和 ⑤ 分布式锁 + 看门狗。C 侧目前**一处都没有** |
+| `service/hot/rpc/internal/mqs/hot_handler.go`（415 行，**本域 rpc 侧的核心**） | `hot-rpc/.../mq/HotEventConsumer.java` + `HotPartitionSketchRegistry.java` + `HotRedisSnapshotStore.java` + `HotMergeScheduler.java`（+ `HotEventConsumer`） | **无对应物**（C 列 `service/hot/src/main/java/com/rag/hot/wiring + service/hot/src/main/java/com/rag/hot/client + service/hot/src/main/java/com/rag/hot/config + service/hot/src/main/java/com/rag/hot/domain/model + service/hot/src/main/java/com/rag/hot/grpc + service/hot/src/main/java/com/rag/hot/metrics + service/hot/src/main/java/com/rag/hot/service` 下 **0 个** `mq/` 落点） | 1:N | 🔴 **C 列最大缺口**：Go 侧这一文件承载 ① Kafka 消费 ② 分区 sketch 生命周期（assign 回灌 / revoke 落盘）③ Redis 影子 + `RENAME` 原子快照 ④ 跨分片合并求和 ⑤ 分布式锁 + 看门狗。C 侧目前**一处都没有** |
 | `service/hot/rpc/internal/mqs/types.go:5-8`（`ArticleHotEvent`，**2 字段**） | `hot-rpc/.../mq/ArticleHotEvent.java` | **无对应物** | 1:1 | 🔴 缺口（承上）。⚠️ 必须 `@JsonIgnoreProperties(ignoreUnknown=true)` —— 生产侧实测多发 `user_id` / `timestamp`（`test/cmd/producer/producer.go:14-19`） |
 | `service/hot/heavykeeper/heavykeeper.go`（210 行） | `hot-rpc/.../domain/HeavyKeeper.java` | `service/hot/src/main/java/com/rag/hot/domain/model/HeavyKeeper.java` | 1:1 | **必须移植**：FNV 指纹 + `depth × width` 桶表 + 最小堆。⚠️ 三条语义要精确复刻：`uint32` 回绕、概率衰减不可断言精确值、同 count 顺序不稳定 |
 | `service/hot/rpc/internal/config/config.go:10-40`（`Config` + `InteractionConfig` + `IndexWeight`） | `hot-rpc/.../config/HotRpcProperties.java` | `service/hot/src/main/java/com/rag/hot/config/HotRpcProperties.java` | 1:1 | `HeavyKeeper{width,depth,decay,topK}` + `Interaction{syncEvery,ttl,partitionCount,weights[]}` 内嵌；`RpcServerConf` / Redis 交给 Spring 原生属性 |
 | `service/hot/rpc/internal/svc/service_context.go:10-29`（`RedisClient` + `KqPusher`） | **无对应类**（Spring Data Redis + `spring.kafka` 原生） | **无对应物** | 1:1 | ⚠️ Go 侧 `KqPusher` **零调用点**（死配置）⇒ 不迁移；`RedisConf.Type` 同样从未被读取 |
 | `service/hot/rpc/hot.go:47-50`（权重按 Name 建 map）+ `:55-63`（sarama 容器配置：`Offsets.Initial=Newest` / `RoundRobin` / 无限重试）+ `internal/mqs/hot_handler.go:83-99`（`Setup` / `Cleanup`） | `hot-rpc/.../config/HotKafkaConfig.java` | `service/hot/src/main/java/com/rag/hot/config/HotKafkaConfig.java` | 1:1 | 承载 L3「MQ 失败处理」语义：分区分配回调 + 错误处理策略。⚠️ `auto-offset-reset=latest`（不回放历史）与 `RoundRobinAssignor`（影响 `hkMap` 布局）是 L1 语义 |
-| `service/hot/rpc/hot.go:35-41`（`zrpc.MustNewServer` ⇒ etcd 注册 `hot.rpc`） | `hot-rpc/.../bootstrap/NacosRegistration.java` | `service/hot/src/main/java/com/rag/hot/bootstrap/NacosRegistration.java` | 1:1 | etcd flat key `hot.rpc` → Nacos `SERVICE_NAME="hot-rpc"` |
+| `service/hot/rpc/hot.go:35-41`（`zrpc.MustNewServer` ⇒ etcd 注册 `hot.rpc`） | `hot-rpc/.../bootstrap/NacosRegistration.java` | `service/hot/src/main/java/com/rag/hot/wiring/NacosRegistration.java` | 1:1 | etcd flat key `hot.rpc` → Nacos `SERVICE_NAME="hot-rpc"` |
 | `service/hot/rpc/internal/mqs/hot_handler.go:30-45`（2 个 `core/metric` CounterVec） | `hot-rpc/.../metrics/HotRpcMetrics.java` | `service/hot/src/main/java/com/rag/hot/metrics/HotRpcMetrics.java` | 1:1 | 指标名 L1：`article_hot_kafka_consume_total{type}` / `article_hot_redis_sync_total{status}`（go-zero `core/metric` ⇒ 完整名 = `namespace_subsystem_name`） |
 | `service/hot/rpc/internal/metrics/metrics.go:14-26`（`InitMetrics` 起 `:9091` 独立 metrics 端口） | **无对应类**（B 侧判定零调用点，不迁移） | **无对应物**（C 侧由 Actuator `management.endpoints.web.exposure.include: prometheus` 在主端口暴露） | 1:1 | ⚠️ Go 侧 `metrics.InitMetrics` 在 `rpc/hot.go` 里**零调用点** ⇒ 该 `:9091` 端口**实际不生效**；C 用 Actuator 是**表达层**替换，不是行为变更 |
 | `service/hot/rpc/internal/mqs/hot_handler.go:152`（`json.Unmarshal`）+ `internal/mqs/types.go` | `hot-rpc/.../config/Jackson2ObjectMapperConfiguration.java` + `mq/ArticleHotEvent.java` | `service/hot/src/main/java/com/rag/hot/config/HotKafkaConfig.java` | 1:1 | ⚠️ B 侧那个类是 **Boot 4 拆模块**（Jackson 2 / 3）的补丁；C 侧由 `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration` 统一承担 ⇒ **C 域内不需要** |
@@ -304,7 +304,7 @@
 2. `hot-api/src/main/resources/application.yml` + `hot-rpc/src/main/resources/application.yml` → 1 个 `service/hot/src/main/resources/application.yml`（同时含 `server.port` 与 `grpc.server.port`）。
 3. `hot-api/.../client/HotRpcClient.java` **删除**（域内直连，D2）。
 4. `hot-api/.../client/ArticleRpcClient.java` 移到 `client`（D2 / D6：跨域仍 gRPC，但属业务层）。
-5. `hot-api/.../service/*` 与 `hot-rpc/.../service/*` 并进同一模块的两个子包 `advice + config + controller + dto + metrics + service` `bootstrap + client + config + domain/model + grpc + metrics + service`。
+5. `hot-api/.../service/*` 与 `hot-rpc/.../service/*` 并进同一模块的两个子包 `advice + config + controller + dto + metrics + service` `wiring + client + config + domain/model + grpc + metrics + service`。
 6. `hot-common` 模块**消失** ⇒ 其 2 个类并入 `hot-contract`（批次 2）。
 
 **为什么换**：go-zero 的 api / rpc 分离源于 `.api` 与 `.proto` 两条 codegen 路径，是**语言产物**而非架构原则；
@@ -315,7 +315,7 @@ Spring Cloud 的部署单元是「可部署服务」，`@RestController` 与 `@G
 **为什么换**：错误码是对外可见契约（信封 `code` 字段），与 proto 同属「消费方需要但不该依赖整个 app」的一类。
 
 **批次 3 · Kafka 消费链路（`mq/` 包）—— 🔴 C 侧 0 处已建**：
-1. 新建 `{bootstrap,client,config,domain/model,grpc,metrics,service}/mq/` 包，承载 G-1 ~ G-5（见 §1.5）。
+1. 新建 `{wiring,client,config,domain/model,grpc,metrics,service}/mq/` 包，承载 G-1 ~ G-5（见 §1.5）。
 2. `HotKafkaConfig` 的分区分配回调 / 错误处理策略要与 `mq/` 的消费者**成对**落地。
 3. `HotRpcMetrics` 的 2 个指标（`article_hot_kafka_consume_total` / `article_hot_redis_sync_total`）的**触发点**在 `mq/` 里。
 4. `HotRpcProperties.Interaction`（`syncEvery` / `ttl` / `partitionCount` / `weights`）的**消费点**在 `mq/` 里。
@@ -525,6 +525,6 @@ find "/Users/pr/Documents/java&golang/Sea-RideTheWind_golang/service/hot" -name 
 
 **A 列 Go** = api（1 端点，免鉴权）+ rpc（5 个 gRPC 方法 + Kafka 消费 + HeavyKeeper + Redis ZSET），**零数据库表**；
 **B 列 RAG** = 拆成 `hot-api` / `hot-common` / `hot-rpc` 三模块、logic 拆细、`mq/` 包把 `hot_handler.go` 拆成 5 个类；
-**C 列 RAG-V1** = 合并成 `hot-service` 一个模块、错误契约进域内 `contract/` 包（proto 在根级 `proto/`）、`advice + config + controller + dto + metrics + service`+`bootstrap + client + config + domain/model + grpc + metrics + service` 两个子包 ——
+**C 列 RAG-V1** = 合并成 `hot-service` 一个模块、错误契约进域内 `contract/` 包（proto 在根级 `proto/`）、`advice + config + controller + dto + metrics + service`+`wiring + client + config + domain/model + grpc + metrics + service` 两个子包 ——
 **但 rpc 侧的 Kafka 消费链路（`mq/`）与免鉴权域的 `WebMvcConfig` 两处仍需拍板。**
 ⇒ **文件名与职责逐条对应；行为以 A 列 Go 源码为准。**

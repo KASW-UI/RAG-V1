@@ -100,7 +100,7 @@ RAG-V1 仓库路径：`/Users/pr/Documents/GitHub/RAG-V1`。
 > ⇒ 改完目录结构**必跑** `python3 tools/gen-file-tree.py`。
 
 RAG-V1 的目标架构（落地以 `docs/File_Tree/` 为准）：
-`{controller,dto,advice,config,interceptor,metrics,service,grpc,domain,messaging,mapper,client,bootstrap,exception,contract}` + `resources/db/migration/*.sql`
+`{controller,dto,advice,config,interceptor,metrics,service,grpc,domain,messaging,mapper,client,wiring,exception,contract}` + `resources/db/migration/*.sql`
 ⇒ 推导全文 ⇒ [`docs/完全spring化的文件树.md`](docs/完全spring化的文件树.md) §5
 
 ### 2.2 目录形状：哪些是 Spring 惯例，哪些是 Go 惯性投影
@@ -234,7 +234,7 @@ RAG-V1 侧 10 个 `*.proto` **全部从 Go 侧复制**，非翻译。改动**严
 
 ### 4.3 用户问答原话
 
-> 📖 RAG 仓库的原话存档 ⇒ `docs/DRIFT/_cross/user-qa-verbatim.md`（**在 RAG 仓库里，不在 RAG-V1**）；RAG-V1 自己的拍板记录 ⇒ [`docs/决策记录.md`](docs/决策记录.md)（**D1–D9** 已定 + P1–P6 待拍板）。
+> 📖 RAG 仓库的原话存档 ⇒ `docs/DRIFT/_cross/user-qa-verbatim.md`（**在 RAG 仓库里，不在 RAG-V1**）；RAG-V1 自己的拍板记录 ⇒ [`docs/决策记录.md`](docs/决策记录.md)（**D1–D10** 已定 + P1–P6 待拍板）。
 
 ## 五、用户协作规则（精简）
 
@@ -251,7 +251,7 @@ RAG-V1 侧 10 个 `*.proto` **全部从 Go 侧复制**，非翻译。改动**严
 
 > **状态表纪律（2026-10-21）**：任何「已修 / 未修」断言必须带**核对日期**，否则按 `UNKNOWN` 处理。
 
-> ⚠️ **本节记的是 RAG 仓库的决策过程**（📦 存档）—— **RAG-V1 自己的架构决策在 [`docs/决策记录.md`](docs/决策记录.md)**（**D1–D9** + P1–P6）。**冲突时以 `docs/决策记录.md` 为准**。
+> ⚠️ **本节记的是 RAG 仓库的决策过程**（📦 存档）—— **RAG-V1 自己的架构决策在 [`docs/决策记录.md`](docs/决策记录.md)**（**D1–D10** + P1–P6）。**冲突时以 `docs/决策记录.md` 为准**。
 > **RAG 的四条结论（📦）**：① 丢掉 Flyway 改幂等重放 ② `admin-rpc` 不转发、直连（沿用 ✅）③ 拦截器注册用 `@Import` ⇒ ⚠️ **RAG-V1 不用**（D3）④ **Flyway 账本撞号** ⇒ 见下。
 
 🔴 **Flyway 账本撞号 —— RAG-V1 尚未决策**：`flyway_schema_history` 是 **schema 级**账本 ⇒ 同库同 schema 只能有一本账；10 个 `*-service` **都有 `db/migration/`** ⇒ 若共用一个 schema，**任一 app 先启动，其他 app 的表就永远建不出来**。
@@ -267,7 +267,7 @@ Go 真源仓库路径见 §1.0b（**已冻结**，不接受写入）。RAG-V1 �
 
 ### 7.2 动手前必读的 5 份
 
-- **[`docs/决策记录.md`](docs/决策记录.md)** —— **D1–D9** + P1–P6 + 决策关系图 ⇒ 动结构前必读
+- **[`docs/决策记录.md`](docs/决策记录.md)** —— **D1–D10** + P1–P6 + 决策关系图 ⇒ 动结构前必读
 - **[`docs/Mapping_Table/`](docs/Mapping_Table/_INDEX.md)** —— **抄写路线图**（§1.0c）：B 列 RAG ↔ C 列 RAG-V1 的逐类对应 + 各域 **§0.5 B→C 结构映射速查表** ⇒ **填实现前必读**
 - **[`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)** —— RAG 的坑 → RAG-V1 的处置 ⇒ **填实现前先读**
 - **[`docs/架构符合性断言.md`](docs/架构符合性断言.md)** —— A1–A12 ⇒ 写测试 / 接框架时
@@ -310,4 +310,4 @@ Go 真源仓库路径见 §1.0b（**已冻结**，不接受写入）。RAG-V1 �
 - [ ] **台账已写** —— 偏离写 Intentional_Deviations，踩坑写 Pitfalls，漂移写 DRIFT
 - [ ] **文档已更新** —— "已修/未修"断言必须带**核对日期**，否则按 `UNKNOWN` 处理
 
-> 📖 L1–L4 定义 ⇒ `docs/完全spring化的文件树.md` §0.1 · D1–D9 ⇒ `docs/决策记录.md`
+> 📖 L1–L4 定义 ⇒ `docs/完全spring化的文件树.md` §0.1 · D1–D10 ⇒ `docs/决策记录.md`

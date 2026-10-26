@@ -58,7 +58,7 @@ RAG-V1/
 └── tools/               守门脚本（架构符合性 / 对照覆盖率 / 文件树生成）
 ```
 
-域内单层技术角色包树：`controller` · `grpc` · `service` · `domain/{entity,model,service}` · `mapper` · `dto` · `config` · `interceptor` · `advice` · `exception` · `client` · `messaging` · `metrics` · `bootstrap` · `contract`
+域内单层技术角色包树：`controller` · `grpc` · `service` · `domain/{entity,model,service}` · `mapper` · `dto` · `config` · `interceptor` · `advice` · `exception` · `client` · `messaging` · `metrics` · `wiring` · `contract`
 
 ## 文档索引
 

@@ -60,7 +60,7 @@
 | `users/admin/api/interceptor/` | `interceptor/` | 直接压平 |
 | `users/admin/api/metrics/` | `metrics/` | 与 rpc 侧合并 |
 | `users/admin/api/service/` | `service/` | 与 rpc 侧合并 |
-| `users/admin/rpc/bootstrap/` | `bootstrap/` | 直接压平 |
+| `users/admin/rpc/bootstrap/` | `wiring/` | 直接压平 |
 | `users/admin/rpc/config/` | `config/` | 合并 |
 | `users/admin/rpc/domain/` | `domain/entity/` | 按是否 `*Entity` 拆分 |
 | `users/admin/rpc/exception/` | `exception/` | 直接压平 |
@@ -79,10 +79,10 @@
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
-| `service/user/admin/rpc/admin.go` | `admin-rpc/.../AdminRpcApplication.java` | `service/users/admin/src/main/java/com/rag/admin/AdminServiceApplication.java` + `service/users/admin/src/main/java/com/rag/admin/bootstrap/NacosRegistration.java` + `service/users/admin/src/main/java/com/rag/admin/bootstrap/SnowflakeBootstrap.java` | 1:N | 进程装配拆成入口 + 注册 + ID 生成器初始化；**C 的入口与 admin-api 共用**（D1） |
+| `service/user/admin/rpc/admin.go` | `admin-rpc/.../AdminRpcApplication.java` | `service/users/admin/src/main/java/com/rag/admin/AdminServiceApplication.java` + `service/users/admin/src/main/java/com/rag/admin/wiring/NacosRegistration.java` + `service/users/admin/src/main/java/com/rag/admin/wiring/SnowflakeBootstrap.java` | 1:N | 进程装配拆成入口 + 注册 + ID 生成器初始化；**C 的入口与 admin-api 共用**（D1） |
 | `service/user/admin/rpc/adminservice/adminservice.go` | （无独立文件） | （无独立文件） | 1:1 | go-zero 生成的 gRPC service 接口 ⇒ `@GrpcService` + 生成的 `AdminServiceGrpc.AdminServiceImplBase` 承接 |
 | `service/user/admin/rpc/internal/config/config.go` | `admin-rpc/.../config/AdminRpcProperties.java` | `service/users/admin/src/main/java/com/rag/admin/config/AdminRpcProperties.java` | 1:1 | |
-| `service/user/admin/rpc/internal/svc/servicecontext.go` | `admin-rpc/.../bootstrap/AdminSeederBootstrap.java`（`ensureDefaultAdmin` 部分） | `service/users/admin/src/main/java/com/rag/admin/bootstrap/AdminSeederBootstrap.java` | 1:1 | ⚠️ Go 侧无对应物（原因）：`ServiceContext` 整体被 Spring DI 吸收，**但其中的 `ensureDefaultAdmin`（默认 `admin`/`admin` 种子 + `IsUniqueViolation` 兜底 + `logx.Must` fail-fast）是业务方法 ⇒ 必须独立承载**，故拆到 `AdminSeederBootstrap`（B/C 同构） |
+| `service/user/admin/rpc/internal/svc/servicecontext.go` | `admin-rpc/.../bootstrap/AdminSeederBootstrap.java`（`ensureDefaultAdmin` 部分） | `service/users/admin/src/main/java/com/rag/admin/wiring/AdminSeederBootstrap.java` | 1:1 | ⚠️ Go 侧无对应物（原因）：`ServiceContext` 整体被 Spring DI 吸收，**但其中的 `ensureDefaultAdmin`（默认 `admin`/`admin` 种子 + `IsUniqueViolation` 兜底 + `logx.Must` fail-fast）是业务方法 ⇒ 必须独立承载**，故拆到 `AdminSeederBootstrap`（B/C 同构） |
 | `service/user/admin/rpc/internal/server/adminserviceserver.go` | `admin-rpc/.../service/AdminServiceGrpcImpl.java` | `service/users/admin/src/main/java/com/rag/admin/grpc/AdminGrpcService.java` | 1:1 | 13 个 RPC 方法分发 |
 | `service/user/admin/rpc/internal/logic/loginlogic.go` | `admin-rpc/.../service/AdminDomainService.java` | `service/users/admin/src/main/java/com/rag/admin/domain/service/AdminDomainService.java` | N:1 | 13 个 logic 合 1（与下 12 行同归一个 C 文件） |
 | `.../logic/createadminlogic.go` | 同上 + `admin-rpc/.../service/AdminCreateAtomicService.java` | 同上 + `service/users/admin/src/main/java/com/rag/admin/domain/service/AdminCreateAtomicService.java` | N:1 | 4 步事务（建 admin + 消耗邀请码 + 更新 `used_by_uid`/`used_at` + 唯一约束兜底）必须落在**独立 `@Service` Bean**（self-invocation 风险） |
@@ -100,7 +100,7 @@
 | `service/user/admin/rpc/internal/logic/helper.go` | `admin-rpc/.../service/AdminHelpers.java` | `service/users/admin/src/main/java/com/rag/admin/service/AdminHelpers.java` | 1:1 | admin-rpc 的用例内 helper |
 | `service/user/admin/rpc/internal/model/admin.go` | `admin-rpc/.../mapper/AdminMapper.java` + `AdminInviteMapper.java` + `UserMapper.java` | `service/users/admin/src/main/java/com/rag/admin/mapper/AdminMapper.java` + `AdminInviteMapper.java` + `UserMapper.java` | 1:N | `AdminModel` 的查询/更新方法 → 3 个 Mapper（按实体拆） |
 | `service/user/admin/rpc/internal/model/data_model.go` | `admin-rpc/.../domain/AdminEntity.java` + `AdminInviteEntity.java` + `UserEntity.java` | `service/users/admin/src/main/java/com/rag/admin/domain/entity/AdminEntity.java` + `AdminInviteEntity.java` + `UserEntity.java` | 1:N | 3 个 GORM struct → 3 个 `@TableName` 实体 |
-| `service/user/admin/rpc/internal/model/db.go` | `admin-rpc/.../bootstrap/AdminSchemaBootstrap.java` + `users-common/.../ddl/SchemaInitializer.java` | `service/users/admin/src/main/java/com/rag/admin/bootstrap/AdminSchemaBootstrap.java` | 1:1 | `AutoMigrate(&Admin{}, &AdminInvite{}, &User{})` → 幂等 DDL 重放；⚠️ 与 user-rpc 同一个缺口（C 侧 `db/migration/` 空、`common/` 无 `SchemaInitializer`） |
+| `service/user/admin/rpc/internal/model/db.go` | `admin-rpc/.../bootstrap/AdminSchemaBootstrap.java` + `users-common/.../ddl/SchemaInitializer.java` | `service/users/admin/src/main/java/com/rag/admin/wiring/AdminSchemaBootstrap.java` | 1:1 | `AutoMigrate(&Admin{}, &AdminInvite{}, &User{})` → 幂等 DDL 重放；⚠️ 与 user-rpc 同一个缺口（C 侧 `db/migration/` 空、`common/` 无 `SchemaInitializer`） |
 | `service/user/admin/rpc/internal/model/helper.go` | `admin-rpc/.../mapper/AdminMapper.java`（`IsUniqueViolation` 判定） | `service/users/admin/src/main/java/com/rag/admin/mapper/AdminMapper.java` | 1:1 | PG `23505` 唯一约束判定（`clause.Locking{Strength:"UPDATE"}` 行级悲观锁同在 `AdminMapper`） |
 | `service/user/admin/rpc/internal/model/vars.go` | `admin-rpc/.../exception/AdminExceptions.java` | `service/users/admin/src/main/java/com/rag/admin/exception/AdminExceptions.java` | 1:1 | `ErrorNotFound` → 业务异常聚合类 |
 | `service/user/admin/rpc/internal/metrics/metrics.go` | `admin-rpc/.../metrics/AdminRpcMetrics.java` | `service/users/admin/src/main/java/com/rag/admin/metrics/AdminRpcMetrics.java` | 1:1 | 指标完整名 L1：`admin_rpc_login_total`、`admin_rpc_high_risk_action_logal`（**拼写错误照抄，不得修正**） |

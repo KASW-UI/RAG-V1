@@ -151,7 +151,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **favorite** | **错误文案串味** —— `ErrorNotFound(5002)` 变成了英文 `not found`，且 `Success="OK"` / `Error="FAIL"` |
 | **comment** | `CommentController` javadoc 与 Go `.api` 端点清单不一致（2 处） |
 | **comment** | `CommentKafkaMsg` 与 `service/comment/src/main/java/com/rag/comment/messaging/CommentAuditMessage.java` 的载荷字段归属未锁定 |
-| **comment** | `bootstrap/` 下的**装配落点已齐**（2026-10-25 补齐 `CommentFactProcessLogging`）但类内容仍为空壳；`db/migration/` 目录内容仍为空 |
+| **comment** | `wiring/` 下的**装配落点已齐**（2026-10-25 补齐 `CommentFactProcessLogging`）但类内容仍为空壳；`db/migration/` 目录内容仍为空 |
 | **article** | C 列整体职责缺口（详见 §1.5） |
 | **follow** | 原 `api/` vs `rpc/` 职责边界（D7 已压平，边界问题转为「单层包内的归属」）、`FollowApiSupport` 归属、`WebMvcConfig`/`FollowController` javadoc 与事实冲突 |
 
@@ -162,7 +162,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **users** | **错误契约在两个子域间不对称**（**F-2 · 2026-10-26 D7 后由 🔴 降级为 🟠**）—— C 的 `service/users/user/src/main/java/com/rag/user/contract/` 有 `ErrCodes`+`ErrMsg`，但 **admin 侧无 `contract/` 包**（`admin-contract` 模块已随 D7 删除）；公共库 `service/users/common/src/main/java/com/rag/users/common/` 那份 admin 尚未引用（但 pom 依赖已接上） |
 | **task** | 持久层空位（`db/migration/` 只有 `.gitkeep`、yml 无 `flyway`/`hikari`/`id-type`）· RAG-V1 `common/` 无 `RpcServerInterceptorFactory`（Go 的 unary interceptor 无落点）· MQ 载荷契约 C 侧只剩 like 域那一份 · `grpc-client-spring-boot-starter` 本域无使用方 · **Kafka 消费侧仍整体缺失**（`messaging/` 只有 `TaskKafkaTopics` + `TaskRewardPublisher`，B 侧 11 个 `mq/*.java` 里的 9 个消费者无落点，全仓 `@KafkaListener` **零命中**）|
 | **like** | Kafka 消费入口（listener / ack 契约 / 失败即丢弃不重投）无落点 · `like_outbox_event → article-hot-events` 发件箱中继无落点 · Jackson 2 `ObjectMapper` Bean 无落点 · `like` / `like-api` 配置段整个缺失 · DDL 迁移脚本为空 |
-| **message** | `controller/`（两个 Controller）· `interceptor/`（两组 JWT）· `metrics/` · `bootstrap/` · `service/` · `service/message/src/main/java/com/rag/message/contract/` 均有职责缺口 |
+| **message** | `controller/`（两个 Controller）· `interceptor/`（两组 JWT）· `metrics/` · `wiring/` · `service/` · `service/message/src/main/java/com/rag/message/contract/` 均有职责缺口 |
 | **favorite** | `POST /favorite/v1/folder/create` 端点缺失 · public 路径集 · preflight 触发入口 · DDL 迁移脚本 · `JsonbTypeHandler` / MP 排序桥的归属 · `GetFavoritesByFolderReq.FolderId` 的取参位置 · 域内 gRPC client · 端口号 |
 | **common** | `GrpcStatusMapper` 与 `GrpcExceptionMapperAutoConfiguration` **职责重叠** · 设计文档 §5.1 列了 `contract/ErrorCode.java` 但**实际树里没有** · 雪花 ID 有**两个落点** · `JsonBodyConverterConfig` 是「注册点」还是「配置类」 · **gRPC 拦截链挂载点缺位**（D9 ⇒ 落 `common/autoconfigure/ProtectionAutoConfiguration`，共享层 1 份） |
 | **follow** | `db/migration/` 为空 · `application.yml` 缺段 · `*Properties` 聚合边界 · `FollowBlacklistInterceptor` + `FollowJwtAuthInterceptor` · `GoStyleLimitOffset` |

@@ -25,14 +25,14 @@
 | A (Go) | B (RAG) | C (RAG-V1) | 映射类型 | 备注 |
 |---|---|---|---|---|
 | `service/message/api/` | `service/message/message-api/` | `service/message/` 的 `service/message/src/main/java/com/rag/message/advice + service/message/src/main/java/com/rag/message/config + service/message/src/main/java/com/rag/message/controller + service/message/src/main/java/com/rag/message/dto + service/message/src/main/java/com/rag/message/interceptor + service/message/src/main/java/com/rag/message/metrics + service/message/src/main/java/com/rag/message/service` 包 | 1:N | C 把 api 折进单 app（D1） |
-| `service/message/rpc/` | `service/message/message-rpc/` | `service/message/` 的 `service/message/src/main/java/com/rag/message/bootstrap + service/message/src/main/java/com/rag/message/client + service/message/src/main/java/com/rag/message/config + service/message/src/main/java/com/rag/message/domain/entity + service/message/src/main/java/com/rag/message/domain/service + service/message/src/main/java/com/rag/message/exception + service/message/src/main/java/com/rag/message/grpc + service/message/src/main/java/com/rag/message/mapper + service/message/src/main/java/com/rag/message/metrics + service/message/src/main/java/com/rag/message/service` 包 | 1:N | 同上；`rpc.*` 命名债明确不改 |
+| `service/message/rpc/` | `service/message/message-rpc/` | `service/message/` 的 `service/message/src/main/java/com/rag/message/wiring + service/message/src/main/java/com/rag/message/client + service/message/src/main/java/com/rag/message/config + service/message/src/main/java/com/rag/message/domain/entity + service/message/src/main/java/com/rag/message/domain/service + service/message/src/main/java/com/rag/message/exception + service/message/src/main/java/com/rag/message/grpc + service/message/src/main/java/com/rag/message/mapper + service/message/src/main/java/com/rag/message/metrics + service/message/src/main/java/com/rag/message/service` 包 | 1:N | 同上；`rpc.*` 命名债明确不改 |
 | `service/message/common/`（仅 `errmsg.go`） | `service/message/message-common/` | `service/message/src/main/java/com/rag/message/contract/` | 1:1 | 模块改名 `common` → `contract`（承载域内错误契约）；⚠️ **proto 已随 D7 集中到根级 `proto/` 模块** |
 | `service/message/rpc/pb/`（goctl 生成物） | `service/message/message-proto/` | `service/message/src/main/java/com/rag/message/contract/`（4 个错误契约类）+ **生成物在根级 `proto/` 模块**（`proto/src/main/proto/message.proto`，pb 包名 `com.rag.proto.message`） | 1:1 | `.proto` 逐字一致，只差 `option java_package`；**D7 后 proto 已从域模块集中到根级 `proto/`** |
 | `service/common/`（跨服务共享层） | `service/common/`（普通 jar） | 仓库根 `common/`（真 starter，D3） | 1:1 | B 侧 `service/common` → C 侧根级 starter |
 | 进程拓扑：**2 个**（api `0.0.0.0:8892` / rpc `0.0.0.0:8082`） | **2 个**（`message-api` / `message-rpc`） | **1 个**（`message-service`：HTTP `8883` + gRPC `8084` 同进程） | N:1 | D1；D2 域内调用改直连后自我 gRPC 往返消失 |
 | — | `service/message/message-common/`（3 类） | `service/message/src/main/java/com/rag/message/contract/`（4 类） | 1:N | `MessageErrorCode/MessageErrorMessages/MessageGrpcError` → `ErrCodes/ErrMsg/CodeError/GrpcErrorMapper` |
 
-> 📌 **C 侧 `service/message/` 的两个子包职责**：`advice + config + controller + dto + interceptor + metrics + service` = HTTP 边界（Controller/DTO/Interceptor/Advice）；`bootstrap + client + config + domain/entity + domain/service + exception + grpc + mapper + metrics + service` = 领域 / 服务端能力层（DomainService/Mapper/Entity/Client）。**合并后 HTTP 与 gRPC 共用同一份业务用例**（`domain/service/MessageDomainService.java`）。
+> 📌 **C 侧 `service/message/` 的两个子包职责**：`advice + config + controller + dto + interceptor + metrics + service` = HTTP 边界（Controller/DTO/Interceptor/Advice）；`wiring + client + config + domain/entity + domain/service + exception + grpc + mapper + metrics + service` = 领域 / 服务端能力层（DomainService/Mapper/Entity/Client）。**合并后 HTTP 与 gRPC 共用同一份业务用例**（`domain/service/MessageDomainService.java`）。
 
 ---
 
@@ -61,7 +61,7 @@
 | `message/api/protection/` | `common/src/main/java/com/rag/common/protection/` | **上收 `common/`**（D3）|
 | `message/api/service/` | `service/` | 与 rpc 侧合并 |
 | `message/common/errmsg/` | `contract/` | 错误码（`CodeError` / `ErrCodes` / `ErrMsg` / `GrpcErrorMapper`）|
-| `message/rpc/bootstrap/` | `bootstrap/` | 直接压平 |
+| `message/rpc/bootstrap/` | `wiring/` | 直接压平 |
 | `message/rpc/client/` | `client/` | 与 api 侧合并 |
 | `message/rpc/config/` | `config/` | 合并（`MessageProperties`）|
 | `message/rpc/domain/` | `domain/entity/` | 按是否 `*Entity` 拆分 |
@@ -160,7 +160,7 @@
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
-| `rpc/message.go` | `message-rpc/.../MessageRpcApplication.java` + `rpc/bootstrap/NacosRegistration.java` | `service/message/src/main/java/com/rag/message/MessageServiceApplication.java` + `service/message/src/main/java/com/rag/message/bootstrap/NacosRegistration.java` | 1:N | C 侧入口 1 个（合并 D1）；Nacos 显式注册保留（替代 Go 的 etcd） |
+| `rpc/message.go` | `message-rpc/.../MessageRpcApplication.java` + `rpc/bootstrap/NacosRegistration.java` | `service/message/src/main/java/com/rag/message/MessageServiceApplication.java` + `service/message/src/main/java/com/rag/message/wiring/NacosRegistration.java` | 1:N | C 侧入口 1 个（合并 D1）；Nacos 显式注册保留（替代 Go 的 etcd） |
 | `rpc/etc/message.yaml` | `message-rpc/src/main/resources/application.yml` + `rpc/config/MessageProperties.java` | `service/message/src/main/resources/application.yml` + `service/message/src/main/java/com/rag/message/config/MessageProperties.java` | 1:1 | `List{DefaultLimit:20, MaxLimit:100}` + `Broadcast{PageSize:200}` 逐字对齐 |
 | `rpc/internal/config/config.go` | `message-rpc/.../config/MessageProperties.java` | `service/message/src/main/java/com/rag/message/config/MessageProperties.java` | 1:1 | ⚠️ Go 侧**没有** `*RpcProperties` 这种命名，配置块名是 `Config`；RAG/C 用 `@ConfigurationProperties(prefix="message")` 承载。`Postgres` / `UserRpc` / `AdminRpc` 由 `spring.datasource` / `grpc.client.*` 接管 |
 | `rpc/internal/svc/servicecontext.go` | `message-rpc/.../client/UserRpcClient.java` + `client/AdminRpcClient.java` | `service/message/src/main/java/com/rag/message/client/UserRpcClient.java` + `service/message/src/main/java/com/rag/message/client/AdminRpcClient.java` | 1:1 | 两个都是**跨域**下游（user 域 / admin 域）⇒ D6 保持 gRPC；`loadProfile(role,id)` / `collectBroadcastRecipients(pageSize)` |
@@ -169,7 +169,7 @@
 | `rpc/internal/logic/helper.go` | `message-rpc/.../service/MessageRpcSupport.java` | `service/message/src/main/java/com/rag/message/service/MessageRpcSupport.java` | 1:1 | 20+ helper：`canonicalParticipants` / `canSend` / `peerOf` / `loadProfile` / `collectBroadcastRecipients` / `dedupeRecipients` / `trimPreview` / `notificationKindLabel` / `successBaseResp` … |
 | `rpc/internal/model/message.go`（15 个 `MessageModel` 方法） | `message-rpc/.../mapper/ConversationMapper.java` + `mapper/ConversationMessageMapper.java` + `mapper/NotificationMapper.java` + `mapper/GoStylePagination.java` + `service/MessageAtomicService.java` | `service/message/src/main/java/com/rag/message/mapper/ConversationMapper.java` + `service/message/src/main/java/com/rag/message/mapper/ConversationMessageMapper.java` + `service/message/src/main/java/com/rag/message/mapper/NotificationMapper.java` + `service/message/src/main/java/com/rag/message/mapper/GoStylePagination.java` + `service/message/src/main/java/com/rag/message/domain/service/MessageAtomicService.java` | 1:N | 2 个 `conn.Transaction(...)` 闭包 + 3 个单条原子 UPDATE → `MessageAtomicService` 的 6 个 `@Transactional` 方法（**独立 Bean**，见 §2）；`GoStylePagination` 承接 Go 的「offset / limit 各自有条件」分页口径 |
 | `rpc/internal/model/data_model.go` | `message-rpc/.../domain/ConversationEntity.java` + `.../ConversationMessageEntity.java` + `.../NotificationEntity.java` | `service/message/src/main/java/com/rag/message/domain/entity/ConversationEntity.java` + `.../ConversationMessageEntity.java` + `.../NotificationEntity.java` | 1:N | 3 张表；Go 的 `JSONMap`（`driver.Valuer`/`Scanner`）→ `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` |
-| `rpc/internal/model/db.go`（`InitDB` + `AutoMigrate`） | `message-rpc/.../mapper/ConversationMapper.java` + `mapper/ConversationMessageMapper.java` + `mapper/NotificationMapper.java` + `resources/db/migration/V1..V5*.sql` | `service/message/src/main/java/com/rag/message/mapper/ConversationMapper.java` + `service/message/src/main/java/com/rag/message/mapper/ConversationMessageMapper.java` + `service/message/src/main/java/com/rag/message/mapper/NotificationMapper.java` + `resources/db/migration/`（**当前仅 `.gitkeep`**） | 1:N | ⚠️ C 侧 DDL 目录**是空的**；设计文档 §5.2 要求的 `rpc/bootstrap/MessageSchemaInitializer.java`（幂等 DDL 重放）在 C 侧**不存在**（见 §7 缺口清单） |
+| `rpc/internal/model/db.go`（`InitDB` + `AutoMigrate`） | `message-rpc/.../mapper/ConversationMapper.java` + `mapper/ConversationMessageMapper.java` + `mapper/NotificationMapper.java` + `resources/db/migration/V1..V5*.sql` | `service/message/src/main/java/com/rag/message/mapper/ConversationMapper.java` + `service/message/src/main/java/com/rag/message/mapper/ConversationMessageMapper.java` + `service/message/src/main/java/com/rag/message/mapper/NotificationMapper.java` + `resources/db/migration/`（**当前仅 `.gitkeep`**） | 1:N | ⚠️ C 侧 DDL 目录**是空的**；设计文档 §5.2 要求的 `wiring/MessageSchemaInitializer.java`（幂等 DDL 重放）在 C 侧**不存在**（见 §7 缺口清单） |
 | `rpc/internal/metrics/metrics.go` | `message-rpc/.../metrics/MessageMetrics.java` | `service/message/src/main/java/com/rag/message/metrics/MessageRpcMetrics.java` | 1:1 | 5 个指标 `message_rpc_*` |
 | — | — | `service/message/src/main/java/com/rag/message/metrics/MessageMetrics.java` | C 新增 | ⚠️ C 侧**多出一个空壳** `MessageMetrics.java`，与 `MessageRpcMetrics.java` 职责重叠（后者已列全 5 个指标名）⇒ 待清理或明确分工 |
 | `rpc/messageservice/messageservice.go`（goctl client stub，9 方法） | `message-api/.../client/MessageRpcClient.java` | `—（C 侧无对应手写文件）` | N:1 | D2 域内 api→rpc 改直连 ⇒ 域内 stub 无调用点；stub 仅作为对外契约留在根级 `proto/` 的生成物里 |
@@ -257,7 +257,7 @@
 
 **换「Flyway ⇒ 幂等 DDL 重放」（3 处同时改）**：
 1. `service/message/src/main/resources/db/migration/` 补 3 张表的建表脚本 + 索引（**当前只有 `.gitkeep`**）；
-2. 新增 `bootstrap/MessageSchemaInitializer.java`（**当前 C 侧不存在**）执行幂等重放；
+2. 新增 `wiring/MessageSchemaInitializer.java`（**当前 C 侧不存在**）执行幂等重放；
 3. `application.yml` 去掉 Flyway 相关配置，改为 `SchemaInitializer` 装配。
 
 **为什么换**：Go 的 `AutoMigrate` 是「每次启动校验/补建、无账本」；Flyway 是「一次性迁移 + schema 级账本」，而 message 与 like / article 共用同一个 `first_db` / `public` schema ⇒ 账本会撞号（`RAG` 的 AGENTS.md §6.3 问题 4）。幂等重放接近 `AutoMigrate` 语义，且没有账本。
@@ -299,7 +299,7 @@
 
 **换「api + rpc 两个进程 ⇒ 一个进程」（D1，8 处同时改）**：
 1. `MessageServiceApplication.java` 一个入口（`@SpringBootApplication` + `@EnableDiscoveryClient`）；
-2. `advice + config + controller + dto + interceptor + metrics + service` 与 `bootstrap + client + config + domain/entity + domain/service + exception + grpc + mapper + metrics + service` 两个子包共处一个模块；
+2. `advice + config + controller + dto + interceptor + metrics + service` 与 `wiring + client + config + domain/entity + domain/service + exception + grpc + mapper + metrics + service` 两个子包共处一个模块；
 3. `service/MessageApiService.java` **直连注入** `domain/service/MessageDomainService.java`（不注入 stub）；
 4. `{advice,config,controller,dto,interceptor,metrics,service}/client/` 整个包清空；
 5. `application.yml` 同时配 `server.port`（HTTP）与 `grpc.server.port`（gRPC）；
@@ -446,7 +446,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/message" -name '*.java' \
 | 31 | `service/message/src/main/java/com/rag/message/metrics/MessageApiMetrics.java` | §1.1 |
 | 32 | `service/message/src/main/java/com/rag/message/service/MessageApiService.java` | §1.2.1 |
 | 33 | `service/message/src/main/java/com/rag/message/service/MessageApiSupport.java` | §1.2.1 |
-| 34 | `service/message/src/main/java/com/rag/message/bootstrap/NacosRegistration.java` | §1.3 |
+| 34 | `service/message/src/main/java/com/rag/message/wiring/NacosRegistration.java` | §1.3 |
 | 35 | `service/message/src/main/java/com/rag/message/client/AdminRpcClient.java` | §1.3 |
 | 36 | `service/message/src/main/java/com/rag/message/client/UserRpcClient.java` | §1.3 |
 | 37 | `service/message/src/main/java/com/rag/message/config/MessageProperties.java` | §1.3 |
@@ -558,7 +558,7 @@ find "/Users/pr/Documents/java&golang/Sea-RideTheWind_golang/service/message" \
 | 1 | C 侧 `api/controller/MessageController.java` + `MessageAdminController.java` 的 javadoc | 路由清单写成 `/message/v1/conversation/list`、`/notification/read/all`、`/unread/summary`、`/chat/send`，并把 admin 的 `conversation/list` 与 `conversation/messages` 标成 `GET`；**A 列 Go 是复数 `/conversations/*`、`/notifications/*`，`/unread` 是 GET，admin 组 5 个端点全是 POST** | **L1 路由契约**；若照 javadoc 实现即产生 wire 漂移 |
 | 2 | C 侧 `api/interceptor/` | B 侧的 `AbstractMessageJwtAuthInterceptor`（两份 JWT 逻辑的共享基类）在 C 侧**没有落点**，只剩两个独立拦截器类 | 安全边界可能各自演化（DRIFT-010 同款形态） |
 | 3 | C 侧 `rpc/metrics/` | `MessageMetrics.java`（空壳）与 `MessageRpcMetrics.java`（已列全 5 个指标）职责重叠 | 指标名可能双份定义、漂移 |
-| 4 | C 侧 `rpc/bootstrap/` | 设计文档 §5.2 要求的 `MessageSchemaInitializer.java`（幂等 DDL 重放）**不存在**；`resources/db/migration/` 只有 `.gitkeep` | 3 张表没有建表来源 ⇒ 服务起不来（Go 的 `AutoMigrate` 职责无对应物） |
+| 4 | C 侧 `wiring/` | 设计文档 §5.2 要求的 `MessageSchemaInitializer.java`（幂等 DDL 重放）**不存在**；`resources/db/migration/` 只有 `.gitkeep` | 3 张表没有建表来源 ⇒ 服务起不来（Go 的 `AutoMigrate` 职责无对应物） |
 | 5 | C 侧 `rpc/service/` | `MessageDomainService` 的 9 个用例**尚未与 `api/service/MessageApiService` 划清边界**（谁做业务规则、谁做编排） | 合并后职责边界易糊 |
 | 6 | C 侧 `service/message/src/main/java/com/rag/message/contract/` | `CodeError` / `ErrCodes` / `ErrMsg` / `GrpcErrorMapper` 与根级 `common/src/main/java/com/rag/common/contract/ApiResponse` + `common/src/main/java/com/rag/common/exception/BusinessException` 的关系未标定 | 统一错误模型（D2 附带）落地时会双轨 |
 | 7 | 任务简报中的前提 | `CommentKafkaMsg` 在 **`service/comment/rpc/common/types/kqueue.go`**（comment 域），且**仅被 comment 域引用**（全仓 13 处引用全在 `service/comment/**`）；`service/message/**` 对 MQ 的引用数为 **0** | 本表据此把 Kafka topic 记为「无」；**message 域无 MQ 契约** |

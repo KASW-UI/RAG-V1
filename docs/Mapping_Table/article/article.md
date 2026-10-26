@@ -36,7 +36,7 @@
 | A (Go 真理之源) | B (RAG, Go 形态版) | C (RAG-V1, Spring 目标) | 映射类型 | 备注 |
 |---|---|---|---|---|
 | `service/article/api/`（20 个非测试 `.go`） | `service/article/article-api/`（41 个 `.java`） | `service/article/` 的 `service/article/src/main/java/com/rag/article/advice + service/article/src/main/java/com/rag/article/config + service/article/src/main/java/com/rag/article/controller + service/article/src/main/java/com/rag/article/dto + service/article/src/main/java/com/rag/article/interceptor + service/article/src/main/java/com/rag/article/service` 包（21 个 `.java`） | 1:N | D1：api 进程并入单 app，HTTP 边界改由 `api/` 包承载 |
-| `service/article/rpc/`（23 个非测试 `.go` + 2 个 `pb/` 生成物） | `service/article/article-rpc/`（39 个 `.java`） | `service/article/` 的 `service/article/src/main/java/com/rag/article/bootstrap + service/article/src/main/java/com/rag/article/client + service/article/src/main/java/com/rag/article/config + service/article/src/main/java/com/rag/article/domain/entity + service/article/src/main/java/com/rag/article/domain/service + service/article/src/main/java/com/rag/article/exception + service/article/src/main/java/com/rag/article/grpc + service/article/src/main/java/com/rag/article/mapper + service/article/src/main/java/com/rag/article/metrics` 包（25 个 `.java`） | 1:N | D1：rpc 进程并入单 app |
+| `service/article/rpc/`（23 个非测试 `.go` + 2 个 `pb/` 生成物） | `service/article/article-rpc/`（39 个 `.java`） | `service/article/` 的 `service/article/src/main/java/com/rag/article/wiring + service/article/src/main/java/com/rag/article/client + service/article/src/main/java/com/rag/article/config + service/article/src/main/java/com/rag/article/domain/entity + service/article/src/main/java/com/rag/article/domain/service + service/article/src/main/java/com/rag/article/exception + service/article/src/main/java/com/rag/article/grpc + service/article/src/main/java/com/rag/article/mapper + service/article/src/main/java/com/rag/article/metrics` 包（25 个 `.java`） | 1:N | D1：rpc 进程并入单 app |
 | `service/article/common/errmsg/`（1 个 `.go`） | `service/article/article-common/`（1 个 `.java`） | `service/article/src/main/java/com/rag/article/contract/`（4 个 `.java`） | 1:N | C 把「错误契约」并入契约模块；Go 侧 `article/common` 只有 errmsg 一个包 |
 | `service/article/common/errmsg/errmsg.go`（`NewErrCode` / `NewErrCodeMsg`） | `article-rpc/.../exception/ArticleExceptions.java` | `service/article/src/main/java/com/rag/article/exception/ArticleExceptions.java` | 1:N | 业务异常工厂；⚠️ **本域与 like 域的错误模型相反** —— rpc 侧发**标准 gRPC 码**，业务码不上线（api 侧在 logic 里显式映射）⇒ 只承载 gRPC status，**不引** `article-common` 的 `ErrorCode`；与上一行**同源 Go 文件**（Go 侧 1 个 `errmsg.go` → C 侧 2 个类） |
 | `proto/article.proto`（仓库根，不在 `service/article/` 下） | `service/article/article-proto/src/main/proto/article.proto` | `proto/src/main/proto/article.proto` | 1:1 | L1 契约，逐条一致；仅 option 块不同（见 §6） |
@@ -72,7 +72,7 @@
 | `article/api/interceptor/` | `interceptor/` | 直接压平 |
 | `article/api/service/` | `service/` | 与 rpc 侧合并 |
 | `article/common/errmsg/` | `contract/` | 错误码 + 事件 DTO（`ErrCodes` / `ErrMsg` / `ArticleSyncEvent` / `CommunityArticleEvent`）|
-| `article/rpc/bootstrap/` | `bootstrap/` | 直接压平 |
+| `article/rpc/bootstrap/` | `wiring/` | 直接压平 |
 | `article/rpc/client/` | `client/` | 与 api 侧合并 |
 | `article/rpc/config/` | `config/` | 合并 |
 | `article/rpc/domain/` | `domain/entity/` | 按是否 `*Entity` 拆分 |
@@ -126,10 +126,10 @@
 | `rpc/internal/config/config.go`（PG / Kafka×4 / MinIO / Security / Message / Outbox / HotEvent） | `article-rpc/…/config/ArticleRpcProperties.java` | `service/article/src/main/java/com/rag/article/config/ArticleRpcProperties.java` | 1:1 | `@ConfigurationProperties` 聚合；字段逐条对应 |
 | `rpc/internal/config/config.go`（4 个 `kq.KqConf` 各自的 `Brokers`） | `article-rpc/…/config/ArticleKafkaChannelValidator.java` | `service/article/src/main/java/com/rag/article/config/ArticleKafkaChannelValidator.java` | 1:1 | 🔴 校验 4 通道 brokers 与全局 `spring.kafka.bootstrap-servers` 一致，不一致**启动失败**（Go 侧改某通道 brokers 会切 broker） |
 | `rpc/internal/model/article.go`（`gorm:"autoUpdateTime"` 的 `updated_at` 自动推进） | `article-rpc/…/config/ArticleMetaObjectHandler.java` | `service/article/src/main/java/com/rag/article/config/ArticleMetaObjectHandler.java` | 1:1 | MyBatis-Plus `MetaObjectHandler` 复刻 GORM 的 `autoUpdateTime` 消费点 |
-| `rpc/internal/svc/service_context.go`（snowflake 初始化） | `article-rpc/…/bootstrap/SnowflakeBootstrap.java` | `service/article/src/main/java/com/rag/article/bootstrap/SnowflakeBootstrap.java` | 1:1 | 位宽/epoch 与 Go 侧一致（`common/snowflake`） |
-| `rpc/internal/svc/service_context.go`（MinIO bucket 幂等 bootstrap + `public-read` 策略） | `article-rpc/…/bootstrap/MinioBucketBootstrap.java` | `service/article/src/main/java/com/rag/article/bootstrap/MinioBucketBootstrap.java` | 1:1 | 幂等语义保留；`MakeBucket` 失败不 panic，只 warn |
-| `rpc/article.go`（`zrpc.MustNewServer` 的服务注册） | `article-rpc/…/bootstrap/NacosRegistration.java` | `service/article/src/main/java/com/rag/article/bootstrap/NacosRegistration.java` | 1:1 | 显式注册，不依赖自动注册 |
-| `rpc/internal/model/db.go`（`article_revision_immutable` 触发器启动门禁） | `article-rpc/…/bootstrap/ArticleSchemaGate.java` | `service/article/src/main/java/com/rag/article/bootstrap/ArticleSchemaGate.java` | 1:1 | 🔴 缺触发器必须 **fail-fast**（静默降级会让「不可变 revision」变成可写） |
+| `rpc/internal/svc/service_context.go`（snowflake 初始化） | `article-rpc/…/bootstrap/SnowflakeBootstrap.java` | `service/article/src/main/java/com/rag/article/wiring/SnowflakeBootstrap.java` | 1:1 | 位宽/epoch 与 Go 侧一致（`common/snowflake`） |
+| `rpc/internal/svc/service_context.go`（MinIO bucket 幂等 bootstrap + `public-read` 策略） | `article-rpc/…/bootstrap/MinioBucketBootstrap.java` | `service/article/src/main/java/com/rag/article/wiring/MinioBucketBootstrap.java` | 1:1 | 幂等语义保留；`MakeBucket` 失败不 panic，只 warn |
+| `rpc/article.go`（`zrpc.MustNewServer` 的服务注册） | `article-rpc/…/bootstrap/NacosRegistration.java` | `service/article/src/main/java/com/rag/article/wiring/NacosRegistration.java` | 1:1 | 显式注册，不依赖自动注册 |
+| `rpc/internal/model/db.go`（`article_revision_immutable` 触发器启动门禁） | `article-rpc/…/bootstrap/ArticleSchemaGate.java` | `service/article/src/main/java/com/rag/article/wiring/ArticleSchemaGate.java` | 1:1 | 🔴 缺触发器必须 **fail-fast**（静默降级会让「不可变 revision」变成可写） |
 | `rpc/internal/svc/service_context.go`（`MessageRpc` 客户端） | `article-rpc/…/client/MessageRpcClient.java` | `service/article/src/main/java/com/rag/article/client/MessageRpcClient.java` | 1:1 | **唯一的跨域 gRPC 依赖**（D6） |
 | `rpc/internal/svc/service_context.go`（`MinioClient`） | `article-rpc/…/client/ArticleObjectStorageClient.java` | **无对应文件** | N:1 | ⚠️ **缺口 G-3**：C 侧只有 `MinioBucketBootstrap`，**没有对象存储客户端** ⇒ MinIO put/get 无载体 |
 | `rpc/internal/svc/service_context.go`（`SecurityRpc` = `SanitizeContent`） | `article-rpc/…/client/SecurityRpcClient.java`（+ `ContentSecurityPort.java` / `ContentSecurityAutoConfiguration.java` / `UnavailableContentSecurityClient.java`） | **无对应文件** | N:1 | ⚠️ **缺口 G-4**：C 侧无内容安全客户端 |
@@ -208,7 +208,7 @@
 | 只读快照 | `ListPublic` 把 count + 分页 + revision 取值包在**同一 repeatable-read 快照** | `ArticlePublicMapper` + 只读事务 | 同 B | ⚠️ 拆开就读到不一致快照 |
 | 时间戳推进 | `gorm:"autoCreateTime"` / `autoUpdateTime` | `ArticleMetaObjectHandler` | 同 B | ⚠️ `UpdateColumn`（`SkipHooks=true`）**不推进** —— 原生 `@Update` SQL 天然绕开 MP |
 | 软删 | `gorm.DeletedAt`（`deleted_at` + 索引） | `ArticleEntity` 的逻辑删除 | 同 B | |
-| 雪花 ID | `common/snowflake`（`snowflake.Init()`） | `bootstrap/SnowflakeBootstrap.java` + `common/snowflake` | 同 B（+ starter 的 `SnowflakeAutoConfiguration`） | epoch / 位段是业务契约 |
+| 雪花 ID | `common/snowflake`（`snowflake.Init()`） | `wiring/SnowflakeBootstrap.java` + `common/snowflake` | 同 B（+ starter 的 `SnowflakeAutoConfiguration`） | epoch / 位段是业务契约 |
 | 表名 | `article` · `article_sync_outbox` · `article_revision` · `article_publication` · `article_domain_outbox` | 同 | 同 | `article_sync_outbox` 有显式 `TableName()`（`article_sync_outbox.go:29-31`） |
 
 > 本节决策锁：**L-3**（详见 §5）。
@@ -472,5 +472,5 @@ find "/Users/pr/Documents/java&golang/Sea-RideTheWind_golang/service/article" \
 
 `A 列 Go` = 2 进程（api + rpc）· go-zero `AddRoutes` + GORM + 3 块 `AddRoutes` 分组 · 裸 `Namespace` 之外的 `article_service` 指标前缀 ·
 `B 列 RAG` = 同名 Java 包 + MyBatis-Plus + Flyway V8/V9/V10 + api/rpc 分离 + 9 个 api Service + 3 个 domain Service + `mq/` 包 4 类 ·
-`C 列 RAG-V1` = api/rpc 合并为单 app + `advice + config + controller + dto + interceptor + service` 与 `bootstrap + client + config + domain/entity + domain/service + exception + grpc + mapper + metrics` 两个包内分区 + **7 个用例合 1 个 `ArticleApiService`** + 契约落在域内 `contract/` 包（proto 在根级 `proto/`） + **6 处职责缺口待补**。
+`C 列 RAG-V1` = api/rpc 合并为单 app + `advice + config + controller + dto + interceptor + service` 与 `wiring + client + config + domain/entity + domain/service + exception + grpc + mapper + metrics` 两个包内分区 + **7 个用例合 1 个 `ArticleApiService`** + 契约落在域内 `contract/` 包（proto 在根级 `proto/`） + **6 处职责缺口待补**。
 proto 字段号 / 错误码 / JWT claim / 表名 / HTTP path / Kafka topic / 指标完整名 —— **全部以 A 列 Go 源码为准逐条核对**。

@@ -42,12 +42,12 @@
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
 | `service/like/api/`（进程 P1，HTTP 入口） | `like-api/` | `service/like/src/main/java/com/rag/like/`（`com.rag.like.{controller,advice,interceptor,dto,config,metrics,service}`） | 1:N | **D1 + 包压平**：api 与 rpc 合并为单 app，并按技术角色压平为单层包树（HTTP 边界包 `controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service`） |
-| `service/like/rpc/`（进程 P2，gRPC 入口） | `like-rpc/` | `service/like/src/main/java/com/rag/like/`（`com.rag.like.{grpc,service,domain/entity,domain/service,messaging,mapper,config,client,bootstrap,metrics,exception}`） | 1:N | 同上；**`rpc.*` 包名随包压平取消**（服务端能力包 `grpc` / `service` / `domain` / `messaging` / `mapper` / `config` / `client` / `bootstrap` / `metrics` / `exception`） |
-| `service/like/rpc/internal/mq/`（进程 P3，Kafka 消费 + 发件箱中继） | `like-rpc/src/main/java/com/rag/like/like/rpc/mq/` | `service/like/src/main/java/com/rag/like/domain/service + service/like/src/main/java/com/rag/like/messaging + service/like/src/main/java/com/rag/like/service` + `service/like/src/main/java/com/rag/like/bootstrap` | 1:N | 进程 P3 被拆散到 `service/`（业务）与 `bootstrap/`（装配）；**消费入口与发件箱中继无落点 ⇒ 见 §1.4 的 GAP-1 / GAP-2** |
+| `service/like/rpc/`（进程 P2，gRPC 入口） | `like-rpc/` | `service/like/src/main/java/com/rag/like/`（`com.rag.like.{grpc,service,domain/entity,domain/service,messaging,mapper,config,client,wiring,metrics,exception}`） | 1:N | 同上；**`rpc.*` 包名随包压平取消**（服务端能力包 `grpc` / `service` / `domain` / `messaging` / `mapper` / `config` / `client` / `wiring` / `metrics` / `exception`） |
+| `service/like/rpc/internal/mq/`（进程 P3，Kafka 消费 + 发件箱中继） | `like-rpc/src/main/java/com/rag/like/like/rpc/mq/` | `service/like/src/main/java/com/rag/like/domain/service + service/like/src/main/java/com/rag/like/messaging + service/like/src/main/java/com/rag/like/service` + `service/like/src/main/java/com/rag/like/wiring` | 1:N | 进程 P3 被拆散到 `service/`（业务）与 `wiring/`（装配）；**消费入口与发件箱中继无落点 ⇒ 见 §1.4 的 GAP-1 / GAP-2** |
 | `service/like/common/`（`errmsg`，api/rpc/mq 三方共用） | `like-common/` | `service/like/src/main/java/com/rag/like/contract/` | 1:N | **改名**：库名体现「契约」；装入**错误契约 + 3 个 Kafka payload**（L1）；⚠️ **proto 已随 D7 集中到根级 `proto/` 模块**，不再在本包内 |
 | `proto/like.proto`（Go 仓库根） | `like-proto/src/main/proto/like.proto` | `proto/src/main/proto/like.proto` | 1:1 | **L1 契约**：字段号 / message 名 / 枚举值 100% 一致；差异仅 `package pb→like` + `option` 块 + 缩进 |
-| `service/like/rpc/cmd/fact-dispatch/`（进程 P4，独立可执行） | `like-rpc/src/main/java/com/rag/like/like/rpc/mq/LikeFactDispatchScheduler.java` | `service/like/src/main/java/com/rag/like/bootstrap/LikeFactDispatchScheduler.java` | 1:1 | ★ **独立进程 → 域内组件**；落点由 B 的 `mq/` 变为 C 的 `rpc/bootstrap/` |
-| `service/like/rpc/cmd/fact-authority/`（进程 P5，独立可执行） | `like-rpc/src/main/java/com/rag/like/like/rpc/mq/LikeAuthorityEndpointConfig.java` | `service/like/src/main/java/com/rag/like/bootstrap/LikeAuthorityEndpointConfig.java` | 1:1 | ★ **独立进程 → 域内组件**；落点同上 |
+| `service/like/rpc/cmd/fact-dispatch/`（进程 P4，独立可执行） | `like-rpc/src/main/java/com/rag/like/like/rpc/mq/LikeFactDispatchScheduler.java` | `service/like/src/main/java/com/rag/like/wiring/LikeFactDispatchScheduler.java` | 1:1 | ★ **独立进程 → 域内组件**；落点由 B 的 `mq/` 变为 C 的 `wiring/` |
+| `service/like/rpc/cmd/fact-authority/`（进程 P5，独立可执行） | `like-rpc/src/main/java/com/rag/like/like/rpc/mq/LikeAuthorityEndpointConfig.java` | `service/like/src/main/java/com/rag/like/wiring/LikeAuthorityEndpointConfig.java` | 1:1 | ★ **独立进程 → 域内组件**；落点同上 |
 | `service/like/rpc/likeservice/likeservice.go`（goctl 生成桩）<br>`service/like/rpc/pb/like.pb.go`<br>`service/like/rpc/pb/like_grpc.pb.go` | `like-proto/`（protoc 生成，0 手写 `.java`） | `proto/`（**根级 proto 模块**产出，pb 包名 `com.rag.proto.like`） | 1:1 | **纯生成物，不迁移**；两侧都由 `.proto` 生成，Java 侧不再需要手写 client 桩 |
 
 ---
@@ -76,14 +76,14 @@
 | `like/api/metrics/` | `metrics/` | 与 rpc 侧合并 |
 | `like/api/service/` | `service/` | 与 rpc 侧合并 |
 | `like/common/errmsg/` | `contract/` | 错误码 + 事件 DTO（`CodeError` / `ErrCodes` / `ErrMsg` / `GrpcErrFactory` / `KafkaLikeMsg` / `ArticleHotEvent` / `TaskArticleProgressMsg`）|
-| `like/rpc/bootstrap/` | `bootstrap/` | 直接压平 |
+| `like/rpc/bootstrap/` | `wiring/` | 直接压平 |
 | `like/rpc/client/` | `client/` | 与 api 侧合并 |
 | `like/rpc/config/` | `config/` + `messaging/` | Kafka topic 落到 `messaging/`（`LikeKafkaTopics`）|
 | `like/rpc/domain/` | `domain/entity/` | 按是否 `*Entity` 拆分（5 个全是 `*Entity`）|
 | `like/rpc/exception/` | `exception/` | 直接压平 |
 | `like/rpc/mapper/` | `mapper/` | 直接压平 |
 | `like/rpc/metrics/` | `metrics/` | 合并 |
-| `like/rpc/mq/`（5 类） | `bootstrap/`（2 类）| `LikeAuthorityEndpointConfig` + `LikeFactDispatchScheduler`；**`LikeUpdateKafkaListener` + `LikeHotEventOutboxRelay` 无落点**（GAP-1 / GAP-2）|
+| `like/rpc/mq/`（5 类） | `wiring/`（2 类） | `LikeAuthorityEndpointConfig` + `LikeFactDispatchScheduler`；**`LikeUpdateKafkaListener` + `LikeHotEventOutboxRelay` 无落点**（GAP-1 / GAP-2） |
 | `like/rpc/service/` | `service/` + `domain/service/` + `messaging/` | 领域服务另出 `domain/service/`；`LikeTaskProgressPublisher` 落 `messaging/` |
 | `like/rpc/service/impl/` | `grpc/` | 压平 + 类改名 `LikeServiceGrpcImpl` → `LikeGrpcService` |
 | `like-proto/` | 根级 `proto/`（pb 包名 `com.rag.proto.like`）| **集中化**（D7）；proto `package` 由 `pb` 改为 `like`（**L1 签字偏离** `DEV-LIKE-PROTO-001`）|
@@ -141,23 +141,23 @@
 | `service/like/rpc/internal/metrics/metrics.go`（`like-rpc_action_total` + `like_rpc_query_cache_total`） | `like-rpc/.../metrics/LikeRpcMetrics.java` | `service/like/src/main/java/com/rag/like/metrics/LikeRpcMetrics.java` | 1:1 | ⚠️ **`like-rpc_action_total` 用了连字符**（Go `Subsystem: "like-rpc"`，全仓唯一）⇒ Prometheus 正则不允许 ⇒ **该指标不会出现在 `/metrics`** ⇒ **照抄，不修正** |
 | `service/like/rpc/internal/model/data_model.go`（`LikeRecord` / `LikeConsumeInbox` / `LikeOutboxEvent`） | `like-rpc/.../domain/LikeRecordEntity.java` + `.../LikeConsumeInboxEntity.java` + `.../LikeOutboxEventEntity.java` | `service/like/src/main/java/com/rag/like/domain/entity/LikeRecordEntity.java` + `service/like/src/main/java/com/rag/like/domain/entity/LikeConsumeInboxEntity.java` + `service/like/src/main/java/com/rag/like/domain/entity/LikeOutboxEventEntity.java` | 1:1 | 表名逐字：`like_record` / `like_consume_inbox` / `like_outbox_event`；索引 `uk_user_target(UserID,TargetType,TargetID)` / `idx_user_list` / `idx_target_list` / `idx_author` / `uk_event_key` / `idx_topic_consumer` |
 | `service/like/rpc/internal/model/domain_fact.go`（`LikeDomainFactOutbox` + `LikeFactStream` + `appendLikeFact`） | `like-rpc/.../domain/LikeDomainFactOutboxEntity.java` + `.../LikeFactStreamEntity.java` + `.../service/LikeDomainFactService.java` | `service/like/src/main/java/com/rag/like/domain/entity/LikeDomainFactOutboxEntity.java` + `service/like/src/main/java/com/rag/like/domain/entity/LikeFactStreamEntity.java` + `service/like/src/main/java/com/rag/like/domain/service/LikeDomainFactService.java` | 1:N | 表名 `like_domain_fact_outbox` / `like_fact_stream`；`appendLikeFact` 负责版本分配 + 双信封 |
-| `service/like/rpc/internal/model/db.go`（`InitDB` + `AutoMigrate` 5 实体 + `log.Fatalln`） | `like-rpc/.../bootstrap/LikeSchemaGate.java` + `.../mapper/LikeRecordMapper.java` + `.../mapper/LikeConsumeInboxMapper.java` + `.../mapper/LikeDomainFactOutboxMapper.java` + `.../mapper/LikeFactStreamMapper.java` + `.../mapper/LikeOutboxEventMapper.java` | `service/like/src/main/java/com/rag/like/bootstrap/LikeSchemaGate.java` + `service/like/src/main/java/com/rag/like/mapper/LikeRecordMapper.java` + `.../LikeConsumeInboxMapper.java` + `.../LikeDomainFactOutboxMapper.java` + `.../LikeFactStreamMapper.java` + `.../LikeOutboxEventMapper.java` | 1:N | Go 是「表与进程同生共死」；Java 侧改用迁移脚本 ⇒ 引入 Go 没有的新失败模式 ⇒ B 用启动闸兜住；C 的迁移机制**待定案**（见 §2） |
+| `service/like/rpc/internal/model/db.go`（`InitDB` + `AutoMigrate` 5 实体 + `log.Fatalln`） | `like-rpc/.../bootstrap/LikeSchemaGate.java` + `.../mapper/LikeRecordMapper.java` + `.../mapper/LikeConsumeInboxMapper.java` + `.../mapper/LikeDomainFactOutboxMapper.java` + `.../mapper/LikeFactStreamMapper.java` + `.../mapper/LikeOutboxEventMapper.java` | `service/like/src/main/java/com/rag/like/wiring/LikeSchemaGate.java` + `service/like/src/main/java/com/rag/like/mapper/LikeRecordMapper.java` + `.../LikeConsumeInboxMapper.java` + `.../LikeDomainFactOutboxMapper.java` + `.../LikeFactStreamMapper.java` + `.../LikeOutboxEventMapper.java` | 1:N | Go 是「表与进程同生共死」；Java 侧改用迁移脚本 ⇒ 引入 Go 没有的新失败模式 ⇒ B 用启动闸兜住；C 的迁移机制**待定案**（见 §2） |
 | `service/like/rpc/internal/model/like.go`（`LikeRecordModel` 8 方法 + `ProcessLikeMessageBatch` + `applyLikeMessage`） | `like-rpc/.../mapper/LikeRecordMapper.java` + `.../service/LikeDomainService.java` + `.../service/LikeMessageIngestService.java` | `service/like/src/main/java/com/rag/like/mapper/LikeRecordMapper.java` + `service/like/src/main/java/com/rag/like/domain/service/LikeDomainService.java` + `service/like/src/main/java/com/rag/like/service/LikeMessageIngestService.java` | 1:N | `ProcessLikeMessageBatch` 的「inbox + record + fact **单事务提交**」是 L3 语义，必须整段保留 |
 | `service/like/rpc/internal/model/like_consume_inbox.go`（`FindByMsgID` / `CreateTx` / `MarkDoneTx`） | `like-rpc/.../domain/LikeConsumeInboxEntity.java` + `.../mapper/LikeConsumeInboxMapper.java` | `service/like/src/main/java/com/rag/like/domain/entity/LikeConsumeInboxEntity.java` + `service/like/src/main/java/com/rag/like/mapper/LikeConsumeInboxMapper.java` | 1:N | `MsgId` 是主键；`PayloadHash` 是消息语义指纹 |
 | `service/like/rpc/internal/model/like_outbox.go`（`FetchPending(retry<3)` / `MarkSent` / `MarkFailed`） | `like-rpc/.../domain/LikeOutboxEventEntity.java` + `.../mapper/LikeOutboxEventMapper.java` + `.../mq/LikeHotEventOutboxRelay.java` | `service/like/src/main/java/com/rag/like/domain/entity/LikeOutboxEventEntity.java` + `service/like/src/main/java/com/rag/like/mapper/LikeOutboxEventMapper.java` + **—（C 无对应文件）** | 1:N | ⚠️ **GAP-2**：C 侧缺 `like_outbox_event` → `article-hot-events` 的发件箱中继 |
 | `service/like/rpc/internal/model/like_message_hash.go`（7 字段 canonical JSON → sha256 hex） | `like-rpc/.../service/LikeMessageDigest.java` + `.../service/GoCompatibleJson.java` | `service/like/src/main/java/com/rag/like/service/LikeMessageDigest.java` + `service/like/src/main/java/com/rag/like/service/GoCompatibleJson.java` | 1:N | ⚠️ canonical JSON 必须是 **RFC 8785 JCS**；Jackson 的 `SORT_PROPERTIES_ALPHABETICALLY` **不等价** ⇒ 指纹不一致 ⇒ 幂等失效（RAG-V1 AGENTS G-2） |
 | `service/like/common/errmsg/errmsg.go`（`NewErrCode` / `NewErrCodeMsg`） | `like-rpc/.../exception/LikeExceptions.java` | `service/like/src/main/java/com/rag/like/exception/LikeExceptions.java` | 1:1 | 业务异常工厂；错误码空间仍取自 `like/contract/ErrCodes` |
-| `service/like/rpc/like.go`（`zrpc.MustNewServer` → etcd 注册 `like.rpc`） | `like-rpc/.../bootstrap/NacosRegistration.java` | `service/like/src/main/java/com/rag/like/bootstrap/NacosRegistration.java` | 1:1 | Go = etcd；Java = Nacos ⇒ **注册面是表达层差异，不是行为差异** |
+| `service/like/rpc/like.go`（`zrpc.MustNewServer` → etcd 注册 `like.rpc`） | `like-rpc/.../bootstrap/NacosRegistration.java` | `service/like/src/main/java/com/rag/like/wiring/NacosRegistration.java` | 1:1 | Go = etcd；Java = Nacos ⇒ **注册面是表达层差异，不是行为差异** |
 
 ### 1.4 RPC 侧 —— 事实流水线与 `cmd/fact-*` 合并落点
 
-> ⚠️ **本节是 like 域最容易漏的一段** —— Go 侧 `service/like/` 有 **5 个 `main`**（api / rpc / mq / fact-dispatch / fact-authority），RAG 把后两个合并成域内组件（`mq/` 包），RAG-V1 **继续合并**但把落点从 `mq/` 挪到 `bootstrap`。
+> ⚠️ **本节是 like 域最容易漏的一段** —— Go 侧 `service/like/` 有 **5 个 `main`**（api / rpc / mq / fact-dispatch / fact-authority），RAG 把后两个合并成域内组件（`mq/` 包），RAG-V1 **继续合并**但把落点从 `mq/` 挪到 `wiring`。
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
-| `service/like/rpc/cmd/fact-dispatch/main.go`（P4：env 校验 + `DCEventSender` + `RunDispatcher(ctx, model, sender, logger, once)`，**零 gRPC 注册**） | `like-rpc/src/main/java/com/rag/like/like/rpc/mq/LikeFactDispatchScheduler.java` | `service/like/src/main/java/com/rag/like/bootstrap/LikeFactDispatchScheduler.java` | 1:1 | ★ **独立进程 → 域内组件**（D1 不设例外，依据 `RAG/docs/FileTree/like/rpc.md:84-97`）。⚠️ **落点变了**：B 在 `mq/` 包，C 在 `rpc/bootstrap/` 包 |
-| `service/like/rpc/cmd/fact-authority/main.go`（P5：env 校验 + `NewAuthorityHandler` + `net.Listen`，**零 gRPC 注册**，只有 1 个 Servlet） | `like-rpc/src/main/java/com/rag/like/like/rpc/mq/LikeAuthorityEndpointConfig.java` | `service/like/src/main/java/com/rag/like/bootstrap/LikeAuthorityEndpointConfig.java` | 1:1 | ★ **独立进程 → 域内组件**；落点同上。⚠️ Go 侧是**独立 HTTP 端口** ⇒ 合并后端口归属是待拍板项（RAG-V1 决策记录 **P6-b**） |
-| `service/like/rpc/cmd/fact-dispatch/main.go` + `service/like/rpc/cmd/fact-authority/main.go`（`ProcessMetadata{Service:"rtw-like-fact-dispatch"/"rtw-like-fact-authority"}` + 进程级 logger 身份） | `like-rpc/src/main/java/com/rag/like/like/rpc/bootstrap/LikeFactProcessLogging.java` | `service/like/src/main/java/com/rag/like/bootstrap/LikeFactProcessLogging.java` | 1:1 | Go 侧 like 域共 **4 个进程级 logger 身份**（`like.rpc` / `like-mq` / `rtw-like-fact-dispatch` / `rtw-like-fact-authority`；api 侧另有 `likecenter`）⇒ 合并后必须保住 4 份独立 logger 名，**不得用 SLF4J 全局 MDC**（会跨线程插值） |
+| `service/like/rpc/cmd/fact-dispatch/main.go`（P4：env 校验 + `DCEventSender` + `RunDispatcher(ctx, model, sender, logger, once)`，**零 gRPC 注册**） | `like-rpc/src/main/java/com/rag/like/like/rpc/mq/LikeFactDispatchScheduler.java` | `service/like/src/main/java/com/rag/like/wiring/LikeFactDispatchScheduler.java` | 1:1 | ★ **独立进程 → 域内组件**（D1 不设例外，依据 `RAG/docs/FileTree/like/rpc.md:84-97`）。⚠️ **落点变了**：B 在 `mq/` 包，C 在 `wiring/` 包 |
+| `service/like/rpc/cmd/fact-authority/main.go`（P5：env 校验 + `NewAuthorityHandler` + `net.Listen`，**零 gRPC 注册**，只有 1 个 Servlet） | `like-rpc/src/main/java/com/rag/like/like/rpc/mq/LikeAuthorityEndpointConfig.java` | `service/like/src/main/java/com/rag/like/wiring/LikeAuthorityEndpointConfig.java` | 1:1 | ★ **独立进程 → 域内组件**；落点同上。⚠️ Go 侧是**独立 HTTP 端口** ⇒ 合并后端口归属是待拍板项（RAG-V1 决策记录 **P6-b**） |
+| `service/like/rpc/cmd/fact-dispatch/main.go` + `service/like/rpc/cmd/fact-authority/main.go`（`ProcessMetadata{Service:"rtw-like-fact-dispatch"/"rtw-like-fact-authority"}` + 进程级 logger 身份） | `like-rpc/src/main/java/com/rag/like/like/rpc/bootstrap/LikeFactProcessLogging.java` | `service/like/src/main/java/com/rag/like/wiring/LikeFactProcessLogging.java` | 1:1 | Go 侧 like 域共 **4 个进程级 logger 身份**（`like.rpc` / `like-mq` / `rtw-like-fact-dispatch` / `rtw-like-fact-authority`；api 侧另有 `likecenter`）⇒ 合并后必须保住 4 份独立 logger 名，**不得用 SLF4J 全局 MDC**（会跨线程插值） |
 | `service/like/rpc/internal/model/fact_delivery.go`（`validLikeDelivery`：载荷规范化哈希比对 + 前序屏障） | `like-rpc/.../service/LikeDeliveryValidator.java` | `service/like/src/main/java/com/rag/like/service/LikeDeliveryValidator.java` | 1:1 | payload 列必须**以原始字符串存取**才能做字节级比对 |
 | `service/like/rpc/internal/model/fact_delivery.go`（`DispatchFactOnce`：`FOR UPDATE SKIP LOCKED` + `NOT EXISTS predecessor`） | `like-rpc/.../service/LikeFactDispatchService.java` | `service/like/src/main/java/com/rag/like/service/LikeFactDispatchService.java` | 1:1 | 并发语义（多副本安全）逐条保留 |
 | `service/like/rpc/internal/model/fact_authority.go`（`AuthoritativeFact` 链路重放校验 + `validLikeTransition`） | `like-rpc/.../service/LikeAuthorityLookupService.java` | `service/like/src/main/java/com/rag/like/service/LikeAuthorityLookupService.java` | 1:1 | — |
@@ -172,7 +172,7 @@
 
 **合并 api/rpc 为单 app（D1）9 处同时改**：
 1. 删 `like-api` / `like-rpc` 两个模块，新增 `like-service` 一个模块（`pom.xml` + `application.yml`）；
-2. `com.rag.like.api.*` / `com.rag.like.rpc.*` 两层包 → **取消二分**，压平为单层技术角色包树（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `bootstrap` / `exception`）；
+2. `com.rag.like.api.*` / `com.rag.like.rpc.*` 两层包 → **取消二分**，压平为单层技术角色包树（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；
 3. 10 个 gRPC 实现类改名（`LikeServiceGrpcImpl` → `LikeGrpcService` 等）⇒ 落点从 `rpc/service/impl/` 上收到 `grpc/`；
 4. `LikeApiApplication` + `LikeRpcApplication` 合 1 个 `LikeServiceApplication`；
 5. `like-api/src/main/resources/application.yml` + `like-rpc/src/main/resources/application.yml` 合 1 份（两套 prefix `like-api.*` / `like.*` 共存）；
@@ -184,9 +184,9 @@
 **为什么换**：Spring Cloud 的部署单元是「可部署服务」，不是「api 层 / rpc 层」；go-zero 的 api/rpc 分离源于 `.api` 与 `.proto` 两条 codegen 路径，是**语言产物**不是架构原则。
 
 **`cmd/fact-*` 独立进程 → 域内组件 6 处同时改**：
-1. `rpc/cmd/fact-dispatch/main.go` → `bootstrap/LikeFactDispatchScheduler.java`（**落点由 B 的 `mq/` 改为 `bootstrap`**）；
-2. `rpc/cmd/fact-authority/main.go` → `bootstrap/LikeAuthorityEndpointConfig.java`（同上）；
-3. 两个 main 的 `ProcessMetadata` + logger 身份 → `bootstrap/LikeFactProcessLogging.java`；
+1. `rpc/cmd/fact-dispatch/main.go` → `wiring/LikeFactDispatchScheduler.java`（**落点由 B 的 `mq/` 改为 `wiring`**）；
+2. `rpc/cmd/fact-authority/main.go` → `wiring/LikeAuthorityEndpointConfig.java`（同上）；
+3. 两个 main 的 `ProcessMetadata` + logger 身份 → `wiring/LikeFactProcessLogging.java`；
 4. `RunDispatcher` / `NewAuthorityHandler` 本身**不重写** ⇒ 复用 `common/src/main/java/com/rag/common/communityfact/{Dispatcher,AuthorityHandler}`；
 5. `-once` flag → 配置项 `like.fact.dispatch.once`（**P6-a 待拍板**）；
 6. 独立 HTTP 端口 → 并入主 app 端口（**P6-b 待拍板**）。
@@ -210,7 +210,7 @@
 | 实体定义 | `internal/model/data_model.go`（3 实体）+ `domain_fact.go`（2 实体） | `domain/` 5 个 `*Entity.java` | `service/like/src/main/java/com/rag/like/domain/entity` 5 个 `*Entity.java` | 表名 5 张：`like_record` / `like_consume_inbox` / `like_outbox_event` / `like_domain_fact_outbox` / `like_fact_stream`（**like 域独占**） |
 | 数据访问 | `LikeRecordModel` 接口 8 方法 + GORM 链式条件 | `Mapper extends BaseMapper<E>` + `LambdaQueryWrapper` / XML | 同 B | ⚠️ 查询条件必须逐条保留；**写路径形态**（`updateById(entity)` vs `update(null, wrapper)`）决定修法 |
 | `jsonb` 列 | `like_domain_fact_outbox.payload` / `delivery_envelope`（002 迁移） | `mapper/JsonbTypeHandler.java`（**域内本地副本**） | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java`（**D3 上收**） | ⚠️ 必须用 `String` 原样存取（字节级哈希比对）；不能用 MP 自带 `JacksonTypeHandler`（它按目标 Java 类型推断列类型） |
-| Schema 演进 | `db.AutoMigrate(&LikeRecord{}, …)`（`db.go:15`），失败 `log.Fatalln` | **Flyway** `V1__create_like_record.sql` … `V6__align_like_domain_fact_outbox_with_go.sql` + 独立账本表 `flyway_schema_history_like` + `bootstrap/LikeSchemaGate.java` 启动闸 | `service/like/src/main/resources/db/migration/` **仅 `.gitkeep`（空）** | ⚠️ **C 的迁移机制尚未定案**：Flyway 还是幂等重放（`SchemaInitializer`）？迁移脚本尚未落地 ⇒ **待拍板** |
+| Schema 演进 | `db.AutoMigrate(&LikeRecord{}, …)`（`db.go:15`），失败 `log.Fatalln` | **Flyway** `V1__create_like_record.sql` … `V6__align_like_domain_fact_outbox_with_go.sql` + 独立账本表 `flyway_schema_history_like` + `wiring/LikeSchemaGate.java` 启动闸 | `service/like/src/main/resources/db/migration/` **仅 `.gitkeep`（空）** | ⚠️ **C 的迁移机制尚未定案**：Flyway 还是幂等重放（`SchemaInitializer`）？迁移脚本尚未落地 ⇒ **待拍板** |
 | 迁移脚本 | `internal/model/migrations/001_like_domain_fact_outbox.sql` / `002_like_dc_wire.sql` / `003_like_fact_delivery.sql`（3 个，含 `NOT VALID CHECK` + 不可变触发器） | `resources/db/migration/V1..V6`（6 个） | **空** | ⚠️ C 侧需补：5 张表的 DDL + 002/003 的 `NOT VALID CHECK` + 不可变触发器 |
 | DDL 脚本写法约束 | — | — | — | ⚠️ RAG-V1 AGENTS R6：`db/*.sql` **只能单条语句**（`ScriptUtils` 按 `;` 切分，**不支持 `$$`**）；`timestamptz` 转换须用 `SET TIME ZONE 'UTC'; … RESET TIME ZONE;` 包裹 |
 | 事务边界 | `ProcessLikeMessageBatch`：**inbox + record + fact 单事务提交**（`likemq.go`） | `service/LikeMessageIngestService` | `service/like/src/main/java/com/rag/like/service/LikeMessageIngestService.java` + `service/like/src/main/java/com/rag/like/service/LikeActionScript.java` | ⚠️ 事务边界是独立 L3 关注点 ⇒ **独立成类**，不并进用例类 |
@@ -226,7 +226,7 @@
 2. 5 个 Go struct → 5 个 `@TableName` Entity（表名逐字保留）；
 3. `LikeRecordModel` 接口 8 方法 → 5 个 `Mapper extends BaseMapper` + XML/注解 SQL；
 4. `jsonb` 列挂 `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java`；
-5. `db.AutoMigrate` → 显式迁移脚本 + 启动闸（`bootstrap/LikeSchemaGate.java`）；
+5. `db.AutoMigrate` → 显式迁移脚本 + 启动闸（`wiring/LikeSchemaGate.java`）；
 6. 游标 ID 生成器**域内自实现**，不接 `common/Snowflake`。
 
 **为什么换**：GORM tag 语义与 MP 注解不等价（软删除 / 零值 / 批量更新差异），必须逐项对照而不是照抄注解；显式迁移可管 schema 历史。
@@ -235,7 +235,7 @@
 1. `service/like/pom.xml` 是否加 `spring-boot-flyway` + `flyway-database-postgresql`；
 2. `spring.flyway.table` 是否用独立账本表名（`flyway_schema_history_like`，避免与 `article` 的默认表撞号）；
 3. `resources/db/migration/` 补 5 张表的 DDL（拆成单条语句，禁用 `$$`）；
-4. `bootstrap/LikeSchemaGate.java` 的检查口径（Flyway 模式下是「账本 + 表存在」，幂等重放模式下是「表存在」）；
+4. `wiring/LikeSchemaGate.java` 的检查口径（Flyway 模式下是「账本 + 表存在」，幂等重放模式下是「表存在」）；
 5. `002`/`003` 迁移里的 `NOT VALID CHECK` 与不可变触发器如何落到目标方言。
 
 **为什么换**：Go 侧 `AutoMigrate` 无状态、5 张表互不冲突；换成有状态账本后，同库多模块会撞号（`flyway_schema_history` 是 schema 级账本，一个 schema 只能有一本）。⇒ 这是**必须拍板**的一项，不是实现细节。
@@ -257,7 +257,7 @@
 | gRPC 传输安全 | go-zero zrpc 明文 | devh `@GrpcClient` **必须显式 `negotiation-type: plaintext`** | 同 B（C 的 yml 已写） | ⚠️ devh 默认 TLS ⇒ 不写会静默变 TLS |
 | 超时 | `rest.RestConf.Timeout` 默认 **3000ms**（struct tag 默认值，yaml 里一个字都没写） | `observability.http-timeout: 3s` | `service/like/src/main/resources/application.yml` **当前未配** | ⚠️ 「yaml 里没写」≠「没开」（AGENTS §3.3.1） |
 | 容器输入上限 | `MaxConns=10000` / `MaxBytes=1048576` / header 上限 1MiB+4KiB | Tomcat 三旋钮（`relaxed-query-chars` / `max-parameter-count: 2048` / `max-http-request-header-size: 1028KB`） | `service/like/src/main/resources/application.yml` **当前未配** | ⚠️ 漏配 1 个即「有的域 200、有的域 400」 |
-| **进程拓扑** | **5 个进程**：api(18887) / rpc(8082) / mq(9100) / fact-dispatch / fact-authority | **2 个进程**：`like-api`(18887) + `like-rpc`(8082，含 mq + 2 个 cmd 的组件化) | **1 个进程**：`like-service`（HTTP `8896` + gRPC `9005`） | ★ **D1**；C 的 `fact-dispatch` / `fact-authority` **作为域内组件**，落点 `rpc/bootstrap/` |
+| **进程拓扑** | **5 个进程**：api(18887) / rpc(8082) / mq(9100) / fact-dispatch / fact-authority | **2 个进程**：`like-api`(18887) + `like-rpc`(8082，含 mq + 2 个 cmd 的组件化) | **1 个进程**：`like-service`（HTTP `8896` + gRPC `9005`） | ★ **D1**；C 的 `fact-dispatch` / `fact-authority` **作为域内组件**，落点 `wiring/` |
 | 进程级 logger 身份 | 4 个独立 `service` 值（`like.rpc` / `like-mq` / `rtw-like-fact-dispatch` / `rtw-like-fact-authority`） | 同 JVM 内多份独立 appender | 同 B | ⚠️ **不得用 SLF4J 全局 MDC**（跨线程插值） |
 | 观测端点 | 各自 `DevServer` 端口（9099 / 9098 / 9100）的 `/metrics` + `/healthz` | Actuator（`management.endpoints.web.exposure`） | Actuator（`health,info,prometheus`） | ⚠️ Go 侧 `DevServer` 段在 `Config` 结构体里**没有对应字段** ⇒ 配置面有、行为面存疑 |
 
@@ -295,9 +295,9 @@
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
 | `service/common/communityfact/wire.go`（信封 + 校验 + DC sender） | `service/common/.../communityfact/Wire.java` | `common/src/main/java/com/rag/common/communityfact/`（`Wire` / `Event` / `TechnicalReceipt` / `SubjectRef` / `AuthorityFact` / `CanonicalHash` / `DeliveryStatus`） | 1:N | like 域**只接线不重写**；`likeFact` payload（19 字段）是 like 特有 ⇒ 属域内 `contract/` 包 |
-| `service/common/communityfact/process.go`（`RunDispatcher`：批次 16 / 1s 节奏 / 10s deadline / `-once`） | `service/common/.../communityfact/Dispatcher.java` | `common/src/main/java/com/rag/common/communityfact/Dispatcher.java` | 1:1 | **like 侧接线点** = `rpc/bootstrap/LikeFactDispatchScheduler.java` |
-| `service/common/communityfact/logging.go`（`ProcessMetadata` + 进程级 OBS-r3 JSON 日志） | `service/common/.../communityfact/ProcessLogger.java` | `common/src/main/java/com/rag/common/communityfact/ProcessLogger.java` | 1:1 | **like 侧接线点** = `rpc/bootstrap/LikeFactProcessLogging.java`（4 个进程级 logger 身份） |
-| `service/common/communityfact/authority.go`（`NewAuthorityHandler` → `http.Handler`） | `service/common/.../communityfact/AuthorityHandler.java` + `spring/AuthorityHandlerFactory.java` | `common/src/main/java/com/rag/common/communityfact/AuthorityHandler.java` + `common/src/main/java/com/rag/common/autoconfigure/WebAutoConfiguration.java` | 1:N | **like 侧接线点** = `rpc/bootstrap/LikeAuthorityEndpointConfig.java`（Servlet 注册） |
+| `service/common/communityfact/process.go`（`RunDispatcher`：批次 16 / 1s 节奏 / 10s deadline / `-once`） | `service/common/.../communityfact/Dispatcher.java` | `common/src/main/java/com/rag/common/communityfact/Dispatcher.java` | 1:1 | **like 侧接线点** = `wiring/LikeFactDispatchScheduler.java` |
+| `service/common/communityfact/logging.go`（`ProcessMetadata` + 进程级 OBS-r3 JSON 日志） | `service/common/.../communityfact/ProcessLogger.java` | `common/src/main/java/com/rag/common/communityfact/ProcessLogger.java` | 1:1 | **like 侧接线点** = `wiring/LikeFactProcessLogging.java`（4 个进程级 logger 身份） |
+| `service/common/communityfact/authority.go`（`NewAuthorityHandler` → `http.Handler`） | `service/common/.../communityfact/AuthorityHandler.java` + `spring/AuthorityHandlerFactory.java` | `common/src/main/java/com/rag/common/communityfact/AuthorityHandler.java` + `common/src/main/java/com/rag/common/autoconfigure/WebAutoConfiguration.java` | 1:N | **like 侧接线点** = `wiring/LikeAuthorityEndpointConfig.java`（Servlet 注册） |
 | `service/like/common/errmsg/errmsg.go`（**Go 的 `service/common/` 里没有 errmsg 包**；错误码是逐域自持） | 各域自持 `*ErrorCode.java`（`users-common` / `article-common` / `like-common`，**`service/common` 不提供通用错误码**） | 各域 `service/users/common/src/main/java/com/rag/users/common/ErrCodes.java`（**common 同样不提供**） | 1:N | ⚠️ **like 用自己的错误码空间**（`service/like/src/main/java/com/rag/like/contract/ErrCodes.java`），**不从 common 取**（逐域隔离，AGENTS §1.1b） |
 | `service/common/response/response.go`（信封 `{code,msg,data}`） | `service/common/.../response/Response.java` | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | 1:1 | 信封是 L1（客户端按 `{code,msg,data}` 解析）⇒ **不可用 `ProblemDetail` 替换** |
 | go-zero 内置 `rest.WithJwt`（**Go 的 `service/common/` 里没有 jwt 包**） | `service/users/users-common/.../jwt/JwtUtil.java`（RAG 把 JWT 放 `users-common`，**不在 `service/common`**） | `common/src/main/java/com/rag/common/security/JwtUtil.java` | 1:N | claim 名 `userId`；Go 侧写入 ctx 的值类型是 `json.Number`（⇒ api 侧 `Int64()` 失败要走 1006 分支） |
@@ -312,10 +312,10 @@
 
 ### 4.1 公共模块决策锁
 
-**communityfact 接线落到 `bootstrap` 3 处同时改**：
-1. `bootstrap/LikeFactDispatchScheduler.java` 调 `common/src/main/java/com/rag/common/communityfact/Dispatcher`（1s / 批次 16 / 10s deadline）；
-2. `bootstrap/LikeAuthorityEndpointConfig.java` 注册 `common/src/main/java/com/rag/common/communityfact/AuthorityHandler` 的 Servlet（路径 `/internal/v1/community/facts`）；
-3. `bootstrap/LikeFactProcessLogging.java` 建 4 份独立进程级 logger（**不用 MDC**）。
+**communityfact 接线落到 `wiring` 3 处同时改**：
+1. `wiring/LikeFactDispatchScheduler.java` 调 `common/src/main/java/com/rag/common/communityfact/Dispatcher`（1s / 批次 16 / 10s deadline）；
+2. `wiring/LikeAuthorityEndpointConfig.java` 注册 `common/src/main/java/com/rag/common/communityfact/AuthorityHandler` 的 Servlet（路径 `/internal/v1/community/facts`）；
+3. `wiring/LikeFactProcessLogging.java` 建 4 份独立进程级 logger（**不用 MDC**）。
 
 **为什么换**：协议本体是 comment·favorite·like 三域共用 ⇒ 必须住 `common`；like 侧只保留「接线」，不得重写协议。
 
@@ -337,7 +337,7 @@
 |---|---|---|---|---|
 | **DL-1** | **api/rpc 合并为单 app**（D1） | 9 | 模块划分 / 包名去重复段 / 入口类 / 两份 yml 合一份 / 删 `api/client` / `like-common`→域内 `contract/` 包 / 错误契约类改名 / 两端口并存 | Spring Cloud 的部署单元是「可部署服务」，不是「api 层 / rpc 层」；go-zero 的 api/rpc 分离是 **codegen 语言产物** |
 | **DL-2** | **域内调用直连**（D2） | 4 | 删 `api/client` / 直连注入 / 删 gRPC→业务码映射层 / 统一异常映射 | 同进程自我 gRPC = 无意义的序列化开销 + 人为故障注入点 |
-| **DL-3** | **`cmd/fact-*` 独立进程 → 域内组件** | 6 | 2 个 cmd → `rpc/bootstrap/` 2 个类 + 1 个日志身份类 + 复用 `common/communityfact` + `-once` 降级为配置项 + 端口并入 | 两个 cmd **零 gRPC 注册** ⇒ 无强类型契约需要独立进程；Go 注释是**架构意图**而非技术约束 |
+| **DL-3** | **`cmd/fact-*` 独立进程 → 域内组件** | 6 | 2 个 cmd → `wiring/` 2 个类 + 1 个日志身份类 + 复用 `common/communityfact` + `-once` 降级为配置项 + 端口并入 | 两个 cmd **零 gRPC 注册** ⇒ 无强类型契约需要独立进程；Go 注释是**架构意图**而非技术约束 |
 | **DL-4** | **api 侧 6 logic → 1 个 `LikeApiService`**（用例内聚） | 3 | 删 6 个 `*Service` / 改 Controller 调用点 / 下沉共享逻辑到 `LikeApiSupport` | 5 条判据全中；Go 的 6 个 logic 文件是 goctl 生成模板产物 |
 | **DL-5** | **rpc 侧 6 logic → 1 个 `LikeDomainService`，但 13 个协作者保留独立** | 15 | 6 个 logic 合 1；协作者（`LikeRedisKeys` / `GoCompatibleJson` / `LikeActionScript` / `LikeCursorIdGenerator` / `LikeMessageDigest` / `LikeDeliveryValidator` / `LikeAuthorityLookupService` / `LikeDomainFactService` / `LikeFactDispatchService` / `LikeMessageIngestService` / `LikeKafkaPushKey` / `LikeTaskProgressPublisher`）**一个都不合并** | §5.4 修正：**协作者不是用例**（各有独立变化原因）；**事务边界类必须能被单独审视** |
 | **DL-6** | **持久层 GORM → MyBatis-Plus** | 6 | pom / 5 个 Entity / 5 个 Mapper / jsonb handler / Schema 演进 / 游标自实现 | GORM tag 与 MP 注解**语义不等价**；显式迁移可管 schema 历史 |
@@ -391,7 +391,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/like" -name '*.java' \
 | 模块 | C 列 `.java` 数 | 本表覆盖 | 覆盖率 |
 |---|---|---|---|
 | `service/like/src/main/java/com/rag/like/contract/` | 7 | 7 | 100% |
-| `service/like/src/main/java/com/rag/like/`（技术角色包，含 `advice` 2 / `bootstrap` 5 / `client` 1 / `config` 3 / `controller` 1 / `domain/entity` 5 / `domain/service` 2 / `dto` 15 / `exception` 1 / `grpc` 1 / `interceptor` 1 / `mapper` 5 / `messaging` 2 / `metrics` 3 / `service` 12） | 59 | 59 | 100% |
+| `service/like/src/main/java/com/rag/like/`（技术角色包，含 `advice` 2 / `wiring` 5 / `client` 1 / `config` 3 / `controller` 1 / `domain/entity` 5 / `domain/service` 2 / `dto` 15 / `exception` 1 / `grpc` 1 / `interceptor` 1 / `mapper` 5 / `messaging` 2 / `metrics` 3 / `service` 12） | 59 | 59 | 100% |
 | `service/like/src/main/java/com/rag/like/LikeServiceApplication.java` | 1 | 1 | 100% |
 | **合计** | **67** | **67** | **100%** |
 
@@ -424,7 +424,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/like" -name '*.java' \
 | 17 | `api/internal/svc/servicecontext.go` | `service/like/src/main/java/com/rag/like/config/LikeApiProperties.java`（+ D2：`service/like/src/main/java/com/rag/like/{advice,config,controller,dto,interceptor,metrics,service}/client/` 清空） |
 | 18 | `api/internal/types/types.go` | `service/like/src/main/java/com/rag/like/dto/*`（15 个）+ `service/like/src/main/java/com/rag/like/service/LikeApiSupport.java` |
 | 19 | `common/errmsg/errmsg.go` | `like/contract/{CodeError,ErrCodes,ErrMsg,GrpcErrFactory}.java` + `service/like/src/main/java/com/rag/like/exception/LikeExceptions.java` |
-| 20 | `rpc/like.go` | `LikeServiceApplication.java` + `service/like/src/main/java/com/rag/like/bootstrap/NacosRegistration.java` |
+| 20 | `rpc/like.go` | `LikeServiceApplication.java` + `service/like/src/main/java/com/rag/like/wiring/NacosRegistration.java` |
 | 21 | `rpc/likeservice/likeservice.go` | 根级 `proto/` 模块（protoc 生成 `LikeServiceGrpc`，**无手写文件**） |
 | 22 | `rpc/pb/like.pb.go` | 根级 `proto/` 模块（protoc 生成，**无手写文件**） |
 | 23 | `rpc/pb/like_grpc.pb.go` | 根级 `proto/` 模块（protoc 生成，**无手写文件**） |
@@ -436,7 +436,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/like" -name '*.java' \
 | 29 | `rpc/internal/logic/getusertotallikelogic.go` | 同上 |
 | 30 | `rpc/internal/logic/likeactionlogic.go` | `service/like/src/main/java/com/rag/like/domain/service/LikeDomainService.java` + `LikeActionScript` + `LikeCursorIdGenerator` + `LikeRedisKeys` + `LikeKafkaPushKey` + `LikeTaskProgressPublisher` |
 | 31 | `rpc/internal/metrics/metrics.go` | `service/like/src/main/java/com/rag/like/metrics/LikeRpcMetrics.java` |
-| 32 | `rpc/internal/model/db.go` | `service/like/src/main/java/com/rag/like/bootstrap/LikeSchemaGate.java` + `service/like/src/main/java/com/rag/like/mapper/*` |
+| 32 | `rpc/internal/model/db.go` | `service/like/src/main/java/com/rag/like/wiring/LikeSchemaGate.java` + `service/like/src/main/java/com/rag/like/mapper/*` |
 | 33 | `rpc/internal/model/data_model.go` | `service/like/src/main/java/com/rag/like/domain/entity/{LikeRecordEntity,LikeConsumeInboxEntity,LikeOutboxEventEntity}.java` |
 | 34 | `rpc/internal/model/domain_fact.go` | `service/like/src/main/java/com/rag/like/domain/entity/{LikeDomainFactOutboxEntity,LikeFactStreamEntity}.java` + `service/like/src/main/java/com/rag/like/domain/service/LikeDomainFactService.java` |
 | 35 | `rpc/internal/model/fact_authority.go` | `service/like/src/main/java/com/rag/like/service/LikeAuthorityLookupService.java` |
@@ -448,8 +448,8 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/like" -name '*.java' \
 | 41 | `rpc/internal/server/likeserviceserver.go` | `service/like/src/main/java/com/rag/like/grpc/LikeGrpcService.java` |
 | 42 | `rpc/internal/svc/servicecontext.go` | `service/like/src/main/java/com/rag/like/client/MessageRpcClient.java` + `service/like/src/main/java/com/rag/like/messaging/LikeKafkaTopics.java` + `service/like/src/main/java/com/rag/like/mapper/*` + `service/like/src/main/java/com/rag/like/service/LikeKafkaPushKey.java` |
 | 43 | `rpc/internal/types/types.go` | `like/contract/{KafkaLikeMsg,ArticleHotEvent,TaskArticleProgressMsg}.java` |
-| 44 | `rpc/cmd/fact-dispatch/main.go` | `service/like/src/main/java/com/rag/like/bootstrap/LikeFactDispatchScheduler.java` + `service/like/src/main/java/com/rag/like/bootstrap/LikeFactProcessLogging.java` |
-| 45 | `rpc/cmd/fact-authority/main.go` | `service/like/src/main/java/com/rag/like/bootstrap/LikeAuthorityEndpointConfig.java` + `service/like/src/main/java/com/rag/like/bootstrap/LikeFactProcessLogging.java` |
+| 44 | `rpc/cmd/fact-dispatch/main.go` | `service/like/src/main/java/com/rag/like/wiring/LikeFactDispatchScheduler.java` + `service/like/src/main/java/com/rag/like/wiring/LikeFactProcessLogging.java` |
+| 45 | `rpc/cmd/fact-authority/main.go` | `service/like/src/main/java/com/rag/like/wiring/LikeAuthorityEndpointConfig.java` + `service/like/src/main/java/com/rag/like/wiring/LikeFactProcessLogging.java` |
 | 46 | `rpc/internal/mq/mq.go` | ⚠️ **GAP-1** + **GAP-2**（C 无消费入口类、无发件箱中继） |
 | 47 | `rpc/internal/mq/internal/config/config.go` | `service/like/src/main/java/com/rag/like/messaging/LikeKafkaTopics.java` + `service/like/src/main/java/com/rag/like/config/LikeRpcProperties.java` |
 | 48 | `rpc/internal/mq/internal/metrics/metrics.go` | `service/like/src/main/java/com/rag/like/metrics/LikeMqMetrics.java` |
@@ -497,5 +497,5 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/like" -name '*.java' \
 
 `Sea-RideTheWind_golang` = 5 个进程（api / rpc / mq / fact-dispatch / fact-authority）+ GORM `AutoMigrate` + go-zero `rest` + `kq` 自研 Kafka；
 `RAG` = 2 个进程（like-api / like-rpc，4 个 Go `main` 合并进单 JVM）+ MyBatis-Plus + Flyway + `mq/` 包承载 fact-* 组件；
-`RAG-V1` = 1 个进程（like-service）+ MyBatis-Plus + **迁移机制待拍板** + `bootstrap` 承载 fact-* 组件 + `common/` starter 承接共享能力。
+`RAG-V1` = 1 个进程（like-service）+ MyBatis-Plus + **迁移机制待拍板** + `wiring` 承载 fact-* 组件 + `common/` starter 承接共享能力。
 ⇒ **proto 字段号 / 错误码 / JWT claims / 表名 / HTTP path / Kafka topic / 指标名 全部 1:1 复刻 Go**；⚠️ **`like-rpc_action_total` 的连字符照抄不修正**；⚠️ **C 列的 67 个文件目前全是空壳**，本表写的是「该放什么职责」。

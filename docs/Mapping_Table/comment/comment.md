@@ -47,7 +47,7 @@
 | A Go 目录 | B RAG 目录 | C RAG-V1 目录 | 映射类型 | 备注 |
 |---|---|---|---|---|
 | `service/comment/api/`（20 个 `.go` + 1 个 yaml） | `service/comment/comment-api/`（33 个 `.java`） | `service/comment/`（api 部分：`service/comment/src/main/java/com/rag/comment/{advice,config,controller,dto,interceptor,service}/**`） | 1:1 | **D1**：api 与 rpc 合并进 `comment-service` 单 app ⇒ C 的 api 侧不再独立进程 |
-| `service/comment/rpc/`（37 个 `.go`，含 3 个生成物） | `service/comment/comment-rpc/`（42 个 `.java`） | `service/comment/`（rpc 部分：`service/comment/src/main/java/com/rag/comment/{bootstrap,client,config,domain/entity,domain/service,exception,grpc,mapper,messaging,metrics,service}/**`） | 1:1 | 同上 |
+| `service/comment/rpc/`（37 个 `.go`，含 3 个生成物） | `service/comment/comment-rpc/`（42 个 `.java`） | `service/comment/`（rpc 部分：`service/comment/src/main/java/com/rag/comment/{wiring,client,config,domain/entity,domain/service,exception,grpc,mapper,messaging,metrics,service}/**`） | 1:1 | 同上 |
 | `service/comment/common/errmsg/`（1 个 `.go`） | `service/comment/comment-common/`（4 个 `.java`） | `service/comment/src/main/java/com/rag/comment/contract/`（5 个 `.java`） | 1:1 | ⚠️ C 把错误契约放进 **contract 模块**（合并后 api/rpc 同进程共享，且与 proto 同模块）；命名从 `errmsg` → `contract` |
 | `proto/comment.proto`（仓库根，245 行） | `service/comment/comment-proto/src/main/proto/comment.proto` | `proto/src/main/proto/comment.proto` | 1:1 | 模块名 `comment-proto` → 根级 `proto` |
 | （Go 侧无独立 contract 模块） | — | `service/comment/src/main/java/com/rag/comment/contract/` 的 5 个手写类 | C 新增 | C 新增契约模块承载：错误码 + 错误文案 + Kafka 载荷 + proto |
@@ -73,7 +73,7 @@
 | `comment/api/interceptor/` | `interceptor/` | 直接压平 |
 | `comment/api/service/` | `service/` | 与 rpc 侧合并 |
 | `comment/common/errmsg/` | `contract/` | 错误码 + 事件 DTO（`CodeError` / `ErrCodes` / `ErrMsg` / `GrpcErrFactory` / `CommentKafkaMsg`）|
-| `comment/rpc/bootstrap/` | `bootstrap/` | 直接压平 |
+| `comment/rpc/bootstrap/` | `wiring/` | 直接压平 |
 | `comment/rpc/client/` | `client/` | 与 api 侧合并 |
 | `comment/rpc/config/` | `config/` + `messaging/` | Kafka topic 落到 `messaging/`（`CommentKafkaTopics`）|
 | `comment/rpc/domain/` | `domain/entity/` | 按是否 `*Entity` 拆分 |
@@ -162,7 +162,7 @@
 | `rpc/internal/svc/service_context.go` 的 `MessageRpc` 字段 | `comment-rpc/…/rpc/client/MessageRpcClient.java` | `service/comment/src/main/java/com/rag/comment/client/MessageRpcClient.java` | 1:1 | **D6**：跨域仍走 gRPC；⚠️ 必须显式 `negotiation-type: plaintext` |
 | `rpc/internal/svc/service_context.go` 的 `ArticleRpc` 字段 | `comment-rpc/…/rpc/client/ArticleRpcClient.java` | `service/comment/src/main/java/com/rag/comment/client/ArticleRpcClient.java` | 1:1 | 同上 |
 | `rpc/etc/comment.yaml`（`ListenOn: 0.0.0.0:9001` / `DB.DataSource` / `KqPusherConf` / `KqConsumerConf` / `BizRedis` / `MessageRpc` / `ArticleRpc`） | `comment-rpc/src/main/resources/application.yml` | `service/comment/src/main/resources/application.yml` | 1:1 | ⚠️ C 的 yml **未带** `TimeZone=Asia/Shanghai`（Go 的 `DB.DataSource` 显式钉了时区，而 `created_at` 是 `TIMESTAMPTZ`）⇒ 待补 |
-| （Go 侧用 etcd） | `comment-rpc/…/rpc/bootstrap/NacosRegistration.java` | `service/comment/src/main/java/com/rag/comment/bootstrap/NacosRegistration.java` | C 新增 | 注册中心替换属表达层；B 显式 `@Component("commentRpcNacosRegistration")`，**不依赖自动注册**（AGENTS.md §6.3 问题 3） |
+| （Go 侧用 etcd） | `comment-rpc/…/rpc/bootstrap/NacosRegistration.java` | `service/comment/src/main/java/com/rag/comment/wiring/NacosRegistration.java` | C 新增 | 注册中心替换属表达层；B 显式 `@Component("commentRpcNacosRegistration")`，**不依赖自动注册**（AGENTS.md §6.3 问题 3） |
 | （Go 侧无 —— Jackson 3 的 `ObjectMapper` 需自行装配） | `comment-rpc/…/rpc/config/Jackson2ObjectMapperConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java`（**common starter，不在本域**） | 1:1 | **D3**：域内副本收进 starter |
 | （Go 侧无 —— MyBatis-Plus ordering bridge） | `comment-rpc/…/rpc/config/MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java`（**common starter，不在本域**） | 1:1 | **D3**：RAG 侧此文件被复制 9 份 ⇒ D3 的账单 |
 
@@ -196,20 +196,20 @@
 | `rpc/internal/mqs/audit_consumer.go`（Kafka 消费者：敏感词判定 → 落库 → 失效缓存 → 通知） | `comment-rpc/…/rpc/service/CommentAuditListener.java` | `service/comment/src/main/java/com/rag/comment/messaging/CommentAuditListener.java` | 1:1 | ⚠️ **本域「创建评论」不写库** —— 落库发生在 Kafka 消费侧 ⇒ `CreateCommentResp.subject_count` 恒为 0 |
 | `rpc/internal/metrics/metrics.go`（5 个 Prometheus 向量 + `InitMetrics`） | `comment-rpc/…/rpc/metrics/CommentRpcMetrics.java` | `service/comment/src/main/java/com/rag/comment/metrics/CommentRpcMetrics.java` | 1:1 | ⚠️ B 用 `registry.timer("comment_request_seconds")`；Go/A 与 C 壳注释都是 **`comment_request_seconds_counter`**（Counter）⇒ B 侧命名与 A 列有差，C 应按 A 列 |
 | `rpc/internal/trace/trace.go`（`InitOTel` —— 实测**全仓零调用点**，整个文件是死代码） | （B 无对应文件） | （C 无对应文件） | 1:1 | Go 侧 7 个 logic 的手工 span 拿到的都是 no-op tracer ⇒ **从未真正导出**。⚠️ C 若正确 `@Import` gRPC 拦截器会产生**真实 span** ⇒ 新增可观测面，须显式承认 |
-| **`rpc/cmd/fact-dispatch/main.go`**（独立进程 P3：env 校验 + `DCEventSender(8s)` + `RunDispatcher(-once)`） | **`comment-rpc/…/rpc/bootstrap/CommentFactDispatchScheduler.java`** | **`service/comment/src/main/java/com/rag/comment/bootstrap/CommentFactDispatchScheduler.java`** | **1:1** | ★ **Go 独立进程 → B/C 域内组件**，落点一致（论证见 RAG `docs/FileTree/like/rpc.md:79-99` 同款机制 + RAG-V1 `docs/决策记录.md` D1「例外判定已撤销」）。⚠️ 遗留子项 P6-a（`-once` 模式）待拍板 |
-| **`rpc/cmd/fact-authority/main.go`**（独立进程 P2：env 校验 + `AuthorityHandler` servlet + 3s/5s 超时 + 优雅停机） | **`comment-rpc/…/rpc/bootstrap/CommentAuthorityEndpointConfig.java`** | **`service/comment/src/main/java/com/rag/comment/bootstrap/CommentAuthorityEndpointConfig.java`** | **1:1** | ★ **Go 独立进程 → B/C 域内组件**，落点一致。⚠️ B 侧默认**不装配**（`comment.authority.enabled=false`）；遗留子项 P6-b（监听端口）待拍板 |
-| `service/common/communityfact/logging.go`（`ProcessMetadata{Service:"rtw-comment-fact-dispatch" / "rtw-comment-fact-authority"}` + `NewProcessLogger` ⇒ **2 份独立进程级 logger 身份**） | （B 无对应文件） | **`service/comment/src/main/java/com/rag/comment/bootstrap/CommentFactProcessLogging.java`** | 1:1 | ★ Go 侧两个 `cmd/fact-*` **各自建一份**进程级 logger ⇒ 合并进域内组件后，这两份身份仍须各自独立。⚠️ **不得用 SLF4J 全局 MDC 承载**（MDC 跨线程插值会把两份身份混成一份）。✅ **2026-10-25 补齐**（原为落点缺口，见落点缺口表 #5）；形态对齐 like 域 `LikeFactProcessLogging` / favorite 域 `FavoriteFactProcessLogging`（A11） |
-| `rpc/internal/model/db.go`（`InitDB` + `AutoMigrate` 6 张表，失败 `log.Fatalln`） | `comment-rpc/…/rpc/bootstrap/CommentSchemaGate.java` + `comment-rpc/src/main/resources/db/migration/V1..V8` | `service/comment/src/main/java/com/rag/comment/bootstrap/CommentSchemaGate.java` + `service/comment/src/main/resources/db/migration/`（**仅 `.gitkeep`，空**） | 1:1 | Go「表与进程同生共死」；Java 改用 Flyway 后引入了 Go 没有的新失败模式 ⇒ `CommentSchemaGate` 是补的闸。⚠️ **C 的 8 个迁移脚本一个都没落地** |
+| **`rpc/cmd/fact-dispatch/main.go`**（独立进程 P3：env 校验 + `DCEventSender(8s)` + `RunDispatcher(-once)`） | **`comment-rpc/…/rpc/bootstrap/CommentFactDispatchScheduler.java`** | **`service/comment/src/main/java/com/rag/comment/wiring/CommentFactDispatchScheduler.java`** | **1:1** | ★ **Go 独立进程 → B/C 域内组件**，落点一致（论证见 RAG `docs/FileTree/like/rpc.md:79-99` 同款机制 + RAG-V1 `docs/决策记录.md` D1「例外判定已撤销」）。⚠️ 遗留子项 P6-a（`-once` 模式）待拍板 |
+| **`rpc/cmd/fact-authority/main.go`**（独立进程 P2：env 校验 + `AuthorityHandler` servlet + 3s/5s 超时 + 优雅停机） | **`comment-rpc/…/rpc/bootstrap/CommentAuthorityEndpointConfig.java`** | **`service/comment/src/main/java/com/rag/comment/wiring/CommentAuthorityEndpointConfig.java`** | **1:1** | ★ **Go 独立进程 → B/C 域内组件**，落点一致。⚠️ B 侧默认**不装配**（`comment.authority.enabled=false`）；遗留子项 P6-b（监听端口）待拍板 |
+| `service/common/communityfact/logging.go`（`ProcessMetadata{Service:"rtw-comment-fact-dispatch" / "rtw-comment-fact-authority"}` + `NewProcessLogger` ⇒ **2 份独立进程级 logger 身份**） | （B 无对应文件） | **`service/comment/src/main/java/com/rag/comment/wiring/CommentFactProcessLogging.java`** | 1:1 | ★ Go 侧两个 `cmd/fact-*` **各自建一份**进程级 logger ⇒ 合并进域内组件后，这两份身份仍须各自独立。⚠️ **不得用 SLF4J 全局 MDC 承载**（MDC 跨线程插值会把两份身份混成一份）。✅ **2026-10-25 补齐**（原为落点缺口，见落点缺口表 #5）；形态对齐 like 域 `LikeFactProcessLogging` / favorite 域 `FavoriteFactProcessLogging`（A11） |
+| `rpc/internal/model/db.go`（`InitDB` + `AutoMigrate` 6 张表，失败 `log.Fatalln`） | `comment-rpc/…/rpc/bootstrap/CommentSchemaGate.java` + `comment-rpc/src/main/resources/db/migration/V1..V8` | `service/comment/src/main/java/com/rag/comment/wiring/CommentSchemaGate.java` + `service/comment/src/main/resources/db/migration/`（**仅 `.gitkeep`，空**） | 1:1 | Go「表与进程同生共死」；Java 改用 Flyway 后引入了 Go 没有的新失败模式 ⇒ `CommentSchemaGate` 是补的闸。⚠️ **C 的 8 个迁移脚本一个都没落地** |
 
 **§1.4 决策锁**
 
 **`cmd/fact-*` 两个独立进程 → 域内组件（1:1）3 处同时改**：
-1. Go 的 `cmd/fact-dispatch/main.go` → `bootstrap/CommentFactDispatchScheduler.java`（`@Component`，不是独立可执行 jar）
-2. Go 的 `cmd/fact-authority/main.go` → `bootstrap/CommentAuthorityEndpointConfig.java`（`@Configuration` + `@ConditionalOnProperty`）
+1. Go 的 `cmd/fact-dispatch/main.go` → `wiring/CommentFactDispatchScheduler.java`（`@Component`，不是独立可执行 jar）
+2. Go 的 `cmd/fact-authority/main.go` → `wiring/CommentAuthorityEndpointConfig.java`（`@Configuration` + `@ConditionalOnProperty`）
 3. Go 侧「三份 logger 身份」（业务 RPC / fact-dispatch / fact-authority）⇒ 合并后必须保住三份独立 logger 名与 appender
 
 **为什么换**：两个 cmd **零对外服务 / 零 gRPC 注册** ⇒ 没有强类型契约需要独立进程承载；`Dispatcher` / `AuthorityHandler`
-本来就是设计给「宿主进程」用的纯库。⚠️ **代价**：① 失去独立扩缩容；② `-once` 模式与 authority 监听端口需另找触发入口（P6）；③ ~~C 缺 `CommentFactProcessLogging`（like 域有）⇒ 三份 logger 身份目前**没有落点**~~ —— ✅ **2026-10-25 已补齐**（`bootstrap/CommentFactProcessLogging.java`），三份 logger 身份现有落点，与 like / favorite 域形态对齐（A11）。
+本来就是设计给「宿主进程」用的纯库。⚠️ **代价**：① 失去独立扩缩容；② `-once` 模式与 authority 监听端口需另找触发入口（P6）；③ ~~C 缺 `CommentFactProcessLogging`（like 域有）⇒ 三份 logger 身份目前**没有落点**~~ —— ✅ **2026-10-25 已补齐**（`wiring/CommentFactProcessLogging.java`），三份 logger 身份现有落点，与 like / favorite 域形态对齐（A11）。
 
 ---
 
@@ -319,8 +319,8 @@
 | `service/common/communityfact/*.go`（`Wire` / `Dispatcher` / `AuthorityHandler` / `ProcessLogger`） | `service/common/…/communityfact/*.java` | `common/src/main/java/com/rag/common/communityfact/*.java`（13 个类） | 1:1 | ⚠️ **共享事件协议**（与 favorite / like 三方共用）⇒ 协议本体归 `common.md`；本表只记 comment 侧接线 |
 | `service/common/communityfact` —— comment 侧接线：投递 | `comment-rpc/…/rpc/service/CommentFactDeliveryService.java` + `CommentDeliveryValidator.java` | `service/comment/src/main/java/com/rag/comment/service/CommentFactDeliveryService.java` + `CommentDeliveryValidator.java` | 1:1 | `SKIP LOCKED` + 前序屏障 + 回执校验 |
 | `service/common/communityfact` —— comment 侧接线：权威读 | `comment-rpc/…/rpc/service/CommentAuthorityLookupService.java` | `service/comment/src/main/java/com/rag/comment/service/CommentAuthorityLookupService.java` | 1:1 | 实现 `AuthorityHandler.AuthorityLookup` |
-| `service/common/communityfact` —— comment 侧接线：调度 | `comment-rpc/…/rpc/bootstrap/CommentFactDispatchScheduler.java` | `service/comment/src/main/java/com/rag/comment/bootstrap/CommentFactDispatchScheduler.java` | 1:1 | ★ Go 的 `cmd/fact-dispatch` 独立进程 → 域内组件 |
-| `service/common/communityfact` —— comment 侧接线：权威端点 | `comment-rpc/…/rpc/bootstrap/CommentAuthorityEndpointConfig.java` | `service/comment/src/main/java/com/rag/comment/bootstrap/CommentAuthorityEndpointConfig.java` | 1:1 | ★ Go 的 `cmd/fact-authority` 独立进程 → 域内组件 |
+| `service/common/communityfact` —— comment 侧接线：调度 | `comment-rpc/…/rpc/bootstrap/CommentFactDispatchScheduler.java` | `service/comment/src/main/java/com/rag/comment/wiring/CommentFactDispatchScheduler.java` | 1:1 | ★ Go 的 `cmd/fact-dispatch` 独立进程 → 域内组件 |
+| `service/common/communityfact` —— comment 侧接线：权威端点 | `comment-rpc/…/rpc/bootstrap/CommentAuthorityEndpointConfig.java` | `service/comment/src/main/java/com/rag/comment/wiring/CommentAuthorityEndpointConfig.java` | 1:1 | ★ Go 的 `cmd/fact-authority` 独立进程 → 域内组件 |
 | `service/common/observability/*.go`（http / mq / rpc 三条链） | `service/common/…/observability/*` + `spring/ObservabilityLifecycle` | `common/src/main/java/com/rag/common/observability/*` + `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | 1:1 | **D4**：Micrometer Observation + OTel bridge ⇒ 部分 L3 降级（span 名 / 属性需对拍） |
 | `service/common/logger/logger.go`（logx 封装） | `service/common/…/logger/GoStyleLogger` | `common/src/main/java/com/rag/common/logger/GoStyleLogger.java` | 1:1 | `call_chain` 等字段是行为契约 |
 | `service/common/protection/*`（熔断 / 降载 / 限连接 / 限体积） | `service/common/…/protection/*`（17 个类） | `common/src/main/java/com/rag/common/protection/{CpuThresholdHealthIndicator,MaxBytesFilter}.java`（2 个） | N:1 | **D4**：17 → 2 ⇒ 熔断迁 resilience4j（**P2 待拍板**） |
@@ -401,7 +401,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/comment" -name '*.java' \
 | 模块 | C 列 `.java` 数 | 本表覆盖 | 覆盖率 |
 |---|---|---|---|
 | `service/comment/src/main/java/com/rag/comment/contract/` | 5 | 5 | **100%**（`CodeError` / `CommentKafkaMsg` / `ErrCodes` / `ErrMsg` / `GrpcErrFactory`） |
-| `service/comment/src/main/java/com/rag/comment/`（技术角色包） | 63 | 63 | **100%**（advice 2 + bootstrap 5 + client 2 + config 3 + controller 1 + domain/entity 7 + domain/service 3 + dto 16 + exception 1 + grpc 2 + interceptor 1 + mapper 7 + messaging 4 + metrics 1 + service 8） |
+| `service/comment/src/main/java/com/rag/comment/`（技术角色包） | 63 | 63 | **100%**（advice 2 + wiring 5 + client 2 + config 3 + controller 1 + domain/entity 7 + domain/service 3 + dto 16 + exception 1 + grpc 2 + interceptor 1 + mapper 7 + messaging 4 + metrics 1 + service 8） |
 | `service/comment/src/main/java/com/rag/comment/CommentServiceApplication.java`（启动类） | 1 | 1 | **100%** |
 | **合计** | **69** | **69** | **100%** |
 
@@ -453,7 +453,7 @@ find "/Users/pr/Documents/java&golang/Sea-RideTheWind_golang/service/comment" \
 | 2 | C `service/comment/src/main/java/com/rag/comment/controller/CommentController.java` 的 javadoc | 路由清单写成 `/comment/v1/comment`、`/comment/v1/comment/subject/state` 等 7 条 | Go 是 `/comment/v1/comment/create` … `/comment/v1/subject/state`（**第 1 条是 `create` 不是空段；第 7 条不含第二个 `comment`**） | 路由清单必须按 `routes.go:20,25,30,35,40,45,50` 逐条订正 |
 | 3 | C `service/comment/src/main/java/com/rag/comment/controller/CommentController.java` 的 javadoc | 写「**鉴权划分（L1）：有 public 段**」 | Go 的 `AddRoutes` **只有一个块**，`rest.WithJwt` 覆盖 7/7 ⇒ **public 集为空集**（`routes.go:54`） | `WebMvcConfig` 的白名单必须是空集，否则多放行一条未鉴权路径 |
 | 4 | C `service/comment/src/main/java/com/rag/comment/contract/CommentKafkaMsg.java` + `rpc/service/CommentAuditMessage.java` | 两个文件都在，但**职责边界未定义**（谁消费、谁生产、是否重复） | Go 只有 1 个 struct（`kqueue.go:3`），生产端与消费端共用 | B 的形态是「消费侧 DTO 在 `CommentAuditMessage`、生产端在 `CommentAuditPublisher`」；C 把载荷提到 contract 后，`CommentAuditMessage` 的定位需明确（否则 3 个文件 2 份契约） |
-| 5 | C `service/comment/src/main/java/com/rag/comment/bootstrap/` | ~~缺 `CommentFactProcessLogging`（like 域的同款有）~~ | Go 侧一个域有 **3 个进程级 logger 身份**（业务 RPC / fact-dispatch / fact-authority） | ✅ **2026-10-25 已补齐**（`CommentFactProcessLogging.java` 落点到位，形态对齐 like / favorite 域）⇒ 原缺口关闭。⚠️ 遗留：`docs/决策记录.md` D1「落地证据」写「三域各含 `rpc/bootstrap/<域>FactProcessLogging`」——**补齐后该表述才成立**（此前对 comment 域不成立，B、C 两边都没有）；A11 断言随之转绿 |
+| 5 | C `service/comment/src/main/java/com/rag/comment/wiring/` | ~~缺 `CommentFactProcessLogging`（like 域的同款有）~~ | Go 侧一个域有 **3 个进程级 logger 身份**（业务 RPC / fact-dispatch / fact-authority） | ✅ **2026-10-25 已补齐**（`CommentFactProcessLogging.java` 落点到位，形态对齐 like / favorite 域）⇒ 原缺口关闭。⚠️ 遗留：`docs/决策记录.md` D1「落地证据」写「三域各含 `wiring/<域>FactProcessLogging`」——**补齐后该表述才成立**（此前对 comment 域不成立，B、C 两边都没有）；A11 断言随之转绿 |
 | 6 | C `service/comment/src/main/resources/db/migration/` | 只有 `.gitkeep`，**8 个迁移脚本一个都没落地** | Go 的 `AutoMigrate` 建 6 张表，失败即退出（`model/db.go:15`） | `CommentSchemaGate` 必然失败 ⇒ 建表脚本是实现的硬前置 |
 | 7 | C `service/comment/src/main/resources/application.yml` | JDBC URL **未带** `TimeZone=Asia/Shanghai` | Go 的 `DB.DataSource` 显式钉了 `TimeZone=Asia/Shanghai`（`rpc/etc/comment.yaml:14`），而 `created_at` 是 `TIMESTAMPTZ` | 不带 ⇒ wire 上 `created_at` 差一个时区 |
 | 8 | C `service/comment/src/main/resources/application.yml` | **未带** `comment-api.user-auth.{access-secret,access-expire}` 与 `rag.protection` 四旋钮 | Go 的 `api/etc/commentservice.yaml:5-7` 有密钥；`rag.protection` 四项在 Go 侧**由 go-zero struct tag 默认值开启**（`MaxConns 10000` / `MaxBytes 1048576` / `CpuThreshold 900` / Breaker+Shedding） | ⚠️ 「yaml 里没写」≠「没开」⇒ C 侧需显式写出，否则默认关闭 = 行为差异 |

@@ -114,7 +114,7 @@
 | —（Go 侧无对应物） | `http/GoStyleJsonBodyConverterConfig.java` + `users-common/http/GoStyleCoercion.java` | `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java` | N:1 | 收编 Jackson `CoercionConfig`（K-01，**已是原生机制**）+ `JsonBodyConverter` 注册（K-02） |
 | —（Go 侧无对应物） | `spring/ObservabilityLifecycle.java` + `spring/ObservabilityProperties.java` + `observability/RpcInterceptor.java` + `observability/HttpMiddleware.java` + `observability/MqConsumer.java` + `observability/GoStyleRecoverInterceptor.java` + `spring/RpcServerInterceptorFactory.java` | `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | N:1 | ⚠️ **B 侧 `RpcServerInterceptorFactory` 曾经「Bean 在、没挂上」**（`DRIFT-COMMON-004`）⇒ C 侧必须断言真的进了 `server.intercept` |
 | —（Go 侧无对应物：go-zero 内置熔断/降载/限连接/限体积） | `protection/`（17 类）+ `protection/GoStyleProtectionConfiguration.java` + `protection/GoStyleProtectionProperties.java` + `spring/RpcServerInterceptorFactory.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java` | N:1 | resilience4j `CircuitBreaker` + Tomcat `max-connections` + 1 个 `MaxBytesFilter` + 1 个 CPU 指标（D-02 / D-04）**＋ `GrpcServerConfigurer`（gRPC 保护链的唯一挂载点，见 §7 #6 与设计文档 §5.5.2）** |
-| —（Go 侧无对应物） | `spring/SnowflakeBean.java` + `spring/SnowflakeProperties.java` + `snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` | N:1 | ⚠️ 与各域 `rpc/bootstrap/SnowflakeBootstrap.java`（3 个域有）**落点重复**，见 §7「职责对不上 #4」 |
+| —（Go 侧无对应物） | `spring/SnowflakeBean.java` + `spring/SnowflakeProperties.java` + `snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` | N:1 | ⚠️ 与各域 `wiring/SnowflakeBootstrap.java`（3 个域有）**落点重复**，见 §7「职责对不上 #4」 |
 | —（Go 侧无对应物） | 9 个 rpc 模块各一份 `MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | N:1 | **消掉 9 份重复**（Boot 4 下 MP 自动配置排序桥）；断言 A6 |
 | —（Go 侧无对应物：Go 在各域 `internal/logic` 里直接 `status.Error`） | `article-api/http/GoStyleGrpcStatusMapper.java` | `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java` | 1:1 | D2/D5 的统一错误模型：`BusinessException(code,msg)` → gRPC 边界 / HTTP 边界两个适配器 |
 
@@ -307,7 +307,7 @@ RAG 形态实测 10 种 `@Import` 写法、9 份 MP bridge 副本 —— 这就�
 | 维度 | A Go | B RAG | C RAG-V1 | 备注 |
 |---|---|---|---|---|
 | **ORM** | GORM（`AutoMigrate` 建表，`service/*/rpc/internal/model/db.go`） | MyBatis-Plus `BaseMapper` + `@TableName` | MyBatis-Plus `BaseMapper` + `@TableName` | 表达层差异，L2 语义（查询条件 / 唯一约束 / 读改写语义）逐条保留 |
-| **建表机制** | `db.AutoMigrate(&LikeRecord{}, ...)` —— 进程内幂等重放 | `*SchemaInitializer` 幂等重放（**Flyway 已弃用**） | `rpc/bootstrap/*SchemaGate.java` / `*SchemaBootstrap.java` 幂等重放；`resources/db/migration/` **只有 `.gitkeep`（无 Flyway 文件）** | ⚠️ C 侧**无 Flyway** ⇒ 不要再按「Flyway vs SchemaInitializer」写决策 |
+| **建表机制** | `db.AutoMigrate(&LikeRecord{}, ...)` —— 进程内幂等重放 | `*SchemaInitializer` 幂等重放（**Flyway 已弃用**） | `wiring/*SchemaGate.java` / `*SchemaBootstrap.java` 幂等重放；`resources/db/migration/` **只有 `.gitkeep`（无 Flyway 文件）** | ⚠️ C 侧**无 Flyway** ⇒ 不要再按「Flyway vs SchemaInitializer」写决策 |
 | **MP 自动配置** | — | 9 个 rpc 模块各一份 `MybatisPlusOrderingBridgeAutoConfiguration`（Boot 4 排序桥） | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java`（**1 份**） | 断言 A6 |
 | **JSON 列 typeHandler** | GORM 直接读写（`jsonb` / `json`） | `JsonbTypeHandler` × 5 份 + `JsonTextTypeHandler` × 2 份 | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` + `common/src/main/java/com/rag/common/persistence/JsonTextTypeHandler.java`（**各 1 份**） | ⚠️ RAG-V1 侧 `common/src/main/java/com/rag/common/persistence/` 的 2 个 TypeHandler 是**归位**，不是新增能力 |
 | **SQL 超时** | `context.WithTimeout` + ctx-aware 查询（**天然**） | `DeadlineQueryTimeoutInjector`（`StatementHandler#prepare` 拦截）+ `SqlTimeoutStatusTranslator`（`Executor` 拦截） | 同 B（1:1 保留） | ⚠️ **K-03**：Java 不能取消阻塞 IO ⇒ 必须走 pgjdbc `CancelRequest`；且 `catch(SQLException)` **匹配不上** MyBatis 抛的 `InvocationTargetException` |
@@ -330,11 +330,11 @@ RAG 形态实测 10 种 `@Import` 写法、9 份 MP bridge 副本 —— 这就�
 
 **换雪花 ID 装配（4 处同时改）**：
 1. `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` 声明唯一的 `Snowflake` Bean；
-2. 删 3 个域级 `bootstrap/SnowflakeBootstrap.java`（`article` / `user` / `admin`），改由 starter 提供；
+2. 删 3 个域级 `wiring/SnowflakeBootstrap.java`（`article` / `user` / `admin`），改由 starter 提供；
 3. `worker-id` 配置从各域 `application.yml` 移到 starter 的配置前缀；
 4. 加断言「容器内 `Snowflake` **有且仅有 1 个**」（双 Bean ⇒ ID 双计数器 ⇒ 撞号）。
 
-**为什么换**：雪花 ID 的生成状态必须**全进程唯一**；B 侧的「静态轨 + Bean 轨」和 C 侧「starter + 域级 bootstrap」
+**为什么换**：雪花 ID 的生成状态必须**全进程唯一**；B 侧的「静态轨 + Bean 轨」和 C 侧「starter + 域级 wiring」
 都是两份落点 ⇒ 一旦同时生效就会出现两个独立计数器 ⇒ **ID 重复**。
 
 ---
@@ -401,7 +401,7 @@ Micrometer 的观察模型与它**不是一对一映射**（D-03）⇒ 用生态
 |---|---|---|---|---|
 | **社区事实事件协议**（`Event` / `TechnicalReceipt` / `SubjectRef` / `AuthorityFact`） | `service/common/communityfact/`（**仅 like + comment 消费**） | `service/common/communityfact/` | `common/src/main/java/com/rag/common/communityfact/` | 跨服务 L1 wire 契约 ⇒ 全局 |
 | **投递编排**（`RunDispatcher` 循环 / authority HTTP 端点） | `service/common/communityfact/` | 同左 | `common/src/main/java/com/rag/common/communityfact/` | 纯库（Go 侧由 `cmd/fact-*` 宿主进程调用）⇒ 全局 |
-| **各域的 outbox 模型 / 投递调度器 / authority 端点装配** | `service/<域>/rpc/internal/model/` + `cmd/fact-*` | 各域 `rpc/` | 各域 `rpc/bootstrap/` + `rpc/service/` | **有域归属** ⇒ 归域，不归 `common/` |
+| **各域的 outbox 模型 / 投递调度器 / authority 端点装配** | `service/<域>/rpc/internal/model/` + `cmd/fact-*` | 各域 `rpc/` | 各域 `wiring/` + `service/` | **有域归属** ⇒ 归域，不归 `common/` |
 | **业务日志门面** | `service/common/logger/` | `service/common/logger/` | `common/src/main/java/com/rag/common/logger/` | 全部 10 域共用 |
 | **响应信封** | `service/common/response/` | `service/common/response/` | `common/src/main/java/com/rag/common/contract/` | L1 |
 | **雪花 ID** | `service/common/snowflake/` | 同左 | `common/src/main/java/com/rag/common/snowflake/` | 全域共用 |
@@ -409,7 +409,7 @@ Micrometer 的观察模型与它**不是一对一映射**（D-03）⇒ 用生态
 | **错误码**（`ErrorCode`） | `service/user/common/errmsg/` + **每域 `service/<域>/common/errmsg.go`** | `users/common/errmsg/` + 各域 `exception/` | **各域模块内的 `contract/` 包**（`common/` 里**没有**） | ⚠️ **错误码是逐域隔离的**（RAG-V1 AGENTS.md §1.1b）⇒ **不能进全局 `common/`** |
 | **HTTP 解析 / 错误形状** | go-zero 内置 | 散在 `service/common/http/` + 各域 api | `common/src/main/java/com/rag/common/web/` | 无域归属的 HTTP 语义 ⇒ 全局 |
 | **请求保护（熔断 / 降载 / 限连接 / 限体积）** | go-zero 内置 | `service/common/protection/` | `common/src/main/java/com/rag/common/protection/` + starter | 无域归属 ⇒ 全局 |
-| **DDL / schema 建表** | 各域 `rpc/internal/model/db.go` | 各域 `bootstrap/*SchemaInitializer` | 各域 `rpc/bootstrap/*SchemaGate` | **有域归属** ⇒ 归域 |
+| **DDL / schema 建表** | 各域 `rpc/internal/model/db.go` | 各域 `bootstrap/*SchemaInitializer` | 各域 `wiring/*SchemaGate` | **有域归属** ⇒ 归域 |
 | **业务实体 / Mapper / 指标** | 各域 `rpc/internal/{model,metrics}` | 各域 `rpc/{domain,mapper,metrics}` | 各域 `rpc/{domain,mapper,metrics}` | 有域归属 |
 
 > ⚠️ **RAG-V1 AGENTS.md §1.4 R1 硬规则**：`common/` 的准入 = **只放跨域共用且无域归属的能力**；每个子包要标归属域；
@@ -420,9 +420,9 @@ Micrometer 的观察模型与它**不是一对一映射**（D-03）⇒ 用生态
 
 | 域 | Go 侧 | RAG 侧 | RAG-V1 侧 | 本表覆盖 |
 |---|---|---|---|---|
-| `comment` | ✅ `cmd/fact-authority` + `cmd/fact-dispatch` + `internal/model/fact_*.go`（6 文件） | ✅ 5 文件 | 域内 `rpc/bootstrap/` + `rpc/service/` | **共享层本体** ✅ / 域内接线 ➡️ `comment.md` |
-| `like` | ✅ `cmd/fact-authority` + `cmd/fact-dispatch` + `internal/model/fact_*.go`（6 文件） | 🔴 **0**（仅 javadoc 提及） | 域内 `rpc/bootstrap/` + `rpc/service/` | **共享层本体** ✅ / 域内接线 ➡️ `like.md` |
-| `favorite` | 🔴 **0**（**自己另写了一套**：`rpc/internal/authority/http.go` + `model.NewFavoriteDCEventSender`） | 🔴 10（比 Go 多） | 域内 `rpc/bootstrap/` + `rpc/service/` | **共享层本体** ✅ / 域内接线 ➡️ `favorite.md` |
+| `comment` | ✅ `cmd/fact-authority` + `cmd/fact-dispatch` + `internal/model/fact_*.go`（6 文件） | ✅ 5 文件 | 域内 `wiring/` + `service/` | **共享层本体** ✅ / 域内接线 ➡️ `comment.md` |
+| `like` | ✅ `cmd/fact-authority` + `cmd/fact-dispatch` + `internal/model/fact_*.go`（6 文件） | 🔴 **0**（仅 javadoc 提及） | 域内 `wiring/` + `service/` | **共享层本体** ✅ / 域内接线 ➡️ `like.md` |
+| `favorite` | 🔴 **0**（**自己另写了一套**：`rpc/internal/authority/http.go` + `model.NewFavoriteDCEventSender`） | 🔴 10（比 Go 多） | 域内 `wiring/` + `service/` | **共享层本体** ✅ / 域内接线 ➡️ `favorite.md` |
 
 > ⚠️ **本表只写共享层本体**（`common/src/main/java/com/rag/common/communityfact/` 的 13 个类）；**各域的接线**（投递调度器、authority 端点、outbox 模型、
 > 三份独立 logger 身份）在 `comment.md` / `favorite.md` / `like.md` 里，**本表不重复**。
@@ -613,7 +613,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 | **1** | **`communityfact` 的「三域共享」在 Go 侧只有两域** | A：`service/common/communityfact` 的消费者只有 **like（6 文件）+ comment（6 文件）**；**favorite 在 Go 侧是平行实现**（`service/favorite/rpc/internal/authority/http.go` + `model.NewFavoriteDCEventSender`），**不 import** `service/common/communityfact`。B：favorite 反而有 **10 个**引用（比 Go 多）。C：`common/src/main/java/com/rag/common/communityfact/` 按三域共享设计 | C 把 favorite 收敛到共享层 ⇒ **会改变 favorite 的 wire 行为**（Go 的 favorite 走自己的 sender，共享层走 `communityfact` 的 `Sender`）⇒ 属 L1/L2 变更，**不是形态调整** | 🔴 **必须拍板**：favorite 是「收敛到共享层」还是「保留平行实现」？若收敛 ⇒ favorite 的 `fact_delivery` 行为要按 Go 逐条对照（`DRIFT-CF-004` 的 `payload` 序列化差异也会被带进来） |
 | **2** | **`GrpcStatusMapper` 与 `GrpcExceptionMapperAutoConfiguration` 职责重叠** | B：`article-api/http/GoStyleGrpcStatusMapper.java`（1 份）。C：**同时**有 `web/GrpcStatusMapper.java` **和** `autoconfigure/GrpcExceptionMapperAutoConfiguration.java` | 两处都会做「gRPC code → 业务码」映射 ⇒ 装配顺序不同 ⇒ 同一异常可能映射出**两个不同 code** | 🔴 二选一：**建议**删 `web/GrpcStatusMapper.java`，统一由 auto-config 的 mapper 承担（与 D2/D5 的「一份业务逻辑 + 两个边界适配器」一致） |
 | **3** | **设计文档 §5.1 列了 `contract/ErrorCode.java`，实际树里没有** | 实际：`common/src/main/java/com/rag/common/contract/` **只有 `ApiResponse.java`**；全仓 **0 个 `ErrorCode*.java`**（错误码在各域模块的 `contract/` 包 —— `ErrCodes` / `ErrMsg`） | 文档与树不一致 ⇒ 按文档实现的人会去建一个**全局** `ErrorCode` ⇒ **违反「错误码逐域隔离」** | 🔴 **以实际树为准**，并修正 `docs/完全spring化的文件树.md` §5.1 / §5.5（§5.5 还把 `communityfact/` 估成 4 类、实际 13 类；`web/` 估成 17 类、实际 16 类） |
-| **4** | **雪花 ID 有两个落点** | C：`common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` **和** 3 个域级 `rpc/bootstrap/SnowflakeBootstrap.java`（`article` / `user` / `admin`） | 两个 `Snowflake` Bean ⇒ **两个独立计数器** ⇒ ID 重复 | 🔴 删 3 个域级 `SnowflakeBootstrap`，只留 starter；加断言「容器内 `Snowflake` 有且仅有 1 个」 |
+| **4** | **雪花 ID 有两个落点** | C：`common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` **和** 3 个域级 `wiring/SnowflakeBootstrap.java`（`article` / `user` / `admin`） | 两个 `Snowflake` Bean ⇒ **两个独立计数器** ⇒ ID 重复 | 🔴 删 3 个域级 `SnowflakeBootstrap`，只留 starter；加断言「容器内 `Snowflake` 有且仅有 1 个」 |
 | **5** | **`JsonBodyConverterConfig` 是「注册点」还是「配置类」** | B：RAG 仓 `service/common/src/main/java/com/rag/common/http/GoStyleJsonBodyConverterConfig.java` 是一个独立 `@Configuration`。C：同时存在 `web/JsonBodyConverterConfig.java` **和** `autoconfigure/JsonBodyConverterAutoConfiguration.java` | 若两者都注册 converter ⇒ **同一个 `HttpMessageConverter` 注册两次** ⇒ 请求体被读两次 / 判据被覆盖 | 🟡 建议：`web/JsonBodyConverterConfig.java` **只保留配置常量**（判据字面量），注册动作交 `JsonBodyConverterAutoConfiguration` |
 | **6** | **gRPC 拦截链的挂载点在 C 侧完全缺位**（2026-10-26 新发现） | Go：范围内 **10 个服务逐条显式** `s.AddUnaryInterceptors(observability.NewUnaryServerInterceptor(rpcTimeout, observability.SlowThreshold()))`（`service/{like,comment,follow,message,favorite,task,hot,article}/rpc/*.go` + `service/user/{user,admin}/rpc/*.go`；`security`/`points` 范围外）。B：RAG 侧 10 个 rpc 模块**只有 6 个**声明了 `GrpcServerConfigurer`（like/comment/follow/favorite/task/hot）⇒ **message / user / admin 三个域的拦截链静默失效**（RAG 自己的 javadoc 承认「锁死用例 `LikeGrpcInterceptorWiringTest` **全仓不存在**」）。C：**全树 0 个 `GrpcServerConfigurer` / `ServerInterceptor`** | devh starter 的三个工厂方法**全都只注入 `List<GrpcServerConfigurer>`** ⇒ 只产 `ServerInterceptor` Bean 而不产 Configurer ⇒ **超时 / deadline 传播 / gRPC span / `sea.slow` 标记全丢，且零报错** | 🔴 **落点 = `common/autoconfigure/ProtectionAutoConfiguration`**（**共享层 1 份**，D1 合并的收益：一域一进程 ⇒ 每进程 1 个 gRPC server ⇒ 1 个全局 Configurer 即覆盖 10 个域）＋ **域内 0 重复**（重复 ⇒ 链被挂 2 次 ⇒ span 重复 / timeout 叠加）。⇒ 依据 [`完全spring化的文件树.md`](../完全spring化的文件树.md) §5.5.2；断言改写见 [`架构符合性断言.md`](../架构符合性断言.md) A3 · 契约 B |
 

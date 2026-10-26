@@ -11,7 +11,7 @@
 | artifactId | `article-service` |
 | 根包 | `com.rag.article` |
 | Go 出处 | `service/article/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `bootstrap` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
 
 ## 二、依赖
 
@@ -40,11 +40,6 @@
 │   │   │               ├── advice/
 │   │   │               │   ├── ArticleApiExceptionHandler.java
 │   │   │               │   └── ArticleApiResponseAdvice.java
-│   │   │               ├── bootstrap/
-│   │   │               │   ├── ArticleSchemaGate.java
-│   │   │               │   ├── MinioBucketBootstrap.java
-│   │   │               │   ├── NacosRegistration.java
-│   │   │               │   └── SnowflakeBootstrap.java
 │   │   │               ├── client/
 │   │   │               │   └── MessageRpcClient.java    # 跨域 gRPC 客户端 —— 域内调用已直连，此处只保留跨域依赖。
 │   │   │               ├── config/
@@ -103,6 +98,11 @@
 │   │   │               ├── service/
 │   │   │               │   ├── ArticleApiService.java
 │   │   │               │   └── ArticleApiSupport.java
+│   │   │               ├── wiring/
+│   │   │               │   ├── ArticleSchemaGate.java
+│   │   │               │   ├── MinioBucketBootstrap.java
+│   │   │               │   ├── NacosRegistration.java
+│   │   │               │   └── SnowflakeBootstrap.java
 │   │   │               └── ArticleServiceApplication.java    # @SpringBootApplication + @EnableDiscoveryClient —— api 与 rpc 合并后的唯一入口。
 │   │   └── resources/
 │   │       ├── db/

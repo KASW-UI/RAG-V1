@@ -11,7 +11,7 @@
 | artifactId | `comment-service` |
 | 根包 | `com.rag.comment` |
 | Go 出处 | `service/comment/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `bootstrap` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
 
 ## 二、依赖
 
@@ -41,12 +41,6 @@
 │   │   │               ├── advice/
 │   │   │               │   ├── CommentApiExceptionHandler.java
 │   │   │               │   └── CommentApiResponseAdvice.java
-│   │   │               ├── bootstrap/
-│   │   │               │   ├── CommentAuthorityEndpointConfig.java
-│   │   │               │   ├── CommentFactDispatchScheduler.java
-│   │   │               │   ├── CommentFactProcessLogging.java    # 对应 Go 侧 {@code service/comment/rpc/cmd/fact-dispatch/main.go}（身份 {@code rtw-comment-fact-dispatch}）
-│   │   │               │   ├── CommentSchemaGate.java
-│   │   │               │   └── NacosRegistration.java
 │   │   │               ├── client/
 │   │   │               │   ├── ArticleRpcClient.java    # 跨域 gRPC 客户端 —— 域内调用已直连，此处只保留跨域依赖。
 │   │   │               │   └── MessageRpcClient.java    # 跨域 gRPC 客户端 —— 域内调用已直连，此处只保留跨域依赖。
@@ -123,6 +117,12 @@
 │   │   │               │   ├── CommentFactDeliveryService.java
 │   │   │               │   ├── CommentRedisKeys.java
 │   │   │               │   └── CommentSensitiveFilter.java
+│   │   │               ├── wiring/
+│   │   │               │   ├── CommentAuthorityEndpointConfig.java
+│   │   │               │   ├── CommentFactDispatchScheduler.java
+│   │   │               │   ├── CommentFactProcessLogging.java    # 对应 Go 侧 {@code service/comment/rpc/cmd/fact-dispatch/main.go}（身份 {@code rtw-comment-fact-dispatch}）
+│   │   │               │   ├── CommentSchemaGate.java
+│   │   │               │   └── NacosRegistration.java
 │   │   │               └── CommentServiceApplication.java    # @SpringBootApplication + @EnableDiscoveryClient —— api 与 rpc 合并后的唯一入口。
 │   │   └── resources/
 │   │       ├── db/

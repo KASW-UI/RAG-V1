@@ -93,13 +93,13 @@
 | `users/users-common/`（`com.rag.users.common.{cryptx,ddl,errmsg,http,jwt}`） | `service/users/common/`（artifactId `users-common`）<br>包 `com.rag.users.common` **仅剩 `ErrCodes` + `ErrMsg`** | 公共库保留；**`jwt` / `cryptx` / `http` / `ddl` 四个子包已上收 `common/`**（D3）|
 | `users/user/api/` | `service/users/user/` → `com.rag.user`（`UserServiceApplication.java`） | 入口类合并（D1）|
 | `users/user/api/{advice,config,controller,dto,interceptor,metrics,service}` | `advice/` / `config/` / `controller/` / `dto/` / `interceptor/` / `metrics/` / `service/` | 直接压平 |
-| `users/user/rpc/{bootstrap,config,domain,exception,mapper,metrics,service}` | `bootstrap/` / `config/` / `domain/entity/` / `exception/` / `mapper/` / `metrics/` / `service/` + `domain/service/` | 直接压平；领域服务另出 `domain/service/` |
+| `users/user/rpc/{bootstrap,config,domain,exception,mapper,metrics,service}` | `wiring/` / `config/` / `domain/entity/` / `exception/` / `mapper/` / `metrics/` / `service/` + `domain/service/` | 直接压平；领域服务另出 `domain/service/` |
 | `users/user/rpc/service/impl/` | `service/users/user/…/grpc/` | 压平 + 类改名 `UserServiceGrpcImpl` → `UserGrpcService` |
 | `users/user/`（无 `users-common` 内的 errmsg 副本） | `service/users/user/…/contract/`（`ErrCodes` + `ErrMsg`） | user 子域**私有**错误契约 |
 | `users/user-proto/` | 根级 `proto/`（pb 包名 `com.rag.proto.user`）| **集中化**（D7）|
 | `users/admin/api/` | `service/users/admin/` → `com.rag.admin`（`AdminServiceApplication.java`） | 入口类合并（D1）|
 | `users/admin/api/{advice,config,controller,dto,interceptor,metrics,service}` | `advice/` / `config/` / `controller/` / `dto/` / `interceptor/` / `metrics/` / `service/` | 直接压平 |
-| `users/admin/rpc/{bootstrap,config,domain,exception,mapper,metrics,service}` | `bootstrap/` / `config/` / `domain/entity/` / `exception/` / `mapper/` / `metrics/` / `service/` + `domain/service/` | 直接压平 |
+| `users/admin/rpc/{bootstrap,config,domain,exception,mapper,metrics,service}` | `wiring/` / `config/` / `domain/entity/` / `exception/` / `mapper/` / `metrics/` / `service/` + `domain/service/` | 直接压平 |
 | `users/admin/rpc/service/`（**RAG 侧 admin 没有 `impl` 子包**） | `service/users/admin/src/main/java/com/rag/admin/grpc/` | RAG 侧 admin 的 `rpc/service/` 下**没有 `impl` 子包**；C 侧 gRPC 实现由 `AdminGrpcService` 单独承载 |
 | **—（admin 无 contract 模块）** | **—（admin 侧无 `contract/` 包）** | ⚠️ admin 若要引用错误契约，取公共库 `service/users/common/` 那份（F-2）|
 | `users/admin-proto/` | 根级 `proto/`（pb 包名 `com.rag.proto.admin`）| **集中化**（D7）|
@@ -152,7 +152,7 @@
 **换持久层命名空间（GORM model → MyBatis-Plus Entity/Mapper）6 处同时改**：
 1. `model/data_model.go` 的 struct → `domain/*Entity.java`（`@TableName` + 列名逐条对齐）
 2. `model/user.go` / `model/admin.go` 的查询方法 → `mapper/*Mapper.java`（按实体拆）
-3. `model/db.go` 的 `AutoMigrate` → `bootstrap/*SchemaBootstrap.java`（幂等 DDL 重放）
+3. `model/db.go` 的 `AutoMigrate` → `wiring/*SchemaBootstrap.java`（幂等 DDL 重放）
 4. `model/vars.go` 的哨兵错误 → `exception/*Exceptions.java`（按业务含义聚合）
 5. `model/helper.go` 的 `IsUniqueViolation` → `AdminMapper` 内的 PG 错误码判定
 6. `serializer:json` 的 jsonb/text 映射 → `common/src/main/java/com/rag/common/persistence/Json*TypeHandler.java`
@@ -180,7 +180,7 @@
 | ServiceContext | `svc.ServiceContext` 持有 model / cache / rpc client | **已删**（Spring Bean） | 同 B | — |
 | 进程拓扑 | api 进程 + rpc 进程（**2 进程 / 子域**） | api + rpc（**2 进程 / 子域**） | **1 进程 / 子域** | D1：Go/RAG 20 进程 → RAG-V1 10 进程；**「rpc 进程不可用」这一故障模式消失** |
 | gRPC 客户端（域内） | `svcCtx.UserRpc` / `svcCtx.AdminRpc` | `api/client/UserRpcClient.java` / `AdminRpcClient.java` | **无 `service/users/user/src/main/java/com/rag/user/{advice,config,controller,dto,interceptor,metrics,service}/client/`** | D2：域内调用直连注入领域服务 Bean |
-| gRPC 客户端（跨域） | `svcCtx.ArticleRpc` 等 | `service/common` 的 `RpcInterceptor` 等 | `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java` + `service/users/user/src/main/java/com/rag/user/{bootstrap,config,domain/entity,domain/service,exception,grpc,mapper,metrics}/client/` | D6：users 域**无跨域调用** ⇒ C 侧 users 无 `rpc/client/` |
+| gRPC 客户端（跨域） | `svcCtx.ArticleRpc` 等 | `service/common` 的 `RpcInterceptor` 等 | `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java` + `service/users/user/src/main/java/com/rag/user/{wiring,config,domain/entity,domain/service,exception,grpc,mapper,metrics}/client/` | D6：users 域**无跨域调用** ⇒ C 侧 users 无 `rpc/client/` |
 | gRPC 明文 | `zrpc.MustNewServer`（明文） | `grpc.client.*.negotiation-type: plaintext` | 同 B（`application.yml` 已写） | devh 默认 TLS ⇒ **必须显式写 plaintext**，否则静默变 TLS |
 | HTTP 超时 | go-zero `rest/config.go:55` `Timeout` `json:",default=3000"` ⇒ **3000ms**（`DisableNativeRestTimeout` 已关掉原生超时中间件，超时只有 `NewHTTPMiddleware` 一个执行者） | `observability.http-timeout: 3s`（B 自研 observability 中间件的配置）+ `service/common/.../observability/GoStyleRequestDeadline.java` | `common/src/main/java/com/rag/common/observability/ObservabilityProperties.java` + `GoStyleRequestDeadline.java`（**两个都是空壳**），且两个 `application.yml` **无任何 timeout 配置** | ⚠️ 超时机制在 C 侧**未落点**（见 §7.4 F-8） |
 
@@ -194,7 +194,7 @@
 2. `service/users/admin/admin-api/pom.xml` + `admin-rpc/pom.xml` → `service/users/admin/pom.xml`
 3. `UserApiApplication.java` + `UserRpcApplication.java` → `UserServiceApplication.java`（**1 个** `@SpringBootApplication`）
 4. `AdminApiApplication.java` + `AdminRpcApplication.java` → `AdminServiceApplication.java`
-5. `{advice,config,controller,dto,interceptor,metrics,service}/client/*RpcClient.java` → 删（域内直连；跨域才留 `{bootstrap,config,domain/entity,domain/service,exception,grpc,mapper,metrics}/client/`）
+5. `{advice,config,controller,dto,interceptor,metrics,service}/client/*RpcClient.java` → 删（域内直连；跨域才留 `{wiring,config,domain/entity,domain/service,exception,grpc,mapper,metrics}/client/`）
 6. `application.yml` 两份 → 一份（HTTP 端口 + gRPC 端口同时在一个进程）
 7. Nacos 注册项：2 个/子域 → 1 个/子域
 

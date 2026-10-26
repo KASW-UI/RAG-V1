@@ -60,7 +60,7 @@
 | `users/user/api/interceptor/` | `interceptor/` | 直接压平 |
 | `users/user/api/metrics/` | `metrics/` | 与 rpc 侧合并 |
 | `users/user/api/service/` | `service/` | 与 rpc 侧合并 |
-| `users/user/rpc/bootstrap/` | `bootstrap/` | 直接压平 |
+| `users/user/rpc/bootstrap/` | `wiring/` | 直接压平 |
 | `users/user/rpc/config/` | `config/` | 合并 |
 | `users/user/rpc/domain/` | `domain/entity/` | 按是否 `*Entity` 拆分 |
 | `users/user/rpc/exception/` | `exception/` | 直接压平 |
@@ -79,7 +79,7 @@
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
-| `service/user/user/rpc/user.go` | `user-rpc/.../UserRpcApplication.java` | `service/users/user/src/main/java/com/rag/user/UserServiceApplication.java` + `service/users/user/src/main/java/com/rag/user/bootstrap/NacosRegistration.java` + `service/users/user/src/main/java/com/rag/user/bootstrap/SnowflakeBootstrap.java` | 1:N | 进程装配（flag → config → svc → server.Run）拆成「入口 + 注册 + ID 生成器初始化」三个 Spring Bean；**C 的入口与 user-api 共用**（D1） |
+| `service/user/user/rpc/user.go` | `user-rpc/.../UserRpcApplication.java` | `service/users/user/src/main/java/com/rag/user/UserServiceApplication.java` + `service/users/user/src/main/java/com/rag/user/wiring/NacosRegistration.java` + `service/users/user/src/main/java/com/rag/user/wiring/SnowflakeBootstrap.java` | 1:N | 进程装配（flag → config → svc → server.Run）拆成「入口 + 注册 + ID 生成器初始化」三个 Spring Bean；**C 的入口与 user-api 共用**（D1） |
 | `service/user/user/rpc/userservice/userservice.go` | （无独立文件） | （无独立文件） | 1:1 | go-zero 生成的 gRPC service 接口；C 由 `@GrpcService` + 生成的 `UserServiceGrpc.UserServiceImplBase` 承接（**生成物在根级 `proto/` 模块**，pb 包名 `com.rag.proto.user`） |
 | `service/user/user/rpc/internal/config/config.go` | `user-rpc/.../config/UserRpcProperties.java` | `service/users/user/src/main/java/com/rag/user/config/UserRpcProperties.java` | 1:1 | yaml struct → `@ConfigurationProperties`；字段语义 1:1 |
 | `service/user/user/rpc/internal/svc/servicecontext.go` | （无对应物） | （无对应物） | 1:1 | Go 侧无对应物（原因）：纯依赖持有，无业务方法 ⇒ Spring DI 吸收（ABSORB）；B/C 均**不生成** `ServiceContext.java` |
@@ -96,7 +96,7 @@
 | `service/user/user/rpc/internal/logic/avatarhelpers.go` | `user-rpc/.../service/AvatarDomainService.java` | `service/users/user/src/main/java/com/rag/user/domain/service/AvatarDomainService.java` | 1:1 | 归一化规则（URL `TrimSpace`、空 contentType → `image/png`、historyId `TrimSpace`）的**权威实现** |
 | `service/user/user/rpc/internal/model/data_model.go` | `user-rpc/.../domain/UserEntity.java` + `UserAvatarHistoryEntity.java` | `service/users/user/src/main/java/com/rag/user/domain/entity/UserEntity.java` + `UserAvatarHistoryEntity.java` | 1:N | GORM struct + `TableName()` → `@TableName` 实体（2 个 struct → 2 个 Entity） |
 | `service/user/user/rpc/internal/model/user.go` | `user-rpc/.../mapper/UserMapper.java` + `UserAvatarHistoryMapper.java` | `service/users/user/src/main/java/com/rag/user/mapper/UserMapper.java` + `UserAvatarHistoryMapper.java` | 1:N | 查询方法 → Mapper（按实体拆，HUMAN_ONLY.MD 决策） |
-| `service/user/user/rpc/internal/model/db.go` | `user-rpc/.../bootstrap/UserSchemaBootstrap.java` + `users-common/.../ddl/SchemaInitializer.java` | `service/users/user/src/main/java/com/rag/user/bootstrap/UserSchemaBootstrap.java` | 1:1 | `AutoMigrate` → 幂等 DDL 重放；⚠️ **C 侧 `db/migration/` 仅 `.gitkeep`，且 `common/` 无 `SchemaInitializer`** ⇒ 执行器与脚本在 C 侧**无落点**（见 §7.4 F-3） |
+| `service/user/user/rpc/internal/model/db.go` | `user-rpc/.../bootstrap/UserSchemaBootstrap.java` + `users-common/.../ddl/SchemaInitializer.java` | `service/users/user/src/main/java/com/rag/user/wiring/UserSchemaBootstrap.java` | 1:1 | `AutoMigrate` → 幂等 DDL 重放；⚠️ **C 侧 `db/migration/` 仅 `.gitkeep`，且 `common/` 无 `SchemaInitializer`** ⇒ 执行器与脚本在 C 侧**无落点**（见 §7.4 F-3） |
 | `service/user/user/rpc/internal/model/vars.go` | `user-rpc/.../exception/UserExceptions.java` | `service/users/user/src/main/java/com/rag/user/exception/UserExceptions.java` | 1:1 | 哨兵错误（`ErrorNotFound` / `ErrorAvatarHistoryNotFound`）→ 按业务含义聚合的异常嵌套类 |
 | `service/user/user/rpc/internal/metrics/metrics.go` | `user-rpc/.../metrics/UserRpcMetrics.java` | `service/users/user/src/main/java/com/rag/user/metrics/UserRpcMetrics.java` | 1:1 | 指标完整名 L1：`user_rpc_register_total`、`user_rpc_login_total` |
 | `service/user/user/rpc/pb/user.pb.go` | `user-proto/src/main/proto/users.proto`（生成物） | `proto/src/main/proto/users.proto`（生成物，pb 包名 `com.rag.proto.user`） | 1:1 | proto 生成物；字段号 L1，一个字节都不动 |

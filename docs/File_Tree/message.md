@@ -11,7 +11,7 @@
 | artifactId | `message-service` |
 | 根包 | `com.rag.message` |
 | Go 出处 | `service/message/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `bootstrap` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
 
 ## 二、依赖
 
@@ -41,8 +41,6 @@
 │   │   │               ├── advice/
 │   │   │               │   ├── MessageApiExceptionHandler.java
 │   │   │               │   └── MessageApiResponseAdvice.java
-│   │   │               ├── bootstrap/
-│   │   │               │   └── NacosRegistration.java
 │   │   │               ├── client/
 │   │   │               │   ├── AdminRpcClient.java    # 跨域 gRPC 客户端 —— 域内调用已直连，此处只保留跨域依赖。
 │   │   │               │   └── UserRpcClient.java    # 跨域 gRPC 客户端 —— 域内调用已直连，此处只保留跨域依赖。
@@ -104,6 +102,8 @@
 │   │   │               │   ├── MessageApiService.java
 │   │   │               │   ├── MessageApiSupport.java
 │   │   │               │   └── MessageRpcSupport.java
+│   │   │               ├── wiring/
+│   │   │               │   └── NacosRegistration.java
 │   │   │               └── MessageServiceApplication.java    # @SpringBootApplication + @EnableDiscoveryClient —— api 与 rpc 合并后的唯一入口。
 │   │   └── resources/
 │   │       ├── db/

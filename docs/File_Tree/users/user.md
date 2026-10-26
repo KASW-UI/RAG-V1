@@ -11,7 +11,7 @@
 | artifactId | `user-service` |
 | 根包 | `com.rag.user` |
 | Go 出处 | `service/user/user/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `bootstrap` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
 
 ## 二、依赖
 
@@ -41,10 +41,6 @@
 │   │   │               ├── advice/
 │   │   │               │   ├── UserApiExceptionHandler.java
 │   │   │               │   └── UserApiResponseAdvice.java
-│   │   │               ├── bootstrap/
-│   │   │               │   ├── NacosRegistration.java
-│   │   │               │   ├── SnowflakeBootstrap.java
-│   │   │               │   └── UserSchemaBootstrap.java
 │   │   │               ├── config/
 │   │   │               │   ├── RedisDisconnectedBehaviorConfig.java
 │   │   │               │   ├── UserApiProperties.java    # @ConfigurationProperties —— 聚合本域 HTTP 层配置。
@@ -97,6 +93,10 @@
 │   │   │               ├── service/
 │   │   │               │   ├── UserApiService.java
 │   │   │               │   └── UserApiSupport.java
+│   │   │               ├── wiring/
+│   │   │               │   ├── NacosRegistration.java
+│   │   │               │   ├── SnowflakeBootstrap.java
+│   │   │               │   └── UserSchemaBootstrap.java
 │   │   │               └── UserServiceApplication.java    # @SpringBootApplication + @EnableDiscoveryClient —— api 与 rpc 合并后的唯一入口。
 │   │   └── resources/
 │   │       ├── db/

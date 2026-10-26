@@ -82,7 +82,7 @@ RAG 侧另有 **63 个 `GoStyle*` 命名的类**（其中 19 个是测试文件 
 
 ```
 api 模块                                     rpc 模块
-├── advice/                                  ├── bootstrap/
+├── advice/                                  ├── wiring/
 ├── config/                                  ├── config/
 ├── dto/                                     ├── domain/
 ├── metrics/                                 ├── exception/
@@ -259,7 +259,7 @@ service/message/
 | `routes.go` 路由注册 | `@RequestMapping` / `@PostMapping` | **ABSORB** | Spring MVC 注解；**前缀 `/message/v1` 是 L1，必须逐字保留** |
 | `routes.go` middleware 绑定 | `api/config/WebMvcConfig.java` + `api/interceptor/JwtAuthInterceptor.java` | **ADAPT** | `rest.WithMiddlewares` → `HandlerInterceptor`；**注册顺序（interceptor 先于业务）属于 L3，必须保留并有断言** |
 | `servicecontext.go` 装配根 | Spring DI 容器 | **ABSORB** | 无业务方法 ⇒ 不生成 `ServiceContext.java` |
-| `servicecontext.go` 里的 `ensureDefaultAdmin` 之类 | `rpc/bootstrap/*Seeder.java` | **REUSE** | 现有 `AdminSeederBootstrap` / `ArticleSchemaGate` 承担；**含业务方法故不吸收** |
+| `servicecontext.go` 里的 `ensureDefaultAdmin` 之类 | `wiring/*Seeder.java` | **REUSE** | 现有 `AdminSeederBootstrap` / `ArticleSchemaGate` 承担；**含业务方法故不吸收** |
 
 ### 4.2 HTTP 层
 
@@ -414,7 +414,7 @@ service/message/
     │   │   ├── MessageApiSupport.java           # uid 解析 / 日志字段 / 业务码映射
     │   │   └── MessageRpcSupport.java
     │   │
-    │   ├── bootstrap/                          # ===== 领域 / 服务端能力层（原 rpc/bootstrap）=====
+    │   ├── wiring/                              # ===== 领域 / 服务端能力层（原 rpc/bootstrap）=====
     │   │   └── NacosRegistration.java           # 显式注册（不依赖自动注册）
     │   ├── client/                             # ★ 跨域 gRPC 客户端（原 rpc/client）
     │   │   ├── AdminRpcClient.java
@@ -679,7 +679,7 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 | ⚠️ **D7 落地后的实测** | — | — | **559**（549 主 + 10 测试） | **16 个 pom** / 10 个 proto 集中在根级 `proto/` 模块 / 10 个 yml —— 与上表推导值的差异来自 D7 把 10 个 `*-contract` 模块的类并进域模块 |
 
 > ⚠️ **规模缩减的来源分布与直觉相反**：
-> - **降幅最大的是"样板"** —— 每域一套 `Application` + `Properties` + `advice` ×2 + `metrics` ×2 + `bootstrap` 样板，合并后减半。
+> - **降幅最大的是"样板"** —— 每域一套 `Application` + `Properties` + `advice` ×2 + `metrics` ×2 + `wiring` 样板，合并后减半。
 > - **降幅最小的是"业务"** —— rpc 层的**协作者类**（`LikeRedisKeys` / `TaskDefs` / `CommentSensitiveFilter` / `FavoriteFactEnvelopeFactory` 等）**不是用例，不能合并**，它们有独立的变化原因。
 > - **`common` 几乎没降** —— 因为可被生态吸收的只有 `protection`（17 → 2），而 `web/` 层的 Go 语义等价物**必须手写**（"何时读 body"与"错误文案形状"都不是框架能力）。
 >
@@ -699,7 +699,7 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 4. **Java 中哪个已有机制直接承担？** Spring DI 容器 + `@ConfigurationProperties` + `@Bean`。
 5. **依据？** 现有 RAG 的 rpc 模块已经证明：10 个模块都没有 `ServiceContext.java`，全部靠 `@Import` + DI，行为等价。
 
-> ⚠️ **例外**：若某域的 ServiceContext 含业务方法（如 `ensureDefaultAdmin`），则该方法落到 `rpc/bootstrap/*Seeder.java`，**不是**回退到造一个 ServiceContext。
+> ⚠️ **例外**：若某域的 ServiceContext 含业务方法（如 `ensureDefaultAdmin`），则该方法落到 `wiring/*Seeder.java`，**不是**回退到造一个 ServiceContext。
 
 ### 2. `handler/routes.go` → ABSORB + SPLIT（路由部分吸收，prefix 与 middleware 保留）
 
@@ -823,7 +823,7 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 | 判定项（§15） | 结论 |
 |---|---|
 | **业务职责完整**（§15.1） | ✅ L1 全保、L2 全保、L3 保 6 降 4，降级项逐条列明且不落在业务语义上 |
-| **符合目标项目的组织方式**（§15.2） | ✅ **D7 后**：域内不再有 `api.*` / `rpc.*` 协议层，改为单层技术角色包树（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `bootstrap` / `exception` / `contract`）；跨域 client 落**单层 `client/`**（依据见 §5.2）；未新增顶层模块 |
+| **符合目标项目的组织方式**（§15.2） | ✅ **D7 后**：域内不再有 `api.*` / `rpc.*` 协议层，改为单层技术角色包树（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception` / `contract`）；跨域 client 落**单层 `client/`**（依据见 §5.2）；未新增顶层模块 |
 | **框架吸收有真实依据**（§15.3） | ✅ 每条 ABSORB 均给出机制名 + 现有 RAG 代码佐证；现有组件复用标 `REUSE` 而非 `ABSORB` |
 | **合并与拆分有明确理由**（§15.4） | ✅ 三类合并（入口合并 D1、用例内聚 §5.4 五判据、生态吸收 D4）各有独立判据；拆分项逐条说明边界 |
 | **不把推导伪装成事实**（§15.5） | ✅ `rpc.*` 改名（**已由 D7 结清**）、`api/client` 空包处置标 UNKNOWN；规模数字明确标为估算并给出不确定性来源 |

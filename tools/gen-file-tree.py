@@ -248,7 +248,7 @@ for d in ["user","admin","article","comment","favorite","follow","hot","like","m
     modules.append((d, base, f"com.rag.{d}", f"{d}（{d} 域应用）",
                     "api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**"
                     "（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / "
-                    "`grpc` / `domain` / `messaging` / `mapper` / `client` / `bootstrap` / `exception`）；"
+                    "`grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；"
                     "域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包", GO[d]))
 
 # ---------- 路径映射 ----------

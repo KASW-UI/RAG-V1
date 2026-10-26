@@ -35,7 +35,7 @@
 | A (Go 真理之源) | B (RAG, Go 形态版) | C (RAG-V1, Spring 目标) | 映射类型 | 备注 |
 |---|---|---|---|---|
 | `service/task/api/`（`task.go` + `internal/` 共 7 个 `.go`） | `service/task/task-api/` | `service/task/`（`service/task/src/main/java/com/rag/task/advice + service/task/src/main/java/com/rag/task/config + service/task/src/main/java/com/rag/task/controller + service/task/src/main/java/com/rag/task/dto + service/task/src/main/java/com/rag/task/service` 子树） | 1:N | C 把 api 侧并进单 app；Go 的 `internal/{config,handler,logic,svc,types}` 五层被 Spring 的 `@ConfigurationProperties` / `@RestController` / `@Service` / 构造注入取代 |
-| `service/task/rpc/`（`task.go` + `internal/` 共 18 个 `.go`） | `service/task/task-rpc/` | `service/task/`（`service/task/src/main/java/com/rag/task/bootstrap + service/task/src/main/java/com/rag/task/config + service/task/src/main/java/com/rag/task/domain/entity + service/task/src/main/java/com/rag/task/domain/service + service/task/src/main/java/com/rag/task/grpc + service/task/src/main/java/com/rag/task/mapper + service/task/src/main/java/com/rag/task/messaging + service/task/src/main/java/com/rag/task/service` 子树） | 1:N | 同上；Go 的 `internal/{config,svc,server,logic,Model,Init,sink,reward}` 八层收敛为 `rpc/{config,domain,mapper,service,bootstrap}` |
+| `service/task/rpc/`（`task.go` + `internal/` 共 18 个 `.go`） | `service/task/task-rpc/` | `service/task/`（`service/task/src/main/java/com/rag/task/wiring + service/task/src/main/java/com/rag/task/config + service/task/src/main/java/com/rag/task/domain/entity + service/task/src/main/java/com/rag/task/domain/service + service/task/src/main/java/com/rag/task/grpc + service/task/src/main/java/com/rag/task/mapper + service/task/src/main/java/com/rag/task/messaging + service/task/src/main/java/com/rag/task/service` 子树） | 1:N | 同上；Go 的 `internal/{config,svc,server,logic,Model,Init,sink,reward}` 八层收敛为 `rpc/{config,domain,mapper,service,wiring}` |
 | `service/task/api/etc/task.yaml`（17 行） | `task-api/src/main/resources/application.yml` | `service/task/src/main/resources/application.yml` | N:1 | api + rpc 两个 yml 合成 1 份；**键名从 `Name:` / `Port:` / `TaskRpc.Target:` 改成 Spring 标准键** |
 | `service/task/rpc/etc/task.yaml`（53 行） | `task-rpc/src/main/resources/application.yml` | 同上（同一份 yml） | N:1 | 同上 |
 | `proto/task.proto`（**仓库根**，不在 `service/task/` 下） | `service/task/task-proto/src/main/proto/task.proto` | `proto/src/main/proto/task.proto` | 1:1 | `package task` 两侧相同；`option go_package="."` → `java_package` + `java_multiple_files`（仅 option 块） |
@@ -65,7 +65,7 @@
 | `task/api/dto/` | `dto/` | 直接压平（3 个同名类全落此）|
 | `task/api/service/` | `service/` | 与 rpc 侧合并 |
 | **—（B 侧无 `task-common`）** | **—（C 侧无 `contract/` 包）** | ⚠️ **三方一致**：Go 侧 task **无错误码空间** ⇒ 域内不建 `contract/`（不是缺漏）|
-| `task/rpc/bootstrap/` | `bootstrap/` | 直接压平 |
+| `task/rpc/bootstrap/` | `wiring/` | 直接压平 |
 | `task/rpc/config/` | `config/` + `messaging/` | Kafka topic 落到 `messaging/`（`TaskKafkaTopics`）|
 | `task/rpc/domain/` | `domain/entity/` | 按是否 `*Entity` 拆分（`UserLikeCountEntity` 在 Go 侧位于 `internal/sink/`）|
 | `task/rpc/mapper/` | `mapper/` | 直接压平 |
@@ -94,13 +94,13 @@
 | `rest/config.go:55` tag 默认 `Timeout=3000` | `application.yml` 的 `observability.http-timeout: 3s` | `application.yml`（待补 `observability.http-timeout: 3s`） | 1:1 | ⚠️ 值来自 go-zero **struct tag 默认**，yaml 里**没有** `Timeout` 键 ⇒ Java 侧必须显式写出来 |
 |`rest/config.go:53,21` tag 默认 `MaxBytes=1 MiB`|`common/protection/GoStyleMaxBytesFilter`|`common/src/main/java/com/rag/common/protection/MaxBytesFilter.java`|1:1|同样来自 tag 默认 ⇒ 413 裸状态码、无 body|
 
-### 1.2 rpc 侧（`bootstrap + config + domain/entity + domain/service + grpc + mapper + messaging + service`）
+### 1.2 rpc 侧（`wiring + config + domain/entity + domain/service + grpc + mapper + messaging + service`）
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
 | `rpc/task.go`（49 行 `main()`：`conf.MustLoad` → `DisableNativeRpcTimeout` → `svc.NewServiceContext` → **4 个 `go Init.Start*` goroutine** → `zrpc.MustNewServer` → `AddUnaryInterceptors` → `s.Start()`） | `task-rpc/.../TaskRpcApplication.java` | `service/task/src/main/java/com/rag/task/TaskServiceApplication.java`（与 api 合并） | 1:N | C 的入口**只剩 1 个**；Go 的 `//go Init.StartInitReward(ctx)`（`:35`，**已注释**）⇒ reward worker 永不启动 |
 | `rpc/internal/config/config.go`（44 行：`zrpc.RpcServerConf` + `PointsRpc`/`UserRpc`（**死配置**）+ `Kafka{…}` + `LikeRedis{Addr,Pass,DB,ConsumerName}` + `Postgres{…}`） | `task-rpc/src/main/resources/application.yml` + `config/TaskKafkaTopics.java` + `config/TaskSinkProperties.java` | `service/task/src/main/java/com/rag/task/messaging/TaskKafkaTopics.java` + `service/task/src/main/java/com/rag/task/config/TaskSinkProperties.java` + `application.yml` | 1:N | ⚠️ Go 的 `PointsRpc`/`UserRpc` 在 `service_context.go` 五处被注释 ⇒ **不建 `client/` 包**；`LikeRedis` 段名是历史遗留（本服务里没有 like） |
-| `rpc/internal/svc/service_context.go`（58 行：`redis.NewClient` + `gorm.Open` + `panic` ×3 + `SetMaxOpenConns(50)` + `SetMaxIdleConns(50)` + `SetConnMaxLifetime(time.Duration(30))` + **`AutoMigrate(2 表)`**） | `task-rpc/.../bootstrap/TaskSchemaGate.java` + `domain/` + `mapper/` + `service/` | `service/task/src/main/java/com/rag/task/bootstrap/TaskSchemaGate.java` + `service/task/src/main/java/com/rag/task/domain/entity` + `service/task/src/main/java/com/rag/task/mapper` + `service/task/src/main/java/com/rag/task/domain/service + service/task/src/main/java/com/rag/task/messaging + service/task/src/main/java/com/rag/task/service` | 1:N | Redis / PG 客户端由 Boot 装配；`AutoMigrate` 的「表与进程同生共死」语义 ⇒ C 的 `TaskSchemaGate`（启动时校验两表存在） |
+| `rpc/internal/svc/service_context.go`（58 行：`redis.NewClient` + `gorm.Open` + `panic` ×3 + `SetMaxOpenConns(50)` + `SetMaxIdleConns(50)` + `SetConnMaxLifetime(time.Duration(30))` + **`AutoMigrate(2 表)`**） | `task-rpc/.../bootstrap/TaskSchemaGate.java` + `domain/` + `mapper/` + `service/` | `service/task/src/main/java/com/rag/task/wiring/TaskSchemaGate.java` + `service/task/src/main/java/com/rag/task/domain/entity` + `service/task/src/main/java/com/rag/task/mapper` + `service/task/src/main/java/com/rag/task/domain/service + service/task/src/main/java/com/rag/task/messaging + service/task/src/main/java/com/rag/task/service` | 1:N | Redis / PG 客户端由 Boot 装配；`AutoMigrate` 的「表与进程同生共死」语义 ⇒ C 的 `TaskSchemaGate`（启动时校验两表存在） |
 | `rpc/internal/Model/taskModel.go`（51 行：`TaskDef` 结构体（**gorm tag 整段被注释**，`:6-14`）✅ 活定义 `:15-20` + `AllTaskDefs` 字面量 `:22-25` + `TaskProgress` `:28-41` + `UserLikeCount` `:43-50`） | `task-rpc/.../service/TaskDefs.java` + `domain/TaskProgressEntity.java` + `domain/UserLikeCountEntity.java` + `mapper/TaskProgressMapper.java` + `mapper/UserLikeCountMapper.java` | `service/task/src/main/java/com/rag/task/service/TaskDefs.java` + `service/task/src/main/java/com/rag/task/domain/entity/TaskProgressEntity.java` + `service/task/src/main/java/com/rag/task/domain/entity/UserLikeCountEntity.java` + `service/task/src/main/java/com/rag/task/mapper/TaskProgressMapper.java` + `service/task/src/main/java/com/rag/task/mapper/UserLikeCountMapper.java` | 1:N | ⚠️ **配置载体差异**：Go 的 `TaskDef` 的 GORM tag 被注释掉 ⇒ **全仓不存在 `task_def` 表**，任务定义是**硬编码常量**（`AllTaskDefs` 两条字面量）⇒ C 的 `TaskDefs` 是**常量表**，不是 Entity、不是 Mapper |
 | `rpc/internal/logic/get_task_logic.go`（140 行：`uid<=0` → `codes.InvalidArgument` + `"user_id invalid"`；Redis `HGETALL task:progress:{uid}` → miss 回源 PG 5 列 → 回填缓存 → 与 `AllTaskDefs` 合并） | `task-rpc/.../service/TaskDomainService.java` | `service/task/src/main/java/com/rag/task/domain/service/TaskDomainService.java` | 1:1 | 本域**唯一**的 gRPC 用例 |
 | `rpc/internal/server/task_service_server.go`（29 行：1 个 RPC → logic 的 thin wrapper） | `task-rpc/.../service/impl/TaskServiceGrpcImpl.java` | `service/task/src/main/java/com/rag/task/grpc/TaskGrpcService.java` | 1:1 | `@GrpcService` |
@@ -305,8 +305,8 @@
 | 12 | `service/task/src/main/java/com/rag/task/dto/TaskInfo.java` | §1.1 |
 | 13 | `service/task/src/main/java/com/rag/task/service/TaskApiService.java` | §1.1 |
 | 14 | `service/task/src/main/java/com/rag/task/service/TaskApiSupport.java` | §1.1 |
-| 15 | `service/task/src/main/java/com/rag/task/bootstrap/NacosRegistration.java` | §1.2（服务发现注册位） |
-| 16 | `service/task/src/main/java/com/rag/task/bootstrap/TaskSchemaGate.java` | §1.2 / §2 |
+| 15 | `service/task/src/main/java/com/rag/task/wiring/NacosRegistration.java` | §1.2（服务发现注册位） |
+| 16 | `service/task/src/main/java/com/rag/task/wiring/TaskSchemaGate.java` | §1.2 / §2 |
 | 17 | `service/task/src/main/java/com/rag/task/messaging/TaskKafkaTopics.java` | §1.2 / §4 |
 | 18 | `service/task/src/main/java/com/rag/task/config/TaskSinkProperties.java` | §1.2 |
 | 19 | `service/task/src/main/java/com/rag/task/domain/entity/TaskProgressEntity.java` | §1.2 / §2 |
@@ -380,7 +380,7 @@
 > **本域的合并发生在「模块 → 模块」层面，不发生在「文件 → 文件」层面**；
 > C 列的 **29** 个 `.java` 与 A 列的 **26** 个 `.go` 数量接近，但**结构完全不同**：
 > Go 的 rpc 侧 8 层 `internal/` + api 侧 5 层 `internal/` 被压成 C 的 **10 个子包**
-> （`api.{advice,config,controller,dto,service}` + `rpc.{bootstrap,config,domain,mapper,service}`），
+> （`api.{advice,config,controller,dto,service}` + `rpc.{wiring,config,domain,mapper,service}`），
 > 而 Go 的 `internal/sink/` + `internal/Init/` 两个大包的 **Kafka 消费侧** 在 C 列**整体缺失**（见下）。
 
 ### 7.4 ⛔ 三列之间「职责对不上」清单（本表不判对错，只标出**落点缺口**）

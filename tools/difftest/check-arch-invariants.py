@@ -624,7 +624,7 @@ def check_a10(root: pathlib.Path, contract: str) -> Result:
 # A11 · Go 侧 cmd/fact-* 独立进程 ⇒ 域内必须有对应装配落点
 # ---------------------------------------------------------------------------
 def check_a11(root: pathlib.Path, contract: str) -> Result:
-    """A11 · comment / favorite / like 三域各须有 `bootstrap/<域>FactDispatchScheduler`、
+    """A11 · comment / favorite / like 三域各须有 `wiring/<域>FactDispatchScheduler`、
     `<域>AuthorityEndpointConfig`、`<域>FactProcessLogging`。
 
     ⚠️ 树里没有落点 = **该能力在实现阶段会被整个漏掉**，而漏掉它**不会有任何编译错误或测试红灯**
@@ -636,6 +636,12 @@ def check_a11(root: pathlib.Path, contract: str) -> Result:
 
     ⚠️ **包路径已压平**（2026-10-26）：域内 `api/` + `rpc/` 二分取消 ⇒ 装配落点从
     `com.rag.<域>.rpc.bootstrap` 上收到 `com.rag.<域>.bootstrap`。
+
+    ⚠️ **装配包改名 `wiring/`**（2026-10-26 · D10）：`bootstrap/` 在 Spring 生态里唯一
+    的强含义是**已废弃**的 Spring Cloud Bootstrap Context（`bootstrap.yml`）⇒ 且本项目
+    用 Nacos（Spring Cloud Alibaba 传统就用 `bootstrap.yml`）⇒ 双重误导 ⇒ 改名 `wiring/`
+    （Spring 的 dependency wiring 术语）。**类名后缀 `Bootstrap` 保留**（作类名后缀通顺，
+    且与废弃的 Bootstrap Context 无关）。
     """
     viol, n = [], 0
     for dom, prefix in A11_DOMAINS.items():
@@ -646,18 +652,18 @@ def check_a11(root: pathlib.Path, contract: str) -> Result:
                 n += 1
                 viol.append(f"全仓无 artifactId={aid} 的模块 ⇒ 缺 {tpl.format(d=prefix)}")
             continue
-        base = module / "src" / "main" / "java" / "com" / "rag" / dom / "bootstrap"
+        base = module / "src" / "main" / "java" / "com" / "rag" / dom / "wiring"
         rel_mod = module.relative_to(root).as_posix()
         if not base.exists():
             for tpl in A11_REQUIRED:
                 n += 1
-                viol.append(f"{rel_mod} → 缺 bootstrap/{tpl.format(d=prefix)}")
+                viol.append(f"{rel_mod} → 缺 wiring/{tpl.format(d=prefix)}")
             continue
         for tpl in A11_REQUIRED:
             want = tpl.format(d=prefix)
             n += 1
             if not (base / want).exists():
-                viol.append(f"{rel_mod}/.../bootstrap/{want} → 缺落点")
+                viol.append(f"{rel_mod}/.../wiring/{want} → 缺落点")
     if viol:
         return Result(FAIL, f"{len(viol)}/{n} 个 fact-* 落点缺失", viol)
     return ok(f"{n}/{n} 个 fact-* 落点齐备（三域各 3 个）")
@@ -787,12 +793,12 @@ def build_fixture(base: pathlib.Path) -> pathlib.Path:
     # A11 违规：`comment-service` 模块（**按 artifactId 定位**，与真实仓同形）只放两个，缺 FactProcessLogging
     _write(root / "service/comment/pom.xml",
            "<project><artifactId>comment-service</artifactId><dependencies></dependencies></project>")
-    _write(root / "service/comment/src/main/java/com/rag/comment/bootstrap/"
+    _write(root / "service/comment/src/main/java/com/rag/comment/wiring/"
                   "CommentFactDispatchScheduler.java",
-           "package com.rag.comment.bootstrap;\npublic class CommentFactDispatchScheduler { }\n")
-    _write(root / "service/comment/src/main/java/com/rag/comment/bootstrap/"
+           "package com.rag.comment.wiring;\npublic class CommentFactDispatchScheduler { }\n")
+    _write(root / "service/comment/src/main/java/com/rag/comment/wiring/"
                   "CommentAuthorityEndpointConfig.java",
-           "package com.rag.comment.bootstrap;\npublic class CommentAuthorityEndpointConfig { }\n")
+           "package com.rag.comment.wiring;\npublic class CommentAuthorityEndpointConfig { }\n")
     # A12 违规：同名类，不同包
     _write(root / f"{j}/Dup.java", "package com.rag.x;\npublic class Dup { }\n")
     _write(root / f"{j}/sub/Dup.java", "package com.rag.x.sub;\npublic class Dup { }\n")
