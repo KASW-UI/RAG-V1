@@ -32,7 +32,7 @@ docs/Intentional_Deviations/
 
 | 域 | 条目数 | 备注 |
 |---|---|---|
-| `common` | 0 | D1–D6 的结构性决策见 `../决策记录.md`，不进本档 |
+| `common` | 0 | D1–D9 的结构性决策见 `../决策记录.md`，不进本档 |
 | `like` | **2** | [DEV-LIKE-PROTO-001](like/_signed-deviations.md) · [DEV-LIKE-PROTO-002](like/_signed-deviations.md) |
 | `comment` | **2** | [DEV-COMMENT-PROTO-001](comment/_signed-deviations.md) · [DEV-COMMENT-PROTO-002](comment/_signed-deviations.md) |
 | 其余 8 域 | 0 | — |

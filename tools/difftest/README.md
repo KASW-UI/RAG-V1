@@ -15,7 +15,7 @@
 
 ```bash
 python3 tools/difftest/check-arch-invariants.py                # 默认 --contract B（RAG-V1 形态）
-python3 tools/difftest/check-arch-invariants.py --contract A    # api/rpc 分离形态（A1/A2/A3 在此形态下才生效）
+python3 tools/difftest/check-arch-invariants.py --contract A    # api/rpc 分离形态（A1/A2 只在此形态下才生效；A3 两形态都有判据）
 python3 tools/difftest/check-arch-invariants.py --self-test     # 红灯自检：造违规假树，逐条验证判据会红
 python3 tools/difftest/check-arch-invariants.py --only A4 A11   # 只跑指定断言
 ```
@@ -26,7 +26,7 @@ python3 tools/difftest/check-arch-invariants.py --only A4 A11   # 只跑指定�
 |---|---|---|
 | `PASS` | 判据成立 | 否 |
 | `FAIL` | 判据被违反 —— **漂移** | **是**（`EXIT=1`） |
-| `N/A` | 本契约形态下不适用（如契约 B 下的 A1/A2/A3） | 否 |
+| `N/A` | 本契约形态下不适用（如契约 B 下的 A1/A2） | 否 |
 | `PENDING` | 判据对象**仍是空壳** ⇒ 判据无从施加 | 否，但**必须显式报出** |
 
 ⚠️ **`PENDING` 不等于 `PASS`** —— 一个还没写实现的类既不是「过了」也不是「违规」。
@@ -45,7 +45,7 @@ python3 tools/difftest/check-arch-invariants.py --only A4 A11   # 只跑指定�
 2. **断言必须能红** —— A4 要在 `article-rpc` 的两条哑弹上**红一次**。
    ⇒ 没有会红的断言等于没有断言。
 3. **例外必须写在脚本里并附理由** —— 口头豁免不算。
-4. **断言绑定契约** —— A1/A2/A3 只适用于 api/rpc 分离形态；合并形态下**不得**把它们改成红灯。
+4. **断言绑定契约** —— A1/A2 只适用于 api/rpc 分离形态；合并形态下**不得**把它们改成红灯。⚠️ **A3 是例外**（2026-10-26 · D9）：合并形态下**改写**为「`common/` 有挂载点 ＋ 域内 0 重复」⇒ 契约 B 下它是 **PENDING**（空壳）而非 N/A。
    ⇒ 脚本需支持 `--contract A|B`。
 5. **对拍脚本必须显式排除 L3 降级项** —— 否则文案差异导致全红 → 被误判为回归 → 触发「修回旧行为」→ 降级被静默撤销。
    ⇒ 排除清单 → [`../../docs/L3-降级清单.md`](../../docs/L3-降级清单.md)

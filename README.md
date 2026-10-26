@@ -67,7 +67,7 @@ RAG-V1/
 | 文档 | 作用 |
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | **根政策文件** —— 项目目的 · 语义对齐纪律 · 实现组织 · 协作规则 |
-| [`docs/决策记录.md`](docs/决策记录.md) | D1–D7 已定 + P1–P6 待拍板 + 决策关系图 |
+| [`docs/决策记录.md`](docs/决策记录.md) | D1–D9 已定 + P1–P6 待拍板 + 决策关系图 |
 | [`docs/Mapping_Table/`](docs/Mapping_Table/_INDEX.md) | **抄写路线图** —— B 列 RAG ↔ C 列本仓的逐类对应 |
 | [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md) | 第一版踩过的坑 → 本仓的处置 |
 | [`docs/架构符合性断言.md`](docs/架构符合性断言.md) | A1–A12 ⇒ 写测试 / 接框架时 |

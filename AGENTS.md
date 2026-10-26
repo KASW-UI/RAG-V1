@@ -24,8 +24,8 @@
 | Maven 模块 | **16** 个 pom = **13 叶子** + **2 聚合**（`service` / `users`）+ 1 根 pom —— **D7 打平**：每域**一个** jar 模块（`service/<域>/`）；**artifactId 保持长名唯一**（`<域>-service` / `users-common` / `proto` / `common`）⇒ 依赖声明零改动 |
 | proto / `application.yml` | **10 / 10**（10 个 `.proto` 集中在**根级 `proto/` 模块**，pb 包名 `com.rag.proto.<域>`；内容与 Go 侧逐字节一致，仅 `java_package` 属表达层） |
 | `AutoConfiguration.imports` | **1**（`common/`，注册 7 个 auto-config） |
-| `docs/File_Tree/` · 三方对照 | **14 份 + `_INDEX.md`** 文件树（源树路径镜像）· **13 份**域文档（C 列 **549/549**、A 列 **482/482** 覆盖 **100%**；**75 条落点缺口** 🔴13） |
-| 三档台账 | DRIFT **10 域全部未建立**（实现开始后逐条填）· Intentional_Deviations **4 条**（like/comment 各 2）· Pitfalls P-01~P-07 |
+| `docs/File_Tree/` · 三方对照 | **14 份 + `_INDEX.md`** 文件树（源树路径镜像）· **13 份**域文档（C 列 **549/549**、A 列 **482/482** 覆盖 **100%**；**76 条落点缺口** 🔴13） |
+| 三档台账 | DRIFT **10 域全部未建立**（实现开始后逐条填）· Intentional_Deviations **4 条**（like/comment 各 2）· Pitfalls P-01~P-10 |
 
 **已完成**：树结构、pom、proto、application.yml、断言清单、三方对照、**GitHub 仓**。**未完成**：全部实现（⇒ 走 §1.0c 从 RAG 抄）。
 
@@ -119,7 +119,7 @@ RAG-V1 的目标架构（落地以 `docs/File_Tree/` 为准）：
 3. **D1 把 api+rpc 合并进同一进程** —— 一个 app 同起 Tomcat 与 gRPC ⇒ 异常处理**必须分两套**：`advice`（`@RestControllerAdvice`）vs `exception` + `GrpcExceptionMapperAutoConfiguration`（§3.5）。
 
 ⚠️ **artifactId 未对齐生态惯例**：`common` / `proto` / `users-common` / `*-service`，而非 `xxx-spring-boot-starter` 形态 —— 属 **L4 实现机制，可重选**，**未拍板**。
-> ⚠️ **物理目录 ≠ artifactId** —— 目录 `service/users/user/` 的 artifactId 是 `user-service`（reactor 内须唯一 ⇒ 改目录不改坐标）。**不要用目录名反推 artifactId**。**形状债已清零（P4-③ · D7）**；剩余**命名债 P4-④**（22 个 `GoStyle*`）⇒ [`docs/命名债与包形状.md`](docs/命名债与包形状.md)。
+> ⚠️ **物理目录 ≠ artifactId** —— 目录 `service/users/user/` 的 artifactId 是 `user-service`（reactor 内须唯一 ⇒ 改目录不改坐标）。**不要用目录名反推 artifactId**。**形状债已清零（P4-③ · D7）**；剩余**命名债 P4-④ 余 6**（`Rag*` 已清）⇒ [`docs/命名债与包形状.md`](docs/命名债与包形状.md)。
 
 ### 2.3 `common/` 的准入（实测 · 有待裁决项）
 
@@ -185,7 +185,7 @@ Go 侧大量行为的默认值**藏在 struct tag 里**而不是 yaml 里；反�
 ⚠️ **「只跑 RAG-V1 的探针」同样不算数**：它证明的只是「代码写成了这样」，证明不了「Go 是这样」。变异测试是同一问题的另一半 —— 能证明测试**不是假绿**，但**不能证明测试的期望值是对的**。两者缺一不可。
 
 **Boot 4 补充（2026-10-22）** —— Boot 4 把 Kafka 自动配置拆到独立模块 ⇒ **`@KafkaListener` 会静默不消费**（listener 永不扫描 ⇒ 零报错零消费），或注入点缺 `KafkaTemplate` ⇒ 硬启动失败。⇒ **强制**：① 凡用 `@KafkaListener`，必配一条**装配层**测试断言 listener 真进了容器 registry；② **不得**把「编译通过 / 上下文能启动」当作「注解已生效」的证据（另见 §八「Boot 4 未拆走」）。
-⇒ RAG-V1 已修（`common` + 7 个域统一 `spring-boot-kafka`）→ [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md) §四 K-1；全部 7 条已蒸馏坑 ⇒ [`docs/Pitfalls/_INDEX.md`](docs/Pitfalls/_INDEX.md) P-01~P-07
+⇒ RAG-V1 已修（`common` + 7 个域统一 `spring-boot-kafka`）→ [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md) §四 K-1；全部 7 条已蒸馏坑 ⇒ [`docs/Pitfalls/_INDEX.md`](docs/Pitfalls/_INDEX.md) P-01~P-10
 
 ### 3.4 proto 是**复制粘贴**，不是翻译（2026-10-25 实测 · 2026-10-26 集中化）
 
@@ -234,7 +234,7 @@ RAG-V1 侧 10 个 `*.proto` **全部从 Go 侧复制**，非翻译。改动**严
 
 ### 4.3 用户问答原话
 
-> 📖 RAG 仓库的原话存档 ⇒ `docs/DRIFT/_cross/user-qa-verbatim.md`（**在 RAG 仓库里，不在 RAG-V1**）；RAG-V1 自己的拍板记录 ⇒ [`docs/决策记录.md`](docs/决策记录.md)（**D1–D7** 已定 + P1–P6 待拍板）。
+> 📖 RAG 仓库的原话存档 ⇒ `docs/DRIFT/_cross/user-qa-verbatim.md`（**在 RAG 仓库里，不在 RAG-V1**）；RAG-V1 自己的拍板记录 ⇒ [`docs/决策记录.md`](docs/决策记录.md)（**D1–D9** 已定 + P1–P6 待拍板）。
 
 ## 五、用户协作规则（精简）
 
@@ -251,7 +251,7 @@ RAG-V1 侧 10 个 `*.proto` **全部从 Go 侧复制**，非翻译。改动**严
 
 > **状态表纪律（2026-10-21）**：任何「已修 / 未修」断言必须带**核对日期**，否则按 `UNKNOWN` 处理。
 
-> ⚠️ **本节记的是 RAG 仓库的决策过程**（📦 存档）—— **RAG-V1 自己的架构决策在 [`docs/决策记录.md`](docs/决策记录.md)**（**D1–D7** + P1–P6）。**冲突时以 `docs/决策记录.md` 为准**。
+> ⚠️ **本节记的是 RAG 仓库的决策过程**（📦 存档）—— **RAG-V1 自己的架构决策在 [`docs/决策记录.md`](docs/决策记录.md)**（**D1–D9** + P1–P6）。**冲突时以 `docs/决策记录.md` 为准**。
 > **RAG 的四条结论（📦）**：① 丢掉 Flyway 改幂等重放 ② `admin-rpc` 不转发、直连（沿用 ✅）③ 拦截器注册用 `@Import` ⇒ ⚠️ **RAG-V1 不用**（D3）④ **Flyway 账本撞号** ⇒ 见下。
 
 🔴 **Flyway 账本撞号 —— RAG-V1 尚未决策**：`flyway_schema_history` 是 **schema 级**账本 ⇒ 同库同 schema 只能有一本账；10 个 `*-service` **都有 `db/migration/`** ⇒ 若共用一个 schema，**任一 app 先启动，其他 app 的表就永远建不出来**。
@@ -267,13 +267,13 @@ Go 真源仓库路径见 §1.0b（**已冻结**，不接受写入）。RAG-V1 �
 
 ### 7.2 动手前必读的 5 份
 
-- **[`docs/决策记录.md`](docs/决策记录.md)** —— **D1–D7** + P1–P6 + 决策关系图 ⇒ 动结构前必读
+- **[`docs/决策记录.md`](docs/决策记录.md)** —— **D1–D9** + P1–P6 + 决策关系图 ⇒ 动结构前必读
 - **[`docs/Mapping_Table/`](docs/Mapping_Table/_INDEX.md)** —— **抄写路线图**（§1.0c）：B 列 RAG ↔ C 列 RAG-V1 的逐类对应 + 各域 **§0.5 B→C 结构映射速查表** ⇒ **填实现前必读**
 - **[`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)** —— RAG 的坑 → RAG-V1 的处置 ⇒ **填实现前先读**
 - **[`docs/架构符合性断言.md`](docs/架构符合性断言.md)** —— A1–A12 ⇒ 写测试 / 接框架时
 - **[`docs/GORM-MP-语义对照.md`](docs/GORM-MP-语义对照.md)** —— GORM → MP 对照表 ⇒ **写 Mapper / Entity / 事务代码时**
 
-**三档台账**（§五.3）：[`docs/DRIFT/`](docs/DRIFT/_INDEX.md) · [`docs/Pitfalls/`](docs/Pitfalls/_INDEX.md)（P-01~P-07）· [`docs/Intentional_Deviations/`](docs/Intentional_Deviations/_INDEX.md)
+**三档台账**（§五.3）：[`docs/DRIFT/`](docs/DRIFT/_INDEX.md) · [`docs/Pitfalls/`](docs/Pitfalls/_INDEX.md)（P-01~P-10）· [`docs/Intentional_Deviations/`](docs/Intentional_Deviations/_INDEX.md)
 **结构产物**：[`docs/File_Tree/`](docs/File_Tree/_INDEX.md) · [`docs/L3-降级清单.md`](docs/L3-降级清单.md) · [`docs/第二轮深挖-契约盘点.md`](docs/第二轮深挖-契约盘点.md)（G-1~G-4）
 
 ### 7.3 工具与孤儿
@@ -310,4 +310,4 @@ Go 真源仓库路径见 §1.0b（**已冻结**，不接受写入）。RAG-V1 �
 - [ ] **台账已写** —— 偏离写 Intentional_Deviations，踩坑写 Pitfalls，漂移写 DRIFT
 - [ ] **文档已更新** —— "已修/未修"断言必须带**核对日期**，否则按 `UNKNOWN` 处理
 
-> 📖 L1–L4 定义 ⇒ `docs/完全spring化的文件树.md` §0.1 · D1–D7 ⇒ `docs/决策记录.md`
+> 📖 L1–L4 定义 ⇒ `docs/完全spring化的文件树.md` §0.1 · D1–D9 ⇒ `docs/决策记录.md`

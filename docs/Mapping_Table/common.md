@@ -604,7 +604,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 > ⚠️ **反过来说**：`1:N` 只有 11 行且**全部在 `communityfact`** ⇒ **本层的形态变化集中在「合流 + 生态替代」，不在「拆细」**。
 > 这与《完全spring化的文件树》§6.1 的结论一致：`common` 几乎没降（51 → 56），**收益不在文件数，在消除 `@Import` 清单与拿到生态红利**。
 
-### 7.4 🔴 三列职责对不上的地方（5 条，均需在实现前定死）
+### 7.4 🔴 三列职责对不上的地方（6 条，均需在实现前定死）
 
 > 这几条是本表**最需要人拍板**的部分 —— 它们不是文件缺漏，而是**三棵树对同一职责给了三个不同的落点**。
 
@@ -644,7 +644,7 @@ RAG-V1 的 `common/` 里**仍保留 18 个 `GoStyle*` 命名的类**（实测 `f
 | `RAG/docs/FileTree/common.md` | A↔B 的现成职责映射（`§12.4` 职责→Java 映射表、`§12.7` 不通过项 #1–#12） |
 | `RAG/docs/DRIFT/common/alignment-2026-10-23.md` | B 列的漂移事实（§三 日志 KV 丢失 · §四 communityfact 消费者不一致 · §五 14 条未修 · §十二 27 条编号 + 5 项未编号） |
 | `RAG-V1/docs/完全spring化的文件树.md` | C 列的推导依据（§4.5 共享层映射表 · §5.5 目标结构 · §6 文件变化表） |
-| `RAG-V1/docs/决策记录.md` | D1–D6 已定 / P1–P6 待拍板 |
+| `RAG-V1/docs/决策记录.md` | D1–D9 已定 / P1–P6 待拍板 |
 | `RAG-V1/docs/L3-降级清单.md` | D-01 – D-04 降级项 · K-01 – K-06 保留项 |
 | `RAG-V1/docs/File_Tree/common.md` | C 列的实际文件系统树（由 `tools/gen-file-tree.py` 生成） |
 | `RAG-V1/AGENTS.md` | §1.1b L1 逐域隔离 · §1.1c 生态无等价物 G-1 – G-4 · §1.3 注解≠生效 · §1.4 R1 – R6 · §2.0 命名约定 |
