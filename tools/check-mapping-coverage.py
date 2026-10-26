@@ -11,10 +11,11 @@
 - **B 列漏记** = RAG 有这个 `.java`，但 B 列没覆盖 ⇒ **抄写路线图（§1.0c）会漏掉它**
 - **B 列失效** = B 列写了这个类，但 RAG 侧已改名/删除 ⇒ **文档引用了不存在的类**
 
-五重校验（全部从文件系统反查，不采信文档自报数）：
+八重校验（全部从文件系统反查，不采信文档自报数）：
   ① A 列覆盖率  ② C 列覆盖率  ③ `_INDEX.md` 自报数字对账
   ④ 小节标题自报条数 == 表内实际行数  ⑤ B 列双向对账（A/C 之外的第三列）
   ⑥ B↔C 指代消解后可判定性（「同上」是确定性指代 ⇒ 消解后每行都要读得出）
+  ⑦ 主表行形状（列数必须为 5）  ⑧ `_INDEX.md` 合计行对账
 
 用法：
     python3 tools/check-mapping-coverage.py            # 全部域
@@ -71,16 +72,6 @@ TYPE_TOKENS = {"1:1", "1:N", "N:1", "C 新增"}
 #
 # 格式：类名 -> (原因, 核对日期)
 B_COLUMN_WHITELIST = {
-    # ── 类别 A：C 侧有同名类 ⇒ B 列漏写其 RAG 前身（**待补**，抄写时会漏掉来源定位）──
-    "ArticleExceptions":         ("C 侧 com.rag.article.exception.ArticleExceptions 存在 ⇒ B 列漏写 RAG 前身", "2026-10-26"),
-    "MessageExceptions":         ("C 侧 com.rag.message.exception.MessageExceptions 存在 ⇒ B 列漏写 RAG 前身", "2026-10-26"),
-    "ConversationEntity":        ("C 侧 com.rag.message.domain.entity.ConversationEntity 存在 ⇒ B 列漏写", "2026-10-26"),
-    "ConversationMessageEntity": ("C 侧 com.rag.message.domain.entity.ConversationMessageEntity 存在 ⇒ B 列漏写", "2026-10-26"),
-    "NotificationEntity":        ("C 侧 com.rag.message.domain.entity.NotificationEntity 存在 ⇒ B 列漏写", "2026-10-26"),
-    "LikeCursorIdGenerator":     ("C 侧 com.rag.like.service.LikeCursorIdGenerator 存在 ⇒ B 列漏写", "2026-10-26"),
-    "LikeDomainFactOutboxMapper":("C 侧 com.rag.like.mapper.LikeDomainFactOutboxMapper 存在 ⇒ B 列漏写", "2026-10-26"),
-    "LikeFactStreamMapper":      ("C 侧 com.rag.like.mapper.LikeFactStreamMapper 存在 ⇒ B 列漏写", "2026-10-26"),
-    "TaskProgressMapper":        ("C 侧 com.rag.task.mapper.TaskProgressMapper 存在 ⇒ B 列漏写", "2026-10-26"),
     # ── 类别 B：C 侧确无对应物 ⇒ B 列可以不写（**有意不记**）──
     "ArticleGoStyleCoercion":    ("RAG 域内局部副本 ⇒ C 侧由 common/web/Coercion 共享承担", "2026-10-26"),
     "ArticleGoStyleCorsFilter":  ("RAG 域内局部副本 ⇒ C 侧由 common/web/ 过滤器承担", "2026-10-26"),
@@ -196,6 +187,31 @@ def parse_index_table():
         rows_n = num(cells[5])
         out[dom] = (lines, c_frac, c_tot, a_frac, a_tot, rows_n)
     return out
+
+def parse_index_totals():
+    """解析 `_INDEX.md` 覆盖度表的**合计行** ⇒ `(行数, 映射行)`。
+
+    ⚠️ **为什么单独守它**（2026-10-26 实测）：`parse_index_table` 只对账**各域**的 4 项
+    ⇒ 合计行是**唯一没人核对的自报数** ⇒ 实测发现它长期与真实值差 1 而无人发现
+    ⇒ 与 P-08 同病（没人复算的数 = 字节层面和愿望一样）⇒ 补上。
+    """
+    idx = MT / "_INDEX.md"
+    if not idx.exists():
+        return None
+    for ln in idx.read_text(encoding="utf-8").splitlines():
+        if not ln.startswith("|"):
+            continue
+        cells = [c.strip() for c in ln.split("|") if c.strip()]
+        if not cells or cells[0].strip("*") != "合计":
+            continue
+        if len(cells) < 6:
+            return None
+        def num(s):
+            m = re.findall(r"\d+", s.replace(",", ""))
+            return int(m[0]) if m else None
+        return num(cells[2]), num(cells[5])
+    return None
+
 
 def java_files(rel):
     """RAG-V1 侧的主代码 `.java`（排除测试与构建产物）。返回 (相对路径, 文件名) 列表。
@@ -328,34 +344,84 @@ def check_section_counts() -> list:
     return problems
 
 
-def _b_cells():
-    """收集 B 列单元格文本 `[(文档, 行号, 文本)]`。
+def _split_row(ln):
+    """按 **markdown 表格规则**切分单元格 —— **转义的 `\|` 不算列分隔符**。
 
-    范围只有两处（**不能扫全文** —— 全文里的 `.java` 也包含 C 列的类名，
-    拿全文当 B 列会把「C 侧有、RAG 侧没有」的类误报成「B 列引用了不存在的类」）：
-      ① **主表**（A|B|C|类型|备注）的**第 2 列** —— 按映射类型词表认表，不认列位；
-      ② **§0.5「RAG（B）包 | RAG-V1（C）包」速查表**的第 1 列（包级写法）。
+    ⚠️ **踩过的坑**：直接 `ln.split("|")` 会把**已正确转义**的 `\|` 也切开
+    ⇒ 一行被误判成 6/7 列 ⇒ 守卫按 cells[1] 取 B 列时**整行的 B 列内容静默丢失**
+    （实测 `like/like.md:136` 的雪花游标 `(unixMilli<<22)\|(nodeId<<12)\|seq`
+    就是这种**文档本来就对、解析器不对**的情况）。
+    ⇒ 切分时把 `\|` 还原成字面 `|`。
+    """
+    s = ln.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    cells, cur, i = [], [], 0
+    while i < len(s):
+        ch = s[i]
+        if ch == "\\" and i + 1 < len(s) and s[i + 1] == "|":
+            cur.append("|")
+            i += 2
+            continue
+        if ch == "|":
+            cells.append("".join(cur).strip())
+            cur = []
+            i += 1
+            continue
+        cur.append(ch)
+        i += 1
+    cells.append("".join(cur).strip())
+    return cells
+
+
+def _scan_tables():
+    """扫出所有表格行 `[(文档, 行号, 单元格列表, 是否主表)]`。
+
+    ⚠️ **主表的识别按「表头第 4 格」**，不按列数、不按关键词 anywhere：
+      主表头 = `| A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |`
+      ⇒ 第 4 格（index 3）是「映射类型」。
+      而 `| 映射类型 | 条数 | 占比 | 说明 |`（统计表）第 4 格是「说明」⇒ **不算主表**。
+
+    ⚠️ **主表行的列数必须是 5** —— 单元格里的 `|` 未转义（markdown 里 `|` 是列分隔符）
+      会把一行切成 6/7 列 ⇒ 那样的行**既认不出 B 列，也渲染错乱** ⇒ 单独报红（见
+      `check_table_shape`），**不静默跳过**。
     """
     out = []
     for doc in sorted(MT.rglob("*.md")):
         if doc.name in ("_INDEX.md", "README.MD"):
             continue
-        in_pkg_table = False
+        in_main = False
         for i, ln in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
             if not ln.startswith("|"):
-                in_pkg_table = False
+                in_main = False
                 continue
-            cells = [c.strip() for c in ln.strip().strip("|").split("|")]
-            if cells and "RAG（B）包" in cells[0]:
-                in_pkg_table = True
+            cells = _split_row(ln)
+            if set("".join(cells)) <= set("-: "):      # 分隔行
                 continue
-            if len(cells) == 5:
-                t = cells[3].replace("`", "").replace("**", "").strip()
-                if t in TYPE_TOKENS:
-                    out.append((doc, i, cells[1]))
-                    continue
-            if in_pkg_table and len(cells) >= 2:
-                out.append((doc, i, cells[0]))
+            if len(cells) == 5 and "映射类型" in cells[3].replace("`", "").replace("**", ""):
+                in_main = True
+                continue
+            out.append((doc, i, cells, in_main))
+    return out
+
+
+def _b_cells():
+    """收集 B 列单元格文本 `[(文档, 行号, 文本)]`。
+
+    范围只有两处（**不能扫全文** —— 全文里的 `.java` 也包含 C 列的类名，
+    拿全文当 B 列会把「C 侧有、RAG 侧没有」的类误报成「B 列引用了不存在的类」）：
+      ① **主表**（A|B|C|类型|备注）的**第 2 列**；
+      ② **§0.5「RAG（B）包 | RAG-V1（C）包」速查表**的第 1 列（包级写法）。
+    """
+    out = []
+    for doc, i, cells, is_main in _scan_tables():
+        if is_main and len(cells) >= 2:
+            out.append((doc, i, cells[1]))
+            continue
+        if cells and "RAG（B）包" in cells[0] and len(cells) >= 2:
+            out.append((doc, i, cells[0]))
     return out
 
 
@@ -506,19 +572,33 @@ def _map_rows():
     ⚠️ 消解**必须按这个顺序**：指代是「向上指」，跨文档指代不成立。
     """
     out = []
-    for doc in sorted(MT.rglob("*.md")):
-        if doc.name in ("_INDEX.md", "README.MD"):
+    for doc, i, cells, is_main in _scan_tables():
+        if not is_main or len(cells) < 5:
             continue
-        for i, ln in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
-            if not ln.startswith("|"):
-                continue
-            cells = [c.strip() for c in ln.strip().strip("|").split("|")]
-            if len(cells) != 5:
-                continue
-            t = cells[3].replace("`", "").replace("**", "").strip()
-            if t in TYPE_TOKENS:
-                out.append((doc, i, cells[0], cells[1], cells[2], t))
+        t = cells[3].replace("`", "").replace("**", "").strip()
+        if t in TYPE_TOKENS:
+            out.append((doc, i, cells[0], cells[1], cells[2], t))
     return out
+
+
+def check_table_shape():
+    """**主表行的列数必须为 5** —— 单元格里的 `|` 未转义会把一行切成 6/7 列。
+
+    ⚠️ **为什么必须报红而不是静默跳过**：这样的行
+      ① **渲染错乱**（markdown 里 `|` 是列分隔符）；
+      ② **B 列认不出来**（守卫按 cells[1] 取 B 列）⇒ 该行的 B 列内容**静默丢失**
+      ⇒ 正是 P-08「没人复算的证据 = 字节层面和愿望一样」的同病。
+    """
+    problems = []
+    n = 0
+    for doc, i, cells, is_main in _scan_tables():
+        if not is_main or len(cells) == 5:
+            continue
+        n += 1
+        problems.append(
+            f"❌ {doc.relative_to(MT)}:{i} 主表行有 {len(cells)} 列（应为 5）"
+            f" ⇒ 单元格里的 `|` 未转义（markdown 里它是列分隔符）⇒ 该行 B 列认不出")
+    return problems, n
 
 
 def check_b_resolvability():
@@ -684,6 +764,17 @@ def main():
     else:
         print("\n_INDEX.md 自报数字对账：跳过（索引不存在）")
 
+    # ── `_INDEX.md` 合计行对账（合计行此前无人核对 ⇒ 唯一漂移的盲区）─────
+    tot_idx = parse_index_totals()
+    if tot_idx and actual:
+        exp_lines = sum(v[0] for v in actual.values())
+        exp_rows = sum(v[5] for v in actual.values())
+        for label, got, want in (("行数", tot_idx[0], exp_lines), ("映射行", tot_idx[1], exp_rows)):
+            if got != want:
+                problems.append(f"❌ _INDEX.md 合计行的「{label}」自报 {got} ≠ 实测 {want}")
+        print(f"\n_INDEX.md 合计行对账：{'✅ 一致' if tot_idx==(exp_lines,exp_rows) else '❌ 有漂移'}"
+              f"（行数 {exp_lines} · 映射行 {exp_rows}）")
+
     # ── 小节标题自报条数 vs 表内实际行数（P-08 同病 ⇒ 机器复算）──────────
     sec_problems = check_section_counts()
     if sec_problems:
@@ -691,6 +782,14 @@ def main():
         problems.extend(sec_problems)
     else:
         print("\n小节自报条数对账：✅ 全部一致（标题自报 == 表内实际行数）")
+
+    # ── 主表行形状（列数必须为 5）─────────────────────────────────────
+    shape_problems, shape_n = check_table_shape()
+    if shape_problems:
+        print(f"\n主表行形状：❌ {shape_n} 行列数异常（未转义的 `|`）")
+        problems.extend(shape_problems)
+    else:
+        print("\n主表行形状：✅ 全部为 5 列")
 
     # ── B 列双向对账（第 5 重校验 · 2026-10-26）────────────────────────
     b_problems, b_summary, b_uncovered = check_b_column()
