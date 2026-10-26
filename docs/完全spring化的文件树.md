@@ -265,7 +265,7 @@ service/message/
 
 | Go 来源及职责 | Java 目标包或现有机制 | 承载方式 | 依据与原因 |
 |---|---|---|---|
-| `types/types.go` 13 个 DTO | `api/dto/*`（immutable record） | **ADAPT** | 契约不变（L1），形态从可变 POJO → record（D5） |
+| `types/types.go` 13 个 DTO | `api/dto/*`（immutable record） | **ADAPT** | 契约不变（L1），形态从可变 POJO → record（D5）；**D11 后** C 侧 `dto/` 按业务对象拆子包 |
 | `httpx.Parse` 必填校验 | Bean Validation `@NotNull/@NotBlank` + `api/advice` | **SPLIT** | ⚠️ **L3 降级**：错误文案从 go-zero 改为 Bean Validation 文案 |
 | `httpx.Parse` 类型强转判定 | `common/autoconfigure/JsonBodyConverterAutoConfiguration`（`CoercionConfig`） | **ADAPT** | **已是 Jackson 原生机制**（现存 `Coercion`），只需归位到 starter 并改名 |
 | `httpx.Parse` 读取 body 判据 | `common/web/JsonBodyConverter`（→ `JsonBodyConverter`） | **REUSE** | 保留 `withJsonBody` 的字面判据（`ContentLength>0` + Content-Type 字面含 `application/json`） |
@@ -398,10 +398,12 @@ service/message/
     │   ├── controller/                         # ===== HTTP 入口（原 api/controller）=====
     │   │   ├── MessageController.java           # @RequestMapping("/message/v1")
     │   │   └── MessageAdminController.java      # @RequestMapping("/message/v1/admin")
-    │   ├── dto/                                # ★ 全部 immutable record
-    │   │   ├── GetConversationMessagesReq.java
-    │   │   ├── GetConversationMessagesResp.java
-    │   │   └── …（17 个用例的 req/resp 对）
+    │   ├── dto/                                # ★ 全部 immutable record（D11：按业务对象拆子包）
+    │   │   ├── chat/                          #   私聊（3）
+    │   │   ├── common/                        #   通用入参（2：EmptyReq / PageReq）
+    │   │   ├── conversation/                  #   会话（5）
+    │   │   ├── notification/                  #   通知（5）
+    │   │   └── read/                          #   已读 + 未读汇总（2）
     │   ├── interceptor/                        # ===== HTTP 边界（原 api/interceptor）=====
     │   │   ├── MessageJwtAuthInterceptor.java   # JWT 验签 + Redis blacklist
     │   │   └── MessageAdminJwtAuthInterceptor.java
@@ -638,7 +640,7 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 | `*/api/internal/middleware/*.go` | `api/interceptor/JwtAuthInterceptor.java` | **SPLIT** | 中间件签名 → `HandlerInterceptor`；业务语义保留 |
 | `*/api/internal/metrics/metrics.go` | `api/metrics/*ApiMetrics.java` | **REUSE** | 指标名与标签 1:1 |
 | `*/api/internal/svc/servicecontext.go` | （无独立文件） | **ABSORB** | 纯装配 ⇒ Spring DI |
-| `*/api/internal/types/types.go` | `api/dto/*.java`（record） | **ADAPT** | 契约不变（L1），形态改 immutable |
+| `*/api/internal/types/types.go` | `api/dto/*.java`（record） | **ADAPT** | 契约不变（L1），形态改 immutable；**D11 后** C 侧 `dto/<业务对象>/` |
 | `*/rpc/internal/server/*server.go` | `grpc/*GrpcService.java` | **REUSE** | proto 方法是 L1（**D7 后改名 + 上收到 `grpc/` 包**） |
 | `*/rpc/internal/logic/*.go` | `domain/service/*DomainService.java` | **MERGE** | **D2：HTTP 与 gRPC 共享同一份业务用例**（**D7 后领域服务另出 `domain/service/`**） |
 | `*/rpc/internal/model/*.go`（实体） | `domain/entity/*Entity.java` | **REUSE** | `@TableName` + MyBatis-Plus（**D7 后拆到 `domain/entity/`**） |
@@ -823,7 +825,7 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 | 判定项（§15） | 结论 |
 |---|---|
 | **业务职责完整**（§15.1） | ✅ L1 全保、L2 全保、L3 保 6 降 4，降级项逐条列明且不落在业务语义上 |
-| **符合目标项目的组织方式**（§15.2） | ✅ **D7 后**：域内不再有 `api.*` / `rpc.*` 协议层，改为单层技术角色包树（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception` / `contract`）；跨域 client 落**单层 `client/`**（依据见 §5.2）；未新增顶层模块 |
+| **符合目标项目的组织方式**（§15.2） | ✅ **D7 后**：域内不再有 `api.*` / `rpc.*` 协议层，改为单层技术角色包树（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception` / `contract`；**D11 后 `dto/` 内按业务对象再拆一级**）；跨域 client 落**单层 `client/`**（依据见 §5.2）；未新增顶层模块 |
 | **框架吸收有真实依据**（§15.3） | ✅ 每条 ABSORB 均给出机制名 + 现有 RAG 代码佐证；现有组件复用标 `REUSE` 而非 `ABSORB` |
 | **合并与拆分有明确理由**（§15.4） | ✅ 三类合并（入口合并 D1、用例内聚 §5.4 五判据、生态吸收 D4）各有独立判据；拆分项逐条说明边界 |
 | **不把推导伪装成事实**（§15.5） | ✅ `rpc.*` 改名（**已由 D7 结清**）、`api/client` 空包处置标 UNKNOWN；规模数字明确标为估算并给出不确定性来源 |

@@ -11,7 +11,7 @@
 | artifactId | `user-service` |
 | 根包 | `com.rag.user` |
 | Go 出处 | `service/user/user/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = Go logic 用例的 `types.Xxx` 引用图 + 类型所在聚合） |
 
 ## 二、依赖
 
@@ -59,25 +59,28 @@
 │   │   │               │       ├── AvatarDomainService.java
 │   │   │               │       └── UserDomainService.java
 │   │   │               ├── dto/
-│   │   │               │   ├── AvatarHistoryItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── CreateUserReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── CreateUserResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── DeleteUserReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── DeleteUserResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetAvatarHistoryResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetUserReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetUserResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── LoginReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── LoginResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── LogoutReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── LogoutResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── SelectAvatarReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── SelectAvatarResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── UpdateUserReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── UpdateUserResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── UploadAvatarReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── UploadAvatarResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   └── UserInfo.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   ├── auth/
+│   │   │               │   │   ├── LoginReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── LoginResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── LogoutReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── LogoutResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   ├── avatar/
+│   │   │               │   │   ├── AvatarHistoryItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetAvatarHistoryResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── SelectAvatarReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── SelectAvatarResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── UploadAvatarReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── UploadAvatarResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   └── user/
+│   │   │               │       ├── CreateUserReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── CreateUserResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── DeleteUserReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── DeleteUserResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── GetUserReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── GetUserResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── UpdateUserReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── UpdateUserResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       └── UserInfo.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               ├── exception/
 │   │   │               │   └── UserExceptions.java
 │   │   │               ├── grpc/

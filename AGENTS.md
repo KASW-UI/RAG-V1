@@ -8,7 +8,7 @@
 >
 > 👉 **先读 §一「项目身份与目的」** —— 下面每一条政策都是在为它服务；不知道目的就改不动。
 >
-> ⚠️ **本文件由 RAG 仓库的 AGENTS.md 改写而来**（2026-10-25）。带 **📦** 标记的段落是 **RAG 仓库的历史存档**（参考，不描述 RAG-V1 的现状）；**RAG-V1 自身的状态一律以 §0 为准。**
+> ⚠️ **本文件由 RAG 仓库的 AGENTS.md 改写而来**（2026-10-25）。带 **📦** 标记的段落是 **RAG 仓库的历史存档**（参考，不描述 RAG-V1 现状）；**RAG-V1 自身状态一律以 §0 为准。**
 
 ## 〇、当前状态（2026-10-26）
 
@@ -20,18 +20,18 @@
 
 | 项 | 数 |
 |---|---|
-| Java 文件 | **559**（549 主代码 + 10 测试骨架）—— **每个文件只有 package + 空类型 + TODO javadoc**（559/559 全覆盖）；`service/` 503 + `common` 56 |
+| Java 文件 | **559**（549 主代码 + 10 测试骨架）—— **每个文件只有 package + 空类型 + TODO javadoc**（559/559）；`service/` 503 + `common` 56 |
 | Maven 模块 | **16** 个 pom = **13 叶子** + **2 聚合**（`service` / `users`）+ 1 根 pom —— **D7 打平**：每域**一个** jar 模块（`service/<域>/`）；**artifactId 保持长名唯一**（`<域>-service` / `users-common` / `proto` / `common`）⇒ 依赖声明零改动 |
 | proto / `application.yml` | **10 / 10**（10 个 `.proto` 集中在**根级 `proto/` 模块**，pb 包名 `com.rag.proto.<域>`；内容与 Go 侧逐字节一致，仅 `java_package` 属表达层） |
 | `AutoConfiguration.imports` | **1**（`common/`，注册 7 个 auto-config） |
-| `docs/File_Tree/` · 三方对照 | **14 份 + `_INDEX.md`** 文件树（源树路径镜像）· **13 份**域文档（C 列 **549/549**、A 列 **482/482** 覆盖 **100%**；**76 条落点缺口** 🔴13） |
+| `docs/File_Tree/` · 三方对照 | **14 份 + `_INDEX.md`** 文件树 · **13 份**域文档（C 列 **549/549**、A 列 **482/482** 覆盖 **100%**；**76 条落点缺口** 🔴13） |
 | 三档台账 | DRIFT **10 域全部未建立**（实现开始后逐条填）· Intentional_Deviations **4 条**（like/comment 各 2）· Pitfalls P-01~P-10 |
 
-**已完成**：树结构、pom、proto、application.yml、断言清单、三方对照、**GitHub 仓**。**未完成**：全部实现（⇒ 走 §1.0c 从 RAG 抄）。
+**已完成**：树结构、pom、proto、application.yml、断言清单、三方对照、**GitHub 仓**。**未完成**：全部实现（⇒ §1.0c 从 RAG 抄）。
 
-✅ **2026-10-26 · D7**（proto 集中 + 模块打平 + 包压平）⇒ 详见 [`docs/决策记录.md`](docs/决策记录.md) **D7**；**§1.0c**：RAG 实现可作抄写来源（Mapping_Table B↔C = 路线图）。
+✅ **2026-10-26 · D7/D10/D11**（proto 集中+模块打平+包压平 / `bootstrap`→`wiring` / `dto/` 拆业务对象子包）⇒ [`docs/决策记录.md`](docs/决策记录.md)；**§1.0c**：RAG 实现可作抄写来源。
 
-> 📌 **RAG 的 158 份台账留在 RAG 仓库** ⇒ RAG-V1 的 `docs/DRIFT/` 从零开始填；**但其「证据强度」分级方法论与已知未修清单值得借鉴**（§1.0c 约束 3）；教训已蒸馏到 [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)。
+> 📌 **RAG 的 158 份台账留在 RAG 仓库** ⇒ RAG-V1 的 `docs/DRIFT/` 从零开始填；**但其「证据强度」分级方法论值得借鉴**（§1.0c 约束 3）；教训已蒸馏到 [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)。
 
 > ⚠️ **「已落地」≠「已实现」；「源码级对照」≠「双侧活体对拍」** ⇒ 台账里的 ✅ 一律读作「**在该证据强度下一致**」，不是已闭环。**证据强度以该域台账的「证据强度」列为准**（分层口径见 `docs/DRIFT/_INDEX.md` 末节）。
 
@@ -55,8 +55,8 @@ RAG-V1 仓库路径：`/Users/pr/Documents/GitHub/RAG-V1`。
 
 > ⚠️ **两层的调和规则**：认知层只允许体现在**注释与文档**；**行为层不允许被认知层改写**。看到"更地道的 Java 写法"想动 L1/L2 ⇒ 停，走决策流程。
 
-> **为什么有 RAG-V1？** RAG 的价值是**行为已反复对齐**；但**它的文件树不是 Spring 的形状**：域内 `api`/`rpc` 是**两个独立进程**、`service/common` 塞了重写 go-zero 运行时的类 + 大量 `GoStyle*`、每个消费者手写 `@Import` 清单。
-> ⇒ **RAG-V1 的存在理由 = 彻底把文件树 Spring 化**：一域一进程 + 包压平（D1 + D7）+ 共享层 starter 化（D3）+ 生态优先（D4）。**行为不重做** —— 仍以 Go 为唯一依据；但**实现可抄 RAG**（§1.0c）。
+> **为什么有 RAG-V1？** RAG 行为已反复对齐，但**文件树不是 Spring 的形状**：域内 `api`/`rpc` 是**两个独立进程**、`service/common` 塞了重写 go-zero 运行时的类 + 大量 `GoStyle*`、每个消费者手写 `@Import` 清单。
+> ⇒ **存在理由 = 把文件树 Spring 化**：一域一进程 + 包压平（D1 + D7）+ 共享层 starter 化（D3）+ 生态优先（D4）。**行为不重做**（仍以 Go 为唯一依据），但**实现可抄 RAG**（§1.0c）。
 
 ### 1.0b 三个仓库的关系（别搞混）
 
@@ -71,7 +71,7 @@ RAG-V1 仓库路径：`/Users/pr/Documents/GitHub/RAG-V1`。
 ### 1.0c RAG 实现复用：Mapping_Table 的 B↔C 对应就是抄写路线图（2026-10-26 用户定）
 
 > 📌 **本条是「RAG 仓只读参考」的升级**：RAG 侧有 **951 文件 / 157,377 行**已实现代码（本仓 559 个**空壳**）⇒ **从零重写既慢又不如抄**。
-> ⇒ **[`docs/Mapping_Table/`](docs/Mapping_Table/_INDEX.md) 的 B 列（RAG）↔ C 列（RAG-V1）对应 = 逐类抄写路线图**；各域 **§0.5「B → C 结构映射速查表」**给出「RAG 的哪个包 → 本仓的哪个包」。
+> ⇒ **[`docs/Mapping_Table/`](docs/Mapping_Table/_INDEX.md) 的 B 列 ↔ C 列 = 逐类抄写路线图**；各域 **§0.5** 给出「RAG 的哪个包 → 本仓的哪个包」。
 
 **抄写三档**（按 §3.1 分层）：
 
@@ -101,6 +101,7 @@ RAG-V1 仓库路径：`/Users/pr/Documents/GitHub/RAG-V1`。
 
 RAG-V1 的目标架构（落地以 `docs/File_Tree/` 为准）：
 `{controller,dto,advice,config,interceptor,metrics,service,grpc,domain,messaging,mapper,client,wiring,exception,contract}` + `resources/db/migration/*.sql`
+⇒ **D11**：`dto/` 内**按业务对象再拆一级** `dto/<业务对象>/`（全仓 136 DTO → 26 子包）⇒ 写 DTO 时**落到业务对象子包**，不落平铺 `dto/`。
 ⇒ 推导全文 ⇒ [`docs/完全spring化的文件树.md`](docs/完全spring化的文件树.md) §5
 
 ### 2.2 目录形状：哪些是 Spring 惯例，哪些是 Go 惯性投影
@@ -119,7 +120,7 @@ RAG-V1 的目标架构（落地以 `docs/File_Tree/` 为准）：
 3. **D1 把 api+rpc 合并进同一进程** —— 一个 app 同起 Tomcat 与 gRPC ⇒ 异常处理**必须分两套**：`advice`（`@RestControllerAdvice`）vs `exception` + `GrpcExceptionMapperAutoConfiguration`（§3.5）。
 
 ⚠️ **artifactId 未对齐生态惯例**：`common` / `proto` / `users-common` / `*-service`，而非 `xxx-spring-boot-starter` 形态 —— 属 **L4 实现机制，可重选**，**未拍板**。
-> ⚠️ **物理目录 ≠ artifactId** —— 目录 `service/users/user/` 的 artifactId 是 `user-service`（reactor 内须唯一 ⇒ 改目录不改坐标）。**不要用目录名反推 artifactId**。**形状债已清零（P4-③ · D7）**；剩余**命名债 P4-④ 余 6**（`Rag*` 已清）⇒ [`docs/命名债与包形状.md`](docs/命名债与包形状.md)。
+> ⚠️ **物理目录 ≠ artifactId** —— 目录 `service/users/user/` 的 artifactId 是 `user-service`（reactor 内须唯一 ⇒ 改目录不改坐标）。**不要用目录名反推 artifactId**。**形状债已清零（P4-③ · D7）**；**命名债 P4-④ 余 6**（`Rag*` 已清）⇒ [`docs/命名债与包形状.md`](docs/命名债与包形状.md)。
 
 ### 2.3 `common/` 的准入（实测 · 有待裁决项）
 
@@ -234,7 +235,7 @@ RAG-V1 侧 10 个 `*.proto` **全部从 Go 侧复制**，非翻译。改动**严
 
 ### 4.3 用户问答原话
 
-> 📖 RAG 仓库的原话存档 ⇒ `docs/DRIFT/_cross/user-qa-verbatim.md`（**在 RAG 仓库里，不在 RAG-V1**）；RAG-V1 自己的拍板记录 ⇒ [`docs/决策记录.md`](docs/决策记录.md)（**D1–D10** 已定 + P1–P6 待拍板）。
+> 📖 RAG 仓库的原话存档 ⇒ `docs/DRIFT/_cross/user-qa-verbatim.md`（**在 RAG 仓库里，不在 RAG-V1**）；RAG-V1 自己的拍板记录 ⇒ [`docs/决策记录.md`](docs/决策记录.md)（**D1–D11** 已定 + P1–P6 待拍板）。
 
 ## 五、用户协作规则（精简）
 
@@ -251,8 +252,8 @@ RAG-V1 侧 10 个 `*.proto` **全部从 Go 侧复制**，非翻译。改动**严
 
 > **状态表纪律（2026-10-21）**：任何「已修 / 未修」断言必须带**核对日期**，否则按 `UNKNOWN` 处理。
 
-> ⚠️ **本节记的是 RAG 仓库的决策过程**（📦 存档）—— **RAG-V1 自己的架构决策在 [`docs/决策记录.md`](docs/决策记录.md)**（**D1–D10** + P1–P6）。**冲突时以 `docs/决策记录.md` 为准**。
-> **RAG 的四条结论（📦）**：① 丢掉 Flyway 改幂等重放 ② `admin-rpc` 不转发、直连（沿用 ✅）③ 拦截器注册用 `@Import` ⇒ ⚠️ **RAG-V1 不用**（D3）④ **Flyway 账本撞号** ⇒ 见下。
+> ⚠️ **本节记的是 RAG 仓库的决策过程**（📦 存档）—— **RAG-V1 自己的架构决策在 [`docs/决策记录.md`](docs/决策记录.md)**（**D1–D11** + P1–P6）。**冲突时以 `docs/决策记录.md` 为准**。
+> **RAG 的四条结论（📦）**：① 丢掉 Flyway 改幂等重放 ② `admin-rpc` 不转发、直连（沿用 ✅）③ 拦截器注册用 `@Import` ⇒ ⚠️ **RAG-V1 不用**（D3）④ Flyway 账本撞号 ⇒ 见下。
 
 🔴 **Flyway 账本撞号 —— RAG-V1 尚未决策**：`flyway_schema_history` 是 **schema 级**账本 ⇒ 同库同 schema 只能有一本账；10 个 `*-service` **都有 `db/migration/`** ⇒ 若共用一个 schema，**任一 app 先启动，其他 app 的表就永远建不出来**。
 ⇒ **填实现前必须先拍板**（独立账本表名 / 独立 schema / 独立库）。RAG 的定案是每模块独立账本表名。
@@ -267,7 +268,7 @@ Go 真源仓库路径见 §1.0b（**已冻结**，不接受写入）。RAG-V1 �
 
 ### 7.2 动手前必读的 5 份
 
-- **[`docs/决策记录.md`](docs/决策记录.md)** —— **D1–D10** + P1–P6 + 决策关系图 ⇒ 动结构前必读
+- **[`docs/决策记录.md`](docs/决策记录.md)** —— **D1–D11** + P1–P6 + 决策关系图 ⇒ 动结构前必读
 - **[`docs/Mapping_Table/`](docs/Mapping_Table/_INDEX.md)** —— **抄写路线图**（§1.0c）：B 列 RAG ↔ C 列 RAG-V1 的逐类对应 + 各域 **§0.5 B→C 结构映射速查表** ⇒ **填实现前必读**
 - **[`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)** —— RAG 的坑 → RAG-V1 的处置 ⇒ **填实现前先读**
 - **[`docs/架构符合性断言.md`](docs/架构符合性断言.md)** —— A1–A12 ⇒ 写测试 / 接框架时
@@ -310,4 +311,4 @@ Go 真源仓库路径见 §1.0b（**已冻结**，不接受写入）。RAG-V1 �
 - [ ] **台账已写** —— 偏离写 Intentional_Deviations，踩坑写 Pitfalls，漂移写 DRIFT
 - [ ] **文档已更新** —— "已修/未修"断言必须带**核对日期**，否则按 `UNKNOWN` 处理
 
-> 📖 L1–L4 定义 ⇒ `docs/完全spring化的文件树.md` §0.1 · D1–D10 ⇒ `docs/决策记录.md`
+> 📖 L1–L4 定义 ⇒ `docs/完全spring化的文件树.md` §0.1 · D1–D11 ⇒ `docs/决策记录.md`

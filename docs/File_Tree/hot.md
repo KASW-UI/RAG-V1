@@ -11,7 +11,7 @@
 | artifactId | `hot-service` |
 | 根包 | `com.rag.hot` |
 | Go 出处 | `service/hot/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = Go logic 用例的 `types.Xxx` 引用图 + 类型所在聚合） |
 
 ## 二、依赖
 
@@ -60,9 +60,10 @@
 │   │   │               │   └── model/
 │   │   │               │       └── HeavyKeeper.java
 │   │   │               ├── dto/
-│   │   │               │   ├── HotArticleItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── HotArticlesReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   └── HotArticlesResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   └── article/
+│   │   │               │       ├── HotArticleItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── HotArticlesReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       └── HotArticlesResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               ├── grpc/
 │   │   │               │   └── HotGrpcService.java
 │   │   │               ├── metrics/

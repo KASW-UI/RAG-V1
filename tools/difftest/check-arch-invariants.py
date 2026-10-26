@@ -573,9 +573,14 @@ def check_a8(root: pathlib.Path, contract: str) -> Result:
 # A9 · DTO 必须 immutable
 # ---------------------------------------------------------------------------
 def check_a9(root: pathlib.Path, contract: str) -> Result:
-    """A9 · `dto` 包下的类型必须 immutable（`record` 或 final 字段 + 无 setter）。"""
+    """A9 · `dto` 包下的类型必须 immutable（`record` 或 final 字段 + 无 setter）。
+
+    ⚠️ **glob 必须递归到子包**（2026-10-26 · D11）：`dto/` 已按业务对象拆成
+    `dto/<业务对象>/`（如 `dto/user/` `dto/auth/`）⇒ 只扫 `dto/*.java` 会**一个 DTO 都扫不到**
+    ⇒ 判据静默失效（假绿）⇒ 必须用 `**/dto/**/*.java`（`**` 匹配零层或多层）。
+    """
     viol, n = [], 0
-    for f in root.glob("**/dto/*.java"):
+    for f in root.glob("**/dto/**/*.java"):
         if "target" in f.parts:
             continue
         n += 1
@@ -609,7 +614,8 @@ def check_a10(root: pathlib.Path, contract: str) -> Result:
         if A10_HANDWRITTEN_VALIDATOR.search(f.stem):
             viol.append(f"{f.relative_to(root)} → 手写必填校验器")
     for module, _ in iter_modules(root):
-        has_dto = any(module.glob("src/main/java/**/dto/*.java"))
+        # ⚠️ 递归到子包（D11）—— `dto/` 已按业务对象拆子包，只扫 `dto/*.java` 会漏判
+        has_dto = any(module.glob("src/main/java/**/dto/**/*.java"))
         if not has_dto:
             continue
         txt = pom_text(module)
@@ -760,6 +766,16 @@ def build_fixture(base: pathlib.Path) -> pathlib.Path:
            "  private String name;\n"
            "  public void setName(String n) { this.name = n; }\n}\n")   # A9 违规
     _write(root / f"{j}/dto/GoodDto.java", "package com.rag.x.dto;\npublic record GoodDto() {}\n")
+    # ⚠️ **子包负向 fixture**（2026-10-26 · D11）—— `dto/` 已按业务对象拆子包，
+    #    若 A9 的 glob 只扫 `dto/*.java`（零层），这两个**子包里的坏 DTO 会被漏掉** ⇒ 假绿。
+    #    ⇒ 把坏 DTO 放进 `dto/user/`：只有递归 glob 才抓得到 ⇒ 自检能证明这一点。
+    _write(root / f"{j}/dto/user/NestedBadDto.java",
+           "package com.rag.x.dto.user;\n"
+           "public class NestedBadDto {\n"
+           "  private String name;\n"
+           "  public void setName(String n) { this.name = n; }\n}\n")   # A9 违规（子包内）
+    _write(root / f"{j}/dto/user/NestedGoodDto.java",
+           "package com.rag.x.dto.user;\npublic record NestedGoodDto() {}\n")   # 合规（子包内）
     _write(root / f"{j}/GrpcClientUse.java",
            "package com.rag.x;\n"
            "public class GrpcClientUse {\n"
@@ -856,6 +872,38 @@ def self_test_a3_contract_b() -> tuple[bool, list]:
         shutil.rmtree(base, ignore_errors=True)
 
 
+def self_test_a9_nested() -> tuple[bool, list]:
+    """A9 · **子包负向自检** —— 证明 glob 真的递归到了 `dto/<业务对象>/` 子包。
+
+    ⚠️ **为什么这条必须单独存在**：只造一个 `dto/user/BadDto.java`，
+    **零层的 `dto/` 根下不放任何 DTO** ⇒ 若 A9 的 glob 只扫 `dto/*.java`，
+    它会扫到 **0 个 DTO** ⇒ 判据**静默通过**（假绿）⇒ 而常规自检只看「红/不红」，
+    零层 glob 同样会红（漏抓的那个不算）⇒ **常规自检抓不住这个洞**。
+    ⇒ 这条专测：**违规清单里必须出现 `dto/user/` 下的文件**。
+    """
+    base = pathlib.Path(tempfile.mkdtemp(prefix="arch-self-a9-"))
+    try:
+        root = base / "fixture"
+        _write(root / "pom.xml", "<project><modelVersion>4.0.0</modelVersion>"
+                                "<artifactId>fixture-parent</artifactId></project>")
+        _write(root / "service/x/x-service/pom.xml",
+               "<project><dependencies></dependencies></project>")
+        j = "service/x/x-service/src/main/java/com/rag/x"
+        _write(root / f"{j}/dto/user/NestedBadDto.java",
+               "package com.rag.x.dto.user;\n"
+               "public class NestedBadDto {\n"
+               "  private String name;\n"
+               "  public void setName(String n) { this.name = n; }\n}\n")
+        r = check_a9(root, "B")
+        caught = (r.state == FAIL
+                  and any("dto/user/" in v for v in r.violations))
+        results = [("子包 `dto/user/` 里的坏 DTO 必须被抓到（零层 glob 会漏 ⇒ 假绿）",
+                    caught, r.detail)]
+        return all(ok for _, ok, _ in results), results
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
 def self_test() -> int:
     """红灯自检 —— 逐条断言「该红的必须红」。"""
     print("=" * 78)
@@ -879,6 +927,19 @@ def self_test() -> int:
             print(f"红灯自检失败：{len(failed)} 条判据**没红** ⇒ 该断言等于没有断言：{', '.join(failed)}")
             return 1
         print(f"红灯自检通过：{len(CHECKS)}/{len(CHECKS)} 条判据均能红")
+
+        # ── A9 的**子包 glob**负向自检（glob 漏子包 ⇒ 扫到 0 个 ⇒ 假绿）──
+        print("-" * 78)
+        print("A9 · `dto/` 子包 glob 负向自检")
+        a9_ok, a9 = self_test_a9_nested()
+        for title, okflag, detail in a9:
+            mark = "✅" if okflag else "❌"
+            print(f"  {mark}  {title}")
+            print(f"          {detail}")
+        if not a9_ok:
+            print("A9 子包 glob 自检失败 ⇒ 判据在 `dto/<业务对象>/` 下**静默失效**（假绿）")
+            return 1
+        print("A9 子包 glob 自检通过：递归 glob 确实扫到了 `dto/<业务对象>/` 子包")
 
         # ── A3 的**契约 B（合并形态）**三向自检 ──────────────────────
         print("-" * 78)

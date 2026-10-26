@@ -56,7 +56,7 @@
 | `users/admin/api/client/` | `client/` | 直接压平 |
 | `users/admin/api/config/` | `config/` | 与 rpc 侧合并 |
 | `users/admin/api/controller/` | `controller/` | 直接压平 |
-| `users/admin/api/dto/` | `dto/` | 直接压平（26 个同名类全落此）|
+| `users/admin/api/dto/` | `dto/admin/` + `dto/auth/` + `dto/invite/` + `dto/user/` | 直接压平后**按业务对象拆 4 个子包**（D11：`admin` 7 / `auth` 4 / `invite` 2 / `user` 15） |
 | `users/admin/api/interceptor/` | `interceptor/` | 直接压平 |
 | `users/admin/api/metrics/` | `metrics/` | 与 rpc 侧合并 |
 | `users/admin/api/service/` | `service/` | 与 rpc 侧合并 |

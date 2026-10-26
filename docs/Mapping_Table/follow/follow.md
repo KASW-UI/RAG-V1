@@ -56,7 +56,7 @@
 | `follow/api/client/` | `client/` | 直接压平 |
 | `follow/api/config/` | `config/` | 与 rpc 侧合并 |
 | `follow/api/controller/` | `controller/` | 直接压平 |
-| `follow/api/dto/` | `dto/` | 直接压平（6 个同名类全落此）|
+| `follow/api/dto/` | `dto/list/` + `dto/recommend/` + `dto/relation/` | 直接压平后**按业务对象拆 3 个子包**（D11：`list` 2 / `recommend` 2 / `relation` 2） |
 | `follow/api/interceptor/` | `interceptor/` | 直接压平（2 个）|
 | `follow/api/metrics/` | `metrics/` | 与 rpc 侧合并 |
 | `follow/api/service/` | `service/` | 与 rpc 侧合并 |
@@ -104,12 +104,12 @@
 | `service/follow/api/internal/handler/follow/getfollowerlisthandler.go` | 同上 | 同上 | N:1 | 同上 |
 | `service/follow/api/internal/handler/follow/getblocklisthandler.go` | 同上 | 同上 | N:1 | 同上 |
 | `service/follow/api/internal/handler/follow/getrecommendationshandler.go` | 同上 | 同上 | N:1 | 同上 |
-| `service/follow/api/internal/types/types.go:6-10`（`FollowListReq`） | `follow-api/.../dto/FollowListReq.java` | `service/follow/src/main/java/com/rag/follow/dto/FollowListReq.java` | 1:1 | 3 字段**全 `optional`**；`user_id` 带 `,string` |
-| `service/follow/api/internal/types/types.go:12-14`（`FollowUserListResp`） | `follow-api/.../dto/FollowUserListResp.java` | `service/follow/src/main/java/com/rag/follow/dto/FollowUserListResp.java` | 1:1 | 🔴 `user_ids` **无** `,string` ⇒ JSON 是**数字数组** `[1234,5678]` |
-| `service/follow/api/internal/types/types.go:16-18`（`RecommendListResp`） | `follow-api/.../dto/RecommendListResp.java` | `service/follow/src/main/java/com/rag/follow/dto/RecommendListResp.java` | 1:1 | 空列表必须序列化为 `[]` 而非 `null` |
-| `service/follow/api/internal/types/types.go:20-23`（`RecommendUser`） | `follow-api/.../dto/RecommendUser.java` | `service/follow/src/main/java/com/rag/follow/dto/RecommendUser.java` | 1:1 | 🔴 `target_id` **有** `,string` ⇒ JSON 是**字符串** `"1234"`（与上一行的数字数组**形态不一致**，是本域最隐蔽的 L1 差异） |
-| `service/follow/api/internal/types/types.go:25-27`（`RelationActionReq`） | `follow-api/.../dto/RelationActionReq.java` | `service/follow/src/main/java/com/rag/follow/dto/RelationActionReq.java` | 1:1 | 🔴 `target_id` **无 `optional` ⇒ 必填**；缺失 ⇒ HTTP 200 + `{"code":5001,...}` |
-| `service/follow/api/internal/types/types.go:29-31`（`RelationActionResp`） | `follow-api/.../dto/RelationActionResp.java` | `service/follow/src/main/java/com/rag/follow/dto/RelationActionResp.java` | 1:1 | `success` **恒 true**（硬编码） |
+| `service/follow/api/internal/types/types.go:6-10`（`FollowListReq`） | `follow-api/.../dto/FollowListReq.java` | `service/follow/src/main/java/com/rag/follow/dto/list/FollowListReq.java` | 1:1 | 3 字段**全 `optional`**；`user_id` 带 `,string` |
+| `service/follow/api/internal/types/types.go:12-14`（`FollowUserListResp`） | `follow-api/.../dto/FollowUserListResp.java` | `service/follow/src/main/java/com/rag/follow/dto/list/FollowUserListResp.java` | 1:1 | 🔴 `user_ids` **无** `,string` ⇒ JSON 是**数字数组** `[1234,5678]` |
+| `service/follow/api/internal/types/types.go:16-18`（`RecommendListResp`） | `follow-api/.../dto/RecommendListResp.java` | `service/follow/src/main/java/com/rag/follow/dto/recommend/RecommendListResp.java` | 1:1 | 空列表必须序列化为 `[]` 而非 `null` |
+| `service/follow/api/internal/types/types.go:20-23`（`RecommendUser`） | `follow-api/.../dto/RecommendUser.java` | `service/follow/src/main/java/com/rag/follow/dto/recommend/RecommendUser.java` | 1:1 | 🔴 `target_id` **有** `,string` ⇒ JSON 是**字符串** `"1234"`（与上一行的数字数组**形态不一致**，是本域最隐蔽的 L1 差异） |
+| `service/follow/api/internal/types/types.go:25-27`（`RelationActionReq`） | `follow-api/.../dto/RelationActionReq.java` | `service/follow/src/main/java/com/rag/follow/dto/relation/RelationActionReq.java` | 1:1 | 🔴 `target_id` **无 `optional` ⇒ 必填**；缺失 ⇒ HTTP 200 + `{"code":5001,...}` |
+| `service/follow/api/internal/types/types.go:29-31`（`RelationActionResp`） | `follow-api/.../dto/RelationActionResp.java` | `service/follow/src/main/java/com/rag/follow/dto/relation/RelationActionResp.java` | 1:1 | `success` **恒 true**（硬编码） |
 | `service/follow/api/internal/types/types.go:8-9`（`offset`/`limit` 无 `,string` ⇒ 禁字符串入参） | `follow-api/.../config/FollowGoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/Coercion.java` + `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java`（**无域内文件**） | 1:N | ⚠️ Go 拒 `{"offset":"10"}`，Jackson 3 默认收 ⇒ B 用域内 1 条补强；**C 无域内落点** ⇒ 见 §7 缺口 #2 |
 | `service/follow/api/internal/middleware/checkblacklistmiddleware.go`（全文 55 行） | `follow-api/.../interceptor/FollowBlacklistInterceptor.java` | `service/follow/src/main/java/com/rag/follow/interceptor/FollowBlacklistInterceptor.java` | 1:1 | 🔴 **follow 域独有**（like / users 的 blacklist 复用 401 空 body，本域是 **401 + JSON body**）⇒ 必须**直写 response**，不得走异常链 |
 | `service/follow/api/internal/handler/routes.go:62`（`rest.WithJwt`） | `follow-api/.../interceptor/FollowJwtAuthInterceptor.java` | `service/follow/src/main/java/com/rag/follow/interceptor/FollowJwtAuthInterceptor.java` | 1:1 | 401 **空 body**；claim **原始对象**写进 `userId` attribute（**不转 long**） |
@@ -236,7 +236,7 @@
 | 跨域调用 | `svcCtx.UserRpc.GetUser`（rpc 侧）+ `svcCtx.FollowRpc.*`（api 侧调同域） | `rpc/client/UserRpcClient.java`（`@GrpcClient`）+ `api/client/FollowRpcClient.java`（同域） | `service/follow/src/main/java/com/rag/follow/client/UserRpcClient.java`（**只保留跨域**） | 1:N | **D2** ⇒ 同域 client 删除；**D6** ⇒ 跨域仍走 gRPC，proto 是 L1 |
 | 熔断 / 降载 / 限连接 | go-zero `rest` 内置 9 个开关（默认全开） | `service/common/protection/`（17 个自研类） | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java` + `common/src/main/java/com/rag/common/protection/`（2 类） | 1:N | **D4**：生态吸收 ⇒ L3 语义降级（熔断失败窗口 / half-open 策略不同） |
 |请求体解析|`httpx.Parse`（go-zero mapping：必填 + `,string` + 类型强转）|`common/http/GoStyleStringInt64` / `GoStyleRequired` / `GoStyleCoercion` + 域内 `FollowGoStyleCoercion`|`common/src/main/java/com/rag/common/web/StringInt64.java` / `GoStyleCoercion` + `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java`（**无域内补强**）|1:N|⚠️ C 的域内补强缺失 ⇒ 见 §7 缺口 #2|
-| DTO 形态 | `types/types.go`（可变 struct，5 组） | `dto/*.java`（可变 POJO） | `service/follow/src/main/java/com/rag/follow/dto/*.java`（**immutable record**，D5） | 1:1 | ⚠️ 契约不变（L1），形态变；必填校验文案从 go-zero 改为 Bean Validation 文案 ⇒ **L3 降级** |
+| DTO 形态 | `types/types.go`（可变 struct，5 组） | `dto/*.java`（可变 POJO） | `service/follow/src/main/java/com/rag/follow/dto/{list,recommend,relation}/*.java`（**immutable record**，D5；**D11** 按业务对象拆 3 个子包） | 1:1 | ⚠️ 契约不变（L1），形态变；必填校验文案从 go-zero 改为 Bean Validation 文案 ⇒ **L3 降级** |
 | 指标注册 | `metrics.InitMetrics()`（**真的被调用**：`followcenter.go:33` / `follow.go:28`） | Micrometer 声明即注册 | Micrometer 声明即注册 | 1:1 | ⇒ 自动注册是**对齐**而非增强（与 like 域「零调用」的结论相反） |
 
 ### 3.1 决策锁（§3）

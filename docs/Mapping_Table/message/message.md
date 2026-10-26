@@ -55,7 +55,7 @@
 | `message/api/client/` | `client/` | 直接压平 |
 | `message/api/config/` | `config/` | 与 rpc 侧合并 |
 | `message/api/controller/` | `controller/` | 直接压平（**2 个**：Message + Admin）|
-| `message/api/dto/` | `dto/` | 直接压平（17 个同名类全落此）|
+| `message/api/dto/` | `dto/chat/` + `dto/common/` + `dto/conversation/` + `dto/notification/` + `dto/read/` | 直接压平后**按业务对象拆 5 个子包**（D11：`chat` 3 / `common` 2 / `conversation` 5 / `notification` 5 / `read` 2） |
 | `message/api/interceptor/` | `interceptor/` | 直接压平（**2 组 JWT**）|
 | `message/api/metrics/` | `metrics/` | 与 rpc 侧合并 |
 | `message/api/protection/` | `common/src/main/java/com/rag/common/protection/` | **上收 `common/`**（D3）|
@@ -117,24 +117,24 @@
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
-| `api/internal/types/types.go`（文件级） | `message-api/.../dto/*.java` × 18 | `service/message/src/main/java/com/rag/message/dto/*.java` × 17 | 1:N | C 去掉 B 侧的 `GoStyleStringInt64`（降级到 `common/src/main/java/com/rag/common/web/`） |
-| `types.go` → `AdminSendChatReq` | `dto/AdminSendChatReq.java` | `service/message/src/main/java/com/rag/message/dto/AdminSendChatReq.java` | 1:1 | `recipient_id` / `conversation_id` 带 `,string` |
-| `types.go` → `AdminSendNotificationReq` | `dto/AdminSendNotificationReq.java` | `service/message/src/main/java/com/rag/message/dto/AdminSendNotificationReq.java` | 1:1 | `broadcast` / `target_id` / `kind` / `extra` 均 `optional` |
-| `types.go` → `AdminSendNotificationResp` | `dto/AdminSendNotificationResp.java` | `service/message/src/main/java/com/rag/message/dto/AdminSendNotificationResp.java` | 1:1 | ⚠️ `affected` 的 JSON 形态存在**已签字偏离**，见 §6 注 |
-| `types.go` → `ChatMessageItem` | `dto/ChatMessageItem.java` | `service/message/src/main/java/com/rag/message/dto/ChatMessageItem.java` | 1:1 | 9 字段；`id` / `sender_id` / `recipient_id` 带 `,string` |
-| `types.go` → `ConversationItem` | `dto/ConversationItem.java` | `service/message/src/main/java/com/rag/message/dto/ConversationItem.java` | 1:1 | 12 字段 |
-| `types.go` → `ConversationListResp` | `dto/ConversationListResp.java` | `service/message/src/main/java/com/rag/message/dto/ConversationListResp.java` | 1:1 | `items` + `total` + `unread_count` |
-| `types.go` → `ConversationMessagesReq` | `dto/ConversationMessagesReq.java` | `service/message/src/main/java/com/rag/message/dto/ConversationMessagesReq.java` | 1:1 | `offset` / `limit` 为 `optional` |
-| `types.go` → `ConversationMessagesResp` | `dto/ConversationMessagesResp.java` | `service/message/src/main/java/com/rag/message/dto/ConversationMessagesResp.java` | 1:1 | 带 `status` / `can_send` / `pending_sender_*` |
-| `types.go` → `EmptyReq` | `dto/EmptyReq.java` | `service/message/src/main/java/com/rag/message/dto/EmptyReq.java` | 1:1 | 空 body（`/notifications/readall` 与 `/unread` 用） |
-| `types.go` → `MarkConversationReadReq` | `dto/MarkConversationReadReq.java` | `service/message/src/main/java/com/rag/message/dto/MarkConversationReadReq.java` | 1:1 | |
-| `types.go` → `MarkNotificationReq` | `dto/MarkNotificationReq.java` | `service/message/src/main/java/com/rag/message/dto/MarkNotificationReq.java` | 1:1 | |
-| `types.go` → `NotificationItem` | `dto/NotificationItem.java` | `service/message/src/main/java/com/rag/message/dto/NotificationItem.java` | 1:1 | 含 `extra`（`map[string]string`） |
-| `types.go` → `NotificationListResp` | `dto/NotificationListResp.java` | `service/message/src/main/java/com/rag/message/dto/NotificationListResp.java` | 1:1 | `items` + `total` + `unread_count` |
-| `types.go` → `PageReq` | `dto/PageReq.java` | `service/message/src/main/java/com/rag/message/dto/PageReq.java` | 1:1 | `offset` / `limit` / `unread_only` 全 `optional` |
-| `types.go` → `SendChatResp` | `dto/SendChatResp.java` | `service/message/src/main/java/com/rag/message/dto/SendChatResp.java` | 1:1 | |
-| `types.go` → `UnreadSummaryResp` | `dto/UnreadSummaryResp.java` | `service/message/src/main/java/com/rag/message/dto/UnreadSummaryResp.java` | 1:1 | `notification_unread` / `conversation_unread` / `total_unread` |
-| `types.go` → `UserSendChatReq` | `dto/UserSendChatReq.java` | `service/message/src/main/java/com/rag/message/dto/UserSendChatReq.java` | 1:1 | `recipient_id` / `conversation_id` 为 `optional` |
+| `api/internal/types/types.go`（文件级） | `message-api/.../dto/*.java` × 18 | `service/message/src/main/java/com/rag/message/dto/{chat,common,conversation,notification,read}/*.java` × 17（**D11** 按业务对象拆 5 个子包） | 1:N | C 去掉 B 侧的 `GoStyleStringInt64`（降级到 `common/src/main/java/com/rag/common/web/`） |
+| `types.go` → `AdminSendChatReq` | `dto/AdminSendChatReq.java` | `service/message/src/main/java/com/rag/message/dto/chat/AdminSendChatReq.java` | 1:1 | `recipient_id` / `conversation_id` 带 `,string` |
+| `types.go` → `AdminSendNotificationReq` | `dto/AdminSendNotificationReq.java` | `service/message/src/main/java/com/rag/message/dto/notification/AdminSendNotificationReq.java` | 1:1 | `broadcast` / `target_id` / `kind` / `extra` 均 `optional` |
+| `types.go` → `AdminSendNotificationResp` | `dto/AdminSendNotificationResp.java` | `service/message/src/main/java/com/rag/message/dto/notification/AdminSendNotificationResp.java` | 1:1 | ⚠️ `affected` 的 JSON 形态存在**已签字偏离**，见 §6 注 |
+| `types.go` → `ChatMessageItem` | `dto/ChatMessageItem.java` | `service/message/src/main/java/com/rag/message/dto/conversation/ChatMessageItem.java` | 1:1 | 9 字段；`id` / `sender_id` / `recipient_id` 带 `,string` |
+| `types.go` → `ConversationItem` | `dto/ConversationItem.java` | `service/message/src/main/java/com/rag/message/dto/conversation/ConversationItem.java` | 1:1 | 12 字段 |
+| `types.go` → `ConversationListResp` | `dto/ConversationListResp.java` | `service/message/src/main/java/com/rag/message/dto/conversation/ConversationListResp.java` | 1:1 | `items` + `total` + `unread_count` |
+| `types.go` → `ConversationMessagesReq` | `dto/ConversationMessagesReq.java` | `service/message/src/main/java/com/rag/message/dto/conversation/ConversationMessagesReq.java` | 1:1 | `offset` / `limit` 为 `optional` |
+| `types.go` → `ConversationMessagesResp` | `dto/ConversationMessagesResp.java` | `service/message/src/main/java/com/rag/message/dto/conversation/ConversationMessagesResp.java` | 1:1 | 带 `status` / `can_send` / `pending_sender_*` |
+| `types.go` → `EmptyReq` | `dto/EmptyReq.java` | `service/message/src/main/java/com/rag/message/dto/common/EmptyReq.java` | 1:1 | 空 body（`/notifications/readall` 与 `/unread` 用） |
+| `types.go` → `MarkConversationReadReq` | `dto/MarkConversationReadReq.java` | `service/message/src/main/java/com/rag/message/dto/read/MarkConversationReadReq.java` | 1:1 | |
+| `types.go` → `MarkNotificationReq` | `dto/MarkNotificationReq.java` | `service/message/src/main/java/com/rag/message/dto/notification/MarkNotificationReq.java` | 1:1 | |
+| `types.go` → `NotificationItem` | `dto/NotificationItem.java` | `service/message/src/main/java/com/rag/message/dto/notification/NotificationItem.java` | 1:1 | 含 `extra`（`map[string]string`） |
+| `types.go` → `NotificationListResp` | `dto/NotificationListResp.java` | `service/message/src/main/java/com/rag/message/dto/notification/NotificationListResp.java` | 1:1 | `items` + `total` + `unread_count` |
+| `types.go` → `PageReq` | `dto/PageReq.java` | `service/message/src/main/java/com/rag/message/dto/common/PageReq.java` | 1:1 | `offset` / `limit` / `unread_only` 全 `optional` |
+| `types.go` → `SendChatResp` | `dto/SendChatResp.java` | `service/message/src/main/java/com/rag/message/dto/chat/SendChatResp.java` | 1:1 | |
+| `types.go` → `UnreadSummaryResp` | `dto/UnreadSummaryResp.java` | `service/message/src/main/java/com/rag/message/dto/read/UnreadSummaryResp.java` | 1:1 | `notification_unread` / `conversation_unread` / `total_unread` |
+| `types.go` → `UserSendChatReq` | `dto/UserSendChatReq.java` | `service/message/src/main/java/com/rag/message/dto/chat/UserSendChatReq.java` | 1:1 | `recipient_id` / `conversation_id` 为 `optional` |
 | `types.go` 的 `,string` 整数字段编码 | `message-api/.../dto/GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/StringInt64.java` | 1:1 | D3：共享件下沉到根级 starter |
 
 **1.2 决策锁**
@@ -148,7 +148,7 @@
 **为什么换**：Go 侧 13 个 `logic` 文件是 **goctl 按 RPC 生成的样板产物**，不是职责边界；合并后「构造 logic + 转交」这一层消失。⚠️ 但**业务规则密集的部分不适用合并**（rpc 侧的 `MessageRpcSupport` / `MessageAtomicService` 是协作者与事务边界类，必须保持独立）。
 
 **换「可变 struct ⇒ immutable record」（D5，3 处同时改）**：
-1. `dto/*.java` 全部改 `record`（不可变）；
+1. `dto/**/*.java` 全部改 `record`（不可变）；
 2. JSON 字段名从 Go 的 `json:"xxx_yyy"` tag 迁到 `@JsonProperty` / 组件名；
 3. `,string` 的整数字段用 `common/src/main/java/com/rag/common/web/StringInt64.java` 的解码口径统一处理。
 
@@ -376,7 +376,7 @@
 | 项 | 值（Go 真源） | A 列出处（`文件:行号`） | C 列落点 |
 |---|---|---|---|
 | **proto 字段号** | `message.proto` 逐条一致（RAG 与 RAG-V1 两份 `.proto` **只差 `option java_package`**：`com.rag.message.message.proto` → `com.rag.message.contract.proto`） | `service/message/rpc/pb/message.pb.go`（goctl 生成物） | `proto/src/main/proto/message.proto` |
-| ↳ `SendNotificationResp.affected` | `int64 affected = 3;`（**无 `,string`**） | `message.proto:98`；HTTP 侧 `api/internal/types/types.go:21-23` 的 `Affected int64 \`json:"affected"\`` ⇒ Go 输出 JSON **数字** | ⚠️ RAG 的 `service/message/src/main/java/com/rag/message/dto/AdminSendNotificationResp.java` 加了 `@JsonFormat(Shape.STRING)` ⇒ 输出**字符串**。这在 RAG 是**已签字的有意偏离**（`SD-2026-10-23-03`）—— **本表只点明差异存在，不下「该修 / 不该修」的结论** |
+| ↳ `SendNotificationResp.affected` | `int64 affected = 3;`（**无 `,string`**） | `message.proto:98`；HTTP 侧 `api/internal/types/types.go:21-23` 的 `Affected int64 \`json:"affected"\`` ⇒ Go 输出 JSON **数字** | ⚠️ RAG 的 `service/message/src/main/java/com/rag/message/dto/notification/AdminSendNotificationResp.java` 加了 `@JsonFormat(Shape.STRING)` ⇒ 输出**字符串**。这在 RAG 是**已签字的有意偏离**（`SD-2026-10-23-03`）—— **本表只点明差异存在，不下「该修 / 不该修」的结论** |
 | **错误码** | 22 个常量：`Success=200` / `Error=500` / `CodeServerBusy=1015` / `ErrorServerCommon=5001` / `ErrorNotFound=5002` / `ErrorInvalidParam=5003` / `ErrorUnauthorized=5004` / `ErrorForbidden=5005` / `ErrorAlreadyExist=5006` / `ErrorDbSelect=5007` / `ErrorDbUpdate=5008` / `ErrorUserNotFound=5101` / `ErrorAdminNotFound=5102` / `ErrorSelfChat=5201` / `ErrorConversationMiss=5202` / `ErrorNotificationMiss=5203` / `ErrorChatPending=5204` / `ErrorAdminOnlyInit=5205` / `ErrorFirstMsgTooLong=5206` / `ErrorUnsupportedRole=5207` | `service/message/common/errmsg.go:27-49` | `service/users/common/src/main/java/com/rag/users/common/ErrCodes.java` |
 | **错误文案** | **英文**：`"service busy"` / `"internal server error"` / `"record not found"` / `"invalid parameter"` / `"unauthorized"` / `"forbidden"` / `"already exists"` / `"database query failed"` / `"database update failed"` / `"user not found"` / `"admin not found"` / `"self chat is not allowed"` / `"conversation not found"` / `"notification not found"` / `"waiting for the other side to reply"` / `"only admin can initiate this conversation"` / `"first private message cannot exceed 50 characters"` / `"unsupported sender role"` / `"OK"` / `"FAIL"` | `service/message/common/errmsg.go:51-73` | `service/users/common/src/main/java/com/rag/users/common/ErrMsg.java`（⚠️ **逐域隔离，不可与中文域统一**） |
 | **gRPC fallback 码表** | `InvalidArgument→5003` / `Unauthenticated→5004` / `PermissionDenied→5005` / `AlreadyExists→5006` / `NotFound→5002` / `Internal→5001` / `default→1015` | `service/message/common/errmsg.go:117-132` | `service/message/src/main/java/com/rag/message/contract/GrpcErrorMapper.java` |
@@ -424,23 +424,23 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/message" -name '*.java' \
 | 9 | `service/message/src/main/java/com/rag/message/config/WebMvcConfig.java` | §1.1 |
 | 10 | `service/message/src/main/java/com/rag/message/controller/MessageAdminController.java` | §1.2.1 |
 | 11 | `service/message/src/main/java/com/rag/message/controller/MessageController.java` | §1.2.1 |
-| 12 | `service/message/src/main/java/com/rag/message/dto/AdminSendChatReq.java` | §1.2.2 |
-| 13 | `service/message/src/main/java/com/rag/message/dto/AdminSendNotificationReq.java` | §1.2.2 |
-| 14 | `service/message/src/main/java/com/rag/message/dto/AdminSendNotificationResp.java` | §1.2.2 |
-| 15 | `service/message/src/main/java/com/rag/message/dto/ChatMessageItem.java` | §1.2.2 |
-| 16 | `service/message/src/main/java/com/rag/message/dto/ConversationItem.java` | §1.2.2 |
-| 17 | `service/message/src/main/java/com/rag/message/dto/ConversationListResp.java` | §1.2.2 |
-| 18 | `service/message/src/main/java/com/rag/message/dto/ConversationMessagesReq.java` | §1.2.2 |
-| 19 | `service/message/src/main/java/com/rag/message/dto/ConversationMessagesResp.java` | §1.2.2 |
-| 20 | `service/message/src/main/java/com/rag/message/dto/EmptyReq.java` | §1.2.2 |
-| 21 | `service/message/src/main/java/com/rag/message/dto/MarkConversationReadReq.java` | §1.2.2 |
-| 22 | `service/message/src/main/java/com/rag/message/dto/MarkNotificationReq.java` | §1.2.2 |
-| 23 | `service/message/src/main/java/com/rag/message/dto/NotificationItem.java` | §1.2.2 |
-| 24 | `service/message/src/main/java/com/rag/message/dto/NotificationListResp.java` | §1.2.2 |
-| 25 | `service/message/src/main/java/com/rag/message/dto/PageReq.java` | §1.2.2 |
-| 26 | `service/message/src/main/java/com/rag/message/dto/SendChatResp.java` | §1.2.2 |
-| 27 | `service/message/src/main/java/com/rag/message/dto/UnreadSummaryResp.java` | §1.2.2 |
-| 28 | `service/message/src/main/java/com/rag/message/dto/UserSendChatReq.java` | §1.2.2 |
+| 12 | `service/message/src/main/java/com/rag/message/dto/chat/AdminSendChatReq.java` | §1.2.2 |
+| 13 | `service/message/src/main/java/com/rag/message/dto/notification/AdminSendNotificationReq.java` | §1.2.2 |
+| 14 | `service/message/src/main/java/com/rag/message/dto/notification/AdminSendNotificationResp.java` | §1.2.2 |
+| 15 | `service/message/src/main/java/com/rag/message/dto/conversation/ChatMessageItem.java` | §1.2.2 |
+| 16 | `service/message/src/main/java/com/rag/message/dto/conversation/ConversationItem.java` | §1.2.2 |
+| 17 | `service/message/src/main/java/com/rag/message/dto/conversation/ConversationListResp.java` | §1.2.2 |
+| 18 | `service/message/src/main/java/com/rag/message/dto/conversation/ConversationMessagesReq.java` | §1.2.2 |
+| 19 | `service/message/src/main/java/com/rag/message/dto/conversation/ConversationMessagesResp.java` | §1.2.2 |
+| 20 | `service/message/src/main/java/com/rag/message/dto/common/EmptyReq.java` | §1.2.2 |
+| 21 | `service/message/src/main/java/com/rag/message/dto/read/MarkConversationReadReq.java` | §1.2.2 |
+| 22 | `service/message/src/main/java/com/rag/message/dto/notification/MarkNotificationReq.java` | §1.2.2 |
+| 23 | `service/message/src/main/java/com/rag/message/dto/notification/NotificationItem.java` | §1.2.2 |
+| 24 | `service/message/src/main/java/com/rag/message/dto/notification/NotificationListResp.java` | §1.2.2 |
+| 25 | `service/message/src/main/java/com/rag/message/dto/common/PageReq.java` | §1.2.2 |
+| 26 | `service/message/src/main/java/com/rag/message/dto/chat/SendChatResp.java` | §1.2.2 |
+| 27 | `service/message/src/main/java/com/rag/message/dto/read/UnreadSummaryResp.java` | §1.2.2 |
+| 28 | `service/message/src/main/java/com/rag/message/dto/chat/UserSendChatReq.java` | §1.2.2 |
 | 29 | `service/message/src/main/java/com/rag/message/interceptor/MessageAdminJwtAuthInterceptor.java` | §1.1 / §1.2.1 |
 | 30 | `service/message/src/main/java/com/rag/message/interceptor/MessageJwtAuthInterceptor.java` | §1.1 / §1.2.1 |
 | 31 | `service/message/src/main/java/com/rag/message/metrics/MessageApiMetrics.java` | §1.1 |

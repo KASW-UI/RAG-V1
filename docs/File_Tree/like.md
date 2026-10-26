@@ -11,7 +11,7 @@
 | artifactId | `like-service` |
 | 根包 | `com.rag.like` |
 | Go 出处 | `service/like/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = Go logic 用例的 `types.Xxx` 引用图 + 类型所在聚合） |
 
 ## 二、依赖
 
@@ -68,21 +68,25 @@
 │   │   │               │       ├── LikeDomainFactService.java
 │   │   │               │       └── LikeDomainService.java
 │   │   │               ├── dto/
-│   │   │               │   ├── GetLikeCountReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetLikeCountResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetLikeStateReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetLikeStateResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetTargetLikerListReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetTargetLikerListResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetUserLikeListReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetUserLikeListResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetUserTotalLikeReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetUserTotalLikeResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── LikeActionReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── LikeActionResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── LikeCountItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── LikeItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   └── LikeRecordItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   ├── action/
+│   │   │               │   │   ├── LikeActionReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── LikeActionResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   ├── count/
+│   │   │               │   │   ├── GetLikeCountReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetLikeCountResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetUserTotalLikeReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetUserTotalLikeResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── LikeCountItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   ├── list/
+│   │   │               │   │   ├── GetTargetLikerListReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetTargetLikerListResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetUserLikeListReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetUserLikeListResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── LikeItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── LikeRecordItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   └── state/
+│   │   │               │       ├── GetLikeStateReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       └── GetLikeStateResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               ├── exception/
 │   │   │               │   └── LikeExceptions.java
 │   │   │               ├── grpc/
@@ -121,7 +125,6 @@
 │   │   │               │   ├── LikeFactProcessLogging.java
 │   │   │               │   ├── LikeSchemaGate.java
 │   │   │               │   └── NacosRegistration.java
-│   │   │               ├── .DS_Store
 │   │   │               └── LikeServiceApplication.java    # @SpringBootApplication + @EnableDiscoveryClient —— api 与 rpc 合并后的唯一入口。
 │   │   └── resources/
 │   │       ├── db/

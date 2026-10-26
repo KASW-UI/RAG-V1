@@ -11,7 +11,7 @@
 | artifactId | `follow-service` |
 | 根包 | `com.rag.follow` |
 | Go 出处 | `service/follow/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = Go logic 用例的 `types.Xxx` 引用图 + 类型所在聚合） |
 
 ## 二、依赖
 
@@ -60,12 +60,15 @@
 │   │   │               │   └── service/
 │   │   │               │       └── FollowDomainService.java
 │   │   │               ├── dto/
-│   │   │               │   ├── FollowListReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── FollowUserListResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── RecommendListResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── RecommendUser.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── RelationActionReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   └── RelationActionResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   ├── list/
+│   │   │               │   │   ├── FollowListReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── FollowUserListResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   ├── recommend/
+│   │   │               │   │   ├── RecommendListResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── RecommendUser.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   └── relation/
+│   │   │               │       ├── RelationActionReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       └── RelationActionResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               ├── grpc/
 │   │   │               │   └── FollowGrpcService.java
 │   │   │               ├── interceptor/

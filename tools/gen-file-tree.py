@@ -142,7 +142,10 @@ def tree_of(base, pkg_root):
     lines = []
     def walk(d, prefix=""):
         # ⚠️ 排除构建产物目录（`target/`）—— 否则编译一次就会把 .class 混进文件树
-        entries = sorted((e for e in d.iterdir() if e.name != "target"),
+        # ⚠️ 排除 macOS 元数据（`.DS_Store`）—— 它已被 .gitignore 排除，不属于源码树，
+        #    但本脚本直接扫文件系统 ⇒ 不显式跳过就会渲染进文件树（2026-10-26 · D11 重生成时暴露）
+        SKIP = {"target", ".DS_Store"}
+        entries = sorted((e for e in d.iterdir() if e.name not in SKIP),
                          key=lambda p: (p.is_file(), p.name))
         dirs  = [e for e in entries if e.is_dir()]
         files = [e for e in entries if e.is_file()]
@@ -249,7 +252,9 @@ for d in ["user","admin","article","comment","favorite","follow","hot","like","m
                     "api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**"
                     "（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / "
                     "`grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；"
-                    "域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包", GO[d]))
+                    "域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；"
+                    "**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，"
+                    "判据 = Go logic 用例的 `types.Xxx` 引用图 + 类型所在聚合）", GO[d]))
 
 # ---------- 路径映射 ----------
 def out_path(base):

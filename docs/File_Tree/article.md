@@ -11,7 +11,7 @@
 | artifactId | `article-service` |
 | 根包 | `com.rag.article` |
 | Go 出处 | `service/article/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包 |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = Go logic 用例的 `types.Xxx` 引用图 + 类型所在聚合） |
 
 ## 二、依赖
 
@@ -67,19 +67,21 @@
 │   │   │               │       ├── ArticleDomainService.java
 │   │   │               │       └── ArticlePublicDomainService.java
 │   │   │               ├── dto/
-│   │   │               │   ├── Article.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── CreateArticleReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── CreateArticleResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── DeleteArticleReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── DeleteArticleResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetArticleReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── GetArticleResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── ListArticlesReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── ListArticlesResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── UpdateArticleReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── UpdateArticleResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   ├── UploadImageReq.java    # Go 侧同名 struct 存在 —— RAG 形态改用 `@RequestParam MultipartFile`（multipart 表单）承载，属 L4 idiomatization；本 DTO 若保留则用于承载 multipart 之外的其余字段。
-│   │   │               │   └── UploadImageResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   ├── article/
+│   │   │               │   │   ├── Article.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── CreateArticleReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── CreateArticleResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── DeleteArticleReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── DeleteArticleResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetArticleReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetArticleResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── ListArticlesReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── ListArticlesResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── UpdateArticleReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── UpdateArticleResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   └── upload/
+│   │   │               │       ├── UploadImageReq.java    # Go 侧同名 struct 存在 —— RAG 形态改用 `@RequestParam MultipartFile`（multipart 表单）承载，属 L4 idiomatization；本 DTO 若保留则用于承载 multipart 之外的其余字段。
+│   │   │               │       └── UploadImageResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               ├── exception/
 │   │   │               │   └── ArticleExceptions.java
 │   │   │               ├── grpc/

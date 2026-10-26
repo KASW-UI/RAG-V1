@@ -62,7 +62,7 @@
 | `task/api/client/` | **—（D2 域内直连 ⇒ 删除）** | 域内自我 gRPC 往返取消 |
 | `task/api/config/` | `config/` | 与 rpc 侧合并（含 `GoStyleRawBodyArgumentProcessor`）|
 | `task/api/controller/` | `controller/` | 直接压平 |
-| `task/api/dto/` | `dto/` | 直接压平（3 个同名类全落此）|
+| `task/api/dto/` | `dto/task/` | 直接压平后**按业务对象拆 1 个子包**（D11） |
 | `task/api/service/` | `service/` | 与 rpc 侧合并 |
 | **—（B 侧无 `task-common`）** | **—（C 侧无 `contract/` 包）** | ⚠️ **三方一致**：Go 侧 task **无错误码空间** ⇒ 域内不建 `contract/`（不是缺漏）|
 | `task/rpc/bootstrap/` | `wiring/` | 直接压平 |
@@ -85,7 +85,7 @@
 | `api/internal/handler/routes.go`（26 行，**唯一**路由：`POST /task/get` + `rest.WithPrefix("/taskcenter/v1")`） | `task-api/.../controller/TaskController.java` | `service/task/src/main/java/com/rag/task/controller/TaskController.java` | 1:1 | ⚠️ **前缀是 `/taskcenter/v1`，不是 `/task/v1`**；**全文件只有 `WithPrefix`，没有 `rest.WithJwt`** ⇒ 本域端点**零鉴权** |
 | `api/internal/handler/task/gettaskhandler.go`（34 行：**裸 `json.NewDecoder` + `UseNumber()`，不检查 `Content-Type`**、不套 `io.LimitReader`） | `task-api/.../controller/TaskController.java` + `config/TaskApiRawBodyConfig.java` + `config/GoStyleRawBodyArgumentProcessor.java` + `config/TaskApiJsonBodyConfig.java` | `service/task/src/main/java/com/rag/task/controller/TaskController.java` + `service/task/src/main/java/com/rag/task/config/TaskApiRawBodyConfig.java` + `service/task/src/main/java/com/rag/task/config/GoStyleRawBodyArgumentProcessor.java` + `service/task/src/main/java/com/rag/task/config/TaskApiJsonBodyConfig.java` | 1:N | C 的三件 raw-body 配置**都在**（因为 Go 不看 `Content-Type` ⇒ 必须换掉 Spring 默认的 `RequestResponseBodyMethodProcessor`）；⚠️ **不得注册 `common/src/main/java/com/rag/common/web/JsonBodyConverter`**（它复刻 `httpx.Parse` 的 `withJsonBody` 判据，会**丢弃**非 JSON body） |
 | `api/internal/logic/task/gettasklogic.go`（56 行：**纯转发 + 字段投影**，uid 解析 → gRPC → proto→DTO 5 字段） | `task-api/.../service/TaskGetService.java` | `service/task/src/main/java/com/rag/task/service/TaskApiService.java` + `service/task/src/main/java/com/rag/task/service/TaskApiSupport.java` | 1:N | C 按「用例内聚」判据拆成 Service + Support；⚠️ Go 的 `out := make([]types.TaskInfo, 0, len(...))` ⇒ **空列表输出 `[]` 绝不输出 `null`** |
-| `api/internal/types/types.go`（66 行：`UserIDParam` 自定义 `UnmarshalJSON` + `Int64()` + `GetTaskReq`/`GetTaskResp`/`TaskInfo`） | `task-api/.../dto/GetTaskReq.java` + `dto/GetTaskResp.java` + `dto/TaskInfo.java` | `service/task/src/main/java/com/rag/task/dto/GetTaskReq.java` + `service/task/src/main/java/com/rag/task/dto/GetTaskResp.java` + `service/task/src/main/java/com/rag/task/dto/TaskInfo.java` | 1:N | C 改 **immutable record**（D5）；JSON key 契约不变（`id` / `tasks` / `name`/`desc`/`taskId`/`completionProgress`/`requiredProgress`） |
+| `api/internal/types/types.go`（66 行：`UserIDParam` 自定义 `UnmarshalJSON` + `Int64()` + `GetTaskReq`/`GetTaskResp`/`TaskInfo`） | `task-api/.../dto/GetTaskReq.java` + `dto/GetTaskResp.java` + `dto/TaskInfo.java` | `service/task/src/main/java/com/rag/task/dto/task/GetTaskReq.java` + `service/task/src/main/java/com/rag/task/dto/task/GetTaskResp.java` + `service/task/src/main/java/com/rag/task/dto/task/TaskInfo.java` | 1:N | C 改 **immutable record**（D5）；JSON key 契约不变（`id` / `tasks` / `name`/`desc`/`taskId`/`completionProgress`/`requiredProgress`） |
 | `api/internal/svc/servicecontext.go`（33 行：**唯一**依赖 = `TaskCli` gRPC client；无 Redis / 无 DB / 无 Kafka） | `task-api/.../client/TaskRpcClient.java`（`@GrpcClient`） | **无对应文件** | 1:1 | ⚠️ api+rpc 合并后**域内 gRPC 调用不再跨进程** ⇒ C 的 `api/` 下**没有 `client/` 包**；`TaskApiService` 直落 `rpc/service/TaskDomainService` |
 | go-zero `httpx.ErrorCtx`（`errorHandler == nil` 分支 ⇒ `http.Error` ⇒ **text/plain + nosniff + 尾 `\n`**） | `task-api/.../advice/GlobalExceptionHandler.java` | `service/task/src/main/java/com/rag/task/advice/TaskApiExceptionHandler.java` | 1:1 | ⚠️ Go 侧 `api/task.go` **没有** `httpx.SetErrorHandler` ⇒ 失败响应**不是** `{code,msg}` 信封，是裸 text/plain |
 | go-zero `httpx.OkJsonCtx`（`okHandler == nil` ⇒ **成功响应无信封**） | （B 侧无 ResponseAdvice） | `service/task/src/main/java/com/rag/task/advice/TaskApiResponseAdvice.java` | C 新增 | ⚠️ **职责待拍板**：Go 侧 `api/task.go` **没有** `httpx.SetOkHandler` ⇒ 成功体就是 `{"tasks":[...]}`。C 有这个位置，但它的职责（是否加 `{code,msg,data}` 信封）必须回 A 列确认后再填 |
@@ -165,7 +165,7 @@
 | 路由注册 | `server.AddRoutes([…], rest.WithPrefix("/taskcenter/v1"))` | `@RequestMapping("/taskcenter/v1")` + `@PostMapping("/get")` | 同 B（`service/task/src/main/java/com/rag/task/controller/TaskController.java`） | ⚠️ **前缀不是 `/task/v1`**（L1 契约，与其它域的 `/user/v1`、`/message/v1` 全不同） |
 | 端点数 / method | **1** 个：`POST` | 1 个 `@PostMapping` | 1 个 | — |
 | **鉴权** | ⚠️ `routes.go:16-25` **只有 `WithPrefix`，没有 `rest.WithJwt`** ⇒ **零鉴权**；`config.Auth`（`config.go:14-17`）+ `task.yaml:9-11` 是**死配置** | **无 `interceptor/` 包** | ⚠️ 有 `service/task/src/main/java/com/rag/task/config/WebMvcConfig.java`，其 javadoc 写「注册 JwtAuthInterceptor + public 路径白名单」 | ⚠️ **职责对不上**：本域**不该有** `*JwtAuthInterceptor`（`docs/第二轮深挖-契约盘点.md` §三 T-4 已明确「hot / task 全部端点免鉴权」）⇒ 该 javadoc 需改写 |
-| 身份来源 | 请求体 `{"id": …}`（`types.go:52-54` `json:"id"`）⇒ **水平越权面**（任何调用方可查任意 uid） | 同 | 同（`service/task/src/main/java/com/rag/task/dto/GetTaskReq.java`） | Go 既定行为，本表按原样记录 |
+| 身份来源 | 请求体 `{"id": …}`（`types.go:52-54` `json:"id"`）⇒ **水平越权面**（任何调用方可查任意 uid） | 同 | 同（`service/task/src/main/java/com/rag/task/dto/task/GetTaskReq.java`） | Go 既定行为，本表按原样记录 |
 | 成功响应形状 | ⚠️ `api/task.go` **无 `httpx.SetOkHandler`** ⇒ `OkJsonCtx` 直写原始对象 ⇒ **`{"tasks":[…]}`，无 `{code,msg,data}`** | Controller 直接返回（**不包信封**） | ⚠️ 有 `service/task/src/main/java/com/rag/task/advice/TaskApiResponseAdvice.java` | ⚠️ **职责待拍板**（同 §1.1） |
 | 失败响应形状 | ⚠️ **无 `httpx.SetErrorHandler`** ⇒ `http.Error` ⇒ **text/plain + `X-Content-Type-Options: nosniff` + 尾 `\n`**；状态码 400 / 413 / 404 / 405 / 500 各有来源 | `advice/GlobalExceptionHandler` | `service/task/src/main/java/com/rag/task/advice/TaskApiExceptionHandler.java` + `common/src/main/java/com/rag/common/web/PlainTextErrors.java` / `GoStyleRouterErrorResponses.java` | — |
 | 请求体读取 | **裸 `json.NewDecoder(r.Body)` + `UseNumber()`** ⇒ **不看 `Content-Type`** | `TaskApiRawBodyConfig` + `GoStyleRawBodyArgumentProcessor` + `TaskApiJsonBodyConfig` | 同 B（三件都在） | ⚠️ **不得注册 `common/src/main/java/com/rag/common/web/JsonBodyConverter`**（会丢弃非 JSON body ⇒ 新增行为） |
@@ -300,9 +300,9 @@
 | 7 | `service/task/src/main/java/com/rag/task/config/TaskApiRawBodyConfig.java` | §1.1 / §5 |
 | 8 | `service/task/src/main/java/com/rag/task/config/WebMvcConfig.java` | §1.1 / §3.1 / §5（⚠️ 职责对不上） |
 | 9 | `service/task/src/main/java/com/rag/task/controller/TaskController.java` | §1.1 |
-| 10 | `service/task/src/main/java/com/rag/task/dto/GetTaskReq.java` | §1.1 |
-| 11 | `service/task/src/main/java/com/rag/task/dto/GetTaskResp.java` | §1.1 |
-| 12 | `service/task/src/main/java/com/rag/task/dto/TaskInfo.java` | §1.1 |
+| 10 | `service/task/src/main/java/com/rag/task/dto/task/GetTaskReq.java` | §1.1 |
+| 11 | `service/task/src/main/java/com/rag/task/dto/task/GetTaskResp.java` | §1.1 |
+| 12 | `service/task/src/main/java/com/rag/task/dto/task/TaskInfo.java` | §1.1 |
 | 13 | `service/task/src/main/java/com/rag/task/service/TaskApiService.java` | §1.1 |
 | 14 | `service/task/src/main/java/com/rag/task/service/TaskApiSupport.java` | §1.1 |
 | 15 | `service/task/src/main/java/com/rag/task/wiring/NacosRegistration.java` | §1.2（服务发现注册位） |

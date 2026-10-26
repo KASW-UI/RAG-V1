@@ -56,7 +56,7 @@
 | `users/user/api/client/`（`UserRpcClient`） | **—（D2 域内直连 ⇒ 删除）** | 域内自我 gRPC 往返取消 |
 | `users/user/api/config/` | `config/` | 与 rpc 侧合并 |
 | `users/user/api/controller/` | `controller/` | 直接压平 |
-| `users/user/api/dto/` | `dto/` | 直接压平（17 个同名类全落此）|
+| `users/user/api/dto/` | `dto/auth/` + `dto/avatar/` + `dto/user/` | 直接压平后**按业务对象拆 3 个子包**（D11：`auth` 4 / `avatar` 6 / `user` 9） |
 | `users/user/api/interceptor/` | `interceptor/` | 直接压平 |
 | `users/user/api/metrics/` | `metrics/` | 与 rpc 侧合并 |
 | `users/user/api/service/` | `service/` | 与 rpc 侧合并 |

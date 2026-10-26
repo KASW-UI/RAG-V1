@@ -66,7 +66,7 @@
 | `article/api/client/` | `client/` | 直接压平 |
 | `article/api/config/` | `config/` | 与 rpc 侧合并 |
 | `article/api/controller/` | `controller/` | 直接压平 |
-| `article/api/dto/` | `dto/` | 直接压平（12 个同名类全落此）|
+| `article/api/dto/` | `dto/article/` + `dto/upload/` | 直接压平后**按业务对象拆 2 个子包**（D11：`article` 11 / `upload` 2） |
 | `article/api/form/`（`GoFormValues`） | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java` | **上收 `common/`**（D3）|
 | `article/api/http/`（4 类） | `common/src/main/java/com/rag/common/web/`（4 个同名类）| **上收 `common/`**（D3）|
 | `article/api/interceptor/` | `interceptor/` | 直接压平 |

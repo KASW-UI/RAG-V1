@@ -81,7 +81,7 @@
 | `hot/api/client/` | `client/` | 直接压平 |
 | `hot/api/config/` | `config/` | 与 rpc 侧合并 |
 | `hot/api/controller/` | `controller/` | 直接压平（`HotArticleController`）|
-| `hot/api/dto/` | `dto/` | 直接压平（2 个同名类全落此）|
+| `hot/api/dto/` | `dto/article/` | 直接压平后**按业务对象拆 1 个子包**（D11） |
 | `hot/api/exception/` | `exception/` | 直接压平 |
 | `hot/api/form/`（`GoFormValues`） | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java` | **上收 `common/`**（D3）|
 | `hot/api/metrics/` | `metrics/` | 与 rpc 侧合并 |
@@ -117,9 +117,9 @@
 | `service/hot/api/hotcenter.go:53-66`（`httpx.SetErrorHandler`） | `hot-api/.../advice/GlobalExceptionHandler.java` | `service/hot/src/main/java/com/rag/hot/advice/HotApiExceptionHandler.java` | 1:1 | ⚠️ Go 侧**恒 HTTP 200** + `{code,msg,null}`（不接管 404 / 405） |
 | `service/hot/api/internal/handler/routes.go:15-26` + `internal/handler/hot/getHotArticlesHandler.go:15-31` | `hot-api/.../controller/HotArticleController.java` | `service/hot/src/main/java/com/rag/hot/controller/HotArticleController.java` | 1:1 | 唯一端点 `GET /hot/v1/articles`；`routes.go` 是 Go 侧唯一的路由表（L1） |
 | `service/hot/api/internal/logic/hot/getHotArticlesLogic.go`（208 行，本域唯一业务用例） | `hot-api/.../service/HotArticleQueryService.java` + `HotArticleHydrator.java` + `HotRankPaginator.java` | `service/hot/src/main/java/com/rag/hot/service/HotApiService.java` + `HotApiSupport.java` | 1:N | Go 1 文件 → B 3 类（编排 / 并发补全 / 分页数值）→ **C 2 类**（编排 + 辅助）。分页阈值 1/20/50/100、稠密跨页 rank、并发窗口 8 都在这两类里 |
-| `service/hot/api/internal/types/types.go:22-25`（`HotArticlesReq`） | `hot-api/.../dto/HotArticlesReq.java` | `service/hot/src/main/java/com/rag/hot/dto/HotArticlesReq.java` | 1:1 | form tag `page` / `page_size`（**下划线**）；两层默认值（form tag 默认 1/20 + logic 层 default 1/20）缺一不可 |
-| `service/hot/api/internal/types/types.go:27-33`（`HotArticlesResp`） | `hot-api/.../dto/HotArticlesResp.java` | `service/hot/src/main/java/com/rag/hot/dto/HotArticlesResp.java` | 1:1 | `items` / `total` / `page` / `page_size` / `scope`（`scope` 恒 `"rolling"`） |
-| `service/hot/api/internal/types/types.go:6-20`（`HotArticleItem`，13 字段） | `hot-api/.../dto/HotArticleCard.java` | `service/hot/src/main/java/com/rag/hot/dto/HotArticleItem.java` | 1:1 | ⚠️ **命名债**：B 刻意改名 `HotArticleCard` 以避开与 proto message `hot.HotArticleItem`（**只有 2 字段**）同名；C 沿用了 `HotArticleItem` ⇒ 两个同名不同形的类型并存，易误用 |
+| `service/hot/api/internal/types/types.go:22-25`（`HotArticlesReq`） | `hot-api/.../dto/HotArticlesReq.java` | `service/hot/src/main/java/com/rag/hot/dto/article/HotArticlesReq.java` | 1:1 | form tag `page` / `page_size`（**下划线**）；两层默认值（form tag 默认 1/20 + logic 层 default 1/20）缺一不可 |
+| `service/hot/api/internal/types/types.go:27-33`（`HotArticlesResp`） | `hot-api/.../dto/HotArticlesResp.java` | `service/hot/src/main/java/com/rag/hot/dto/article/HotArticlesResp.java` | 1:1 | `items` / `total` / `page` / `page_size` / `scope`（`scope` 恒 `"rolling"`） |
+| `service/hot/api/internal/types/types.go:6-20`（`HotArticleItem`，13 字段） | `hot-api/.../dto/HotArticleCard.java` | `service/hot/src/main/java/com/rag/hot/dto/article/HotArticleItem.java` | 1:1 | ⚠️ **命名债**：B 刻意改名 `HotArticleCard` 以避开与 proto message `hot.HotArticleItem`（**只有 2 字段**）同名；C 沿用了 `HotArticleItem` ⇒ 两个同名不同形的类型并存，易误用 |
 | `service/hot/api/internal/metrics/metrics.go:13-43`（5 个 collector）+ `:45-75`（4 个 helper） | `hot-api/.../metrics/HotApiMetrics.java` | `service/hot/src/main/java/com/rag/hot/metrics/HotApiMetrics.java` | 1:1 | 5 个指标名 L1（§6）；⚠️ `ObserveReject`（`metrics.go:65-67`）在 Go 侧**零触发点** ⇒ 保留指标名、**不补触发点** |
 | `service/hot/api/internal/config/config.go:11-15`（`RestConf` + 2 个 `RpcClientConf`） | **无对应类**（B 按 `FileTree/hot/api.md` §12.5「刻意不建」——Go 侧字段全被 Spring 原生属性接管，hot 无专属阈值） | `service/hot/src/main/java/com/rag/hot/config/HotApiProperties.java` | 1:1 | ⚠️ C 建了但**职责待定**：Go 侧 api Config 无任何专属阈值（`defaultPage` / `maxPageSize` / `maxHotArticles` / `hydrationConcurrency` 是**编译期常量**，不是配置） |
 | `service/hot/api/internal/svc/serviceContext.go:16-18`（`HotRPC` 窄接口 + `hotRPCAdapter`） | `hot-api/.../client/HotRpcClient.java` | **无对应物** | 1:1 | **D2**：同域调用改直连 ⇒ `HotApiService` 直接注入 `rpc/service/HotRankingQueryService`（不再自我 gRPC 往返） |
