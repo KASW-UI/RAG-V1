@@ -280,7 +280,7 @@ Go 真源仓库路径见 §1.0b（**已冻结**，不接受写入）。RAG-V1 �
 
 完整工具清单见 [`tools/README.md`](tools/README.md) 与 [`tools/difftest/README.md`](tools/difftest/README.md)。**改完目录结构必跑** `python3 tools/gen-file-tree.py`（按实际文件系统生成 14 份文件树 + `_INDEX.md` ⇒ 不会与代码漂）。
 
-- `tools/check-mapping-coverage.py` —— 三方对照文档五重校验（A/B/C 列覆盖率 · `_INDEX.md` 对账 · 映射行计数）
+- `tools/check-mapping-coverage.py` —— 三方对照文档六重校验（A/B/C 列覆盖率 · `_INDEX.md` 对账 · 映射行计数）
 - `tools/difftest/check-arch-invariants.py` —— **架构符合性 A1–A12**；`--contract A|B` 契约绑定 · `--self-test` 造违规假树自证 **12/12 条判据均能红** · 空壳类报 `PENDING`（**不算 PASS**）
 - ⬜ 待实现：`check-proto-static.sh`（proto 契约对照）· `check-ddl-static.py`（DDL 列级对照）· `run-parity.sh`（双侧语义探针）
 

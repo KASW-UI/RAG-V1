@@ -14,6 +14,7 @@
 五重校验（全部从文件系统反查，不采信文档自报数）：
   ① A 列覆盖率  ② C 列覆盖率  ③ `_INDEX.md` 自报数字对账
   ④ 小节标题自报条数 == 表内实际行数  ⑤ B 列双向对账（A/C 之外的第三列）
+  ⑥ B↔C 指代消解后可判定性（「同上」是确定性指代 ⇒ 消解后每行都要读得出）
 
 用法：
     python3 tools/check-mapping-coverage.py            # 全部域
@@ -85,6 +86,48 @@ B_COLUMN_WHITELIST = {
     "ArticleGoStyleCorsFilter":  ("RAG 域内局部副本 ⇒ C 侧由 common/web/ 过滤器承担", "2026-10-26"),
     "GoStyleRpcSheddingInterceptor":("RAG service/common/protection/ 17 类之一 ⇒ C 侧 protection 仅 2 类（生态吸收 D4）", "2026-10-26"),
     "TaskTraceAttributes":       ("RAG 侧 task 的 trace 属性载体 ⇒ C 侧无对应物", "2026-10-26"),
+}
+
+# ── 非文件级对照登记（第 ⑥ 重校验用）───────────────────────────────────
+# **背景**：B↔C 的行级对应里，**88 行写「同上」** —— 「同上」是**确定性指代**
+#   （B / C 各自独立向上取最近一个非「同上」的值，零歧义）⇒ 消解后**每行都能读出含义**。
+#   消解后仍有 **26 行**读不出「某个 `.java` 的落点」—— 逐条核对后确认：
+#   **它们全部是「非文件级」对照**（模块 / 进程 / 集合 / 内部类 / 方法 / 清单 / 配置），
+#   或**明确写了「无」** ⇒ **语义正确，不是缺口**。
+#
+# ⚠️ 本表是**登记制**：消解后新出现的不可判定行**必须**登记在这里，否则第 ⑥ 重校验报红；
+#    已登记但后来变得可判定的行 ⇒ 报「登记已失效」⇒ **防登记腐化**。
+#
+# 键 = (文档相对路径, A 列归一化文本[:60]) —— **用 A 列（Go 侧，已冻结）做键**，
+#    因为 B / C 列会随实现推进变化，A 列不会 ⇒ 键稳定。
+# 格式：(文档, A 列) -> (形态, 原因, 核对日期)
+NON_FILE_LEVEL = {
+    ("article/article.md", "rpc/pb/article.pb.go+rpc/pb/article_grpc.pb.go（protoc生成物）"): ("proto/生成物级", "Go 侧 protoc 生成物 ⇒ 不逐个手写类", "2026-10-26"),
+    ("article/article.md", "rpc/articleservice/article_service.go（客户端桩）"): ("明确「无」", "Go 侧 goctl 客户端桩 ⇒ C 侧由 devh @GrpcClient 直接用生成 stub", "2026-10-26"),
+    ("comment/comment.md", "（Go侧3个进程：api/rpc/2个cmd）"): ("进程级", "进程拓扑对照（非文件级）", "2026-10-26"),
+    ("comment/comment.md", "（Go侧etcd服务发现：Etcd.Key:comment.rpc）"): ("配置级", "服务发现配置对照（非文件级）", "2026-10-26"),
+    ("comment/comment.md", "rpc/commentservice/comment_service.go（goctl生成的client桩，7方法）"): ("明确「无」", "Go 侧 goctl 桩 ⇒ C 侧无独立类", "2026-10-26"),
+    ("comment/comment.md", "rpc/internal/model/data_model.go的ReplySort+GetReplyIDsPageRe"): ("明确「无」", "Go 侧 DataModel ⇒ C 侧拆进 mapper 方法签名，无独立类", "2026-10-26"),
+    ("common.md", "Go侧无对应物"): ("清单级", "B 侧各 rpc 模块 @Import 清单（10 份）⇒ C 侧 0 份，是清单级对照", "2026-10-26"),
+    ("favorite/favorite.md", "api/internal/types/types.go（GetFavoriteFoldersReq）"): ("明确「无」", "B 侧无此 DTO ⇒ 明确否定", "2026-10-26"),
+    ("follow/follow.md", "service/follow/rpc/pb/follow.pb.go+rpc/pb/follow_grpc.pb.go"): ("proto/生成物级", "Go 侧 protoc 生成物 ⇒ 不逐个手写类", "2026-10-26"),
+    ("follow/follow.md", "8个logic合计"): ("集合级", "Go 侧 8 个 logic 合计 ⇒ C 侧 2 个 Service，是集合级对照", "2026-10-26"),
+    ("follow/follow.md", "service/follow/rpc/followservice/followservice.go（8方法客户端接口+6"): ("明确「无」", "Go 侧 goctl 桩 ⇒ C 侧无手写类", "2026-10-26"),
+    ("hot/hot.md", "service/common/（Go的跨域共享层）"): ("模块/包级", "模块级对照（C 侧 common/ 收成 starter）", "2026-10-26"),
+    ("like/like.md", "service/like/api/（进程P1，HTTP入口）"): ("模块/包级", "模块级对照（进程拓扑）", "2026-10-26"),
+    ("like/like.md", "service/like/rpc/（进程P2，gRPC入口）"): ("模块/包级", "模块级对照（进程拓扑）", "2026-10-26"),
+    ("like/like.md", "service/like/common/（errmsg，api/rpc/mq三方共用）"): ("模块/包级", "模块级对照（common/ 收成 starter）", "2026-10-26"),
+    ("message/message.md", "service/common/（跨服务共享层）"): ("模块/包级", "模块级对照（C 侧 common/ 收成 starter）", "2026-10-26"),
+    ("message/message.md", "进程拓扑：2个（api0.0.0.0:8892/rpc0.0.0.0:8082）"): ("模块/包级", "进程拓扑对照（非文件级）", "2026-10-26"),
+    ("message/message.md", "common/errmsg.go的CodeError{Code,Msg}（同时是error与JSON体{code,msg"): ("成员/方法级", "Go 侧内部 struct ⇒ 成员级对照", "2026-10-26"),
+    ("message/message.md", "common/errmsg.go的BizCodeFromError反查"): ("成员/方法级", "Go 侧包级函数 ⇒ 方法级对照", "2026-10-26"),
+    ("message/message.md", "common/errmsg.go的GRPCError(grpcCode,bizCode)"): ("成员/方法级", "Go 侧包级函数 ⇒ 方法级对照", "2026-10-26"),
+    ("message/message.md", "common/errmsg.go的codeMsgmap"): ("成员/方法级", "Go 侧包级 map ⇒ 成员级对照", "2026-10-26"),
+    ("message/message.md", "common/errmsg.go的const块"): ("成员/方法级", "Go 侧 const 块 ⇒ 成员级对照", "2026-10-26"),
+    ("task/task.md", "go-zerohttpx.OkJsonCtx（okHandler==nil⇒成功响应无信封）"): ("明确「无」", "B 侧无 ResponseAdvice ⇒ 明确否定", "2026-10-26"),
+    ("users/admin/admin.md", "service/user/admin/rpc/adminservice/adminservice.go"): ("明确「无」", "Go 侧 goctl 桩 ⇒ C 侧无独立文件", "2026-10-26"),
+    ("users/user/user.md", "service/user/user/rpc/userservice/userservice.go"): ("明确「无」", "Go 侧 goctl 桩 ⇒ C 侧无独立文件", "2026-10-26"),
+    ("users/users-common.md", "—（Go侧无对应物：go-zerohttpx.Parse内置必填校验）"): ("明确「无」", "Go 侧内置必填校验 ⇒ C 侧 D5 改 Bean Validation", "2026-10-26"),
 }
 
 
@@ -431,6 +474,131 @@ def check_b_column():
     return problems, summary, len(uncovered)
 
 
+# ── 第 ⑥ 重校验：指代消解 ────────────────────────────────────────────────
+def _norm(x):
+    """去掉 markdown 强调与空白 —— 表格单元格的归一化形态。"""
+    if not isinstance(x, str):
+        return ""
+    return re.sub(r"[*`\s]", "", x)
+
+
+def _is_ref(x):
+    """是否是**指代**（「同上」/「同左」）—— 需向上消解才能读出含义。"""
+    return "同上" in _norm(x) or "同左" in _norm(x)
+
+
+def _is_neg(x):
+    """是否是**明确否定**（「无对应文件」/「无独立文件」/「—」）—— 机器读得出，且语义正确。"""
+    return bool(re.search(r"无对应|不适用|无落点|无C落点|没有对应|^—$|^-$", _norm(x)))
+
+
+def _has_path(x):
+    """是否给出了**具体路径**（`.java` / 目录 / `.proto` / `.sql` / `.yml`）。"""
+    s = _norm(x)
+    if _is_neg(x):
+        return False
+    return bool(re.search(r"\.java\b|[\w\-]/[\w\-]|\.proto|\.sql|\.yml", s))
+
+
+def _map_rows():
+    """主表映射行 `[(文档, 行号, A, B, C, 类型)]` —— **按文档 → 行号顺序**。
+
+    ⚠️ 消解**必须按这个顺序**：指代是「向上指」，跨文档指代不成立。
+    """
+    out = []
+    for doc in sorted(MT.rglob("*.md")):
+        if doc.name in ("_INDEX.md", "README.MD"):
+            continue
+        for i, ln in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
+            if not ln.startswith("|"):
+                continue
+            cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+            if len(cells) != 5:
+                continue
+            t = cells[3].replace("`", "").replace("**", "").strip()
+            if t in TYPE_TOKENS:
+                out.append((doc, i, cells[0], cells[1], cells[2], t))
+    return out
+
+
+def check_b_resolvability():
+    """**第 ⑥ 重校验：B↔C 指代消解后可判定性**（2026-10-26 新增）。
+
+    **背景**：B 列有 88 行写「同上」。「同上」是**确定性指代** —— B / C 各自独立向上
+    取最近一个非「同上」的值，零歧义 ⇒ 消解后**每行都能读出含义**。
+    ⇒ 真正要守的不是「有没有『同上』」，而是「**消解后每行是不是都读得出**」。
+
+    三个子判据：
+    - **⑥-a 孤立指代** —— 「同上」向上找不到锚点 ⇒ **真缺陷**（指代链断了）；
+    - **⑥-b 未登记** —— 消解后仍读不出「某个 `.java` 的落点」的行，**必须**登记在
+      `NON_FILE_LEVEL`（非文件级对照 / 明确「无」）⇒ 未登记即报红；
+    - **⑥-c 登记失效** —— 已登记的行后来变得可判定 ⇒ 报「登记已失效，请删除」⇒ 防登记腐化。
+
+    ⚠️ **锚点规则**：只有「具体路径」或「明确否定」能当锚点 ——
+       纯描述文字**不是**锚点（「同上」指的是上面那个**具体路径**，不是上面那段描述）。
+    """
+    problems = []
+    rows = _map_rows()
+    cur_doc = None
+    last_b = last_c = None
+    undecidable, orphan = [], []
+
+    for doc, i, a, b, c, t in rows:
+        if doc != cur_doc:            # 换文档 ⇒ 指代链重置
+            cur_doc, last_b, last_c = doc, None, None
+        rb, rc = b, c
+        broken = False
+        if _is_ref(rb):
+            if last_b is None:
+                # ⚠️ **孤立指代** —— 向上没有锚点。
+                #    这里**必须置空**而不是 `rb = last_b`（那是 None）⇒ 否则后续
+                #    `_has_path(None)` 抛 TypeError ⇒ **整个脚本崩溃**（负向测试抓到的真 bug）。
+                orphan.append((doc.relative_to(MT), i, "B"))
+                rb, broken = "", True
+            else:
+                rb = last_b
+        elif _has_path(rb) or _is_neg(rb):
+            last_b = rb
+        if _is_ref(rc):
+            if last_c is None:
+                orphan.append((doc.relative_to(MT), i, "C"))
+                rc, broken = "", True
+            else:
+                rc = last_c
+        elif _has_path(rc) or _is_neg(rc):
+            last_c = rc
+        if broken:
+            continue                  # 孤立指代已单独报过 ⇒ 不再计入「不可判定」
+        if not ((_has_path(rb) or _is_neg(rb)) and (_has_path(rc) or _is_neg(rc))):
+            undecidable.append((doc, i, a, b, c))
+
+    for rel, i, side in orphan:
+        problems.append(f"❌ {rel}:{i} 的 {side} 列是孤立指代（向上找不到锚点）")
+
+    for doc, i, a, b, c in undecidable:
+        key = (str(doc.relative_to(MT)), _norm(a)[:60])
+        if key not in NON_FILE_LEVEL:
+            problems.append(
+                f"❌ {doc.relative_to(MT)}:{i} 消解后仍不可判定（未登记）"
+                f"—— B=`{_norm(b)[:30]}` C=`{_norm(c)[:30]}`"
+                f" ⇒ 请登记到 NON_FILE_LEVEL 或把路径写全")
+
+    seen = set()
+    for doc, i, a, b, c in undecidable:
+        seen.add((str(doc.relative_to(MT)), _norm(a)[:60]))
+    for key in sorted(NON_FILE_LEVEL):
+        if key not in seen:
+            problems.append(
+                f"❌ NON_FILE_LEVEL 登记条目已失效：{key[0]} 的「{key[1][:40]}」"
+                f"（该行现已可判定）⇒ 请删除该登记")
+
+    total = len(rows)
+    ok = total - len(undecidable)
+    summary = (f"消解后双侧可判定 {ok}/{total} = {ok*100/total:.1f}% · "
+               f"非文件级登记 {len(seen)} 条 · 孤立指代 {len(orphan)} 处")
+    return problems, summary
+
+
 def main():
     targets = sys.argv[1:] or list(DOMAINS)
     total_c = total_c_missing = total_a = total_a_missing = 0
@@ -531,6 +699,14 @@ def main():
         problems.extend(b_problems)
     else:
         print(f"\nB 列双向对账：✅ 全部一致（{b_summary}）")
+
+    # ── B↔C 指代消解后可判定性（第 6 重校验 · 2026-10-26）──────────────
+    r_problems, r_summary = check_b_resolvability()
+    if r_problems:
+        print(f"\nB↔C 指代消解：❌ {len(r_problems)} 处问题（{r_summary}）")
+        problems.extend(r_problems)
+    else:
+        print(f"\nB↔C 指代消解：✅ 全部一致（{r_summary}）")
 
     if problems:
         print("\n".join(problems))
