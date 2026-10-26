@@ -83,7 +83,7 @@
 | `hot/api/controller/` | `controller/` | 直接压平（`HotArticleController`）|
 | `hot/api/dto/` | `dto/` | 直接压平（2 个同名类全落此）|
 | `hot/api/exception/` | `exception/` | 直接压平 |
-| `hot/api/form/`（`GoFormValues`） | `common/src/main/java/com/rag/common/web/GoStyleGetFormValuesFilter.java` | **上收 `common/`**（D3）|
+| `hot/api/form/`（`GoFormValues`） | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java` | **上收 `common/`**（D3）|
 | `hot/api/metrics/` | `metrics/` | 与 rpc 侧合并 |
 | `hot/api/service/` | `service/` | 与 rpc 侧合并 |
 | `hot/common/errmsg/` | `contract/` | 错误码（`CodeError` / `ErrCodes` / `ErrMsg` / `GrpcErrorMapper`）|
@@ -126,7 +126,7 @@
 | `service/hot/api/internal/svc/serviceContext.go:20-22`（`ArticleRPC` 窄接口 + adapter） | `hot-api/.../client/ArticleRpcClient.java` | `service/hot/src/main/java/com/rag/hot/client/ArticleRpcClient.java` | 1:1 | **D6**：跨域仍走 gRPC；包位从 `api/client/` 迁到 `rpc/client/`（依据：`完全spring化的文件树.md` §3.3.8） |
 | `service/hot/api/internal/svc/serviceContext.go:24-39`（`ServiceContext` 装配根） | `hot-api/.../HotApiApplication.java`（Spring DI 取代） | `service/hot/src/main/java/com/rag/hot/HotServiceApplication.java`（Spring DI 取代） | 1:1 | **ABSORB**：`ServiceContext` 在 C 侧无对应文件 |
 | `service/hot/api/internal/config/config.go:13-14`（`HotRpcConf` / `ArticleRpcConf` ⇒ `zrpc` 默认 `Timeout=2000ms`，来自 struct tag 而非 yaml） | `hot-api/.../client/GoStyleGrpcCallDeadline.java` | `service/hot/src/main/java/com/rag/hot/config/HotApiProperties.java` + `service/hot/src/main/resources/application.yml` 的 `grpc.client.*` 段 | 1:1 | ⚠️ **C 侧无独立 deadline 类** —— devh starter 不提供默认 deadline ⇒ 必须**显式配**（否则退化为无限等待） |
-| `service/hot/api/internal/handler/routes.go:16-24` + `internal/types/types.go:22-25`（`httpx.Parse` 的 form / query 解析规则） | `hot-api/.../form/GoFormValues.java` | `common/src/main/java/com/rag/common/web/GoStyleGetFormValuesFilter.java`（**跨域共享，不在 hot 域内**） | 1:N | **D5**：C 侧 DTO 改 immutable record + Bean Validation ⇒ ⚠️ **L3 降级**（错误文案从 go-zero 改为 Bean Validation 文案） |
+| `service/hot/api/internal/handler/routes.go:16-24` + `internal/types/types.go:22-25`（`httpx.Parse` 的 form / query 解析规则） | `hot-api/.../form/GoFormValues.java` | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java`（**跨域共享，不在 hot 域内**） | 1:N | **D5**：C 侧 DTO 改 immutable record + Bean Validation ⇒ ⚠️ **L3 降级**（错误文案从 go-zero 改为 Bean Validation 文案） |
 | `service/hot/api/internal/logic/hot/getHotArticlesLogic.go:93`（`sem := make(chan struct{}, 8)`）+ `:100-110`（goroutine 池） | `hot-api/.../config/HotHydrationExecutorConfiguration.java` | `service/hot/src/main/java/com/rag/hot/config/HotHydrationExecutorConfiguration.java` | 1:1 | Go 的裸 goroutine 无 Java 等价物 ⇒ 落成 `ThreadPoolTaskExecutor`（有界池 + 自带生命周期） |
 | **无对应物**（Go 侧 hot 域零中间件、零 CORS：`routes.go:16-25` 的 `AddRoutes` **没有** `WithJwt`） | **无对应类**（B 侧 `FileTree/hot/api.md` §12.5「刻意不建」） | `service/hot/src/main/java/com/rag/hot/config/WebMvcConfig.java` | C 新增 | 🔴 **待确认 / 疑似多余** —— C 的该类 javadoc 写「注册 JwtAuthInterceptor + public 路径白名单」，与「hot 域全部端点免鉴权」**直接矛盾**；且 `File_Tree/hot/hot-service.md` §四 自己也写「本域**不该有** `*JwtAuthInterceptor`」⇒ **C 树内部自相矛盾**，需拍板 |
 
@@ -146,7 +146,7 @@
 | `service/hot/rpc/hot.go:35-41`（`zrpc.MustNewServer` ⇒ etcd 注册 `hot.rpc`） | `hot-rpc/.../bootstrap/NacosRegistration.java` | `service/hot/src/main/java/com/rag/hot/bootstrap/NacosRegistration.java` | 1:1 | etcd flat key `hot.rpc` → Nacos `SERVICE_NAME="hot-rpc"` |
 | `service/hot/rpc/internal/mqs/hot_handler.go:30-45`（2 个 `core/metric` CounterVec） | `hot-rpc/.../metrics/HotRpcMetrics.java` | `service/hot/src/main/java/com/rag/hot/metrics/HotRpcMetrics.java` | 1:1 | 指标名 L1：`article_hot_kafka_consume_total{type}` / `article_hot_redis_sync_total{status}`（go-zero `core/metric` ⇒ 完整名 = `namespace_subsystem_name`） |
 | `service/hot/rpc/internal/metrics/metrics.go:14-26`（`InitMetrics` 起 `:9091` 独立 metrics 端口） | **无对应类**（B 侧判定零调用点，不迁移） | **无对应物**（C 侧由 Actuator `management.endpoints.web.exposure.include: prometheus` 在主端口暴露） | 1:1 | ⚠️ Go 侧 `metrics.InitMetrics` 在 `rpc/hot.go` 里**零调用点** ⇒ 该 `:9091` 端口**实际不生效**；C 用 Actuator 是**表达层**替换，不是行为变更 |
-| `service/hot/rpc/internal/mqs/hot_handler.go:152`（`json.Unmarshal`）+ `internal/mqs/types.go` | `hot-rpc/.../config/Jackson2ObjectMapperConfiguration.java` + `mq/ArticleHotEvent.java` | `service/hot/src/main/java/com/rag/hot/config/HotKafkaConfig.java` | 1:1 | ⚠️ B 侧那个类是 **Boot 4 拆模块**（Jackson 2 / 3）的补丁；C 侧由 `common/src/main/java/com/rag/common/autoconfigure/RagJacksonAutoConfiguration` 统一承担 ⇒ **C 域内不需要** |
+| `service/hot/rpc/internal/mqs/hot_handler.go:152`（`json.Unmarshal`）+ `internal/mqs/types.go` | `hot-rpc/.../config/Jackson2ObjectMapperConfiguration.java` + `mq/ArticleHotEvent.java` | `service/hot/src/main/java/com/rag/hot/config/HotKafkaConfig.java` | 1:1 | ⚠️ B 侧那个类是 **Boot 4 拆模块**（Jackson 2 / 3）的补丁；C 侧由 `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration` 统一承担 ⇒ **C 域内不需要** |
 | `service/hot/test/cmd/producer/producer.go` | — | — | 1:1 | **无对应物**（压测用的 Kafka 生产器，非业务进程；`决策记录.md` D1 明确列为「不属业务进程」） |
 | `service/hot/test/cmd/loadtest/loadtest.go` | — | — | 1:1 | **无对应物**（压测工具，非业务进程） |
 
@@ -158,8 +158,8 @@
 |---|---|---|---|---|
 | `service/hot/api/internal/svc/serviceContext.go:16-18`（`HotRPC` 窄接口） | `hot-api/.../client/HotRpcClient.java` | — | 1:1 | **不需要** —— D2 域内直连 |
 | `service/hot/api/internal/config/config.go:13-14`（`Timeout` 默认 2000ms） | `hot-api/.../client/GoStyleGrpcCallDeadline.java` | `service/hot/src/main/java/com/rag/hot/config/HotApiProperties.java` + `application.yml` 的 `grpc.client.*` | 1:1 | 落进配置（无独立类） |
-| `service/hot/api/internal/handler/routes.go:16-24` + `internal/types/types.go:22-25`（form tag） | `hot-api/.../form/GoFormValues.java` | `common/src/main/java/com/rag/common/web/GoStyleGetFormValuesFilter.java`（**跨域共享**） | 1:N | 落进 `common/`（C 已有该类） |
-| `service/hot/rpc/internal/mqs/hot_handler.go:152`（`json.Unmarshal`） | `hot-rpc/.../config/Jackson2ObjectMapperConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/RagJacksonAutoConfiguration.java` | 1:1 | 落进 `common/`（Boot 4 拆模块补丁） |
+| `service/hot/api/internal/handler/routes.go:16-24` + `internal/types/types.go:22-25`（form tag） | `hot-api/.../form/GoFormValues.java` | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java`（**跨域共享**） | 1:N | 落进 `common/`（C 已有该类） |
+| `service/hot/rpc/internal/mqs/hot_handler.go:152`（`json.Unmarshal`） | `hot-rpc/.../config/Jackson2ObjectMapperConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java` | 1:1 | 落进 `common/`（Boot 4 拆模块补丁） |
 | `service/hot/rpc/internal/mqs/hot_handler.go` + `internal/mqs/types.go` | `hot-rpc/.../mq/` **5 个文件** | — | 1:N | 🔴 **需在 `service/hot/src/main/java/com/rag/hot/` 下新建 `messaging/` 包**（该包**当前不存在**；见 §1.5） |
 
 ### 1.5 C 列缺位汇总（Go 有职责、C 侧无落点）
@@ -171,7 +171,7 @@
 | **G-3** `service/hot/rpc/internal/mqs/hot_handler.go:195-263`（Redis 影子 + `RENAME` 原子快照；4 段 Lua、`EXISTS` 守卫、`EXPIRE 300`） | `hot-rpc/.../mq/HotRedisSnapshotStore.java` | —（待建 `messaging/HotRedisSnapshotStore.java`（**待建** —— `service/hot/src/main/java/com/rag/hot/` 下**当前无 `messaging/` 包**）） | 1:N | 🔴 高 —— 最易漂移面 |
 | **G-4** `service/hot/rpc/internal/mqs/hot_handler.go:285-415`（分布式锁 + 看门狗续期 + 跨分片合并求和；10s tick） | `hot-rpc/.../mq/HotMergeScheduler.java` | —（待建 `messaging/HotMergeScheduler.java`（**待建** —— `service/hot/src/main/java/com/rag/hot/` 下**当前无 `messaging/` 包**）） | 1:N | 🔴 高 |
 | **G-5** `service/hot/rpc/internal/mqs/types.go:5-8`（MQ 载荷类型：`article_id` + `type`，**2 字段**） | `hot-rpc/.../mq/ArticleHotEvent.java` | —（待建 `messaging/ArticleHotEvent.java`（**待建** —— `service/hot/src/main/java/com/rag/hot/` 下**当前无 `messaging/` 包**），或放域内 `contract/` 包） | 1:1 | 🔴 高 —— 无它 G-1 无法反序列化 |
-| **G-6** `service/hot/api/internal/handler/routes.go:16-24` + `internal/types/types.go:22-25`（`httpx.Parse` 的 query 解析规则：空值丢弃等） | `hot-api/.../form/GoFormValues.java` | `common/src/main/java/com/rag/common/web/GoStyleGetFormValuesFilter.java`（**跨域共享，非域内**） | 1:N | 🟡 中 —— C 已有该类，需确认它覆盖 hot 的 2 个参数 |
+| **G-6** `service/hot/api/internal/handler/routes.go:16-24` + `internal/types/types.go:22-25`（`httpx.Parse` 的 query 解析规则：空值丢弃等） | `hot-api/.../form/GoFormValues.java` | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java`（**跨域共享，非域内**） | 1:N | 🟡 中 —— C 已有该类，需确认它覆盖 hot 的 2 个参数 |
 | **G-7** `service/hot/api/internal/config/config.go:13-14`（`zrpc` struct tag 默认 `Timeout=2000ms`） | `hot-api/.../client/GoStyleGrpcCallDeadline.java` | `service/hot/src/main/java/com/rag/hot/config/HotApiProperties.java` + `application.yml` | 1:1 | 🟡 中 —— 需在 `grpc.client.*` 显式配 |
 
 > ⇒ **G-1 ~ G-5 是一条完整链路，缺任一环 hot 域的 rpc 侧就没有「热度计算」**。
@@ -197,7 +197,7 @@
 **决策锁 · 无表域的持久层依赖（3 处同时改）**：
 1. `service/hot/pom.xml` 的 `mybatis-plus-spring-boot3-starter` + `postgresql` —— hot 域无表 ⇒ 要么删，要么明确「保留给未来扩展」。
 2. `service/hot/src/main/resources/application.yml` 的 `spring.datasource` + `mybatis-plus` 段 —— 同上。
-3. `common/src/main/java/com/rag/common/autoconfigure/RagMybatisPlusAutoConfiguration.java` 的扫描策略 —— 需确认不会给 hot 域装配出「空 mapper 扫描」副作用。
+3. `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` 的扫描策略 —— 需确认不会给 hot 域装配出「空 mapper 扫描」副作用。
 
 **为什么换**：RAG-V1 的树是**按域模板批量生成**的，持久层依赖跟着模板走。hot 域是**纯 Redis + Kafka** 域（Go 侧本就无表）⇒ 模板带来的 DataSource / MyBatis-Plus 是**多出来的东西**，留着会让「这个域依赖哪个库」这个问题变得没有答案。
 
@@ -257,8 +257,8 @@
 |---|---|---|---|
 | `service/common/response/response.go`（`{code,msg,data}` 信封） | `service/common/.../response/Response.java` | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | 信封是 L1（客户端按 `{code,msg,data}` 解析）⇒ **不能用 `ProblemDetail` 替换** |
 | `service/common/logger/logger.go`（`LogBusinessErr` / `WithArticleID` / `call_chain`） | `service/common/.../logger/Logger.java` | `common/src/main/java/com/rag/common/logger/GoStyleLogger.java` + `LogOption.java` + `LogOptions.java` + `FatalError.java` | **D4**（实现 SLF4J 的 `Logger`）；日志字段属业务契约 |
-| `service/common/observability/http.go`（HTTP 中间件 + timeout） | `service/common/.../observability/HttpMiddleware.java` | `common/src/main/java/com/rag/common/observability/*`（3 类）+ `common/src/main/java/com/rag/common/autoconfigure/RagObservabilityAutoConfiguration.java` | **D3 + D4** |
-| `service/common/observability/rpc.go`（服务端拦截器 / deadline） | `service/common/.../observability/*` + `RpcServerInterceptorFactory` | `common/src/main/java/com/rag/common/observability/GoStyleRequestDeadline.java` + `common/src/main/java/com/rag/common/autoconfigure/RagObservabilityAutoConfiguration.java` | ⚠️ `ObservabilityProperties` 是否含 rpc / http timeout 字段待填 |
+| `service/common/observability/http.go`（HTTP 中间件 + timeout） | `service/common/.../observability/HttpMiddleware.java` | `common/src/main/java/com/rag/common/observability/*`（3 类）+ `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | **D3 + D4** |
+| `service/common/observability/rpc.go`（服务端拦截器 / deadline） | `service/common/.../observability/*` + `RpcServerInterceptorFactory` | `common/src/main/java/com/rag/common/observability/GoStyleRequestDeadline.java` + `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | ⚠️ `ObservabilityProperties` 是否含 rpc / http timeout 字段待填 |
 | `service/common/observability/mq.go`（`TraceConsumer`） | `service/common/.../observability/MqConsumer.java` | `common/src/main/java/com/rag/common/observability/*` | 🔴 hot 域**确实需要**它（`hot_handler.go:105` 的 span 包装）—— 但该 span 落在缺位的 G-1 里 |
 | `service/common/snowflake/snowflake.go` | `service/common/.../snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` | ⚠️ **hot 域不用**（无引用） |
 | `service/common/communityfact/*.go` | `service/common/.../communityfact/*` | `common/src/main/java/com/rag/common/communityfact/`（12 类） | ⚠️ **hot 域不用**（无引用） |
@@ -324,9 +324,9 @@ Spring Cloud 的部署单元是「可部署服务」，`@RestController` 与 `@G
 Spring 侧必须拆开才有可测的边界；但**当前 C 树里这一层根本不存在** ⇒ 这是**待建**，不是「已对齐」。
 
 **批次 4 · query 解析与 deadline 下沉 —— 3 处同时改**：
-1. `api/form/GoFormValues.java` → `common/src/main/java/com/rag/common/web/GoStyleGetFormValuesFilter.java`（域内不再保留）。
+1. `api/form/GoFormValues.java` → `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java`（域内不再保留）。
 2. `{advice,config,controller,dto,metrics,service}/client/GoStyleGrpcCallDeadline.java` → `config/HotApiProperties.java` + `application.yml` 的 `grpc.client.*`。
-3. `config/Jackson2ObjectMapperConfiguration.java` → `common/src/main/java/com/rag/common/autoconfigure/RagJacksonAutoConfiguration.java`（域内不再保留）。
+3. `config/Jackson2ObjectMapperConfiguration.java` → `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java`（域内不再保留）。
 
 **为什么换**：这三件都不是 hot 域的领域职责 —— form 解析是**全域共用的输入解释规则**，deadline 是**客户端基建**，Jackson 是**Boot 4 拆模块补丁** ⇒ 留在域内会造成 10 份重复。
 

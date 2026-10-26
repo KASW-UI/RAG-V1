@@ -46,7 +46,7 @@
 | `common/src/main/java/com/rag/common/security/` | `users-common/jwt/`（2）+ `users-common/cryptx/`（1） | 3 |
 | `common/src/main/java/com/rag/common/persistence/` | 5 个 rpc 模块各一份 `JsonbTypeHandler` + 2 个 rpc 模块各一份 `JsonTextTypeHandler` | 4（合 7 份） |
 | `common/src/main/java/com/rag/common/autoconfigure/` | 9 个 rpc 模块各一份 `MybatisPlusOrderingBridgeAutoConfiguration` | 1（收编 9 份） |
-| `common/src/main/java/com/rag/common/web/GoStyleGrpcStatusMapper.java` | `article-api/http/GoStyleGrpcStatusMapper` | 1 |
+| `common/src/main/java/com/rag/common/web/GrpcStatusMapper.java` | `article-api/http/GoStyleGrpcStatusMapper` | 1 |
 
 > ⚠️ **这正是 RAG-V1 的一个关键动作**：RAG 的共享能力**散在 6 个模块**（`service/common` + `users-common` + 各域 api/rpc），
 > RAG-V1 把它们**收敛成一个 starter**（D3）。
@@ -90,7 +90,7 @@
 | `service/common/`（模块） | `common/`（artifactId `common`）| **升级为真 starter**（D3：`AutoConfiguration.imports` 注册 7 个 `@AutoConfiguration`）|
 | `service/common/…/communityfact/` | `common/src/main/java/com/rag/common/communityfact/` | 直接压平（13 个类）|
 | `service/common/…/exception/` | `common/src/main/java/com/rag/common/exception/` | 直接压平 |
-| `service/common/…/http/` | `common/src/main/java/com/rag/common/web/` | 压平 + **包改名 `http` → `web`**（`GoStyle*` HTTP 兼容层归入 `web/`）|
+| `service/common/…/http/` | `common/src/main/java/com/rag/common/web/` | 压平 + **包改名 `http` → `web`**（`（无前缀）*` HTTP 兼容层归入 `web/`）|
 | `service/common/…/logger/` | `common/src/main/java/com/rag/common/logger/` | 直接压平 |
 | `service/common/…/observability/` | `common/src/main/java/com/rag/common/observability/` | 直接压平 |
 | `service/common/…/persistence/` | `common/src/main/java/com/rag/common/persistence/` | 直接压平 |
@@ -110,13 +110,13 @@
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
-| —（Go 侧无对应物：Go 无自动装配机制） | `spring/HttpMiddlewareFilter.java` + `spring/AuthorityHandlerFactory.java` | `common/src/main/java/com/rag/common/autoconfigure/RagWebAutoConfiguration.java` | N:1 | 注册 servlet filter + `ServletRegistrationBean`；⚠️ Boot 4 的 `addUrlMappings` API |
-| —（Go 侧无对应物） | `http/GoStyleJsonBodyConverterConfig.java` + `users-common/http/GoStyleCoercion.java` | `common/src/main/java/com/rag/common/autoconfigure/RagJacksonAutoConfiguration.java` | N:1 | 收编 Jackson `CoercionConfig`（K-01，**已是原生机制**）+ `JsonBodyConverter` 注册（K-02） |
-| —（Go 侧无对应物） | `spring/ObservabilityLifecycle.java` + `spring/ObservabilityProperties.java` + `observability/RpcInterceptor.java` + `observability/HttpMiddleware.java` + `observability/MqConsumer.java` + `observability/GoStyleRecoverInterceptor.java` + `spring/RpcServerInterceptorFactory.java` | `common/src/main/java/com/rag/common/autoconfigure/RagObservabilityAutoConfiguration.java` | N:1 | ⚠️ **B 侧 `RpcServerInterceptorFactory` 曾经「Bean 在、没挂上」**（`DRIFT-COMMON-004`）⇒ C 侧必须断言真的进了 `server.intercept` |
-| —（Go 侧无对应物：go-zero 内置熔断/降载/限连接/限体积） | `protection/`（17 类）+ `protection/GoStyleProtectionConfiguration.java` + `protection/GoStyleProtectionProperties.java` | `common/src/main/java/com/rag/common/autoconfigure/RagProtectionAutoConfiguration.java` | N:1 | resilience4j `CircuitBreaker` + Tomcat `max-connections` + 1 个 `MaxBytesFilter` + 1 个 CPU 指标（D-02 / D-04） |
-| —（Go 侧无对应物） | `spring/SnowflakeBean.java` + `spring/SnowflakeProperties.java` + `snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/autoconfigure/RagSnowflakeAutoConfiguration.java` | N:1 | ⚠️ 与各域 `rpc/bootstrap/SnowflakeBootstrap.java`（3 个域有）**落点重复**，见 §7「职责对不上 #4」 |
-| —（Go 侧无对应物） | 9 个 rpc 模块各一份 `MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/RagMybatisPlusAutoConfiguration.java` | N:1 | **消掉 9 份重复**（Boot 4 下 MP 自动配置排序桥）；断言 A6 |
-| —（Go 侧无对应物：Go 在各域 `internal/logic` 里直接 `status.Error`） | `article-api/http/GoStyleGrpcStatusMapper.java` | `common/src/main/java/com/rag/common/autoconfigure/RagGrpcExceptionMapperAutoConfiguration.java` | 1:1 | D2/D5 的统一错误模型：`BusinessException(code,msg)` → gRPC 边界 / HTTP 边界两个适配器 |
+| —（Go 侧无对应物：Go 无自动装配机制） | `spring/HttpMiddlewareFilter.java` + `spring/AuthorityHandlerFactory.java` | `common/src/main/java/com/rag/common/autoconfigure/WebAutoConfiguration.java` | N:1 | 注册 servlet filter + `ServletRegistrationBean`；⚠️ Boot 4 的 `addUrlMappings` API |
+| —（Go 侧无对应物） | `http/GoStyleJsonBodyConverterConfig.java` + `users-common/http/GoStyleCoercion.java` | `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java` | N:1 | 收编 Jackson `CoercionConfig`（K-01，**已是原生机制**）+ `JsonBodyConverter` 注册（K-02） |
+| —（Go 侧无对应物） | `spring/ObservabilityLifecycle.java` + `spring/ObservabilityProperties.java` + `observability/RpcInterceptor.java` + `observability/HttpMiddleware.java` + `observability/MqConsumer.java` + `observability/GoStyleRecoverInterceptor.java` + `spring/RpcServerInterceptorFactory.java` | `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | N:1 | ⚠️ **B 侧 `RpcServerInterceptorFactory` 曾经「Bean 在、没挂上」**（`DRIFT-COMMON-004`）⇒ C 侧必须断言真的进了 `server.intercept` |
+| —（Go 侧无对应物：go-zero 内置熔断/降载/限连接/限体积） | `protection/`（17 类）+ `protection/GoStyleProtectionConfiguration.java` + `protection/GoStyleProtectionProperties.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java` | N:1 | resilience4j `CircuitBreaker` + Tomcat `max-connections` + 1 个 `MaxBytesFilter` + 1 个 CPU 指标（D-02 / D-04） |
+| —（Go 侧无对应物） | `spring/SnowflakeBean.java` + `spring/SnowflakeProperties.java` + `snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` | N:1 | ⚠️ 与各域 `rpc/bootstrap/SnowflakeBootstrap.java`（3 个域有）**落点重复**，见 §7「职责对不上 #4」 |
+| —（Go 侧无对应物） | 9 个 rpc 模块各一份 `MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | N:1 | **消掉 9 份重复**（Boot 4 下 MP 自动配置排序桥）；断言 A6 |
+| —（Go 侧无对应物：Go 在各域 `internal/logic` 里直接 `status.Error`） | `article-api/http/GoStyleGrpcStatusMapper.java` | `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java` | 1:1 | D2/D5 的统一错误模型：`BusinessException(code,msg)` → gRPC 边界 / HTTP 边界两个适配器 |
 
 ### 1.2 `communityfact/` —— comment · favorite · like 三域共享的跨服务事件协议（C: 13 类）
 
@@ -199,13 +199,13 @@
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
-| —（Go 侧无对应物：go-zero `rest` 内置 `Middlewares.Breaker`） | `protection/GoStyleBreaker.java` + `GoStyleBreakerFilter.java` + `GoStyleCircuitOpenException.java` + `GoStyleStatusCapturingResponse.java` | `common/src/main/java/com/rag/common/autoconfigure/RagProtectionAutoConfiguration.java`（resilience4j `CircuitBreaker` + `CircuitBreakerRegistry`） | N:1 | ⚠️ **D-02 L3 降级**：失败判定窗口 / half-open 策略与 go-zero 不同；隔离 key 仍是 `METHOD://path`（**每路由一个实例**） |
-| —（Go 侧无对应物：go-zero `zrpc` 内置 `UnaryBreakerInterceptor`） | `protection/GoStyleRpcBreakerInterceptor.java` + `GoStyleRpcFailurePolicy.java` + `GoStyleRpcProtectionChain.java` | `common/src/main/java/com/rag/common/autoconfigure/RagProtectionAutoConfiguration.java`（gRPC server interceptor 装配） | N:1 | ⚠️ **链序是行为语义**：Go 注册序 Trace → Recover → Stat → Prometheus → **Breaker** → Shedding → Timeout；失败判据是 `errors.Is` 深查 + 6 码白名单浅查 |
-| —（Go 侧无对应物：go-zero `zrpc` 内置 client 侧 `BreakerInterceptor`） | `protection/GoStyleGrpcClientBreakerInterceptor.java` | `common/src/main/java/com/rag/common/autoconfigure/RagProtectionAutoConfiguration.java`（devh `@GrpcGlobalClientInterceptor`） | N:1 | ⚠️ `@GrpcGlobalClientInterceptor` + `@Component` **缺一即静默失效**（Bean 在、channel 里没有） |
+| —（Go 侧无对应物：go-zero `rest` 内置 `Middlewares.Breaker`） | `protection/GoStyleBreaker.java` + `GoStyleBreakerFilter.java` + `GoStyleCircuitOpenException.java` + `GoStyleStatusCapturingResponse.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java`（resilience4j `CircuitBreaker` + `CircuitBreakerRegistry`） | N:1 | ⚠️ **D-02 L3 降级**：失败判定窗口 / half-open 策略与 go-zero 不同；隔离 key 仍是 `METHOD://path`（**每路由一个实例**） |
+| —（Go 侧无对应物：go-zero `zrpc` 内置 `UnaryBreakerInterceptor`） | `protection/GoStyleRpcBreakerInterceptor.java` + `GoStyleRpcFailurePolicy.java` + `GoStyleRpcProtectionChain.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java`（gRPC server interceptor 装配） | N:1 | ⚠️ **链序是行为语义**：Go 注册序 Trace → Recover → Stat → Prometheus → **Breaker** → Shedding → Timeout；失败判据是 `errors.Is` 深查 + 6 码白名单浅查 |
+| —（Go 侧无对应物：go-zero `zrpc` 内置 client 侧 `BreakerInterceptor`） | `protection/GoStyleGrpcClientBreakerInterceptor.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java`（devh `@GrpcGlobalClientInterceptor`） | N:1 | ⚠️ `@GrpcGlobalClientInterceptor` + `@Component` **缺一即静默失效**（Bean 在、channel 里没有） |
 | —（Go 侧无对应物：go-zero `rest` 内置 `CpuThreshold` 900‰） | `protection/GoStyleCpuReader.java` + `GoStyleAdaptiveShedder.java` + `GoStyleCpuSheddingFilter.java` + `GoStyleSheddingStat.java` | `common/src/main/java/com/rag/common/protection/CpuThresholdHealthIndicator.java` | N:1 | ⚠️ **生态无等价物**（AGENTS.md §1.1c **G-1**）⇒ 自研 1 类；**拒绝响应形状（裸状态码 + 空 body + 无 Content-Type）必须保留**（D-04） |
 | —（Go 侧无对应物：go-zero `rest` 内置 `MaxBytes` 1048576） | `protection/GoStyleMaxBytesFilter.java` | `common/src/main/java/com/rag/common/protection/MaxBytesFilter.java` | 1:1 | 生态无等价 ⇒ 1 个 filter；⚠️ 判据是 `ContentLength > n` ⇒ 413 空 body |
-| —（Go 侧无对应物：go-zero `rest` 内置 `MaxConns` 10000） | `protection/GoStyleMaxConnsFilter.java` | `common/src/main/java/com/rag/common/autoconfigure/RagProtectionAutoConfiguration.java`（Tomcat `server.tomcat.max-connections`） | 1:1 | **Tomcat 原生项 ⇒ 零 Java 代码**；⚠️ RAG 的「总参数个数 vs 非空值个数」口径差异（`DRIFT-HOTAPI-030`）**仍未决** |
-| —（Go 侧无对应物） | `protection/GoStyleProtectionConfiguration.java` + `GoStyleProtectionProperties.java` | `common/src/main/java/com/rag/common/autoconfigure/RagProtectionAutoConfiguration.java` | N:1 | `@EnableConfigurationProperties` 由 auto-config 接管 ⇒ 消费方零 `@Import`（B 侧曾因漏声明导致 23 条测试全红） |
+| —（Go 侧无对应物：go-zero `rest` 内置 `MaxConns` 10000） | `protection/GoStyleMaxConnsFilter.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java`（Tomcat `server.tomcat.max-connections`） | 1:1 | **Tomcat 原生项 ⇒ 零 Java 代码**；⚠️ RAG 的「总参数个数 vs 非空值个数」口径差异（`DRIFT-HOTAPI-030`）**仍未决** |
+| —（Go 侧无对应物） | `protection/GoStyleProtectionConfiguration.java` + `GoStyleProtectionProperties.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java` | N:1 | `@EnableConfigurationProperties` 由 auto-config 接管 ⇒ 消费方零 `@Import`（B 侧曾因漏声明导致 23 条测试全红） |
 
 ### 1.9 `security/` —— JWT + 口令（C: 3 类）
 
@@ -224,7 +224,7 @@
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
 | `snowflake/snowflake.go`（41 时间 + 10 worker + 12 seq，epoch `1288834974657`） | `snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` | 1:1 | ⚠️ epoch / 位段是**业务契约**（like 域游标编码依赖 `>>22`） |
-| `snowflake/snowflake.go`（`Init` / `GetID` / `generateNodeId`） | `spring/SnowflakeBean.java` + `spring/SnowflakeProperties.java` | `common/src/main/java/com/rag/common/autoconfigure/RagSnowflakeAutoConfiguration.java` | N:1 | `SNOWFLAKE_NODE_ID` 优先，parse 失败**继续走 hash 不报错**；否则 `sha256("SERVICE_NAME-PID")` 取前 2 字节大端 ⇒ `%1024` |
+| `snowflake/snowflake.go`（`Init` / `GetID` / `generateNodeId`） | `spring/SnowflakeBean.java` + `spring/SnowflakeProperties.java` | `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` | N:1 | `SNOWFLAKE_NODE_ID` 优先，parse 失败**继续走 hash 不报错**；否则 `sha256("SERVICE_NAME-PID")` 取前 2 字节大端 ⇒ `%1024` |
 
 ### 1.11 `web/` —— Go 语义的 HTTP 层（C: 16 类）
 
@@ -233,28 +233,28 @@
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
-|—（Go 侧无对应物：go-zero `httpx.Parse` 内置）|`common/http/GoStyleJsonBodyConverter.java`|`common/src/main/java/com/rag/common/web/GoStyleJsonBodyConverter.java`|1:1|⚠️ **K-02**：判据是 `ContentLength > 0` 且 Content-Type **字面**含 `application/json` ⇒ `application/vnd.api+json` 在 Go 侧**不**匹配|
-|—（Go 侧无对应物）|`common/http/GoStyleJsonBodyConverterConfig.java`|`common/src/main/java/com/rag/common/web/GoStyleJsonBodyConverterConfig.java`|1:1|注册点；⚠️ C 侧最终应并入 `RagJacksonAutoConfiguration`（见 §7「职责对不上 #5」）|
-|—（Go 侧无对应物：go-zero `httpx.Error` 内置）|`common/http/GoStyleRouterErrorResponses.java`|`common/src/main/java/com/rag/common/web/GoStyleRouterErrorResponses.java`|1:1|400 + **text/plain** 的错误形状（D-01 只降级**文案**，形状不受影响）|
-| —（Go 侧无对应物：go-zero `core/mapping` 内置） | `users-common/http/GoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/GoStyleCoercion.java` | 1:1 | ⚠️ **K-01**：Jackson 原生 `CoercionConfig` ⇒ **不是自研**；数字/布尔不进 String 字段 |
-| —（Go 侧无对应物） | `users-common/http/GoStyleStringInt64.java` + `message-api/dto/GoStyleStringInt64.java`（**2 份**） | `common/src/main/java/com/rag/common/web/GoStyleStringInt64.java` | N:1 | 副本合一 |
-| —（Go 侧无对应物） | `like-api/dto/GoStyleFloat64Deserializer.java` | `common/src/main/java/com/rag/common/web/GoStyleFloat64Deserializer.java` | 1:1 | 归位 |
-| —（Go 侧无对应物） | `like-api/dto/GoStyleRawStringListDeserializer.java` | `common/src/main/java/com/rag/common/web/GoStyleRawStringListDeserializer.java` | 1:1 | 归位 |
-| —（Go 侧无对应物） | `message-api/config/GoStyleMapStringValueDeserializer.java` | `common/src/main/java/com/rag/common/web/GoStyleMapStringValueDeserializer.java` | 1:1 | 归位 |
-| —（Go 侧无对应物） | `article-api/dto/GoStyleStringFields.java` | `common/src/main/java/com/rag/common/web/GoStyleStringFields.java` | 1:1 | 归位 |
-| —（Go 侧无对应物） | `article-api/http/GoStyleBadRequestException.java` | `common/src/main/java/com/rag/common/web/GoStyleBadRequestException.java` | 1:1 | 归位 |
-| —（Go 侧无对应物） | `article-api/http/GoStyleHttpErrorException.java` | `common/src/main/java/com/rag/common/web/GoStyleHttpErrorException.java` | 1:1 | 归位 |
-| —（Go 侧无对应物） | `article-api/http/GoStylePlainTextErrors.java` | `common/src/main/java/com/rag/common/web/GoStylePlainTextErrors.java` | 1:1 | 归位；⚠️ **真 Tomcat 下 400 的 `Content-Type` / `nosniff`**（MockMvc 测不到） |
-| —（Go 侧无对应物） | `article-api/http/GoStyleGrpcStatusMapper.java` | `common/src/main/java/com/rag/common/web/GoStyleGrpcStatusMapper.java` | 1:1 | ⚠️ **与 `RagGrpcExceptionMapperAutoConfiguration` 职责重叠**，见 §7「职责对不上 #2」 |
-| —（Go 侧无对应物） | `article-api/config/GoStyleGetFormValuesFilter.java` | `common/src/main/java/com/rag/common/web/GoStyleGetFormValuesFilter.java` | 1:1 | 归位 |
-| —（Go 侧无对应物） | `article-api/config/GoStyleJsonBodyLimitFilter.java` | `common/src/main/java/com/rag/common/web/GoStyleJsonBodyLimitFilter.java` | 1:1 | 归位；⚠️ 与 `protection/MaxBytesFilter.java` **语义相邻但不同**，别合并 |
-| —（Go 侧无对应物） | `article-api/config/GoStylePathNormalizingFilter.java` | `common/src/main/java/com/rag/common/web/GoStylePathNormalizingFilter.java` | 1:1 | 归位 |
+|—（Go 侧无对应物：go-zero `httpx.Parse` 内置）|`common/http/GoStyleJsonBodyConverter.java`|`common/src/main/java/com/rag/common/web/JsonBodyConverter.java`|1:1|⚠️ **K-02**：判据是 `ContentLength > 0` 且 Content-Type **字面**含 `application/json` ⇒ `application/vnd.api+json` 在 Go 侧**不**匹配|
+|—（Go 侧无对应物）|`common/http/GoStyleJsonBodyConverterConfig.java`|`common/src/main/java/com/rag/common/web/JsonBodyConverterConfig.java`|1:1|注册点；⚠️ C 侧最终应并入 `JsonBodyConverterAutoConfiguration`（见 §7「职责对不上 #5」）|
+|—（Go 侧无对应物：go-zero `httpx.Error` 内置）|`common/http/GoStyleRouterErrorResponses.java`|`common/src/main/java/com/rag/common/web/RouterErrorResponses.java`|1:1|400 + **text/plain** 的错误形状（D-01 只降级**文案**，形状不受影响）|
+| —（Go 侧无对应物：go-zero `core/mapping` 内置） | `users-common/http/GoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/Coercion.java` | 1:1 | ⚠️ **K-01**：Jackson 原生 `CoercionConfig` ⇒ **不是自研**；数字/布尔不进 String 字段 |
+| —（Go 侧无对应物） | `users-common/http/GoStyleStringInt64.java` + `message-api/dto/GoStyleStringInt64.java`（**2 份**） | `common/src/main/java/com/rag/common/web/StringInt64.java` | N:1 | 副本合一 |
+| —（Go 侧无对应物） | `like-api/dto/GoStyleFloat64Deserializer.java` | `common/src/main/java/com/rag/common/web/Float64Deserializer.java` | 1:1 | 归位 |
+| —（Go 侧无对应物） | `like-api/dto/GoStyleRawStringListDeserializer.java` | `common/src/main/java/com/rag/common/web/RawStringListDeserializer.java` | 1:1 | 归位 |
+| —（Go 侧无对应物） | `message-api/config/GoStyleMapStringValueDeserializer.java` | `common/src/main/java/com/rag/common/web/MapStringValueDeserializer.java` | 1:1 | 归位 |
+| —（Go 侧无对应物） | `article-api/dto/GoStyleStringFields.java` | `common/src/main/java/com/rag/common/web/StringFields.java` | 1:1 | 归位 |
+| —（Go 侧无对应物） | `article-api/http/GoStyleBadRequestException.java` | `common/src/main/java/com/rag/common/web/BadRequestException.java` | 1:1 | 归位 |
+| —（Go 侧无对应物） | `article-api/http/GoStyleHttpErrorException.java` | `common/src/main/java/com/rag/common/web/HttpErrorException.java` | 1:1 | 归位 |
+| —（Go 侧无对应物） | `article-api/http/GoStylePlainTextErrors.java` | `common/src/main/java/com/rag/common/web/PlainTextErrors.java` | 1:1 | 归位；⚠️ **真 Tomcat 下 400 的 `Content-Type` / `nosniff`**（MockMvc 测不到） |
+| —（Go 侧无对应物） | `article-api/http/GoStyleGrpcStatusMapper.java` | `common/src/main/java/com/rag/common/web/GrpcStatusMapper.java` | 1:1 | ⚠️ **与 `GrpcExceptionMapperAutoConfiguration` 职责重叠**，见 §7「职责对不上 #2」 |
+| —（Go 侧无对应物） | `article-api/config/GoStyleGetFormValuesFilter.java` | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java` | 1:1 | 归位 |
+| —（Go 侧无对应物） | `article-api/config/GoStyleJsonBodyLimitFilter.java` | `common/src/main/java/com/rag/common/web/JsonBodyLimitFilter.java` | 1:1 | 归位；⚠️ 与 `protection/MaxBytesFilter.java` **语义相邻但不同**，别合并 |
+| —（Go 侧无对应物） | `article-api/config/GoStylePathNormalizingFilter.java` | `common/src/main/java/com/rag/common/web/PathNormalizingFilter.java` | 1:1 | 归位 |
 
 ### 1.12 §1 决策锁
 
 **换 starter 装配形态（D3 · 19 处同时改）**：
 1. 删 10 个 rpc 模块入口类上的 `@Import({...})` 清单（`LikeRpcApplication` / `CommentRpcApplication` / `FollowRpcApplication` / `MessageRpcApplication` / `FavoriteRpcApplication` / `AdminRpcApplication` / `UserRpcApplication` / `TaskRpcApplication` / `HotRpcApplication` / `ArticleRpcApplication`）；
-2. 删 9 份重复的 `MybatisPlusOrderingBridgeAutoConfiguration`（`like-rpc` / `comment-rpc` / `follow-rpc` / `message-rpc` / `favorite-rpc` / `admin-rpc` / `user-rpc` / `task-rpc` / `article-rpc`），收编进 `RagMybatisPlusAutoConfiguration`；
+2. 删 9 份重复的 `MybatisPlusOrderingBridgeAutoConfiguration`（`like-rpc` / `comment-rpc` / `follow-rpc` / `message-rpc` / `favorite-rpc` / `admin-rpc` / `user-rpc` / `task-rpc` / `article-rpc`），收编进 `MybatisPlusOrderingBridgeAutoConfiguration`；
 3. `common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 写全 7 行；
 4. 7 个 `@AutoConfiguration` 全部加 `@ConditionalOnMissingBean`；
 5. `common/pom.xml` 加 `spring-boot-autoconfigure` + `spring-boot-starter-web` + `spring-boot-starter-actuator` + `micrometer-registry-prometheus` + `spring-boot-starter-data-redis` + `spring-boot-kafka` + `mybatis-plus-spring-boot3-starter` + `resilience4j-spring-boot3` + `grpc-stub` + `jjwt-api/impl/jackson`；
@@ -266,12 +266,12 @@ RAG 形态实测 10 种 `@Import` 写法、9 份 MP bridge 副本 —— 这就�
 
 **换生态保护层（D4 · 15 处同时改）**：
 1. 删 `protection/` 的 15 个手写类（保留 2 个：`CpuThresholdHealthIndicator` + `MaxBytesFilter`）；
-2. `RagProtectionAutoConfiguration` 引入 resilience4j `CircuitBreakerRegistry`，按 `METHOD://path` 建实例；
+2. `ProtectionAutoConfiguration` 引入 resilience4j `CircuitBreakerRegistry`，按 `METHOD://path` 建实例；
 3. 熔断失败判据按 Go 的「深查 + 6 码白名单」重写为 resilience4j 的 `ignoreExceptions` / `recordException`；
 4. `MaxConns` 从 `GoStyleMaxConnsFilter` 改为 Tomcat `server.tomcat.max-connections`；
 5. `MaxBytes` 保留 1 个 `OncePerRequestFilter`；
 6. CPU 降载保留 1 个 `CpuThresholdHealthIndicator`（读 `/proc/stat` 千分比，**不可用时 fail-open**）；
-7. gRPC server 侧的 Breaker / Shedding 拦截器在 `RagProtectionAutoConfiguration` 里装配，并**断言真的进了 `server.intercept`**；
+7. gRPC server 侧的 Breaker / Shedding 拦截器在 `ProtectionAutoConfiguration` 里装配，并**断言真的进了 `server.intercept`**；
 8. gRPC client 侧的 Breaker 拦截器必须同时带 `@GrpcGlobalClientInterceptor` + `@Component`；
 9. 把 D-02 / D-04 登记进 [`L3-降级清单.md`](../L3-降级清单.md)；
 10. 对拍脚本**显式排除**熔断策略差异，否则全红 ⇒ 会被误判为回归 ⇒ 触发「修回」⇒ 降级被静默撤销。
@@ -308,11 +308,11 @@ RAG 形态实测 10 种 `@Import` 写法、9 份 MP bridge 副本 —— 这就�
 |---|---|---|---|---|
 | **ORM** | GORM（`AutoMigrate` 建表，`service/*/rpc/internal/model/db.go`） | MyBatis-Plus `BaseMapper` + `@TableName` | MyBatis-Plus `BaseMapper` + `@TableName` | 表达层差异，L2 语义（查询条件 / 唯一约束 / 读改写语义）逐条保留 |
 | **建表机制** | `db.AutoMigrate(&LikeRecord{}, ...)` —— 进程内幂等重放 | `*SchemaInitializer` 幂等重放（**Flyway 已弃用**） | `rpc/bootstrap/*SchemaGate.java` / `*SchemaBootstrap.java` 幂等重放；`resources/db/migration/` **只有 `.gitkeep`（无 Flyway 文件）** | ⚠️ C 侧**无 Flyway** ⇒ 不要再按「Flyway vs SchemaInitializer」写决策 |
-| **MP 自动配置** | — | 9 个 rpc 模块各一份 `MybatisPlusOrderingBridgeAutoConfiguration`（Boot 4 排序桥） | `common/src/main/java/com/rag/common/autoconfigure/RagMybatisPlusAutoConfiguration.java`（**1 份**） | 断言 A6 |
+| **MP 自动配置** | — | 9 个 rpc 模块各一份 `MybatisPlusOrderingBridgeAutoConfiguration`（Boot 4 排序桥） | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java`（**1 份**） | 断言 A6 |
 | **JSON 列 typeHandler** | GORM 直接读写（`jsonb` / `json`） | `JsonbTypeHandler` × 5 份 + `JsonTextTypeHandler` × 2 份 | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` + `common/src/main/java/com/rag/common/persistence/JsonTextTypeHandler.java`（**各 1 份**） | ⚠️ RAG-V1 侧 `common/src/main/java/com/rag/common/persistence/` 的 2 个 TypeHandler 是**归位**，不是新增能力 |
 | **SQL 超时** | `context.WithTimeout` + ctx-aware 查询（**天然**） | `DeadlineQueryTimeoutInjector`（`StatementHandler#prepare` 拦截）+ `SqlTimeoutStatusTranslator`（`Executor` 拦截） | 同 B（1:1 保留） | ⚠️ **K-03**：Java 不能取消阻塞 IO ⇒ 必须走 pgjdbc `CancelRequest`；且 `catch(SQLException)` **匹配不上** MyBatis 抛的 `InvocationTargetException` |
 | **事务边界 / 行锁 / 幂等键** | 逐条保留 | 逐条保留 | 逐条保留（**K-05，不属本层**） | 本层**零 `@Transactional`** ⇒ 无 self-invocation 风险 |
-| **雪花 ID** | `snowflake.GetID()`（41/10/12，epoch `1288834974657`） | `Snowflake` + `SnowflakeBean` + `SnowflakeProperties`（**静态轨 + Bean 轨双路径**） | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `RagSnowflakeAutoConfiguration` | ⚠️ **全进程只有一份生成状态**（B 侧 `bindBean` 静态委托有 ID 双计数器风险）；⚠️ **C 侧另有 3 个域级 `SnowflakeBootstrap`** ⇒ 落点重复（§7 #4） |
+| **雪花 ID** | `snowflake.GetID()`（41/10/12，epoch `1288834974657`） | `Snowflake` + `SnowflakeBean` + `SnowflakeProperties`（**静态轨 + Bean 轨双路径**） | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration` | ⚠️ **全进程只有一份生成状态**（B 侧 `bindBean` 静态委托有 ID 双计数器风险）；⚠️ **C 侧另有 3 个域级 `SnowflakeBootstrap`** ⇒ 落点重复（§7 #4） |
 
 ### 2.1 §2 决策锁
 
@@ -329,7 +329,7 @@ RAG 形态实测 10 种 `@Import` 写法、9 份 MP bridge 副本 —— 这就�
 「同一规则的第二份实现本身就是缺陷来源」）。
 
 **换雪花 ID 装配（4 处同时改）**：
-1. `common/src/main/java/com/rag/common/autoconfigure/RagSnowflakeAutoConfiguration.java` 声明唯一的 `Snowflake` Bean；
+1. `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` 声明唯一的 `Snowflake` Bean；
 2. 删 3 个域级 `bootstrap/SnowflakeBootstrap.java`（`article` / `user` / `admin`），改由 starter 提供；
 3. `worker-id` 配置从各域 `application.yml` 移到 starter 的配置前缀；
 4. 加断言「容器内 `Snowflake` **有且仅有 1 个**」（双 Bean ⇒ ID 双计数器 ⇒ 撞号）。
@@ -351,20 +351,20 @@ RAG 形态实测 10 种 `@Import` 写法、9 份 MP bridge 副本 —— 这就�
 | **限连接** | go-zero 内置 `MaxConns`（默认 10000，整 server 共享闸门） | `GoStyleMaxConnsFilter` | Tomcat `server.tomcat.max-connections` | ⚠️ `DRIFT-HOTAPI-030`（总参数个数 vs 非空值个数）**仍未决** |
 | **限体积** | go-zero 内置 `MaxBytes`（默认 1048576） | `GoStyleMaxBytesFilter` | `common/src/main/java/com/rag/common/protection/MaxBytesFilter.java` | 413 空 body |
 | **超时** | `context.WithTimeout`（可取消在途 IO） | `HttpMiddleware`（goroutine + select）+ `GoStyleRequestDeadline`（ThreadLocal） | `GoStyleRequestDeadline` + `DeadlineQueryTimeoutInjector` | ⚠️ **K-03**；⚠️ Go 的 **499（客户端取消）/ 503（服务端超时）** 两分支，B 侧漏 499 写回 |
-| **Recover** | go-zero `rest` / `zrpc` 内置 panic 恢复 | `GoStyleRecoverInterceptor`（gRPC 侧） | `RagObservabilityAutoConfiguration` 装配 | ⚠️ grpc-java 的 `interceptCall` **不在 handler 执行栈上** ⇒ 回调是清理路径不是捕获路径 |
+| **Recover** | go-zero `rest` / `zrpc` 内置 panic 恢复 | `GoStyleRecoverInterceptor`（gRPC 侧） | `ObservabilityAutoConfiguration` 装配 | ⚠️ grpc-java 的 `interceptCall` **不在 handler 执行栈上** ⇒ 回调是清理路径不是捕获路径 |
 | **业务观测** | `observability.go` 的 `Mark*` + `http.go` 的全 buffer writer | `HttpMiddleware` + `Observability` + `ObservabilityConstants` | Micrometer Observation + OTel bridge（`ObservabilityCustomizer`） | ⚠️ **D-03 L3 降级**；⚠️ 判定顺序「envelope 业务码 → status≥400 → 慢调用」**业务码优先** |
 
 ### 3.2 拦截器 / 错误响应 / 配置绑定 / starter 装配
 
 | 维度 | A Go | B RAG | C RAG-V1 | 备注 |
 |---|---|---|---|---|
-| **错误响应形状** | `httpx.Error` ⇒ **400 + text/plain** | `GoStyleRouterErrorResponses` + `GoStylePlainTextErrors` | `common/src/main/java/com/rag/common/web/GoStyleRouterErrorResponses.java` + `common/src/main/java/com/rag/common/web/GoStylePlainTextErrors.java` | ⚠️ D-01 只降级**文案**，**状态码与结构不受影响**；⚠️ 真 Tomcat 下 400 的 `Content-Type` / `nosniff` **MockMvc 测不到**（R4/R5） |
-| **错误表达模型** | `(resp, error)` 双返回 + `errmsg.NewGrpcErr(code,msg)` → `status.Error` | `BusinessException(code,msg)` + `AuthenticationException` | 同 B；边界由 `RagGrpcExceptionMapperAutoConfiguration` + 各域 `@RestControllerAdvice` 承担 | ⚠️ D2/D5：合并后**一份业务逻辑、两个边界适配器**；⚠️ `like` 域的 rpc 侧错误码空间是 like 自己的（**业务码塞进 gRPC status code 字段**），必须原样保留 |
+| **错误响应形状** | `httpx.Error` ⇒ **400 + text/plain** | `GoStyleRouterErrorResponses` + `GoStylePlainTextErrors` | `common/src/main/java/com/rag/common/web/RouterErrorResponses.java` + `common/src/main/java/com/rag/common/web/PlainTextErrors.java` | ⚠️ D-01 只降级**文案**，**状态码与结构不受影响**；⚠️ 真 Tomcat 下 400 的 `Content-Type` / `nosniff` **MockMvc 测不到**（R4/R5） |
+| **错误表达模型** | `(resp, error)` 双返回 + `errmsg.NewGrpcErr(code,msg)` → `status.Error` | `BusinessException(code,msg)` + `AuthenticationException` | 同 B；边界由 `GrpcExceptionMapperAutoConfiguration` + 各域 `@RestControllerAdvice` 承担 | ⚠️ D2/D5：合并后**一份业务逻辑、两个边界适配器**；⚠️ `like` 域的 rpc 侧错误码空间是 like 自己的（**业务码塞进 gRPC status code 字段**），必须原样保留 |
 |**鉴权**|`rest.WithJwt` + `CheckBlacklistMiddleware`（**两套不同的 token 取法**）|各域 `interceptor/JwtAuthInterceptor` + `common/security/BearerTokenExtractor`|`common/src/main/java/com/rag/common/security/BearerTokenExtractor.java` + 各域 interceptor|⚠️ **「先验签、后黑名单」的顺序是行为契约**；⚠️ Go 的前缀比较是 `strings.ToUpper(tok[0:7]) == "BEARER "`|
 | **配置绑定** | yaml + go-zero struct tag（**默认值藏在 tag 里**） | `@ConfigurationProperties`（41 个文件）+ `@Value` | `@ConfigurationProperties`（`ObservabilityProperties` 等）+ auto-config 的 `@EnableConfigurationProperties` | ⚠️ §3.3 纪律：「配置里没写」≠「没开」；判定必须读到**消费点** |
 | **装配机制** | 手工 `new` + `sync.Once` + `ServiceContext` | **10 份 `@Import` 清单**（4~10 Bean 不等） | **`AutoConfiguration.imports`（7 行）** | ⚠️ **`@Import` 与 auto-config 不能并存**（D3 连带效应） |
-| **启动期副作用** | `logger.Init` / `InstallLocalTracing` / `InstallFrameworkLogger`（进程级） | `spring/LoggerFactoryBean` + `spring/ObservabilityLifecycle` + `spring/SnowflakeBean` | `RagSnowflakeAutoConfiguration` + `RagObservabilityAutoConfiguration` | ⚠️ Go 侧一个域有 **3 个进程级 logger 身份**（业务 RPC / fact-dispatch / fact-authority）⇒ 合并成 1 JVM 后**必须保住三份独立 logger 名与 appender** |
-| **Servlet 注册** | `net.Listen` + `http.ServeMux`（`cmd/fact-authority` 独立进程） | `ServletRegistrationBean`（`AuthorityHandlerFactory`） | `RagWebAutoConfiguration` | ⚠️ P6-b：独立端口是否保留**待拍板** |
+| **启动期副作用** | `logger.Init` / `InstallLocalTracing` / `InstallFrameworkLogger`（进程级） | `spring/LoggerFactoryBean` + `spring/ObservabilityLifecycle` + `spring/SnowflakeBean` | `SnowflakeAutoConfiguration` + `ObservabilityAutoConfiguration` | ⚠️ Go 侧一个域有 **3 个进程级 logger 身份**（业务 RPC / fact-dispatch / fact-authority）⇒ 合并成 1 JVM 后**必须保住三份独立 logger 名与 appender** |
+| **Servlet 注册** | `net.Listen` + `http.ServeMux`（`cmd/fact-authority` 独立进程） | `ServletRegistrationBean`（`AuthorityHandlerFactory`） | `WebAutoConfiguration` | ⚠️ P6-b：独立端口是否保留**待拍板** |
 
 ### 3.3 §3 决策锁
 
@@ -373,9 +373,9 @@ RAG 形态实测 10 种 `@Import` 写法、9 份 MP bridge 副本 —— 这就�
 
 **换统一错误模型（D2/D5 · 6 处同时改）**：
 1. 各域业务层统一抛 `BusinessException(code,msg)`；
-2. gRPC 边界统一由 `RagGrpcExceptionMapperAutoConfiguration` 装配的 mapper 转 `StatusRuntimeException.withCode(code)`；
+2. gRPC 边界统一由 `GrpcExceptionMapperAutoConfiguration` 装配的 mapper 转 `StatusRuntimeException.withCode(code)`；
 3. HTTP 边界统一由各域 `@RestControllerAdvice` 读 `BusinessException.code`；
-4. `web/GoStyleGrpcStatusMapper.java` 与 `RagGrpcExceptionMapperAutoConfiguration` **只留一处**（见 §7 #2）；
+4. `web/GoStyleGrpcStatusMapper.java` 与 `GrpcExceptionMapperAutoConfiguration` **只留一处**（见 §7 #2）；
 5. `like` 域的「业务码塞进 gRPC status code 字段」逐字保留（**不是 gRPC 标准码**）；
 6. `AuthenticationException` ⇒ 401；`BusinessException` ⇒ 200 + `{code,msg}`（按 Go 的形状）。
 
@@ -502,7 +502,7 @@ Micrometer 的观察模型与它**不是一对一映射**（D-03）⇒ 用生态
 | **JWT claims** | `userId`（`Long`）+ `exp` + `iat`；签名算法 **HS256 钉死** | `common/src/main/java/com/rag/common/security/JwtUtil.java` | ⚠️ jjwt 的 `Keys.hmacShaKeyFor` 会随密钥长度漂到 HS384/HS512 ⇒ 必须显式指定 |
 | **Authorization 头解析** | **两套互不相同**的取法：验签用 `tokenForSignatureVerification`，黑名单 key 用 `trimBearerPrefix`；顺序「先验签、后黑名单」 | `common/src/main/java/com/rag/common/security/BearerTokenExtractor.java` | ⚠️ 合并即等于擅自修好 Go 的 bug |
 | **响应信封** | `{code, msg, data}` —— 字段名 / 顺序 / 无 `omitempty`（`data:null` 恒出现） | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | L1 · **K-06**（不可用 `ProblemDetail` 替换） |
-| **HTTP 错误形状** | 400 + **text/plain**（含 `nosniff`） | `common/src/main/java/com/rag/common/web/GoStyleRouterErrorResponses.java` + `GoStylePlainTextErrors.java` | ⚠️ D-01 只降级**文案**；⚠️ 必须**真 Tomcat** 验（MockMvc 测不到） |
+| **HTTP 错误形状** | 400 + **text/plain**（含 `nosniff`） | `common/src/main/java/com/rag/common/web/RouterErrorResponses.java` + `GoStylePlainTextErrors.java` | ⚠️ D-01 只降级**文案**；⚠️ 必须**真 Tomcat** 验（MockMvc 测不到） |
 | **HTTP path** | `/<域>/v1/{op}` POST 风格 | 各域 `api/controller/` | 本层不承载 |
 | **表名** | `<域>_<实体>` 显式 `@TableName` | 各域 `rpc/domain/` | 本层不承载 |
 | **Kafka topic** | 逐域定义 | 各域 `mq/` | 本层不承载；⚠️ Boot 4 必须引 `spring-boot-kafka`（只引 `spring-kafka` ⇒ `@KafkaListener` **静默不消费**） |
@@ -542,8 +542,8 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 | **合计** | **56** | **56** | **0** |
 
 > C 列逐条清单（按子包）：
-> `autoconfigure/`：RagGrpcExceptionMapperAutoConfiguration · RagJacksonAutoConfiguration · RagMybatisPlusAutoConfiguration ·
-> RagObservabilityAutoConfiguration · RagProtectionAutoConfiguration · RagSnowflakeAutoConfiguration · RagWebAutoConfiguration
+> `autoconfigure/`：GrpcExceptionMapperAutoConfiguration · JsonBodyConverterAutoConfiguration · MybatisPlusOrderingBridgeAutoConfiguration ·
+> ObservabilityAutoConfiguration · ProtectionAutoConfiguration · SnowflakeAutoConfiguration · WebAutoConfiguration
 > `communityfact/`：AuthorityFact · AuthorityHandler · CanonicalHash · DeliveryStatus · Dispatcher · Event · EventDispatcher ·
 > EventSender · ProcessLogger · ProcessMetadata · SubjectRef · TechnicalReceipt · Wire
 > `contract/`：ApiResponse
@@ -611,10 +611,10 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 | # | 不一致 | 三列实况 | 影响 | 建议 |
 |---|---|---|---|---|
 | **1** | **`communityfact` 的「三域共享」在 Go 侧只有两域** | A：`service/common/communityfact` 的消费者只有 **like（6 文件）+ comment（6 文件）**；**favorite 在 Go 侧是平行实现**（`service/favorite/rpc/internal/authority/http.go` + `model.NewFavoriteDCEventSender`），**不 import** `service/common/communityfact`。B：favorite 反而有 **10 个**引用（比 Go 多）。C：`common/src/main/java/com/rag/common/communityfact/` 按三域共享设计 | C 把 favorite 收敛到共享层 ⇒ **会改变 favorite 的 wire 行为**（Go 的 favorite 走自己的 sender，共享层走 `communityfact` 的 `Sender`）⇒ 属 L1/L2 变更，**不是形态调整** | 🔴 **必须拍板**：favorite 是「收敛到共享层」还是「保留平行实现」？若收敛 ⇒ favorite 的 `fact_delivery` 行为要按 Go 逐条对照（`DRIFT-CF-004` 的 `payload` 序列化差异也会被带进来） |
-| **2** | **`GoStyleGrpcStatusMapper` 与 `RagGrpcExceptionMapperAutoConfiguration` 职责重叠** | B：`article-api/http/GoStyleGrpcStatusMapper.java`（1 份）。C：**同时**有 `web/GoStyleGrpcStatusMapper.java` **和** `autoconfigure/RagGrpcExceptionMapperAutoConfiguration.java` | 两处都会做「gRPC code → 业务码」映射 ⇒ 装配顺序不同 ⇒ 同一异常可能映射出**两个不同 code** | 🔴 二选一：**建议**删 `web/GoStyleGrpcStatusMapper.java`，统一由 auto-config 的 mapper 承担（与 D2/D5 的「一份业务逻辑 + 两个边界适配器」一致） |
+| **2** | **`GoStyleGrpcStatusMapper` 与 `GrpcExceptionMapperAutoConfiguration` 职责重叠** | B：`article-api/http/GoStyleGrpcStatusMapper.java`（1 份）。C：**同时**有 `web/GoStyleGrpcStatusMapper.java` **和** `autoconfigure/GrpcExceptionMapperAutoConfiguration.java` | 两处都会做「gRPC code → 业务码」映射 ⇒ 装配顺序不同 ⇒ 同一异常可能映射出**两个不同 code** | 🔴 二选一：**建议**删 `web/GoStyleGrpcStatusMapper.java`，统一由 auto-config 的 mapper 承担（与 D2/D5 的「一份业务逻辑 + 两个边界适配器」一致） |
 | **3** | **设计文档 §5.1 列了 `contract/ErrorCode.java`，实际树里没有** | 实际：`common/src/main/java/com/rag/common/contract/` **只有 `ApiResponse.java`**；全仓 **0 个 `ErrorCode*.java`**（错误码在各域模块的 `contract/` 包 —— `ErrCodes` / `ErrMsg`） | 文档与树不一致 ⇒ 按文档实现的人会去建一个**全局** `ErrorCode` ⇒ **违反「错误码逐域隔离」** | 🔴 **以实际树为准**，并修正 `docs/完全spring化的文件树.md` §5.1 / §5.5（§5.5 还把 `communityfact/` 估成 4 类、实际 13 类；`web/` 估成 17 类、实际 16 类） |
-| **4** | **雪花 ID 有两个落点** | C：`common/src/main/java/com/rag/common/autoconfigure/RagSnowflakeAutoConfiguration.java` **和** 3 个域级 `rpc/bootstrap/SnowflakeBootstrap.java`（`article` / `user` / `admin`） | 两个 `Snowflake` Bean ⇒ **两个独立计数器** ⇒ ID 重复 | 🔴 删 3 个域级 `SnowflakeBootstrap`，只留 starter；加断言「容器内 `Snowflake` 有且仅有 1 个」 |
-| **5** | **`GoStyleJsonBodyConverterConfig` 是「注册点」还是「配置类」** | B：RAG 仓 `service/common/src/main/java/com/rag/common/http/GoStyleJsonBodyConverterConfig.java` 是一个独立 `@Configuration`。C：同时存在 `web/GoStyleJsonBodyConverterConfig.java` **和** `autoconfigure/RagJacksonAutoConfiguration.java` | 若两者都注册 converter ⇒ **同一个 `HttpMessageConverter` 注册两次** ⇒ 请求体被读两次 / 判据被覆盖 | 🟡 建议：`web/GoStyleJsonBodyConverterConfig.java` **只保留配置常量**（判据字面量），注册动作交 `RagJacksonAutoConfiguration` |
+| **4** | **雪花 ID 有两个落点** | C：`common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` **和** 3 个域级 `rpc/bootstrap/SnowflakeBootstrap.java`（`article` / `user` / `admin`） | 两个 `Snowflake` Bean ⇒ **两个独立计数器** ⇒ ID 重复 | 🔴 删 3 个域级 `SnowflakeBootstrap`，只留 starter；加断言「容器内 `Snowflake` 有且仅有 1 个」 |
+| **5** | **`GoStyleJsonBodyConverterConfig` 是「注册点」还是「配置类」** | B：RAG 仓 `service/common/src/main/java/com/rag/common/http/GoStyleJsonBodyConverterConfig.java` 是一个独立 `@Configuration`。C：同时存在 `web/GoStyleJsonBodyConverterConfig.java` **和** `autoconfigure/JsonBodyConverterAutoConfiguration.java` | 若两者都注册 converter ⇒ **同一个 `HttpMessageConverter` 注册两次** ⇒ 请求体被读两次 / 判据被覆盖 | 🟡 建议：`web/GoStyleJsonBodyConverterConfig.java` **只保留配置常量**（判据字面量），注册动作交 `JsonBodyConverterAutoConfiguration` |
 
 ### 7.5 ⚠️ 待执行的改名（**不要当成已改**）
 

@@ -135,7 +135,7 @@
 | `types.go` → `SendChatResp` | `dto/SendChatResp.java` | `service/message/src/main/java/com/rag/message/dto/SendChatResp.java` | 1:1 | |
 | `types.go` → `UnreadSummaryResp` | `dto/UnreadSummaryResp.java` | `service/message/src/main/java/com/rag/message/dto/UnreadSummaryResp.java` | 1:1 | `notification_unread` / `conversation_unread` / `total_unread` |
 | `types.go` → `UserSendChatReq` | `dto/UserSendChatReq.java` | `service/message/src/main/java/com/rag/message/dto/UserSendChatReq.java` | 1:1 | `recipient_id` / `conversation_id` 为 `optional` |
-| `types.go` 的 `,string` 整数字段编码 | `message-api/.../dto/GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/GoStyleStringInt64.java` | 1:1 | D3：共享件下沉到根级 starter |
+| `types.go` 的 `,string` 整数字段编码 | `message-api/.../dto/GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/StringInt64.java` | 1:1 | D3：共享件下沉到根级 starter |
 
 **1.2 决策锁**
 
@@ -150,7 +150,7 @@
 **换「可变 struct ⇒ immutable record」（D5，3 处同时改）**：
 1. `dto/*.java` 全部改 `record`（不可变）；
 2. JSON 字段名从 Go 的 `json:"xxx_yyy"` tag 迁到 `@JsonProperty` / 组件名；
-3. `,string` 的整数字段用 `common/src/main/java/com/rag/common/web/GoStyleStringInt64.java` 的解码口径统一处理。
+3. `,string` 的整数字段用 `common/src/main/java/com/rag/common/web/StringInt64.java` 的解码口径统一处理。
 
 **为什么换**：Go 的 struct 是可变容器（logic 里逐字段赋值）；Java 侧 record 表达「一次构造即完整」，且与 Bean Validation（`@NotNull` / `@NotBlank`）配合更顺。⚠️ 文案与「必填」判定属 L3 降级（Bean Validation 文案 ≠ go-zero `httpx.Parse` 文案）。
 
@@ -223,14 +223,14 @@
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
-| （Go `httpx.Parse` 类型判定） | `message-api/.../config/GoStyleMapStringValueDeserializer.java` | `common/src/main/java/com/rag/common/web/GoStyleMapStringValueDeserializer.java` | 1:1 | D3：下沉到根级 starter |
-| （Go `httpx.Parse` 类型判定） | `message-api/.../config/MessageGoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/GoStyleCoercion.java` + `common/src/main/java/com/rag/common/autoconfigure/RagJacksonAutoConfiguration.java` | 1:N | 同上；C 侧改成 Jackson 3 的 `CoercionConfig` 装配点 |
+| （Go `httpx.Parse` 类型判定） | `message-api/.../config/GoStyleMapStringValueDeserializer.java` | `common/src/main/java/com/rag/common/web/MapStringValueDeserializer.java` | 1:1 | D3：下沉到根级 starter |
+| （Go `httpx.Parse` 类型判定） | `message-api/.../config/MessageGoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/Coercion.java` + `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java` | 1:N | 同上；C 侧改成 Jackson 3 的 `CoercionConfig` 装配点 |
 | `rpc/internal/model/data_model.go` 的 `JSONMap` | `message-rpc/.../mapper/JsonbMapTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | 1:1 | 同上 |
-| （Spring Boot 4 装配桥） | `message-rpc/.../config/MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/RagMybatisPlusAutoConfiguration.java` | 1:1 | B 侧 9 份副本 → C 侧 1 份（D3 的直接账单） |
+| （Spring Boot 4 装配桥） | `message-rpc/.../config/MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | 1:1 | B 侧 9 份副本 → C 侧 1 份（D3 的直接账单） |
 | `service/common/response/response.go`（信封） | `service/common/.../response/Response.java` | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | 1:1 | 共享层整体下沉；**信封是 L1，不能换成 `ProblemDetail`** |
 | `service/common/observability/*`（http/mq/rpc 三条链） | `service/common/.../observability/` | `common/src/main/java/com/rag/common/observability/`（3 类：Observation + `GoStyleRequestDeadline` + `ObservabilityCustomizer`） | 1:N | Micrometer `Observation` + OTel bridge 吸收 |
 | `service/common/logger/logger.go` | `service/common/.../logger/` | `common/src/main/java/com/rag/common/logger/`（4 类：SLF4J 适配器 + 日志选项） | 1:N | 格式与字段保留，生态换成 SLF4J |
-| `service/common/snowflake/snowflake.go` | `service/common/.../snowflake/` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `RagSnowflakeAutoConfiguration.java` | 1:1 | epoch / 位段是业务契约 |
+| `service/common/snowflake/snowflake.go` | `service/common/.../snowflake/` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration.java` | 1:1 | epoch / 位段是业务契约 |
 | `service/common/errmsg` / `xcode`（跨域共享信封与码） | `service/common/.../errmsg/` + `xcode/` | `common/src/main/java/com/rag/common/contract/ApiResponse.java` + `common/src/main/java/com/rag/common/exception/BusinessException.java` + `common/src/main/java/com/rag/common/exception/AuthenticationException.java` | N:1 | C 侧全局信封与业务异常基类在**根级 common**，**message 域不得反向定义** |
 
 ---
@@ -244,7 +244,7 @@
 | JSONB 列 | `JSONMap`（`driver.Valuer` / `Scanner` 自写） | `JsonbMapTypeHandler`（手写 `BaseTypeHandler`） | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | ⚠️ **不能用 MP 自带 `JacksonTypeHandler`**：它走 `ps.setString()` ⇒ PG 收到 VARCHAR ⇒ 写 `jsonb` 列被拒 |
 | Schema 演进 | `db.AutoMigrate(&Notification{}, &Conversation{}, &ConversationMessage{})`（每次启动校验/补建，无账本） | Flyway `V1..V5`（`table: flyway_schema_history_message` 独立账本，`baseline-version: 0`） | 幂等 DDL 重放（`resources/db/migration/`，**当前为空**） | ⚠️ Go 无账本 ⇒ **C 侧 DDL 脚本还没落地** |
 | 建表责任 | Go 侧 `InitDB` 独占 | message-rpc 独占（Flyway） | 待定（设计文档 §5.2 指向 `MessageSchemaInitializer`，**文件不存在**） | 共享库共存问题见 `RAG/docs/DRIFT/_cross/` |
-| 雪花 ID | `snowflake.Init()` + `model` 内 `snowflake.GetID()` | `SnowflakeBean` 注入（`common` starter） | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `RagSnowflakeAutoConfiguration` | epoch/位段是契约 |
+| 雪花 ID | `snowflake.Init()` + `model` 内 `snowflake.GetID()` | `SnowflakeBean` 注入（`common` starter） | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration` | epoch/位段是契约 |
 | 事务边界 | `m.conn.WithContext(ctx).Transaction(func(tx *gorm.DB) error {...})` **显式闭包**（`model/message.go:187` / `:205`），跨对象调用 | `MessageAtomicService` **独立 Bean** + `@Transactional`（6 个方法） | 同 B | ⚠️ 自调用 ⇒ 注解静默失效 |
 | 单条原子 UPDATE | `MarkNotificationRead` / `MarkAllNotificationsRead` / `MarkConversationRead` 都是**单条 UPDATE** + `WHERE`，不先 SELECT | `MessageAtomicService.markNotificationReadTx` / `markAllNotificationsReadTx` / `markConversationReadTx` 同款单条 UPDATE | 待填 | ⚠️ B 侧曾把 `MarkConversationRead` 拆成「message 表 UPDATE + conversation 表 `touchUpdatedAt`」**两次写**（已修）—— Go 侧只改 message 表，**不顺带改写 `conversation.updated_at`** |
 | 分页子句 | `if offset > 0 { db.Offset(...) }` / `if limit > 0 { db.Limit(...) }` —— **两段各自有条件**（`model/message.go:59-64` / `:127-131` / `:164-168`） | `mapper/GoStylePagination.java`（显式复刻该判据） | `service/message/src/main/java/com/rag/message/mapper/GoStylePagination.java` | ⚠️ 无条件拼 `LIMIT 20 OFFSET -1` ⇒ PG 直接报错（`OFFSET must not be negative`）⇒ 非法参数被降级成基础设施故障 |
@@ -311,7 +311,7 @@
 
 **换「gRPC code ⇒ 业务码的两层映射 ⇒ 一个业务异常」（D2 附带，4 处同时改）**：
 1. 业务层只抛 `BusinessException(code,msg)`；
-2. gRPC 边界由 `common/src/main/java/com/rag/common/autoconfigure/RagGrpcExceptionMapperAutoConfiguration.java` 转 `StatusRuntimeException`；
+2. gRPC 边界由 `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java` 转 `StatusRuntimeException`；
 3. HTTP 边界由 `advice/MessageApiExceptionHandler.java` 直接读 `BusinessException.code`；
 4. `contract/GrpcErrorMapper.java` 保留「message 反查 code → gRPC 标准码 fallback」的域内反查表。
 
@@ -331,18 +331,18 @@
 | 熔断 / CPU 降载 / MaxBytes | go-zero `rest` 内置 | `common/protection/` | `common/src/main/java/com/rag/common/protection/`（2 类） | 生态缺口，策略差异属 L3 |
 |日志|`common/logger/logger.go`|`common/logger/`|`common/src/main/java/com/rag/common/logger/`（4 类，SLF4J）|`call_chain` 等是行为契约|
 | JSONB TypeHandler | （Go 侧在 `message/rpc/internal/model/data_model.go`） | `message-rpc/.../mapper/JsonbMapTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | **从域内提升到共享层** |
-| 整数字段解码（`,string`） | （Go 侧在 `types.go` 的 tag） | `message-api/.../dto/GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/GoStyleStringInt64.java` | 同上 |
-| Jackson 类型强转口径 | （Go 侧在 `httpx.Parse`） | `message-api/.../config/{GoStyleMapStringValueDeserializer,MessageGoStyleCoercion}.java` | `common/src/main/java/com/rag/common/web/GoStyleMapStringValueDeserializer.java` + `common/src/main/java/com/rag/common/web/GoStyleCoercion.java` + `common/src/main/java/com/rag/common/autoconfigure/RagJacksonAutoConfiguration.java` | 同上 |
-| MyBatis-Plus 装配桥 | — | `message-rpc/.../config/MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/RagMybatisPlusAutoConfiguration.java` | B 侧 9 份副本 → C 侧 1 份 |
+| 整数字段解码（`,string`） | （Go 侧在 `types.go` 的 tag） | `message-api/.../dto/GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/StringInt64.java` | 同上 |
+| Jackson 类型强转口径 | （Go 侧在 `httpx.Parse`） | `message-api/.../config/{GoStyleMapStringValueDeserializer,MessageGoStyleCoercion}.java` | `common/src/main/java/com/rag/common/web/MapStringValueDeserializer.java` + `common/src/main/java/com/rag/common/web/Coercion.java` + `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java` | 同上 |
+| MyBatis-Plus 装配桥 | — | `message-rpc/.../config/MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | B 侧 9 份副本 → C 侧 1 份 |
 | **域内错误码 / 文案 / gRPC 转换** | `service/message/common/errmsg.go` | `message-common/.../errmsg/` | **`service/message/src/main/java/com/rag/message/contract/{ErrCodes,ErrMsg,CodeError,GrpcErrorMapper}.java`** | ⚠️ **不共享**！逐域隔离（英文文案） |
 
 **4 决策锁**
 
 **换「共享件从域内提到 starter」（D3，6 处同时改）**：
 1. `JsonbMapTypeHandler` → `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java`；
-2. `GoStyleStringInt64` → `common/src/main/java/com/rag/common/web/GoStyleStringInt64.java`；
+2. `GoStyleStringInt64` → `common/src/main/java/com/rag/common/web/StringInt64.java`；
 3. `GoStyleMapStringValueDeserializer` + `MessageGoStyleCoercion` → `common/src/main/java/com/rag/common/web/`；
-4. `MybatisPlusOrderingBridgeAutoConfiguration` → `common/src/main/java/com/rag/common/autoconfigure/RagMybatisPlusAutoConfiguration.java`；
+4. `MybatisPlusOrderingBridgeAutoConfiguration` → `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java`；
 5. 删各域的 `@Import` 清单，改由 `AutoConfiguration.imports` 接管（`@ConditionalOnMissingBean` 语义随之变化）；
 6. 域内**不**保留这些类的副本。
 
@@ -544,7 +544,7 @@ find "/Users/pr/Documents/java&golang/Sea-RideTheWind_golang/service/message" \
 | 映射类型 | 行数 | 主要落在哪 |
 |---|---|---|
 | `1:1` | 44 | 入口 / 配置 / Metrics / Entity / Mapper（4 个）/ DTO（17 个 struct 逐条）/ proto / 错误契约 / `MessageApiSupport` / `MessageRpcSupport` / `MessageAtomicService` / 3 个 `Entity` |
-| `1:N` | 15 | ① **一组路由 → 两组 JWT**（§1.1）；② 13 个 handler → 2 个 Controller（2 行）；③ Go `types.go` → 17 个 record（1 行文件级）；④ Go `errmsg.go` → 4 个契约类 + `CodeError` + `GrpcErrorMapper`（4 行）；⑤ Go `model/message.go` → 4 Mapper + `MessageAtomicService`；⑥ Go `model/db.go` → 3 Mapper + DDL；⑦ Go api `config.go` → Properties + yaml；⑧ Go rpc `config.go` → Properties；⑨ Go rpc `svc/servicecontext.go` → 2 个跨域 client；⑩ Go `message.go` → 入口 + Nacos；⑪ Go `messagecenter.go` → 2 个 advice；⑫ B 侧 `MessageGoStyleCoercion` → `common/src/main/java/com/rag/common/web/GoStyleCoercion` + `RagJacksonAutoConfiguration` |
+| `1:N` | 15 | ① **一组路由 → 两组 JWT**（§1.1）；② 13 个 handler → 2 个 Controller（2 行）；③ Go `types.go` → 17 个 record（1 行文件级）；④ Go `errmsg.go` → 4 个契约类 + `CodeError` + `GrpcErrorMapper`（4 行）；⑤ Go `model/message.go` → 4 Mapper + `MessageAtomicService`；⑥ Go `model/db.go` → 3 Mapper + DDL；⑦ Go api `config.go` → Properties + yaml；⑧ Go rpc `config.go` → Properties；⑨ Go rpc `svc/servicecontext.go` → 2 个跨域 client；⑩ Go `message.go` → 入口 + Nacos；⑪ Go `messagecenter.go` → 2 个 advice；⑫ B 侧 `MessageGoStyleCoercion` → `common/src/main/java/com/rag/common/web/Coercion` + `JsonBodyConverterAutoConfiguration` |
 | `N:1` | 7 | ① 8 个 user logic → `MessageApiService`；② 5 个 admin logic → `MessageApiService`；③ 9 个 rpc logic → `MessageDomainService`；④ Go `messageservice.go` stub → C 侧无手写文件；⑤ B 侧 `AbstractMessageJwtAuthInterceptor` → C 侧无对应文件；⑥ B 侧 `AbstractMessageApiService` → `MessageApiService`；⑦ Go `service/common`（跨域共享信封 + 异常基类）→ C 根级 `common/` 4 个类 |
 | `C 新增` | 2 | ① `rpc/metrics/MessageMetrics.java`（与 `MessageRpcMetrics` 重叠的空壳）；② `rpc/exception/MessageExceptions.java`（B 侧同名同职责，C 侧作为独立类保留） |
 | **合计** | **68** | §1 全部映射行均填了映射类型，且只用 4 种合法词（机器核对：`illegal types = ∅`） |

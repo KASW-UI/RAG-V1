@@ -66,7 +66,7 @@
 | `article/api/config/` | `config/` | 与 rpc 侧合并 |
 | `article/api/controller/` | `controller/` | 直接压平 |
 | `article/api/dto/` | `dto/` | 直接压平（12 个同名类全落此）|
-| `article/api/form/`（`GoFormValues`） | `common/src/main/java/com/rag/common/web/GoStyleGetFormValuesFilter.java` | **上收 `common/`**（D3）|
+| `article/api/form/`（`GoFormValues`） | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java` | **上收 `common/`**（D3）|
 | `article/api/http/`（4 类） | `common/src/main/java/com/rag/common/web/`（4 个同名类）| **上收 `common/`**（D3）|
 | `article/api/interceptor/` | `interceptor/` | 直接压平 |
 | `article/api/service/` | `service/` | 与 rpc 侧合并 |
@@ -207,7 +207,7 @@
 | 只读快照 | `ListPublic` 把 count + 分页 + revision 取值包在**同一 repeatable-read 快照** | `ArticlePublicMapper` + 只读事务 | 同 B | ⚠️ 拆开就读到不一致快照 |
 | 时间戳推进 | `gorm:"autoCreateTime"` / `autoUpdateTime` | `ArticleMetaObjectHandler` | 同 B | ⚠️ `UpdateColumn`（`SkipHooks=true`）**不推进** —— 原生 `@Update` SQL 天然绕开 MP |
 | 软删 | `gorm.DeletedAt`（`deleted_at` + 索引） | `ArticleEntity` 的逻辑删除 | 同 B | |
-| 雪花 ID | `common/snowflake`（`snowflake.Init()`） | `bootstrap/SnowflakeBootstrap.java` + `common/snowflake` | 同 B（+ starter 的 `RagSnowflakeAutoConfiguration`） | epoch / 位段是业务契约 |
+| 雪花 ID | `common/snowflake`（`snowflake.Init()`） | `bootstrap/SnowflakeBootstrap.java` + `common/snowflake` | 同 B（+ starter 的 `SnowflakeAutoConfiguration`） | epoch / 位段是业务契约 |
 | 表名 | `article` · `article_sync_outbox` · `article_revision` · `article_publication` · `article_domain_outbox` | 同 | 同 | `article_sync_outbox` 有显式 `TableName()`（`article_sync_outbox.go:29-31`） |
 
 > 本节决策锁：**L-3**（详见 §5）。
@@ -228,7 +228,7 @@
 | Logic 中间层 | 7 个 logic + `helper.go` | 7 个 `*Service` + `ArticleApiSupport` + `ArticleAuthorResolver` | **1 个 `ArticleApiService` + 1 个 `ArticleApiSupport`** | D2 + §5.4「用例内聚」五问判据 |
 | 错误表达（业务失败） | `httpx.OkJson` + `response.Response{Code,Msg,Data}` ⇒ **HTTP 恒 200** | `advice/GlobalResponseAdvice` 同一形状 | `service/article/src/main/java/com/rag/article/advice/ArticleApiResponseAdvice.java` | 信封是 L1 |
 | 错误表达（裸响应） | `POST /v1/upload` 调 `httpx.OkJsonCtx` ⇒ **裸 `{"image_url":…}`** | `ResponseEntity<UploadImageResp>` 绕过 advice | 同 B | ⚠️ advice 必须排除 `/upload` |
-| 错误表达（框架级） | `httpx.Error` ⇒ 400 + `text/plain` | `GoStyleRouterErrorResponses`（共享层） | `common/src/main/java/com/rag/common/web/GoStyleRouterErrorResponses.java` | D3 收进共享层 |
+| 错误表达（框架级） | `httpx.Error` ⇒ 400 + `text/plain` | `GoStyleRouterErrorResponses`（共享层） | `common/src/main/java/com/rag/common/web/RouterErrorResponses.java` | D3 收进共享层 |
 | gRPC code → 业务码 | api 侧 logic 里显式 `switch st.Code()`（5 条分支） | `GoStyleGrpcStatusMapper` + `GlobalExceptionHandler` | `service/article/src/main/java/com/rag/article/advice/ArticleApiExceptionHandler.java` | D2 后 **同一份逻辑要能同时产出 HTTP 与 gRPC 两种错误表达** |
 | JWT 校验 | `rest.WithJwt(secret)` → ctx 键 `userId` | `JwtAuthInterceptor` | `service/article/src/main/java/com/rag/article/interceptor/JwtAuthInterceptor.java` | **claim 名 = `userId`**（L1） |
 | 配置绑定 | `config.Config` 静态结构体 + yaml | `@ConfigurationProperties` | `service/article/src/main/java/com/rag/article/config/ArticleApiProperties.java` + `service/article/src/main/java/com/rag/article/config/ArticleRpcProperties.java` | 类型安全；两套配置块本就不同 ⇒ 仍分两个类 |
@@ -248,9 +248,9 @@
 | HTTP 信封 | `service/common/response/response.go` | `service/common/…/response/Response.java` | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | **共享层**（L1，跨 10 域） |
 | 业务异常载体 | 无统一载体（api 返回 `(resp, code)` 双返回） | `service/common/…/exception/BusinessException.java` | `common/src/main/java/com/rag/common/exception/BusinessException.java` | **共享层**（D2 合并后统一抛） |
 | 错误码 / 文案 | `service/article/common/errmsg/errmsg.go` | `article-common/…/errmsg/ErrorCode.java` | `service/users/common/src/main/java/com/rag/users/common/ErrCodes.java` + `ErrMsg.java` | **域内**（逐域隔离，不可跨域统一） |
-| gRPC 异常映射 | 无 | 无统一件 | `common/src/main/java/com/rag/common/autoconfigure/RagGrpcExceptionMapperAutoConfiguration.java` | **共享层**（D2 的关键设计点） |
+| gRPC 异常映射 | 无 | 无统一件 | `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java` | **共享层**（D2 的关键设计点） |
 | JWT 工具 | go-zero `rest.WithJwt` 内置 | `service/common/…/jwt/JwtUtil.java` | `common/src/main/java/com/rag/common/security/JwtUtil.java` + `BearerTokenExtractor.java` | **共享层** |
-| 雪花 ID | `service/common/snowflake` | `service/common/…/snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `RagSnowflakeAutoConfiguration` | **共享层**（epoch / 位段是业务契约） |
+| 雪花 ID | `service/common/snowflake` | `service/common/…/snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration` | **共享层**（epoch / 位段是业务契约） |
 | jsonb TypeHandler | Go struct tag（无独立件） | `article-rpc/…/mapper/JsonbTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | **共享层**（D3 跨域去重） |
 | community 事件信封 | `service/common/communityfact/wire.go` | `service/common/…/communityfact/Wire.java` | `common/src/main/java/com/rag/common/communityfact/Event.java` + `Wire.java` | **共享层**（comment / favorite / like / article 共用） |
 | community 域事件 payload | `rpc/internal/mqs/community_article_event.go` 的 `communityRevisionPayload` | `article-rpc/…/mq/ArticleSyncEventTypes.java` | `service/article/src/main/java/com/rag/article/contract/CommunityArticleEvent.java` | **域内**（article 特有 payload） |

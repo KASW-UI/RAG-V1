@@ -110,7 +110,7 @@
 | `service/follow/api/internal/types/types.go:20-23`（`RecommendUser`） | `follow-api/.../dto/RecommendUser.java` | `service/follow/src/main/java/com/rag/follow/dto/RecommendUser.java` | 1:1 | 🔴 `target_id` **有** `,string` ⇒ JSON 是**字符串** `"1234"`（与上一行的数字数组**形态不一致**，是本域最隐蔽的 L1 差异） |
 | `service/follow/api/internal/types/types.go:25-27`（`RelationActionReq`） | `follow-api/.../dto/RelationActionReq.java` | `service/follow/src/main/java/com/rag/follow/dto/RelationActionReq.java` | 1:1 | 🔴 `target_id` **无 `optional` ⇒ 必填**；缺失 ⇒ HTTP 200 + `{"code":5001,...}` |
 | `service/follow/api/internal/types/types.go:29-31`（`RelationActionResp`） | `follow-api/.../dto/RelationActionResp.java` | `service/follow/src/main/java/com/rag/follow/dto/RelationActionResp.java` | 1:1 | `success` **恒 true**（硬编码） |
-| `service/follow/api/internal/types/types.go:8-9`（`offset`/`limit` 无 `,string` ⇒ 禁字符串入参） | `follow-api/.../config/FollowGoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/GoStyleCoercion.java` + `common/src/main/java/com/rag/common/autoconfigure/RagJacksonAutoConfiguration.java`（**无域内文件**） | 1:N | ⚠️ Go 拒 `{"offset":"10"}`，Jackson 3 默认收 ⇒ B 用域内 1 条补强；**C 无域内落点** ⇒ 见 §7 缺口 #2 |
+| `service/follow/api/internal/types/types.go:8-9`（`offset`/`limit` 无 `,string` ⇒ 禁字符串入参） | `follow-api/.../config/FollowGoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/Coercion.java` + `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java`（**无域内文件**） | 1:N | ⚠️ Go 拒 `{"offset":"10"}`，Jackson 3 默认收 ⇒ B 用域内 1 条补强；**C 无域内落点** ⇒ 见 §7 缺口 #2 |
 | `service/follow/api/internal/middleware/checkblacklistmiddleware.go`（全文 55 行） | `follow-api/.../interceptor/FollowBlacklistInterceptor.java` | `service/follow/src/main/java/com/rag/follow/interceptor/FollowBlacklistInterceptor.java` | 1:1 | 🔴 **follow 域独有**（like / users 的 blacklist 复用 401 空 body，本域是 **401 + JSON body**）⇒ 必须**直写 response**，不得走异常链 |
 | `service/follow/api/internal/handler/routes.go:62`（`rest.WithJwt`） | `follow-api/.../interceptor/FollowJwtAuthInterceptor.java` | `service/follow/src/main/java/com/rag/follow/interceptor/FollowJwtAuthInterceptor.java` | 1:1 | 401 **空 body**；claim **原始对象**写进 `userId` attribute（**不转 long**） |
 | `service/follow/api/internal/metrics/metrics.go`（3 个指标） | `follow-api/.../metrics/FollowApiMetrics.java` | `service/follow/src/main/java/com/rag/follow/metrics/FollowApiMetrics.java` | 1:1 | 指标名 L1：`follow_api_request_total` / `follow_api_reject_total` / `follow_api_request_duration_seconds` |
@@ -156,7 +156,7 @@
 | `service/follow/rpc/internal/logic/getfollowerlistlogic.go` | `follow-rpc/.../service/FollowDomainService.java` | `service/follow/src/main/java/com/rag/follow/domain/service/FollowDomainService.java` | N:1 | |
 | `service/follow/rpc/internal/logic/getblocklistlogic.go` | `follow-rpc/.../service/FollowDomainService.java` | `service/follow/src/main/java/com/rag/follow/domain/service/FollowDomainService.java` | N:1 | |
 | `service/follow/rpc/internal/logic/getrecommendationslogic.go`（152 行：BFS + 打分 + 排序 + 分页 + 3 次提前返回） | `follow-rpc/.../service/FollowRecommendationService.java` | `service/follow/src/main/java/com/rag/follow/service/FollowRecommendationService.java` | 1:1 | 🔴 **独立变化原因**：调参（depth / fanout / weight）只动这一个类；`scoreWeight` / `clampRecommendDepth` / `clampFanout` 都在这里 |
-| —（Go 侧无对应物） | `follow-rpc/.../config/MybatisPlusOrderingBridgeAutoConfiguration.java` + `follow-rpc/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` | `common/src/main/java/com/rag/common/autoconfigure/RagMybatisPlusAutoConfiguration.java` | 1:1 | **Go 侧无对应物（原因：Boot 4 的 MyBatis-Plus 自动配置排序 workaround，非 Go 语义）**；B 域内自带一份 ⇒ **D3** 后 C 收进全局 starter（9 份重复 ⇒ 1 份） |
+| —（Go 侧无对应物） | `follow-rpc/.../config/MybatisPlusOrderingBridgeAutoConfiguration.java` + `follow-rpc/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | 1:1 | **Go 侧无对应物（原因：Boot 4 的 MyBatis-Plus 自动配置排序 workaround，非 Go 语义）**；B 域内自带一份 ⇒ **D3** 后 C 收进全局 starter（9 份重复 ⇒ 1 份） |
 
 ### 1.5 决策锁（§1）
 
@@ -174,7 +174,7 @@
 1. `follow-api` 的 8 个 Service 里 `FollowRpcClient` 的调用点改为直调 `domain/service/FollowDomainService.java`。
 2. **删除** `follow-api/.../client/FollowRpcClient.java`。
 3. api 层**不再需要**「gRPC code → 业务码」映射（`FollowApiSupport.rpcError` / `codeFromRPCError`）⇒ 该路径在 C 列**变成死代码**。
-4. gRPC 侧错误仍需从 `BusinessException(code,msg)` 经 `common/src/main/java/com/rag/common/autoconfigure/RagGrpcExceptionMapperAutoConfiguration` 转 `StatusRuntimeException`（`code` 与 `msg` 逐字一致）。
+4. gRPC 侧错误仍需从 `BusinessException(code,msg)` 经 `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration` 转 `StatusRuntimeException`（`code` 与 `msg` 逐字一致）。
 
 **为什么换**：同进程内调 gRPC 是无意义的序列化开销与故障注入；合并后只有一份业务逻辑，因此业务层只抛一种异常，两个边界各自适配。
 
@@ -234,8 +234,8 @@
 | 配置绑定 | `internal/config/config.go`（4 段 struct tag，`json:",default=20"` 等） | `@ConfigurationProperties(prefix="follow-api"/"follow-rpc")` + nested 类 | `service/follow/src/main/java/com/rag/follow/config/FollowApiProperties.java` + `service/follow/src/main/java/com/rag/follow/config/FollowRpcProperties.java` | 1:1 | ⚠️ `RestConf` 的 9 个中间件开关**全部 `default=true`**（yaml 里一个字没写）⇒ 目标侧必须**显式写出**，不能依赖默认 |
 | 进程装配 | `api/followcenter.go` + `rpc/follow.go`（2 个 main） | `FollowApiApplication` + `FollowRpcApplication`（2 个 app） | `FollowServiceApplication`（**1 个 app**） | 1:1 | **D1** |
 | 跨域调用 | `svcCtx.UserRpc.GetUser`（rpc 侧）+ `svcCtx.FollowRpc.*`（api 侧调同域） | `rpc/client/UserRpcClient.java`（`@GrpcClient`）+ `api/client/FollowRpcClient.java`（同域） | `service/follow/src/main/java/com/rag/follow/client/UserRpcClient.java`（**只保留跨域**） | 1:N | **D2** ⇒ 同域 client 删除；**D6** ⇒ 跨域仍走 gRPC，proto 是 L1 |
-| 熔断 / 降载 / 限连接 | go-zero `rest` 内置 9 个开关（默认全开） | `service/common/protection/`（17 个自研类） | `common/src/main/java/com/rag/common/autoconfigure/RagProtectionAutoConfiguration.java` + `common/src/main/java/com/rag/common/protection/`（2 类） | 1:N | **D4**：生态吸收 ⇒ L3 语义降级（熔断失败窗口 / half-open 策略不同） |
-|请求体解析|`httpx.Parse`（go-zero mapping：必填 + `,string` + 类型强转）|`common/http/GoStyleStringInt64` / `GoStyleRequired` / `GoStyleCoercion` + 域内 `FollowGoStyleCoercion`|`common/src/main/java/com/rag/common/web/GoStyleStringInt64.java` / `GoStyleCoercion` + `common/src/main/java/com/rag/common/autoconfigure/RagJacksonAutoConfiguration.java`（**无域内补强**）|1:N|⚠️ C 的域内补强缺失 ⇒ 见 §7 缺口 #2|
+| 熔断 / 降载 / 限连接 | go-zero `rest` 内置 9 个开关（默认全开） | `service/common/protection/`（17 个自研类） | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java` + `common/src/main/java/com/rag/common/protection/`（2 类） | 1:N | **D4**：生态吸收 ⇒ L3 语义降级（熔断失败窗口 / half-open 策略不同） |
+|请求体解析|`httpx.Parse`（go-zero mapping：必填 + `,string` + 类型强转）|`common/http/GoStyleStringInt64` / `GoStyleRequired` / `GoStyleCoercion` + 域内 `FollowGoStyleCoercion`|`common/src/main/java/com/rag/common/web/StringInt64.java` / `GoStyleCoercion` + `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java`（**无域内补强**）|1:N|⚠️ C 的域内补强缺失 ⇒ 见 §7 缺口 #2|
 | DTO 形态 | `types/types.go`（可变 struct，5 组） | `dto/*.java`（可变 POJO） | `service/follow/src/main/java/com/rag/follow/dto/*.java`（**immutable record**，D5） | 1:1 | ⚠️ 契约不变（L1），形态变；必填校验文案从 go-zero 改为 Bean Validation 文案 ⇒ **L3 降级** |
 | 指标注册 | `metrics.InitMetrics()`（**真的被调用**：`followcenter.go:33` / `follow.go:28`） | Micrometer 声明即注册 | Micrometer 声明即注册 | 1:1 | ⇒ 自动注册是**对齐**而非增强（与 like 域「零调用」的结论相反） |
 
@@ -281,16 +281,16 @@
 | 认证异常载体 | 无（go-zero `rest.WithJwt` 直接写 401） | `service/common/.../exception/AuthenticationException.java` | `common/src/main/java/com/rag/common/exception/AuthenticationException.java` | 1:1 | 401 **空 body** 的载体 |
 | HTTP 信封 | `service/common/response/response.go` | `service/common/.../response/Response.java` | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | 1:1 | 信封是 **L1**（客户端按 `{code,msg,data}` 解析）⇒ **不得**用 `ProblemDetail` 替换 |
 | JWT 工具 | go-zero `rest.WithJwt` 内置 | `users/users-common/.../jwt/{JwtUtil,BearerTokenExtractor}.java` | `common/src/main/java/com/rag/common/security/{JwtUtil,BearerTokenExtractor}.java` | 1:1 | 从 users 域**提升为全局**；🔴 `trimBearerPrefix`（大小写敏感）**不含** `TrimSpace` ⇒ follow 黑名单需额外 `.trim()` |
-| 字符串 int64 解析 | go-zero `,string` mapping | `users/users-common/.../http/GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/GoStyleStringInt64.java` | 1:1 | 接受 JSON 字符串与数字两者 |
-| Jackson 强转规则 | go-zero `mapping` 强转判定 | `users/users-common/.../http/GoStyleCoercion.java` + `follow-api/.../config/FollowGoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/GoStyleCoercion.java` + `common/src/main/java/com/rag/common/autoconfigure/RagJacksonAutoConfiguration.java` | 1:N | C **没有**域内补强类 ⇒ 缺口 #2 |
-| 裸响应（404/405/415） | go-zero `rest` 内置 | `service/common/.../http/GoStyleRouterErrorResponses.java` | `common/src/main/java/com/rag/common/web/GoStyleRouterErrorResponses.java` | 1:1 | |
-| 请求体读取判据 | go-zero `withJsonBody`（`ContentLength>0` + Content-Type 字面含 `application/json`） | `service/common/.../http/GoStyleJsonBodyConverter.java` | `common/src/main/java/com/rag/common/web/GoStyleJsonBodyConverter.java` | 1:1 | 2 行判定，非框架能力 |
+| 字符串 int64 解析 | go-zero `,string` mapping | `users/users-common/.../http/GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/StringInt64.java` | 1:1 | 接受 JSON 字符串与数字两者 |
+| Jackson 强转规则 | go-zero `mapping` 强转判定 | `users/users-common/.../http/GoStyleCoercion.java` + `follow-api/.../config/FollowGoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/Coercion.java` + `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java` | 1:N | C **没有**域内补强类 ⇒ 缺口 #2 |
+| 裸响应（404/405/415） | go-zero `rest` 内置 | `service/common/.../http/GoStyleRouterErrorResponses.java` | `common/src/main/java/com/rag/common/web/RouterErrorResponses.java` | 1:1 | |
+| 请求体读取判据 | go-zero `withJsonBody`（`ContentLength>0` + Content-Type 字面含 `application/json`） | `service/common/.../http/GoStyleJsonBodyConverter.java` | `common/src/main/java/com/rag/common/web/JsonBodyConverter.java` | 1:1 | 2 行判定，非框架能力 |
 | 日志适配 | `service/common/logger/logger.go` | `service/common/.../logger/{Logger,WithUserID}.java` | `common/src/main/java/com/rag/common/logger/{GoStyleLogger,LogOption,LogOptions,FatalError}.java` | 1:1 | 实现 SLF4J `Logger` 接口；`call_chain` 等字段是行为契约 |
 | gRPC deadline | go-zero `zrpc` 内置超时 | `service/common/.../observability/GoStyleRequestDeadline.java` | `common/src/main/java/com/rag/common/observability/GoStyleRequestDeadline.java` | 1:1 | |
 | SQL 超时 / 取消 | go-zero `ctx cancel` | `service/common/.../persistence/{DeadlineQueryTimeoutInjector,SqlTimeoutStatusTranslator}.java` | `common/src/main/java/com/rag/common/persistence/`（同 2 类 + 2 个 typeHandler） | 1:1 | |
-| 保护层（熔断/降载/限连接/限体积） | go-zero `rest` 内置 9 个开关 | `service/common/.../protection/`（17 个类） | `common/src/main/java/com/rag/common/protection/{CpuThresholdHealthIndicator,MaxBytesFilter}.java` + `common/src/main/java/com/rag/common/autoconfigure/RagProtectionAutoConfiguration.java` | N:1 | **D4**：17 → 2 类 + 1 个 auto-config ⇒ L3 语义降级 |
-| MyBatis-Plus 装配桥 | 无（Go 用 GORM） | 每个 rpc 模块各一份 `MybatisPlusOrderingBridgeAutoConfiguration`（follow-rpc 亦有） | `common/src/main/java/com/rag/common/autoconfigure/RagMybatisPlusAutoConfiguration.java`（1 份） | N:1 | **D3**：9 份重复 ⇒ 1 份；🔴 不建则 mapper 直接报 `Property 'sqlSessionFactory' …` |
-| gRPC 异常映射 | 无（Go 两侧各写一遍） | 无（api 层自己 switch） | `common/src/main/java/com/rag/common/autoconfigure/RagGrpcExceptionMapperAutoConfiguration.java` | C 新增 | **D2** 的关键设计：业务层抛 `BusinessException(code,msg)`，gRPC 边界统一转 `StatusRuntimeException`（`code` + `msg` 逐字一致） |
+| 保护层（熔断/降载/限连接/限体积） | go-zero `rest` 内置 9 个开关 | `service/common/.../protection/`（17 个类） | `common/src/main/java/com/rag/common/protection/{CpuThresholdHealthIndicator,MaxBytesFilter}.java` + `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java` | N:1 | **D4**：17 → 2 类 + 1 个 auto-config ⇒ L3 语义降级 |
+| MyBatis-Plus 装配桥 | 无（Go 用 GORM） | 每个 rpc 模块各一份 `MybatisPlusOrderingBridgeAutoConfiguration`（follow-rpc 亦有） | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java`（1 份） | N:1 | **D3**：9 份重复 ⇒ 1 份；🔴 不建则 mapper 直接报 `Property 'sqlSessionFactory' …` |
+| gRPC 异常映射 | 无（Go 两侧各写一遍） | 无（api 层自己 switch） | `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java` | C 新增 | **D2** 的关键设计：业务层抛 `BusinessException(code,msg)`，gRPC 边界统一转 `StatusRuntimeException`（`code` + `msg` 逐字一致） |
 | proto 契约 | `proto/follow.proto`（仓库根） | `service/follow/follow-proto/src/main/proto/follow.proto` | `proto/src/main/proto/follow.proto` | 1:1 | 8 个 message / 8 个 rpc / 全部字段号**逐条一致**；只改 `java_package` |
 
 ### 4.1 决策锁（§4）
@@ -306,7 +306,7 @@
 **换「`service/common` → 仓库根 `common` 真 starter」5 处同时改**：
 1. `common/` 移到**仓库根**（不在 `service/` 下），`pom.xml` 增 `<module>common</module>`。
 2. 各域的 `@Import{RpcServerInterceptorFactory, ...}` 清单**全删** ⇒ 由 `common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 承担。
-3. 9 份重复的 `MybatisPlusOrderingBridgeAutoConfiguration` ⇒ 收成 `common/src/main/java/com/rag/common/autoconfigure/RagMybatisPlusAutoConfiguration.java` **1 份**。
+3. 9 份重复的 `MybatisPlusOrderingBridgeAutoConfiguration` ⇒ 收成 `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` **1 份**。
 4. `users-common` 的 `jwt/` → `common/src/main/java/com/rag/common/security/`；`http/` → `common/src/main/java/com/rag/common/web/`；`exception/` → `common/src/main/java/com/rag/common/exception/`。
 5. `common/src/main/java/com/rag/common/contract/ApiResponse.java`（全局信封）与**域内** `service/follow/src/main/java/com/rag/follow/contract/CodeError.java`（域内码表）**分层**：信封是全局的，错误码空间是域内的。
 
@@ -385,7 +385,7 @@
 | 1 | **C 列 `api/` 包 vs `rpc/` 包** | **用例层重复**：C 的 `api/service/{FollowRelationService,FollowQueryService}` 与 `rpc/service/FollowDomainService` **各自持有一套用例**（前者 8 个 HTTP 用例、后者 8 个 gRPC 用例）⇒ **同一份业务规则落两处** | D2 的正确形态是「**一份**业务用例 + 两个边界适配器」⇒ 应让 api 层 Service 薄到只做编排，规则唯一落在 `FollowDomainService`；否则 `forbidden_scope` / `resolveUserID` / `Success:true` 会双写 |
 | 2 | **C 列 `api/service/FollowApiSupport.java`** | B 的 `FollowApiSupport` 承担 4 件事：`extractUserID`（5 类型）+ `resolveUserID` + **`rpcError`（gRPC→业务码）** + proto→DTO 投影。**D2 后 `rpcError` 变成死代码**（域内不再有 gRPC 往返） | C 填实现时应删掉 `rpcError` 分支；且 `rpcError` 依赖的「msg **查表**而非 status 原文」这一 follow 特性随之失效 ⇒ 需在《完全spring化的文件树》§5.3 的统一错误模型里重新对齐 |
 | 3 | **C 列 `api/config/WebMvcConfig.java` 与 `api/controller/FollowController.java` 的 javadoc** | 两处 javadoc 都写着「**public 路径白名单**」/「**有 public 段**」⇒ 与 A 列 Go 源码**矛盾**：`routes.go:62` 对 8 条路由统一挂 `rest.WithJwt`，**public 集为空** | **C 列 javadoc 需修正**（否则照着填会凭空造出一个 public 段） |
-| 4 | **B 列 `follow-api/.../config/FollowGoStyleCoercion.java`** | B 有、C 无。C 的 `common/src/main/java/com/rag/common/web/GoStyleCoercion` + `RagJacksonAutoConfiguration` 只有**全局**规则 ⇒ `offset`/`limit` 的「数字形态」判定在 C **无落点** ⇒ Go 拒 / Jackson 收（方向：**Go 拒、RAG 收**，多放行不会报错，最难发现） | 缺口 #2 |
+| 4 | **B 列 `follow-api/.../config/FollowGoStyleCoercion.java`** | B 有、C 无。C 的 `common/src/main/java/com/rag/common/web/Coercion` + `JsonBodyConverterAutoConfiguration` 只有**全局**规则 ⇒ `offset`/`limit` 的「数字形态」判定在 C **无落点** ⇒ Go 拒 / Jackson 收（方向：**Go 拒、RAG 收**，多放行不会报错，最难发现） | 缺口 #2 |
 | 5 | **C 列 `service/follow/src/main/resources/db/migration/`** | 只有 `.gitkeep`；`service/follow/pom.xml` **无 `flyway-core`** ⇒ 两张表**无建表落点**；`@TableId` 主键策略（`IdType.AUTO` vs 全局雪花惯例）、`TIMESTAMPTZ`、3 个索引 + 1 个复合唯一索引全部无处落 | 缺口 #1 |
 | 6 | **C 列 `service/follow/src/main/resources/application.yml`** | 缺 4 项：① `mybatis-plus.global-config.db-config.id-type`（Go 是 bigserial **不是**雪花）；② JDBC 的 `TimeZone=Asia/Shanghai`；③ `observability.http-timeout: 3s`（Go `RestConf.Timeout` 默认 **3000ms**，yaml 里一个字没写 ⇒ 靠 struct tag 默认）；④ `grpc.client.user-rpc.negotiation-type: plaintext`（**注释已写明必须显式配**，但下面还是空的） | 缺口 #3 |
 | 7 | **C 列 `api/config/FollowApiProperties.java` / `rpc/config/FollowRpcProperties.java`** | C 的 `application.yml` 里**没有** `follow-api.user-auth.*`（`AccessSecret` / `AccessExpire`）也没有 `follow-rpc.list.*` / `follow-rpc.recommend.*` ⇒ 两段配置**当前无处落**（Go 侧 `followcenter.yaml:10-12` / `follow.yaml:43-51`） | 缺口 #3 |
@@ -533,7 +533,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/follow" -name '*.java' \
 | `1:1` | **75** | 三列逐条对位（多数 DTO / Entity / Mapper / Metrics / Interceptor / config） |
 | `1:N` | **15** | 1 个 Go 文件 → 多个 Java 文件（`errmsg.go`→4 类、`data_model.go`→2 Entity、`model/follow.go`→3 mapper、8 个 handler→1 Controller 等） |
 | `N:1` | **23** | 多个 Go 文件 → 1 个 Java 文件（8 个 api logic→2 Service、8 个 rpc logic→1 `FollowDomainService`、8 个 handler→1 Controller 等） |
-| `C 新增` | **1** | `common/src/main/java/com/rag/common/autoconfigure/RagGrpcExceptionMapperAutoConfiguration.java`（D2 的统一 gRPC 异常映射，A / B 两侧都没有对应物） |
+| `C 新增` | **1** | `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java`（D2 的统一 gRPC 异常映射，A / B 两侧都没有对应物） |
 | **合计带映射类型的表行** | **114** | §0（6）+ §1.1（5）+ §1.2（27）+ §1.3（9）+ §1.4（20）+ §2（13）+ §3（17）+ §4（17） |
 
 > ⚠️ **无其它映射类型**（未出现 `N:M` / `1:1:1` 等自造词）；**114 行全部填了映射类型，无空缺**。

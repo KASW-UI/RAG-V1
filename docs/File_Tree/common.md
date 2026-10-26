@@ -39,13 +39,13 @@
 │       │       └── rag/
 │       │           └── common/
 │       │               ├── autoconfigure/
-│       │               │   ├── RagGrpcExceptionMapperAutoConfiguration.java
-│       │               │   ├── RagJacksonAutoConfiguration.java
-│       │               │   ├── RagMybatisPlusAutoConfiguration.java
-│       │               │   ├── RagObservabilityAutoConfiguration.java
-│       │               │   ├── RagProtectionAutoConfiguration.java
-│       │               │   ├── RagSnowflakeAutoConfiguration.java
-│       │               │   └── RagWebAutoConfiguration.java
+│       │               │   ├── GrpcExceptionMapperAutoConfiguration.java
+│       │               │   ├── JsonBodyConverterAutoConfiguration.java
+│       │               │   ├── MybatisPlusOrderingBridgeAutoConfiguration.java
+│       │               │   ├── ObservabilityAutoConfiguration.java
+│       │               │   ├── ProtectionAutoConfiguration.java
+│       │               │   ├── SnowflakeAutoConfiguration.java
+│       │               │   └── WebAutoConfiguration.java
 │       │               ├── communityfact/
 │       │               │   ├── AuthorityFact.java    # Go 出处：wire.go 的 `type AuthorityFact struct`。
 │       │               │   ├── AuthorityHandler.java
@@ -89,22 +89,22 @@
 │       │               ├── snowflake/
 │       │               │   └── Snowflake.java
 │       │               └── web/
-│       │                   ├── GoStyleBadRequestException.java
-│       │                   ├── GoStyleCoercion.java
-│       │                   ├── GoStyleFloat64Deserializer.java
-│       │                   ├── GoStyleGetFormValuesFilter.java
-│       │                   ├── GoStyleGrpcStatusMapper.java
-│       │                   ├── GoStyleHttpErrorException.java
-│       │                   ├── GoStyleJsonBodyConverter.java
-│       │                   ├── GoStyleJsonBodyConverterConfig.java
-│       │                   ├── GoStyleJsonBodyLimitFilter.java
-│       │                   ├── GoStyleMapStringValueDeserializer.java
-│       │                   ├── GoStylePathNormalizingFilter.java
-│       │                   ├── GoStylePlainTextErrors.java
-│       │                   ├── GoStyleRawStringListDeserializer.java
-│       │                   ├── GoStyleRouterErrorResponses.java
-│       │                   ├── GoStyleStringFields.java
-│       │                   └── GoStyleStringInt64.java
+│       │                   ├── BadRequestException.java
+│       │                   ├── Coercion.java
+│       │                   ├── Float64Deserializer.java
+│       │                   ├── GetFormValuesFilter.java
+│       │                   ├── GrpcStatusMapper.java
+│       │                   ├── HttpErrorException.java
+│       │                   ├── JsonBodyConverter.java
+│       │                   ├── JsonBodyConverterConfig.java
+│       │                   ├── JsonBodyLimitFilter.java
+│       │                   ├── MapStringValueDeserializer.java
+│       │                   ├── PathNormalizingFilter.java
+│       │                   ├── PlainTextErrors.java
+│       │                   ├── RawStringListDeserializer.java
+│       │                   ├── RouterErrorResponses.java
+│       │                   ├── StringFields.java
+│       │                   └── StringInt64.java
 │       └── resources/
 │           └── META-INF/
 │               └── spring/

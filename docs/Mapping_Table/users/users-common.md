@@ -72,8 +72,8 @@
 | `service/user/common/cryptx/password.go` | `users-common/.../cryptx/PasswordUtil.java` | `common/src/main/java/com/rag/common/security/PasswordUtil.java` | 1:1 | 同上 |
 | —（Go 侧无对应物：Go 的 `rest.WithJwt` 内部解析 `Authorization` 头） | `users-common/.../jwt/BearerTokenExtractor.java` | `common/src/main/java/com/rag/common/security/BearerTokenExtractor.java` | 1:1 | Go 侧无对应物（原因）：B 引入的 `Bearer ` 前缀提取器；C 归位到 `common/src/main/java/com/rag/common/security/` ⇒ **归属见 `common.md`** |
 | —（Go 侧无对应物：go-zero `httpx.Parse` 内置必填校验） | `users-common/.../http/GoStyleRequired.java` + `GoStyleRequiredFields.java` + `GoStyleRequest.java` + `GoRequiredFieldException.java` | **（D5 已删）** | 1:1 | Go 侧无对应物（原因）：D5 决定删除手写校验器，改用 **Bean Validation** ⇒ **L3 降级**：错误文案从 go-zero 的 `field "uid" is not set` 变为 Bean Validation 文案 |
-| —（Go 侧无对应物：go-zero `mapping` 的类型强转判定） | `users-common/.../http/GoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/GoStyleCoercion.java` | 1:1 | Go 侧无对应物（原因）：Jackson `CoercionConfig` 原生机制，C 仅归位 ⇒ **归属见 `common.md`** |
-| —（Go 侧无对应物） | `users-common/.../http/GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/GoStyleStringInt64.java` | 1:1 | Go 侧无对应物（原因）：uid 序列化为字符串（避免精度丢失）⇒ **归属见 `common.md`** |
+| —（Go 侧无对应物：go-zero `mapping` 的类型强转判定） | `users-common/.../http/GoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/Coercion.java` | 1:1 | Go 侧无对应物（原因）：Jackson `CoercionConfig` 原生机制，C 仅归位 ⇒ **归属见 `common.md`** |
+| —（Go 侧无对应物） | `users-common/.../http/GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/StringInt64.java` | 1:1 | Go 侧无对应物（原因）：uid 序列化为字符串（避免精度丢失）⇒ **归属见 `common.md`** |
 | —（Go 侧无对应物：Go 用 GORM `AutoMigrate`，无状态幂等） | `users-common/.../ddl/SchemaInitializer.java` | **（无对应物）** | 1:1 | Go 侧无对应物（原因）：⚠️ C 侧 `common/` **无 `SchemaInitializer`**，且两个 `*-service` 的 `db/migration/` 只有 `.gitkeep` ⇒ **幂等 DDL 重放机制在 C 侧无执行器、无脚本**（见 §7.4 F-3） |
 | —（Go 侧无对应物：Go 的 `serializer:json` 由 GORM 提供） | `user-rpc/.../mapper/JsonTextTypeHandler.java` + `admin-rpc/.../mapper/JsonTextTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonTextTypeHandler.java` | 1:1 | Go 侧无对应物（原因）：`extra_info`（**text** 列）↔ `Map<String,String>` 的 TypeHandler；D3 收进 starter ⇒ **归属见 `common.md`** |
 | —（Go 侧无对应物） | `admin-rpc/.../mapper/JsonbTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | 1:1 | Go 侧无对应物（原因）：PG `jsonb` 列的 TypeHandler（MP 自带 `JacksonTypeHandler` 会把值绑成 `varchar` ⇒ jsonb 拒收）⇒ **归属见 `common.md`** |
@@ -106,7 +106,7 @@
 | JWT 签发 / 验签 | `service/user/common/jwt/jwt.go` | `users-common/.../jwt/JwtUtil.java` | `common/src/main/java/com/rag/common/security/JwtUtil.java` | **全局归属**（`article/rpc` + `knowledge/api` 也用）⇒ `common.md` 负责 |
 | `Bearer ` 前缀提取 | —（go-zero 内置） | `users-common/.../jwt/BearerTokenExtractor.java` | `common/src/main/java/com/rag/common/security/BearerTokenExtractor.java` | **全局归属** ⇒ `common.md` 负责 |
 | 密码散列 | `service/user/common/cryptx/password.go` | `users-common/.../cryptx/PasswordUtil.java` | `common/src/main/java/com/rag/common/security/PasswordUtil.java` | **全局归属** ⇒ `common.md` 负责 |
-| go-zero 风格 JSON 强转 / `string→int64` | —（go-zero `mapping`） | `users-common/.../http/GoStyleCoercion.java` / `GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/GoStyleCoercion.java` / `GoStyleStringInt64.java` | **全局归属** ⇒ `common.md` 负责 |
+| go-zero 风格 JSON 强转 / `string→int64` | —（go-zero `mapping`） | `users-common/.../http/GoStyleCoercion.java` / `GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/Coercion.java` / `GoStyleStringInt64.java` | **全局归属** ⇒ `common.md` 负责 |
 | go-zero 风格必填校验 | —（go-zero `httpx.Parse`） | `users-common/.../http/GoStyleRequired*.java` 等 4 个 | **已删**（D5）⇒ 改由 Bean Validation 承担 | 降级项登记在 `L3-降级清单.md` D-01 |
 | DDL 幂等重放执行器 | `model/db.go` 的 `AutoMigrate` | `users-common/.../ddl/SchemaInitializer.java` | **缺失**（C 侧 `common/` 无、`db/migration/` 空） | ⚠️ **待补**（F-3） |
 
@@ -159,7 +159,7 @@ find "service/users/users-common" -name '*.java' -not -path '*/src/test/*' -not 
 | `service/users/common/src/main/java/com/rag/users/common/` | 2 | §1.3 第 1 行（`ErrCodes.java` / `ErrMsg.java`） | ✅ 2/2 |
 | **合计** | **2** | — | ✅ **2/2** |
 
-> ⚠️ **本库在 C 侧另有 5 个文件上提到仓库根 `common/`**（`JwtUtil` / `PasswordUtil` / `BearerTokenExtractor` / `GoStyleCoercion` / `GoStyleStringInt64`）⇒ 归属见 [`../common.md`](../common.md)，不计入本表的 2/2。
+> ⚠️ **本库在 C 侧另有 5 个文件上提到仓库根 `common/`**（`JwtUtil` / `PasswordUtil` / `BearerTokenExtractor` / `Coercion` / `StringInt64`）⇒ 归属见 [`../common.md`](../common.md)，不计入本表的 2/2。
 
 ### 7.2 A 列覆盖率 —— **3 / 3 = 100%**（users-common）
 

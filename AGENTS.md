@@ -116,7 +116,7 @@ RAG-V1 的目标架构（落地以 `docs/File_Tree/` 为准）：
 **三个「不是 Spring 惯例」的具体点**（新增目录/包前必问）：
 1. **没有 `repository` 层** —— 用 `mapper`（MP `BaseMapper`）+ `domain/entity` ⇒ COLA/DDD 分层；社区默认是 `repository`。
 2. **`contract/` 是域内包、不是独立模块** —— 域错误契约（`ErrCodes`/`ErrMsg`）+ 事件 DTO；proto 另在**根级 `proto/` 模块**（pb 包名 `com.rag.proto.<域>`）。
-3. **D1 把 api+rpc 合并进同一进程** —— 一个 app 同起 Tomcat 与 gRPC ⇒ 异常处理**必须分两套**：`advice`（`@RestControllerAdvice`）vs `exception` + `RagGrpcExceptionMapperAutoConfiguration`（§3.5）。
+3. **D1 把 api+rpc 合并进同一进程** —— 一个 app 同起 Tomcat 与 gRPC ⇒ 异常处理**必须分两套**：`advice`（`@RestControllerAdvice`）vs `exception` + `GrpcExceptionMapperAutoConfiguration`（§3.5）。
 
 ⚠️ **artifactId 未对齐生态惯例**：`common` / `proto` / `users-common` / `*-service`，而非 `xxx-spring-boot-starter` 形态 —— 属 **L4 实现机制，可重选**，**未拍板**。
 > ⚠️ **物理目录 ≠ artifactId** —— 目录 `service/users/user/` 的 artifactId 是 `user-service`（reactor 内须唯一 ⇒ 改目录不改坐标）。**不要用目录名反推 artifactId**。**形状债已清零（P4-③ · D7）**；剩余**命名债 P4-④**（22 个 `GoStyle*`）⇒ [`docs/命名债与包形状.md`](docs/命名债与包形状.md)。

@@ -1,7 +1,7 @@
-com.rag.common.autoconfigure.RagWebAutoConfiguration
-com.rag.common.autoconfigure.RagJacksonAutoConfiguration
-com.rag.common.autoconfigure.RagObservabilityAutoConfiguration
-com.rag.common.autoconfigure.RagProtectionAutoConfiguration
-com.rag.common.autoconfigure.RagSnowflakeAutoConfiguration
-com.rag.common.autoconfigure.RagMybatisPlusAutoConfiguration
-com.rag.common.autoconfigure.RagGrpcExceptionMapperAutoConfiguration
+com.rag.common.autoconfigure.WebAutoConfiguration
+com.rag.common.autoconfigure.JsonBodyConverterAutoConfiguration
+com.rag.common.autoconfigure.ObservabilityAutoConfiguration
+com.rag.common.autoconfigure.ProtectionAutoConfiguration
+com.rag.common.autoconfigure.SnowflakeAutoConfiguration
+com.rag.common.autoconfigure.MybatisPlusOrderingBridgeAutoConfiguration
+com.rag.common.autoconfigure.GrpcExceptionMapperAutoConfiguration

@@ -130,7 +130,7 @@
 | `api/internal/svc/servicecontext.go`（`zrpc.MustNewClient` → `CommentServiceClient`） | `comment-api/…/api/client/CommentRpcClient.java` | `service/comment/src/main/java/com/rag/comment/service/CommentApiService.java` + `service/comment/src/main/java/com/rag/comment/domain/service/CommentDomainService.java` | 1:N | **D2**：域内直连 ⇒ C 的 `api/client/` 整包消失（全仓 0 个）；HTTP 编排层直接注入领域服务 |
 | `api/internal/config/config.go`（`RestConf` + `UserAuth` + `CommentRpc`） | `comment-api/…/api/config/CommentApiProperties.java` | `service/comment/src/main/java/com/rag/comment/config/CommentApiProperties.java` | 1:1 | `@ConfigurationProperties("comment-api")` 替代 static field |
 | `api/etc/commentservice.yaml`（`Port: 8888` / `UserAuth.AccessSecret` / `CommentRpc.NonBlock`） | `comment-api/src/main/resources/application.yml` | `service/comment/src/main/resources/application.yml` | 1:1 | ⚠️ C 的 yml **未带** `user-auth.access-secret` / `access-expire` / `rag.protection` 四旋钮 ⇒ 待补（密钥必须与签发方 `user-api` 同值） |
-| （Go 侧无文件 —— go-zero `httpx.Parse` 的类型强转由框架承担） | `comment-api/…/api/config/CommentGoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/GoStyleCoercion.java` + `common/src/main/java/com/rag/common/autoconfigure/RagJacksonAutoConfiguration.java`（**common starter，不在本域**） | 1:1 | **D3/D4**：收进 starter ⇒ C 的 comment 域零文件 |
+| （Go 侧无文件 —— go-zero `httpx.Parse` 的类型强转由框架承担） | `comment-api/…/api/config/CommentGoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/Coercion.java` + `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java`（**common starter，不在本域**） | 1:1 | **D3/D4**：收进 starter ⇒ C 的 comment 域零文件 |
 
 **§1.2 决策锁**
 
@@ -163,8 +163,8 @@
 | `rpc/internal/svc/service_context.go` 的 `ArticleRpc` 字段 | `comment-rpc/…/rpc/client/ArticleRpcClient.java` | `service/comment/src/main/java/com/rag/comment/client/ArticleRpcClient.java` | 1:1 | 同上 |
 | `rpc/etc/comment.yaml`（`ListenOn: 0.0.0.0:9001` / `DB.DataSource` / `KqPusherConf` / `KqConsumerConf` / `BizRedis` / `MessageRpc` / `ArticleRpc`） | `comment-rpc/src/main/resources/application.yml` | `service/comment/src/main/resources/application.yml` | 1:1 | ⚠️ C 的 yml **未带** `TimeZone=Asia/Shanghai`（Go 的 `DB.DataSource` 显式钉了时区，而 `created_at` 是 `TIMESTAMPTZ`）⇒ 待补 |
 | （Go 侧用 etcd） | `comment-rpc/…/rpc/bootstrap/NacosRegistration.java` | `service/comment/src/main/java/com/rag/comment/bootstrap/NacosRegistration.java` | C 新增 | 注册中心替换属表达层；B 显式 `@Component("commentRpcNacosRegistration")`，**不依赖自动注册**（AGENTS.md §6.3 问题 3） |
-| （Go 侧无 —— Jackson 3 的 `ObjectMapper` 需自行装配） | `comment-rpc/…/rpc/config/Jackson2ObjectMapperConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/RagJacksonAutoConfiguration.java`（**common starter，不在本域**） | 1:1 | **D3**：域内副本收进 starter |
-| （Go 侧无 —— MyBatis-Plus ordering bridge） | `comment-rpc/…/rpc/config/MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/RagMybatisPlusAutoConfiguration.java`（**common starter，不在本域**） | 1:1 | **D3**：RAG 侧此文件被复制 9 份 ⇒ D3 的账单 |
+| （Go 侧无 —— Jackson 3 的 `ObjectMapper` 需自行装配） | `comment-rpc/…/rpc/config/Jackson2ObjectMapperConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java`（**common starter，不在本域**） | 1:1 | **D3**：域内副本收进 starter |
+| （Go 侧无 —— MyBatis-Plus ordering bridge） | `comment-rpc/…/rpc/config/MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java`（**common starter，不在本域**） | 1:1 | **D3**：RAG 侧此文件被复制 9 份 ⇒ D3 的账单 |
 
 **§1.3 决策锁**
 
@@ -254,7 +254,7 @@
 | 事务边界 | 3 个方法自带事务（`InsertCommentTx` / `DeleteCommentTx` / `LikeCommentTx`）；7 个 logic **无事务** | `CommentTransactionalService` 3 个 `@Transactional` 方法 | `CommentTransactionalService` 3 个 `@Transactional` 方法 | ⚠️ 事务边界**只在**事务类上，不在 DomainService 上 |
 | 行级锁 / 悲观锁 | `SELECT ... FOR UPDATE`（在 `comment.go` 的事务方法内） | 同语义（mapper 注解 SQL 内） | 待填 | **L2 语义，必须逐条保留** |
 | 分页 | `GetReplyIDsByPage` 手工拼 `LIMIT/OFFSET` | `mapper/GoStylePagination`（**在 `service/common`，非本域**） | `common` starter 同款 | 无 MyBatis-Plus 分页拦截器 |
-| 雪花 ID | `snowflake.GetID()`（`common/snowflake`） | `common/spring/SnowflakeBean` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `RagSnowflakeAutoConfiguration` | epoch / 位段是业务契约 |
+| 雪花 ID | `snowflake.GetID()`（`common/snowflake`） | `common/spring/SnowflakeBean` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration` | epoch / 位段是业务契约 |
 | SQL 超时 | go-zero `context` 取消 | `@Import{DeadlineQueryTimeoutInjector, SqlTimeoutStatusTranslator}` | `common/src/main/java/com/rag/common/persistence/` 同款（starter） | ⚠️ 不配 ⇒ 在途 SQL 不会被取消 |
 
 **§2 决策锁**
@@ -315,17 +315,17 @@
 |---|---|---|---|---|
 | `service/common/response/response.go`（信封 `{code,msg,data}`） | `service/common/…/response/Response.java` | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | 1:1 | **L1**：客户端按 `{code,msg,data}` 解析 ⇒ 不得用 `ProblemDetail` 替换 |
 | `service/common/errmsg`（**Go 的 `service/common` 里没有 errmsg** —— 那是 comment 域专属） | `service/common/…/exception/BusinessException.java` | `common/src/main/java/com/rag/common/exception/BusinessException.java` | 1:1 | Go 的 `CodeError{Code,Msg}` 与 `BusinessException(code,msg)` **形状同构** ⇒ 不自建异常类 |
-| `service/common/snowflake/snowflake.go` | `service/common/…/snowflake/Snowflake.java` + `spring/SnowflakeBean` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `common/src/main/java/com/rag/common/autoconfigure/RagSnowflakeAutoConfiguration.java` | 1:1 | epoch / 位段是业务契约（游标依赖 `>>22`） |
+| `service/common/snowflake/snowflake.go` | `service/common/…/snowflake/Snowflake.java` + `spring/SnowflakeBean` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` | 1:1 | epoch / 位段是业务契约（游标依赖 `>>22`） |
 | `service/common/communityfact/*.go`（`Wire` / `Dispatcher` / `AuthorityHandler` / `ProcessLogger`） | `service/common/…/communityfact/*.java` | `common/src/main/java/com/rag/common/communityfact/*.java`（13 个类） | 1:1 | ⚠️ **共享事件协议**（与 favorite / like 三方共用）⇒ 协议本体归 `common.md`；本表只记 comment 侧接线 |
 | `service/common/communityfact` —— comment 侧接线：投递 | `comment-rpc/…/rpc/service/CommentFactDeliveryService.java` + `CommentDeliveryValidator.java` | `service/comment/src/main/java/com/rag/comment/service/CommentFactDeliveryService.java` + `CommentDeliveryValidator.java` | 1:1 | `SKIP LOCKED` + 前序屏障 + 回执校验 |
 | `service/common/communityfact` —— comment 侧接线：权威读 | `comment-rpc/…/rpc/service/CommentAuthorityLookupService.java` | `service/comment/src/main/java/com/rag/comment/service/CommentAuthorityLookupService.java` | 1:1 | 实现 `AuthorityHandler.AuthorityLookup` |
 | `service/common/communityfact` —— comment 侧接线：调度 | `comment-rpc/…/rpc/bootstrap/CommentFactDispatchScheduler.java` | `service/comment/src/main/java/com/rag/comment/bootstrap/CommentFactDispatchScheduler.java` | 1:1 | ★ Go 的 `cmd/fact-dispatch` 独立进程 → 域内组件 |
 | `service/common/communityfact` —— comment 侧接线：权威端点 | `comment-rpc/…/rpc/bootstrap/CommentAuthorityEndpointConfig.java` | `service/comment/src/main/java/com/rag/comment/bootstrap/CommentAuthorityEndpointConfig.java` | 1:1 | ★ Go 的 `cmd/fact-authority` 独立进程 → 域内组件 |
-| `service/common/observability/*.go`（http / mq / rpc 三条链） | `service/common/…/observability/*` + `spring/ObservabilityLifecycle` | `common/src/main/java/com/rag/common/observability/*` + `common/src/main/java/com/rag/common/autoconfigure/RagObservabilityAutoConfiguration.java` | 1:1 | **D4**：Micrometer Observation + OTel bridge ⇒ 部分 L3 降级（span 名 / 属性需对拍） |
+| `service/common/observability/*.go`（http / mq / rpc 三条链） | `service/common/…/observability/*` + `spring/ObservabilityLifecycle` | `common/src/main/java/com/rag/common/observability/*` + `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | 1:1 | **D4**：Micrometer Observation + OTel bridge ⇒ 部分 L3 降级（span 名 / 属性需对拍） |
 | `service/common/logger/logger.go`（logx 封装） | `service/common/…/logger/GoStyleLogger` | `common/src/main/java/com/rag/common/logger/GoStyleLogger.java` | 1:1 | `call_chain` 等字段是行为契约 |
 | `service/common/protection/*`（熔断 / 降载 / 限连接 / 限体积） | `service/common/…/protection/*`（17 个类） | `common/src/main/java/com/rag/common/protection/{CpuThresholdHealthIndicator,MaxBytesFilter}.java`（2 个） | N:1 | **D4**：17 → 2 ⇒ 熔断迁 resilience4j（**P2 待拍板**） |
-| `service/common/web/GoStyleJsonBodyConverter` 等 | `service/common/…/http/GoStyleJsonBodyConverter*` | `common/src/main/java/com/rag/common/web/GoStyleJsonBodyConverter.java` 等 | 1:1 | go-zero `withJsonBody` 判据逐字保留 |
-| `service/common/grpc` 拦截器工厂（`RpcServerInterceptorFactory`） | `service/common/…/spring/RpcServerInterceptorFactory` | `common/src/main/java/com/rag/common/autoconfigure/RagGrpcExceptionMapperAutoConfiguration.java`（+ `RagObservabilityAutoConfiguration`） | 1:1 | ⚠️ gRPC 拦截器**不自动注册** ⇒ 必须显式 `intercept(...)`，否则 span / deadline / 超时**静默消失** |
+| `service/common/web/JsonBodyConverter` 等 | `service/common/…/http/GoStyleJsonBodyConverter*` | `common/src/main/java/com/rag/common/web/JsonBodyConverter.java` 等 | 1:1 | go-zero `withJsonBody` 判据逐字保留 |
+| `service/common/grpc` 拦截器工厂（`RpcServerInterceptorFactory`） | `service/common/…/spring/RpcServerInterceptorFactory` | `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java`（+ `ObservabilityAutoConfiguration`） | 1:1 | ⚠️ gRPC 拦截器**不自动注册** ⇒ 必须显式 `intercept(...)`，否则 span / deadline / 超时**静默消失** |
 | （Go 侧 comment 域无 redis blacklist） | `comment-api/…/api/interceptor/CommentJwtAuthInterceptor.java`（无 blacklist 分支） | `service/comment/src/main/java/com/rag/comment/interceptor/CommentJwtAuthInterceptor.java` | 1:1 | ⚠️ Go 侧无 blacklist ⇒ 引入即为**新增行为** |
 
 **§4 决策锁**

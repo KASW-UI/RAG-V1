@@ -98,7 +98,7 @@
 | 项 | 内容 |
 |---|---|
 | **RAG 实测** | 400 响应丢 `Content-Type` ⇒ **4 轮对拍全绿仍漏**。根因：响应已 committed 时 `setHeader` **静默忽略** ⇒ MockMvc **测不到**，必须**真 Tomcat**。<br>出处：`Pitfalls/_INDEX.md`（message 域 36 条）；`tools/difftest/check-plaintext400-headers.sh` 就是为此存在 |
-| **RAG-V1 含义** | RAG-V1 的 `common/web/GoStylePlainTextErrors` + `GoStyleRouterErrorResponses` 复刻了 Go 的 400 形状（`text/plain; charset=utf-8` + 裸文本 + 尾换行 + `nosniff`）⇒ **同一层风险** |
+| **RAG-V1 含义** | RAG-V1 的 `common/web/PlainTextErrors` + `RouterErrorResponses` 复刻了 Go 的 400 形状（`text/plain; charset=utf-8` + 裸文本 + 尾换行 + `nosniff`）⇒ **同一层风险** |
 | **RAG-V1 处置** | ⇒ HTTP 层的形状断言**必须是真 Tomcat**（`@SpringBootTest(webEnvironment = RANDOM_PORT)`），**MockMvc 不算**。⇒ 列入 §六 检查清单 |
 
 ### F-08 🔴 Go 的容器上限**不是常量**

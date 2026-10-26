@@ -124,7 +124,7 @@
 5. B 的 `users-common/jwt/` + `cryptx/` → C 的 `common/src/main/java/com/rag/common/security/`（上提到仓库根，starter 化）
 6. B 的 `users-common/http/GoStyle*`（4 个校验器）→ 删除，改 Bean Validation（D5）
 7. B 的 `users-common/ddl/SchemaInitializer.java` + 各 rpc 的 `*SchemaBootstrap.java` → C 只保留 `*SchemaBootstrap.java`，**执行器与脚本缺失**（待补）
-8. B 的 9 份 `MybatisPlusOrderingBridgeAutoConfiguration` → C 的 1 份 `common/src/main/java/com/rag/common/autoconfigure/RagMybatisPlusAutoConfiguration.java`
+8. B 的 9 份 `MybatisPlusOrderingBridgeAutoConfiguration` → C 的 1 份 `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java`
 
 **为什么换**：Spring Cloud 的部署单元是「可部署服务」而不是「api 层 / rpc 层」（D1）；共享能力的标准形态是 starter 而不是「普通 jar + 每个消费者手写 `@Import`」（D3）；Java 生态的数据契约形态是 immutable record + Bean Validation（D5）。
 ⇒ **代价**：C 侧 B 的 141 个 `.java` 收敛成 103 个，且**「有对应」不等于「行为等价」** —— 本表只记文件名与职责的对应关系。
@@ -141,7 +141,7 @@
 | **表名** | `users`、`user_avatar_history`、`admins`、`admin_invites`（GORM `TableName()`） | `users_user`、`users_user_avatar_history`、`admin_admin`、`admin_invite` | 同 B（`@TableName`） | ⚠️ **A↔B/C 表名不同** —— 见 §7.4 F-4；本表只记职责对应，不判行为 |
 | Schema 演进 | `db.AutoMigrate(&User{}, &UserAvatarHistory{})`（**无状态、幂等**） | `SchemaInitializer` 幂等重放 `db/01..04_*.sql`（2026-10-21 起弃用 Flyway） | `*SchemaBootstrap` + `db/migration/`（**仅 `.gitkeep`**） | ⚠️ C 侧脚本与执行器缺失（F-3） |
 | 事务 | `m.conn.Transaction(func(tx *gorm.DB) error {...})` 闭包 | `@Transactional`（独立 Bean，规避 self-invocation） | 同 B | `selectAvatar` / `SelectAvatarHistory` / `CreateAdmin` 是多步原子写 ⇒ **必须独立 Bean** |
-| 雪花 ID | `snowflake.GetID()`（`service/common/snowflake`） | `common/spring/SnowflakeBean` + 各 rpc 的 `SnowflakeBootstrap` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `RagSnowflakeAutoConfiguration` + 各 service 的 `SnowflakeBootstrap` | epoch / 位段是业务契约（like 域游标依赖 `>>22`） |
+| 雪花 ID | `snowflake.GetID()`（`service/common/snowflake`） | `common/spring/SnowflakeBean` + 各 rpc 的 `SnowflakeBootstrap` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration` + 各 service 的 `SnowflakeBootstrap` | epoch / 位段是业务契约（like 域游标依赖 `>>22`） |
 | jsonb / text 列 | `gorm:"column:extra_info;serializer:json"` | `JsonTextTypeHandler`（user-rpc，text）+ `JsonbTypeHandler`（admin-rpc，jsonb） | `common/src/main/java/com/rag/common/persistence/JsonTextTypeHandler.java` + `JsonbTypeHandler.java` | ⚠️ `LambdaUpdateWrapper.set(Map)` 会丢 TypeHandler ⇒ 需 `setSql("CAST(... AS jsonb)")` 或走实体更新 |
 
 > ⚠️ **本表已按子域拆分** —— **admin 子域专属的 2 行**（行级悲观锁 / 唯一约束判定）见 [`admin/admin.md`](./admin/admin.md) §2；
@@ -180,7 +180,7 @@
 | ServiceContext | `svc.ServiceContext` 持有 model / cache / rpc client | **已删**（Spring Bean） | 同 B | — |
 | 进程拓扑 | api 进程 + rpc 进程（**2 进程 / 子域**） | api + rpc（**2 进程 / 子域**） | **1 进程 / 子域** | D1：Go/RAG 20 进程 → RAG-V1 10 进程；**「rpc 进程不可用」这一故障模式消失** |
 | gRPC 客户端（域内） | `svcCtx.UserRpc` / `svcCtx.AdminRpc` | `api/client/UserRpcClient.java` / `AdminRpcClient.java` | **无 `service/users/user/src/main/java/com/rag/user/{advice,config,controller,dto,interceptor,metrics,service}/client/`** | D2：域内调用直连注入领域服务 Bean |
-| gRPC 客户端（跨域） | `svcCtx.ArticleRpc` 等 | `service/common` 的 `RpcInterceptor` 等 | `common/src/main/java/com/rag/common/autoconfigure/RagGrpcExceptionMapperAutoConfiguration.java` + `service/users/user/src/main/java/com/rag/user/{bootstrap,config,domain/entity,domain/service,exception,grpc,mapper,metrics}/client/` | D6：users 域**无跨域调用** ⇒ C 侧 users 无 `rpc/client/` |
+| gRPC 客户端（跨域） | `svcCtx.ArticleRpc` 等 | `service/common` 的 `RpcInterceptor` 等 | `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java` + `service/users/user/src/main/java/com/rag/user/{bootstrap,config,domain/entity,domain/service,exception,grpc,mapper,metrics}/client/` | D6：users 域**无跨域调用** ⇒ C 侧 users 无 `rpc/client/` |
 | gRPC 明文 | `zrpc.MustNewServer`（明文） | `grpc.client.*.negotiation-type: plaintext` | 同 B（`application.yml` 已写） | devh 默认 TLS ⇒ **必须显式写 plaintext**，否则静默变 TLS |
 | HTTP 超时 | go-zero `rest/config.go:55` `Timeout` `json:",default=3000"` ⇒ **3000ms**（`DisableNativeRestTimeout` 已关掉原生超时中间件，超时只有 `NewHTTPMiddleware` 一个执行者） | `observability.http-timeout: 3s`（B 自研 observability 中间件的配置）+ `service/common/.../observability/GoStyleRequestDeadline.java` | `common/src/main/java/com/rag/common/observability/ObservabilityProperties.java` + `GoStyleRequestDeadline.java`（**两个都是空壳**），且两个 `application.yml` **无任何 timeout 配置** | ⚠️ 超时机制在 C 侧**未落点**（见 §7.4 F-8） |
 
@@ -205,7 +205,7 @@
 1. 删 `LogicResult.ok/fail` 双返回写法
 2. 业务层改抛 `BusinessException(code,msg)`
 3. `advice/GlobalExceptionHandler` → `advice/UserApiExceptionHandler` + `AdminApiExceptionHandler`（各域一份）
-4. gRPC 边界由 `common/src/main/java/com/rag/common/autoconfigure/RagGrpcExceptionMapperAutoConfiguration` 转 `StatusRuntimeException`
+4. gRPC 边界由 `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration` 转 `StatusRuntimeException`
 
 **为什么换**：`LogicResult` 是 go-zero 的语言产物；异常流是 Java 惯用形态，且能让 HTTP / gRPC 两个边界共享同一份业务错误定义。
 
@@ -221,8 +221,8 @@
 | 统一响应信封 | `service/common/response/response.go` | `service/common/.../response/Response.java` | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | **全局归属** ⇒ `common.md` 负责 |
 | 业务异常 | —（Go 用 `errmsg.NewGrpcErr(code,msg)`） | `service/common/.../exception/BusinessException.java` | `common/src/main/java/com/rag/common/exception/BusinessException.java` | **全局归属** ⇒ `common.md` 负责 |
 | 认证异常 | — | `service/common/.../exception/AuthenticationException.java` | `common/src/main/java/com/rag/common/exception/AuthenticationException.java` | **全局归属** ⇒ `common.md` 负责 |
-| 雪花 ID | `service/common/snowflake/snowflake.go` | `service/common/.../snowflake/Snowflake.java` + `spring/SnowflakeBean.java` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `common/src/main/java/com/rag/common/autoconfigure/RagSnowflakeAutoConfiguration.java` | **全局归属** ⇒ `common.md` 负责 |
-| MP 自动配置排序桥（Boot 4） | — | 9 份 `MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/RagMybatisPlusAutoConfiguration.java`（**1 份**） | **全局归属**（D3）⇒ `common.md` 负责 |
+| 雪花 ID | `service/common/snowflake/snowflake.go` | `service/common/.../snowflake/Snowflake.java` + `spring/SnowflakeBean.java` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` | **全局归属** ⇒ `common.md` 负责 |
+| MP 自动配置排序桥（Boot 4） | — | 9 份 `MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java`（**1 份**） | **全局归属**（D3）⇒ `common.md` 负责 |
 | jsonb / text TypeHandler | —（GORM `serializer:json`） | 3 份（user-rpc ×1 + admin-rpc ×2） | `common/src/main/java/com/rag/common/persistence/JsonTextTypeHandler.java` + `JsonbTypeHandler.java` | **全局归属**（D3）⇒ `common.md` 负责 |
 | 社区事实协议（`communityfact`） | `service/common/communityfact/` | `service/common/.../communityfact/` | `common/src/main/java/com/rag/common/communityfact/` | **全局归属**；users 域**不涉及**（comment/favorite/like 三域共享）⇒ `common.md` 负责 |
 | HTTP 超时 / 请求 deadline | go-zero `rest/config.go:55` `Timeout` default 3000ms + `NewHTTPMiddleware` | `service/common/.../observability/GoStyleRequestDeadline.java` + `ObservabilityProperties.java`（`observability.http-timeout: 3s`） | `common/src/main/java/com/rag/common/observability/GoStyleRequestDeadline.java` + `ObservabilityProperties.java`（**空壳**） | **全局归属**；⚠️ C 侧两个 `application.yml` 无 timeout 配置 ⇒ **未落点**（F-8）⇒ `common.md` 负责 |

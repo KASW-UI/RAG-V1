@@ -129,7 +129,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **like** | Kafka 消费入口（listener / ack 契约 / 失败即丢弃不重投）无落点 · `like_outbox_event → article-hot-events` 发件箱中继无落点 · Jackson 2 `ObjectMapper` Bean 无落点 · `like` / `like-api` 配置段整个缺失 · DDL 迁移脚本为空 |
 | **message** | `controller/`（两个 Controller）· `interceptor/`（两组 JWT）· `metrics/` · `bootstrap/` · `service/` · `service/message/src/main/java/com/rag/message/contract/` 均有职责缺口 |
 | **favorite** | `POST /favorite/v1/folder/create` 端点缺失 · public 路径集 · preflight 触发入口 · DDL 迁移脚本 · `JsonbTypeHandler` / MP 排序桥的归属 · `GetFavoritesByFolderReq.FolderId` 的取参位置 · 域内 gRPC client · 端口号 |
-| **common** | `GoStyleGrpcStatusMapper` 与 `RagGrpcExceptionMapperAutoConfiguration` **职责重叠** · 设计文档 §5.1 列了 `contract/ErrorCode.java` 但**实际树里没有** · 雪花 ID 有**两个落点** · `GoStyleJsonBodyConverterConfig` 是「注册点」还是「配置类」 |
+| **common** | `GoStyleGrpcStatusMapper` 与 `GrpcExceptionMapperAutoConfiguration` **职责重叠** · 设计文档 §5.1 列了 `contract/ErrorCode.java` 但**实际树里没有** · 雪花 ID 有**两个落点** · `GoStyleJsonBodyConverterConfig` 是「注册点」还是「配置类」 |
 | **follow** | `db/migration/` 为空 · `application.yml` 缺段 · `*Properties` 聚合边界 · `FollowBlacklistInterceptor` + `FollowJwtAuthInterceptor` · `GoStyleLimitOffset` |
 
 ### 🟡 低优先级（要点）

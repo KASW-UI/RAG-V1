@@ -267,8 +267,8 @@ service/message/
 |---|---|---|---|
 | `types/types.go` 13 个 DTO | `api/dto/*`（immutable record） | **ADAPT** | 契约不变（L1），形态从可变 POJO → record（D5） |
 | `httpx.Parse` 必填校验 | Bean Validation `@NotNull/@NotBlank` + `api/advice` | **SPLIT** | ⚠️ **L3 降级**：错误文案从 go-zero 改为 Bean Validation 文案 |
-| `httpx.Parse` 类型强转判定 | `common/autoconfigure/RagJacksonAutoConfiguration`（`CoercionConfig`） | **ADAPT** | **已是 Jackson 原生机制**（现存 `GoStyleCoercion`），只需归位到 starter 并改名 |
-| `httpx.Parse` 读取 body 判据 | `common/web/GoStyleJsonBodyConverter`（→ `JsonBodyConverter`） | **REUSE** | 保留 `withJsonBody` 的字面判据（`ContentLength>0` + Content-Type 字面含 `application/json`） |
+| `httpx.Parse` 类型强转判定 | `common/autoconfigure/JsonBodyConverterAutoConfiguration`（`CoercionConfig`） | **ADAPT** | **已是 Jackson 原生机制**（现存 `Coercion`），只需归位到 starter 并改名 |
+| `httpx.Parse` 读取 body 判据 | `common/web/JsonBodyConverter`（→ `JsonBodyConverter`） | **REUSE** | 保留 `withJsonBody` 的字面判据（`ContentLength>0` + Content-Type 字面含 `application/json`） |
 | `internal/logic/*/*.go`（13 个用例） | `api/service/*Service.java` | **KEEP→MERGE 视边界** | 13 个用例**合并为 1~2 个 Service**（见 §5.2 的"用例内聚"判据），因为合并后用例不再需要"构造 logic + 转交"这一层 |
 | `internal/logic/shared/helper.go` | `api/service/*ApiSupport.java` | **MERGE** | 辅助函数与用例同属 HTTP 编排层；uid 解析 / 错误码映射保留 |
 | `internal/middleware/checkblacklistmiddleware.go` | `api/interceptor/JwtAuthInterceptor.java` | **SPLIT** | 中间件签名 → `HandlerInterceptor`；**Redis 查询 + 无 token 放行规则保留** |
@@ -301,7 +301,7 @@ service/message/
 |---|---|---|---|
 | `common/logger/logger.go`（logx 封装） | `common/logger/GoStyleLogger implements org.slf4j.Logger` | **ADAPT** | **格式与字段保留**（`call_chain` 等是行为契约），但接入 SLF4J 生态 |
 | `common/response/response.go`（信封） | `common/contract/ApiResponse.java` | **ADAPT** | 信封是 L1（客户端按 `{code,msg,data}` 解析）⇒ **不能用 `ProblemDetail` 替换**，只作为内部异常表达可用 |
-| `common/snowflake/snowflake.go` | `common/snowflake/Snowflake.java` + `RagSnowflakeAutoConfiguration` | **REUSE** | 现有实现；**epoch/位段是业务契约（like 域游标依赖 `>>22`）** |
+| `common/snowflake/snowflake.go` | `common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration` | **REUSE** | 现有实现；**epoch/位段是业务契约（like 域游标依赖 `>>22`）** |
 | `common/observability/*.go`（http/mq/rpc 三条链） | Micrometer `Observation` + OTel bridge | **ABSORB** | ⚠️ **L3 部分降级**：span 名称/属性需逐条对拍 |
 | go-zero `rest` 内置熔断 | resilience4j `CircuitBreaker` | **ABSORB** | ⚠️ **L3 降级**：失败窗口/half-open 策略不同 |
 | go-zero `rest` 内置 CPU 降载 | `common/protection/CpuThresholdHealthIndicator`（**自研 1 类**） | **NEW** | 生态缺口。现状 17 类 → 目标 1~2 类 |
@@ -325,19 +325,19 @@ RAG-V1/
 │   └── src/main/
 │       ├── java/com/rag/common/
 │       │   ├── autoconfigure/                  # ★ 新增：D3 的载体（7 个 @AutoConfiguration）
-│       │   │   ├── RagWebAutoConfiguration.java
-│       │   │   ├── RagJacksonAutoConfiguration.java
-│       │   │   ├── RagObservabilityAutoConfiguration.java
-│       │   │   ├── RagProtectionAutoConfiguration.java
-│       │   │   ├── RagSnowflakeAutoConfiguration.java
-│       │   │   ├── RagMybatisPlusAutoConfiguration.java   # ★ 收编 9 份重复的 ordering bridge
-│       │   │   └── RagGrpcExceptionMapperAutoConfiguration.java  # §5.3 的统一错误模型
+│       │   │   ├── WebAutoConfiguration.java
+│       │   │   ├── JsonBodyConverterAutoConfiguration.java
+│       │   │   ├── ObservabilityAutoConfiguration.java
+│       │   │   ├── ProtectionAutoConfiguration.java
+│       │   │   ├── SnowflakeAutoConfiguration.java
+│       │   │   ├── MybatisPlusOrderingBridgeAutoConfiguration.java   # ★ 收编 9 份重复的 ordering bridge
+│       │   │   └── GrpcExceptionMapperAutoConfiguration.java  # §5.3 的统一错误模型
 │       │   ├── contract/
 │       │   │   └── ApiResponse.java            # 信封（L1）
 │       │   ├── web/                            # ★ Go 的 JSON / 表单 / 错误形状兼容层（原 common/http）
-│       │   │   ├── GoStyleJsonBodyConverter.java
-│       │   │   ├── GoStyleJsonBodyConverterConfig.java
-│       │   │   └── GoStyleRouterErrorResponses.java
+│       │   │   ├── JsonBodyConverter.java
+│       │   │   ├── JsonBodyConverterConfig.java
+│       │   │   └── RouterErrorResponses.java
 │       │   ├── communityfact/                  # 跨服务事件协议（comment·favorite·like 三域共用）
 │       │   ├── exception/                      # BusinessException / AuthenticationException
 │       │   ├── logger/                         # ★ 瘦身：实现 SLF4J（GoStyleLogger）
@@ -464,7 +464,7 @@ service/message/
 > 📌 **时点标注（2026-10-26 · D7）** —— 本小节原文记录的是「合并后 `rpc.*` 承载的是『领域 / 服务端能力层』，语义上更准确的名字是 `domain.` 或 `service.`；**本次不改** ⇒ 记为技术债，在 `docs/` 单独立项」。
 > ✅ **该技术债已结清** —— D7 把 `api/` + `rpc/` **两层协议层整体压平**，`rpc.*` 前缀**不复存在** ⇒ 不再需要「改 `rpc.*` 的名字」这件事。
 > ⇒ 当时「不改」的理由（波及 38 个组件的全部 import + 11,011 行映射表）已由 D7 一次性付清；
-> ⇒ **遗留的只有 P4-④（22 个 `GoStyle*` / `GoCompatible*` 改名）**，见 [`命名债与包形状.md`](命名债与包形状.md) §二。
+> ⇒ **遗留的只有 P4-④ 的剩余 6 个**（`common/logger/` 1 · `common/observability/` 1 · 域内 4）—— 其余 23 个已改（D8），见 [`命名债与包形状.md`](命名债与包形状.md) §二。
 
 ### 5.3 统一错误模型（D2 带来的最关键设计）
 
@@ -487,7 +487,7 @@ Go 侧同一份业务错误在两处各写一遍：api 层把 gRPC status 映射
 |---|---|---|---|
 | gRPC | `status.Error(codes.Code(code), msg)` —— **业务码被塞进 gRPC status code 字段** | `BusinessException` → mapper → `StatusRuntimeException` | 🟢 保留（code 值与 msg 逐字一致） |
 | HTTP | api 层 `switch` 把 gRPC code 映射回业务码 | `@RestControllerAdvice` 直接读 `BusinessException.code` | 🟢 保留（结果等价，路径更短） |
-| HTTP 错误形状 | `httpx.Error` ⇒ 400 + text/plain | `@RestControllerAdvice` ⇒ 400 + text/plain | 🟢 保留（已由 `GoStyleRouterErrorResponses` 实现） |
+| HTTP 错误形状 | `httpx.Error` ⇒ 400 + text/plain | `@RestControllerAdvice` ⇒ 400 + text/plain | 🟢 保留（已由 `RouterErrorResponses` 实现） |
 
 > ⚠️ **注意**：`like` 域的 rpc 侧错误码空间是 like 自己的（2001/5001/…），**不是 gRPC 标准码**。这一条在合并后**必须原样保留** —— 它是 §4.3 中"业务码塞进 gRPC status code 字段"的行为契约。
 
