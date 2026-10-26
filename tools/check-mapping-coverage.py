@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""校验 docs/Mapping_Table/ 各域文档的 **A / C 列覆盖率**。
+"""校验 docs/Mapping_Table/ 各域文档的 **A / B / C 列覆盖率**。
 
 **不信任文档里的自报数字** —— 本脚本从文件系统反向取实际文件清单，
 再逐个回查文档正文里是否出现过该文件名 ⇒ 独立于写文档的一方。
@@ -8,6 +8,12 @@
 判读：
 - **C 列缺失** = RAG-V1 有这个 `.java`，但映射文档里找不到 ⇒ **文档漏了位置**（要补）
 - **A 列缺失** = Go 有这个 `.go`，但映射文档里找不到 ⇒ **要么补，要么文档里已注明「无对应物（原因）」**
+- **B 列漏记** = RAG 有这个 `.java`，但 B 列没覆盖 ⇒ **抄写路线图（§1.0c）会漏掉它**
+- **B 列失效** = B 列写了这个类，但 RAG 侧已改名/删除 ⇒ **文档引用了不存在的类**
+
+五重校验（全部从文件系统反查，不采信文档自报数）：
+  ① A 列覆盖率  ② C 列覆盖率  ③ `_INDEX.md` 自报数字对账
+  ④ 小节标题自报条数 == 表内实际行数  ⑤ B 列双向对账（A/C 之外的第三列）
 
 用法：
     python3 tools/check-mapping-coverage.py            # 全部域
@@ -17,6 +23,7 @@ import pathlib, re, sys
 
 ROOT = pathlib.Path("/Users/pr/Documents/GitHub/RAG-V1")
 GO   = pathlib.Path("/Users/pr/Documents/java&golang/Sea-RideTheWind_golang")
+RAG  = pathlib.Path("/Users/pr/Documents/java&golang/RAG")
 MT   = ROOT / "docs/Mapping_Table"
 
 # 域 → (RAG-V1 路径, Go 路径, 文档文件)
@@ -53,6 +60,32 @@ EXEMPT_PATTERNS = [
 
 # 映射类型词表（4 个，与 docs/Mapping_Table/README.MD 的格式契约一致）
 TYPE_TOKENS = {"1:1", "1:N", "N:1", "C 新增"}
+
+# ── B 列白名单 ───────────────────────────────────────────────────────────
+# **B 列（RAG 侧）** 曾长期无机器守卫 ⇒ 2026-10-26 补上双向对账（见 check_b_column）。
+# 下列 RAG 侧真实存在的类，**B 列没有对应条目** —— 逐条核对后登记，不静默放过。
+#
+# ⚠️ **白名单不是免责声明，是待办清单**：每条必须写清「为什么 B 列可以不写」+ 核对日期。
+#    脚本会检查「已失效条目」（该类后来被 B 列覆盖了却还挂在白名单）⇒ 防止白名单腐化。
+#
+# 格式：类名 -> (原因, 核对日期)
+B_COLUMN_WHITELIST = {
+    # ── 类别 A：C 侧有同名类 ⇒ B 列漏写其 RAG 前身（**待补**，抄写时会漏掉来源定位）──
+    "ArticleExceptions":         ("C 侧 com.rag.article.exception.ArticleExceptions 存在 ⇒ B 列漏写 RAG 前身", "2026-10-26"),
+    "MessageExceptions":         ("C 侧 com.rag.message.exception.MessageExceptions 存在 ⇒ B 列漏写 RAG 前身", "2026-10-26"),
+    "ConversationEntity":        ("C 侧 com.rag.message.domain.entity.ConversationEntity 存在 ⇒ B 列漏写", "2026-10-26"),
+    "ConversationMessageEntity": ("C 侧 com.rag.message.domain.entity.ConversationMessageEntity 存在 ⇒ B 列漏写", "2026-10-26"),
+    "NotificationEntity":        ("C 侧 com.rag.message.domain.entity.NotificationEntity 存在 ⇒ B 列漏写", "2026-10-26"),
+    "LikeCursorIdGenerator":     ("C 侧 com.rag.like.service.LikeCursorIdGenerator 存在 ⇒ B 列漏写", "2026-10-26"),
+    "LikeDomainFactOutboxMapper":("C 侧 com.rag.like.mapper.LikeDomainFactOutboxMapper 存在 ⇒ B 列漏写", "2026-10-26"),
+    "LikeFactStreamMapper":      ("C 侧 com.rag.like.mapper.LikeFactStreamMapper 存在 ⇒ B 列漏写", "2026-10-26"),
+    "TaskProgressMapper":        ("C 侧 com.rag.task.mapper.TaskProgressMapper 存在 ⇒ B 列漏写", "2026-10-26"),
+    # ── 类别 B：C 侧确无对应物 ⇒ B 列可以不写（**有意不记**）──
+    "ArticleGoStyleCoercion":    ("RAG 域内局部副本 ⇒ C 侧由 common/web/Coercion 共享承担", "2026-10-26"),
+    "ArticleGoStyleCorsFilter":  ("RAG 域内局部副本 ⇒ C 侧由 common/web/ 过滤器承担", "2026-10-26"),
+    "GoStyleRpcSheddingInterceptor":("RAG service/common/protection/ 17 类之一 ⇒ C 侧 protection 仅 2 类（生态吸收 D4）", "2026-10-26"),
+    "TaskTraceAttributes":       ("RAG 侧 task 的 trace 属性载体 ⇒ C 侧无对应物", "2026-10-26"),
+}
 
 
 def count_map_rows(text):
@@ -252,6 +285,152 @@ def check_section_counts() -> list:
     return problems
 
 
+def _b_cells():
+    """收集 B 列单元格文本 `[(文档, 行号, 文本)]`。
+
+    范围只有两处（**不能扫全文** —— 全文里的 `.java` 也包含 C 列的类名，
+    拿全文当 B 列会把「C 侧有、RAG 侧没有」的类误报成「B 列引用了不存在的类」）：
+      ① **主表**（A|B|C|类型|备注）的**第 2 列** —— 按映射类型词表认表，不认列位；
+      ② **§0.5「RAG（B）包 | RAG-V1（C）包」速查表**的第 1 列（包级写法）。
+    """
+    out = []
+    for doc in sorted(MT.rglob("*.md")):
+        if doc.name in ("_INDEX.md", "README.MD"):
+            continue
+        in_pkg_table = False
+        for i, ln in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
+            if not ln.startswith("|"):
+                in_pkg_table = False
+                continue
+            cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+            if cells and "RAG（B）包" in cells[0]:
+                in_pkg_table = True
+                continue
+            if len(cells) == 5:
+                t = cells[3].replace("`", "").replace("**", "").strip()
+                if t in TYPE_TOKENS:
+                    out.append((doc, i, cells[1]))
+                    continue
+            if in_pkg_table and len(cells) >= 2:
+                out.append((doc, i, cells[0]))
+    return out
+
+
+def _parse_b_tokens(text):
+    """把一段 B 列文本拆成三类 token。
+
+    返回 `(exact, wild, dirs)`：
+    - **exact** —— 具体类名（`Xxx.java` 的 basename）；
+    - **wild**  —— 通配类名（`Message<Case>Service.java`）⇒ 转正则；
+    - **dirs**  —— 目录形态（`like-rpc/…/mapper/`，**≥2 段**才收）。
+
+    ⚠️ **三处踩过的坑**（照抄必踩）：
+    1. `…` / `...` **不在** `\\w` 里 ⇒ 必须先归一成 `*`，否则整条路径 token 只剩模块名；
+    2. **不能去掉括注** —— `article-api/…/dto/`（13 个文件：`Article.java` / …）的类名枚举在括注里，
+       去掉括注等于丢掉 12 个类的覆盖；
+    3. `re.escape` 在 Python 3.7+ **不转义** `<` `>` ⇒ 通配替换必须在 escape **之前**做，
+       否则 `Message<Case>Service` 永远匹配不上真实类名。
+    """
+    exact, wild, dirs = set(), [], set()
+    t = re.sub(r"[`*]", "", text)
+    t = re.sub(r"<br\s*/?>", " ", t)
+    t = t.replace("…", "*").replace("...", "*")
+    for tok in re.findall(r"[\w\-<>\.]+(?:/[\w\-<>\.\*]*)*/?", t):
+        tok = tok.strip("./")
+        if not tok or tok in ("—", "无对应物", "同上", "无") or tok.startswith("*"):
+            continue
+        if tok.endswith((".proto", ".sql", ".yml", ".yaml")):
+            continue
+        if "<" in tok:
+            seg = tok.split("/")[-1]
+            if seg.endswith(".java"):
+                wild.append(seg[:-5])
+            continue
+        if tok.endswith(".java"):
+            stem = tok.split("/")[-1][:-5]
+            if re.search(r"[A-Za-z0-9]", stem):      # 排除 `*.java` 通配拆出的空名
+                exact.add(stem)
+            continue
+        parts = [p for p in tok.split("/") if p != "*" and re.search(r"[A-Za-z0-9]", p)]
+        if len(parts) >= 2:
+            dirs.add("/".join(parts))
+    return exact, wild, dirs
+
+
+def _rag_mod_pkg(rel):
+    """RAG 文件的「模块名 / 包名」—— 目录形态 token 要靠它锚定，否则单段目录 token 会把全仓吞掉。"""
+    segs = rel.replace(".java", "").split("/")
+    if segs[:2] == ["service", "common"]:
+        return "common", segs[-1]
+    if segs[0] == "service" and len(segs) > 2:
+        return segs[2], segs[-1]
+    return segs[-1], segs[-1]
+
+
+def check_b_column():
+    """**B 列双向对账**（2026-10-26 新增）—— A / C 两列有守卫，B 列长期没有。
+
+    - **B1（正向）**：B 列写下的每个**具体类名**必须在 RAG 磁盘真实存在
+      ⇒ 否则 = 文档引用了不存在的 RAG 类（RAG 侧改名/删除后文档没跟上）。
+    - **B2（反向）**：RAG 侧每个**业务** `.java` 类都必须被 B 列覆盖
+      （精确类名 / 通配 / 目录形态三者任一命中）⇒ 否则 = RAG 侧有类没进 B 列，
+      **抄写路线图（§1.0c 的 B↔C）会漏掉它**。
+    - **白名单**：登记在案的例外；**已失效条目会被报出来**（防白名单腐化）。
+
+    ⚠️ `tools/`（RAG 的语义探针 / 对拍 runner）**不是业务代码** ⇒ 不参与分母。
+    """
+    problems, exact, wild, dirs = [], set(), [], set()
+    for doc, ln, text in _b_cells():
+        e, w, d = _parse_b_tokens(text)
+        exact |= e; wild += w; dirs |= d
+
+    wild_re = [re.compile("^" + re.sub(r"<(\w+)>", r"[A-Za-z0-9]+", re.escape(t)) + "$")
+               for t in wild]
+
+    rag_stems = {p.stem for p in RAG.rglob("*.java")}
+
+    # ── B1 正向 ──────────────────────────────────────────────────────────
+    for stem in sorted(exact):
+        if stem not in rag_stems:
+            problems.append(f"❌ B 列引用了 RAG 侧不存在的类 `{stem}.java`（RAG 改名/删除后文档未跟上）")
+
+    # ── B2 反向 ──────────────────────────────────────────────────────────
+    uncovered, whitelisted = [], []
+    for p in sorted(RAG.rglob("*.java")):
+        sp = str(p)
+        if "/src/test/" in sp or "/target/" in sp:
+            continue
+        rel = p.relative_to(RAG).as_posix()
+        if rel.startswith("tools/"):          # RAG 的探针 / 对拍 runner —— 非业务代码
+            continue
+        cn = p.stem
+        if cn in exact or any(w.match(cn) for w in wild_re):
+            continue
+        segs = rel.replace(".java", "").split("/")
+        mod, pkg = _rag_mod_pkg(rel)
+        hit = False
+        for d in dirs:
+            dp = d.split("/")
+            if dp[0] == mod and dp[-1] == pkg and all(s in segs for s in dp):
+                hit = True
+                break
+        if hit:
+            continue
+        if cn in B_COLUMN_WHITELIST:
+            whitelisted.append(cn)
+        else:
+            uncovered.append((cn, rel))
+
+    for cn, rel in uncovered:
+        problems.append(f"❌ B 列遗漏 RAG 侧类 `{cn}.java`（{rel}）—— 抄写路线图会漏掉它")
+    for cn in sorted(set(B_COLUMN_WHITELIST) - set(whitelisted)):
+        problems.append(f"❌ B 列白名单条目 `{cn}` 已失效（该类已被 B 列覆盖）⇒ 请删除白名单条目")
+
+    summary = (f"精确 {len(exact)} · 通配 {len(wild)} · 目录 {len(dirs)} · "
+               f"白名单命中 {len(whitelisted)} 条")
+    return problems, summary, len(uncovered)
+
+
 def main():
     targets = sys.argv[1:] or list(DOMAINS)
     total_c = total_c_missing = total_a = total_a_missing = 0
@@ -345,10 +524,19 @@ def main():
     else:
         print("\n小节自报条数对账：✅ 全部一致（标题自报 == 表内实际行数）")
 
+    # ── B 列双向对账（第 5 重校验 · 2026-10-26）────────────────────────
+    b_problems, b_summary, b_uncovered = check_b_column()
+    if b_problems:
+        print(f"\nB 列双向对账：❌ {len(b_problems)} 处问题（{b_summary}）")
+        problems.extend(b_problems)
+    else:
+        print(f"\nB 列双向对账：✅ 全部一致（{b_summary}）")
+
     if problems:
         print("\n".join(problems))
     print(f"\nEXIT={'0' if not problems else '1'}  "
-          f"C 列 {total_c-total_c_missing}/{total_c} · A 列 {total_a-total_a_missing}/{total_a}")
+          f"C 列 {total_c-total_c_missing}/{total_c} · A 列 {total_a-total_a_missing}/{total_a} · "
+          f"B 列未覆盖 {b_uncovered}")
     return 0 if not problems else 1
 
 if __name__ == "__main__":
