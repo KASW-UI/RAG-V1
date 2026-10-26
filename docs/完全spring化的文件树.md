@@ -282,7 +282,7 @@ service/message/
 | `rpc/internal/logic/*.go`（10 个） | `rpc/service/*DomainService.java` | **MERGE** | 合并后 HTTP 与 gRPC **共享同一份业务用例** ⇒ 由一个 DomainService 承担，gRPC 侧做 proto ↔ 领域模型转换 |
 | `rpc/internal/model/*.go` | `rpc/domain/*Entity.java` | **ADAPT** | `@TableName` + MyBatis-Plus；**列类型/可空性/索引逐列对拍（DDL 探针）** |
 | `rpc/internal/model/db.go` | `rpc/mapper/*Mapper.java` | **REUSE** | `BaseMapper` + XML/注解 SQL；**查询条件必须逐条保留** |
-| `errmsg.NewGrpcErr(code,msg)` → `status.Error` | `rpc/exception/*` + `common/autoconfigure/RagGrpcExceptionMapper` | **SPLIT** | ⚠️ **关键设计点**：合并后业务层抛 `BusinessException(code,msg)`；gRPC 边界统一转 `StatusRuntimeException`，HTTP 边界统一转 HTTP 响应（见 §5.3） |
+| `errmsg.NewGrpcErr(code,msg)` → `status.Error` | `rpc/exception/*` + `common/autoconfigure/GrpcExceptionMapperAutoConfiguration` | **SPLIT** | ⚠️ **关键设计点**：合并后业务层抛 `BusinessException(code,msg)`；gRPC 边界统一转 `StatusRuntimeException`，HTTP 边界统一转 HTTP 响应（见 §5.3） |
 | `rpc/internal/svc/servicecontext.go` | Spring DI | **ABSORB** | — |
 | `rpc/pb/*`（生成物） | `proto/`（根级 proto 模块，artifactId `proto`；**D7 后 10 域共用一个模块**） | **KEEP** | **L1 契约，一个字节都不改** |
 
@@ -554,6 +554,58 @@ common/
 >
 > ⇒ **真实缩减是 51 → 47（−8%），不是 −57%。** 缩减幅度远小于原估算，因为**生态吸收主要发生在 `protection`（17 → 2），而 `web/` 这一层的 Go 语义等价物必须手写**（Jackson 的 `CoercionConfig` 是原生机制，但"何时读 body"与"错误文案形状"不是）。
 
+#### 5.5.1 七个 `@AutoConfiguration` 的职责契约（2026-10-26 钉死）
+
+> 559 个空壳的 javadoc 都写着「推导依据见《完全spring化的文件树》对应条目」⇒ **本表就是那 7 个 auto-config 的「对应条目」**。
+> ⚠️ **每个 auto-config 都要写 `@ConditionalOnMissingBean`** ⇒ 消费方可用自己的 Bean 覆盖默认行为。
+
+| auto-config | 收编自（RAG 侧） | 提供的 Bean / 装配 | Go 出处 |
+|---|---|---|---|
+| `WebAutoConfiguration` | `spring/HttpMiddlewareFilter` + `spring/AuthorityHandlerFactory` | servlet filter 注册 + `ServletRegistrationBean`（communityfact 权威端点） | `common/authority_http.go`（`/internal/v1/community/facts`） |
+| `JsonBodyConverterAutoConfiguration` | `http/GoStyleJsonBodyConverterConfig` + `users-common/http/GoStyleCoercion` | Jackson `CoercionConfig`（K-01 类型强转判定）+ `JsonBodyConverter` 注册（K-02 body 读取判据） | `httpx.Parse` 内置强转 + `httpx.OkJsonCtx` |
+| `ObservabilityAutoConfiguration` | `spring/ObservabilityLifecycle` + `spring/ObservabilityProperties` + `observability/RpcInterceptor` + `observability/HttpMiddleware` + `observability/MqConsumer` + `observability/GoStyleRecoverInterceptor` + `spring/RpcServerInterceptorFactory` | Micrometer `Observation` + **业务观测 `ServerInterceptor`**（`ServerInterceptor` bean，7 个业务 gRPC code 集）+ recover 拦截器 | `observability/rpc.go` + `observability/http.go` + `observability/mq.go` |
+| `ProtectionAutoConfiguration` | `protection/GoStyleProtectionConfiguration` + `GoStyleProtectionProperties` + 熔断/降载/限连接/限体积族 | resilience4j `CircuitBreaker` + Tomcat `max-connections` + `MaxBytesFilter` + CPU 指标 **＋ `GrpcServerConfigurer`（gRPC 保护链的唯一挂载点，见 §5.5.2）** | go-zero `zrpc` 内置熔断/降载 + `rest` 内置 `MaxConns`/`MaxBytes`/`CpuThreshold` |
+| `SnowflakeAutoConfiguration` | `spring/SnowflakeBean` + `spring/SnowflakeProperties` + `snowflake/Snowflake` | 唯一的 `Snowflake` Bean（`@ConditionalOnMissingBean` ⇒ 容器内**有且仅有 1 个**） | `common/snowflake/snowflake.go`（`Init` / `GetID` / `generateNodeId`） |
+| `MybatisPlusOrderingBridgeAutoConfiguration` | **9 个 rpc 模块各一份**的 `MybatisPlusOrderingBridgeAutoConfiguration` | Boot 4 下 MP 自动配置排序桥（**消掉 9 份重复**） | ——（Boot 4 迁移产物） |
+| `GrpcExceptionMapperAutoConfiguration` | `article-api/http/GoStyleGrpcStatusMapper` | gRPC code → 业务码的**统一错误模型**（§5.3） | `errmsg.NewGrpcErr(code,msg)` → `status.Error` |
+
+#### 5.5.2 gRPC 保护链的挂载点 —— **合并形态下只需 1 份**（2026-10-26 新增）
+
+> ⚠️ **这是 D1 合并带来的一处真实收益**，也是 A3 断言必须改写的原因。
+
+**Go 侧（范围内 10 个服务逐条显式）**：
+
+```go
+// service/{like,comment,follow,message,favorite,task,hot,article}/rpc/*.go
+// service/user/{user,admin}/rpc/*.go
+s.AddUnaryInterceptors(observability.NewUnaryServerInterceptor(rpcTimeout, observability.SlowThreshold()))
+```
+
+> `security` / `points` 两个服务**不在迁移范围**（§1.0 范围外）⇒ 范围内 **10 个**，与 RAG-V1 的 **10 个域 / 10 个 `*GrpcService`** 一一对应。
+
+**RAG 侧（形态是 api/rpc 分离 ⇒ 每 rpc 模块各写一遍）**：10 个 rpc 模块里**只有 6 个**真挂了 `GrpcServerConfigurer`（like / comment / follow / favorite / task / hot）⇒ **message / user / admin 三个域的拦截链静默失效**。RAG 自己的 javadoc 也承认「锁死用例 `LikeGrpcInterceptorWiringTest` **全仓不存在**」。
+
+**RAG-V1 侧（合并形态 ⇒ 只需 1 份）**：
+
+```
+ObservabilityAutoConfiguration   →  提供 ServerInterceptor bean（业务观测拦截器）
+        ↓ 依赖
+ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
+                                    server -> server.intercept(recover → breaker → shedding → 业务观测拦截器)
+```
+
+**为什么 1 份就够**：devh 的 `GrpcServerFactoryAutoConfiguration` 三个工厂方法**全都只注入 `List<GrpcServerConfigurer>`** ⇒ 容器里**每一个** `GrpcServerConfigurer` 都会被应用到它创建的 server；而「一域一进程」⇒ **每进程只有 1 个 gRPC server** ⇒ 1 个全局 Configurer 即完整覆盖 10 个域。
+
+⚠️ **两条必须同时成立的约束**（缺任一条都静默失效）：
+
+| # | 约束 | 失效表现 |
+|---|---|---|
+| ① | `common/` 必须提供 `ServerInterceptor` **bean** | Bean 不存在 ⇒ 链装不上 |
+| ② | `common/` 必须提供 `GrpcServerConfigurer` **且真调 `server.intercept(...)`** | Bean 在、starter 不用它 ⇒ **超时 / deadline 传播 / gRPC span / `sea.slow` 标记全丢，且零报错** |
+
+⚠️ **反向约束（防重复挂载）**：**域内不得再出现 `GrpcServerConfigurer`** —— 若域里也写一个，starter 会把**两个** Configurer 都应用 ⇒ **同一条链被挂 2 次** ⇒ span 重复、timeout 叠加。
+⇒ 由此得到合并形态版的 **A3 断言**（见 [`架构符合性断言.md`](架构符合性断言.md) A3 · 契约 B）：**common 有挂载点 ＋ 域内 0 重复**。
+
 | 指标 | RAG 现状 | RAG-V1 实测 | 变化 |
 |---|---|---|---|
 | `service/common` 主代码类 | 51 | **47** | **−8%** |
@@ -726,7 +778,7 @@ common/
 |---|---|---|---|
 | A1 | `*-rpc` 的 classpath 不得有 `spring-boot-starter-web` | `mvn dependency:tree` | 🟢 10/10 通过 |
 | A2 | `*-api` 必须有 `spring-boot-starter-web` | 同上 | 🟢 10/10 通过 |
-| A3 | `*-rpc` 必须有 `GrpcServerConfigurer` 且挂 `server.intercept` | 解析 Application 类 | 🟢 10/10 通过 |
+| A3 | 契约 A：每 `*-rpc` 有 `GrpcServerConfigurer` 且挂 `server.intercept`<br>**契约 B**：`common/` 声明 `GrpcServerConfigurer` 且真调 `server.intercept` ＋ **域内 0 重复** | 解析源码 | 🟡 RAG **10 个 rpc 只有 6 个真挂**（message / user / admin 静默失效）<br>🟢 RAG-V1 已改写为契约 B 版（挂载点 = 共享层 1 份）|
 | A4 | 每个 `@GrpcClient("X")` 必须在同模块 yml 有 `negotiation-type: plaintext` | 交叉引用 | 🟡 **2 处哑弹**（`article-rpc` 的 `security-rpc` / `message-rpc` 配了但无 bean，且缺 plaintext） |
 | A5 | 每个 rpc 模块的 `@Import` 清单为空（starter 化后） | 解析 Application 类 | 🔴 10/10 不通过（当前 4~10 个 Bean 不等） |
 | A6 | `MybatisPlusOrderingBridgeAutoConfiguration` 全仓只有一份 | 文件名扫描 | 🔴 9 份重复 |
@@ -738,7 +790,8 @@ common/
 > **A4 的哑弹是本文件树推导过程中实测到的现存问题**：配置齐了但缺 `negotiation-type`，且没有 `@GrpcClient` bean ⇒ 现在无害，**一旦有人补上那行 `@GrpcClient` 就会静默变 TLS**，而所有测试都是绿的（测试用 `@SpringBootTest(properties=...)` 在测试里注入了该值）。
 
 > **RAG-V1 的达标状态（2026-10-25 实测）**：空文件树已满足 **A5 / A6 / A7 / A9 / A10** 的结构前提 —— `api/client` 目录 0 个、`@Import` 清单 0 个、MP bridge 副本 0 个、DTO 全为 `record`、`protection` 只剩 2 类。
-> ⚠️ **A1 / A2 / A3 在 RAG-V1 不适用**（api/rpc 已合并，见 §9.2）—— **这三条是「沉默不变量」只会出现在错误形态上的活证据**：RAG 形态下它们 10/10 通过，一旦合并就自动消失。
+> ⚠️ **A1 / A2 在 RAG-V1 不适用**（api/rpc 已合并，见 §9.2）—— 它们是「沉默不变量」：RAG 形态下 10/10 通过，一旦合并就自动消失。
+> ⚠️ **但 A3 不是** —— 「拦截链有没有真挂到 server 上」**与进程形态无关**：Go 侧范围内 10 个服务逐条显式 `AddUnaryInterceptors(...)` ⇒ 合并后仍要挂，只是**挂载点从「每 rpc 模块」变成「共享层 1 份」**。⇒ **A3 已改写为契约 B 版**（2026-10-26）：正向「`common/` 有挂载点」＋ 反向「域内 0 重复」⇒ 详见 §5.5.2 与 [`架构符合性断言.md`](架构符合性断言.md) A3。
 > ⇒ 断言脚本落点：`tools/difftest/check-arch-invariants.py`（**待实现**，清单见 [`架构符合性断言.md`](架构符合性断言.md)）。
 
 ### 9.2 分化提醒：断言绑定契约，不可跨契约复用
@@ -746,9 +799,9 @@ common/
 | 契约 | A1 | A2 | A3 | A5 | A7 | A9 |
 |---|---|---|---|---|---|---|
 | **A（Go 部署等价，RAG 现状）** | ✅ 适用 | ✅ 适用 | ✅ 适用 | ✅ 适用 | 🔴 待修 | 🔴 待修 |
-| **B（Spring 惯用，本文目标）** | ❌ **不适用** | ❌ **不适用** | ❌ **不适用** | ✅ 适用 | ✅ 适用 | ✅ 适用 |
+| **B（Spring 惯用，本文目标）** | ❌ **不适用** | ❌ **不适用** | ✅ **适用（已改写）** —— 挂载点 = `common/` 1 份 ＋ 域内 0 重复 | ✅ 适用 | ✅ 适用 | ✅ 适用 |
 
-⇒ **A1/A2/A3 是 api/rpc 分离的派生物，合并后自动消失**（§0.4 之外新增的三条）。
+⇒ **A1/A2 是 api/rpc 分离的派生物，合并后自动消失**（§0.4 之外新增的两条）；**A3 例外** —— 它管的是「拦截链有没有真挂上」，与进程形态无关 ⇒ 合并形态下**改写而非消失**（§5.5.2）。
 ⇒ **新项目若采用契约 B，只能继承 A4/A7/A8/A9/A10，不能继承 A1/A2/A3/A5。**
 
 ### 9.3 需要拍板的取舍（否则 §5 落不了地）

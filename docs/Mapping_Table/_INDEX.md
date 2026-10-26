@@ -66,7 +66,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | 域 | 文档 | 行数 | C 列覆盖 | A 列覆盖 | 映射行 |
 |---|---|---:|---|---|---:|
 | **users** | [_shared.md](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 410 + 200 + 249 + 274 = **1,133** | **103 / 103 = 100%** | **114 / 114 = 100%** | 127 |
-| **common** | [common.md](common.md) | 649 | **56 / 56 = 100%** | **11 / 11 = 100%** | 80 |
+ | **common** | [common.md](common.md) | 650 | **56 / 56 = 100%** | **11 / 11 = 100%** | 80 | 
 | **article** | [article.md](article/article.md) | 475 | **51 / 51 = 100%** | **45 / 45 = 100%** | 69 |
 | **comment** | [comment.md](comment/comment.md) | 472 | **69 / 69 = 100%** | **58 / 58 = 100%** | 82 |
 | **favorite** | [favorite.md](favorite/favorite.md) | 508 | **60 / 60 = 100%** | **50 / 50 = 100%** | 84 |
@@ -129,7 +129,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **like** | Kafka 消费入口（listener / ack 契约 / 失败即丢弃不重投）无落点 · `like_outbox_event → article-hot-events` 发件箱中继无落点 · Jackson 2 `ObjectMapper` Bean 无落点 · `like` / `like-api` 配置段整个缺失 · DDL 迁移脚本为空 |
 | **message** | `controller/`（两个 Controller）· `interceptor/`（两组 JWT）· `metrics/` · `bootstrap/` · `service/` · `service/message/src/main/java/com/rag/message/contract/` 均有职责缺口 |
 | **favorite** | `POST /favorite/v1/folder/create` 端点缺失 · public 路径集 · preflight 触发入口 · DDL 迁移脚本 · `JsonbTypeHandler` / MP 排序桥的归属 · `GetFavoritesByFolderReq.FolderId` 的取参位置 · 域内 gRPC client · 端口号 |
-| **common** | `GoStyleGrpcStatusMapper` 与 `GrpcExceptionMapperAutoConfiguration` **职责重叠** · 设计文档 §5.1 列了 `contract/ErrorCode.java` 但**实际树里没有** · 雪花 ID 有**两个落点** · `GoStyleJsonBodyConverterConfig` 是「注册点」还是「配置类」 |
+| **common** | `GrpcStatusMapper` 与 `GrpcExceptionMapperAutoConfiguration` **职责重叠** · 设计文档 §5.1 列了 `contract/ErrorCode.java` 但**实际树里没有** · 雪花 ID 有**两个落点** · `JsonBodyConverterConfig` 是「注册点」还是「配置类」 · **gRPC 拦截链挂载点缺位**（D9 ⇒ 落 `common/autoconfigure/ProtectionAutoConfiguration`，共享层 1 份） |
 | **follow** | `db/migration/` 为空 · `application.yml` 缺段 · `*Properties` 聚合边界 · `FollowBlacklistInterceptor` + `FollowJwtAuthInterceptor` · `GoStyleLimitOffset` |
 
 ### 🟡 低优先级（要点）

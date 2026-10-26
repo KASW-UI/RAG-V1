@@ -352,26 +352,79 @@ def check_a2(root: pathlib.Path, contract: str) -> Result:
 
 
 def check_a3(root: pathlib.Path, contract: str) -> Result:
-    """A3 · `*-rpc` 必须有 `GrpcServerConfigurer` 且挂上 `server.intercept(...)`。"""
-    if contract != "A":
-        return na("契约 B（api+rpc 合并）下不适用 —— D1 连带效应，不得改成红灯")
-    rpcs = [d for d, _ in iter_modules(root) if d.name.endswith("-rpc")]
-    if not rpcs:
-        return na("无 `*-rpc` 模块")
-    viol, hit = [], 0
-    for d in rpcs:
-        files = module_java(root, d)
-        cfgs = [f for f in files if "GrpcServerConfigurer" in f.read_text(encoding="utf-8")]
-        if not cfgs:
-            viol.append(f"{d.relative_to(root)} → 无 GrpcServerConfigurer 实现")
+    """A3 · gRPC 拦截链必须**真挂到 server 上**。
+
+    ⚠️ **这条断言在合并形态下依然成立** —— 它不是「api/rpc 分离」的派生物：
+    Go 侧范围内 **10 个服务逐条显式**调 `AddUnaryInterceptors(...)`（`service/*/rpc/*.go`），
+    合并成「一域一进程」后仍要挂，只是**挂载点从「每 rpc 模块」变成「共享层 1 份」**。
+
+    ┌─ 契约 A（api/rpc 分离，RAG 形态）────────────────────────────┐
+    │ 每个 `*-rpc` 模块各自提供一个 `GrpcServerConfigurer`，且真调 │
+    │ `server.intercept(...)`                                      │
+    └──────────────────────────────────────────────────────────────┘
+    ┌─ 契约 B（api+rpc 合并，RAG-V1 形态）─────────────────────────┐
+    │ ① **共享层必须提供** `GrpcServerConfigurer` 且真调          │
+    │    `server.intercept(...)` —— devh starter 只注入            │
+    │    `List<GrpcServerConfigurer>`，不产 Configurer ⇒           │
+    │    Bean 在、starter 不用它 ⇒ **超时 / deadline 传播 /        │
+    │    gRPC span / `sea.slow` 标记全丢，且零报错**               │
+    │ ② **域内不得再出现** `GrpcServerConfigurer` —— 重复定义 ⇒   │
+    │    同一进程挂 2 条链 ⇒ span 重复、timeout 叠加              │
+    └──────────────────────────────────────────────────────────────┘
+    """
+    if contract == "A":
+        rpcs = [d for d, _ in iter_modules(root) if d.name.endswith("-rpc")]
+        if not rpcs:
+            return na("无 `*-rpc` 模块")
+        viol, hit = [], 0
+        for d in rpcs:
+            files = module_java(root, d)
+            cfgs = [f for f in files if "GrpcServerConfigurer" in f.read_text(encoding="utf-8")]
+            if not cfgs:
+                viol.append(f"{d.relative_to(root)} → 无 GrpcServerConfigurer 实现")
+                continue
+            if not any("server.intercept(" in f.read_text(encoding="utf-8") for f in cfgs):
+                viol.append(f"{d.relative_to(root)} → 有 GrpcServerConfigurer，但未调用 server.intercept(...)")
+                continue
+            hit += 1
+        if viol:
+            return Result(FAIL, f"{len(viol)}/{len(rpcs)} 个 `*-rpc` 未挂上拦截链", viol)
+        return ok(f"{hit}/{len(rpcs)} 个 `*-rpc` 拦截链已挂上")
+
+    # ── 契约 B（合并形态 · RAG-V1）──────────────────────────────
+    commons = [d for d, k in iter_modules(root) if k == "common" and d.name == "common"]
+    if not commons:
+        return na("无 `common` 模块")
+    common = commons[0]
+    cfiles = module_java(root, common)
+
+    def declares(src: str) -> bool:
+        """文件是否**声明**了 `GrpcServerConfigurer`（而非只在 javadoc 里提到它）。"""
+        return bool(re.search(r"implements\s+[\w.]*GrpcServerConfigurer", src)
+                    or re.search(r"\bGrpcServerConfigurer\s+\w+\s*\(", src))
+
+    mount = [f for f in cfiles if declares(f.read_text(encoding="utf-8"))]
+    viol = []
+    if not mount:
+        # 指定的挂载点类仍是空壳 ⇒ 判据未施加（PENDING），不是违规
+        target = common / "src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java"
+        if target.exists() and is_empty_shell(target.read_text(encoding="utf-8")):
+            return Result(PENDING,
+                          "挂载点 `ProtectionAutoConfiguration` 仍是空壳 ⇒ 判据未施加（落地实现后自动转 PASS/FAIL）")
+        viol.append("common/ → 无 `GrpcServerConfigurer` 声明（挂载点缺失 ⇒ 拦截链静默失效）")
+    elif not any("server.intercept(" in f.read_text(encoding="utf-8") for f in mount):
+        viol.append("common/ → 有 GrpcServerConfigurer 声明，但未调用 server.intercept(...)")
+
+    # 反向：域内重复声明 ⇒ 同一条链被挂 2 次（span 重复 / timeout 叠加）
+    for d, _ in iter_modules(root):
+        if d == common:
             continue
-        if not any("server.intercept(" in f.read_text(encoding="utf-8") for f in cfgs):
-            viol.append(f"{d.relative_to(root)} → 有 GrpcServerConfigurer，但未调用 server.intercept(...)")
-            continue
-        hit += 1
+        for f in module_java(root, d):
+            if declares(f.read_text(encoding="utf-8")):
+                viol.append(f"{f.relative_to(root)} → 域内重复声明 `GrpcServerConfigurer`（⇒ 链被挂 2 次）")
     if viol:
-        return Result(FAIL, f"{len(viol)}/{len(rpcs)} 个 `*-rpc` 未挂上拦截链", viol)
-    return ok(f"{hit}/{len(rpcs)} 个 `*-rpc` 拦截链已挂上")
+        return Result(FAIL, f"gRPC 拦截链挂载点不合规（{len(viol)} 项）", viol)
+    return ok("common/ 声明了 `GrpcServerConfigurer` 且真调 `server.intercept(...)`；域内 0 重复")
 
 
 # ---------------------------------------------------------------------------
@@ -746,6 +799,57 @@ def build_fixture(base: pathlib.Path) -> pathlib.Path:
     return root
 
 
+def self_test_a3_contract_b() -> tuple[bool, list]:
+    """A3 · **契约 B（合并形态）** 的三向自检。
+
+    ⚠️ 为什么要单独造：**A3 不是「api/rpc 分离」的派生物** —— 合并后拦截链照样要挂，
+    只是挂载点从「每 rpc 模块」变成「共享层 1 份」。⇒ 判据必须同时管住**两个方向**：
+      ① 正向：共享层有 `GrpcServerConfigurer` 且真调 `server.intercept(...)`
+      ② 反向：域内**不得**重复定义（否则同一条链被挂 2 次）
+
+    三种树各验一次：合规 ⇒ 绿 · 缺挂载 ⇒ 红 · 域内重复 ⇒ 红
+    """
+    base = pathlib.Path(tempfile.mkdtemp(prefix="arch-a3b-"))
+    try:
+        def make(mount: bool, dup: bool) -> pathlib.Path:
+            r = base / f"t{int(mount)}{int(dup)}"
+            _write(r / "pom.xml", "<project><artifactId>x-parent</artifactId></project>")
+            _write(r / "common/pom.xml", "<project><artifactId>common</artifactId></project>")
+            body = ("package com.rag.common;\n"
+                    "import net.devh.boot.grpc.server.serverfactory.GrpcServerConfigurer;\n"
+                    "public class GrpcServerCfg implements GrpcServerConfigurer {\n"
+                    "  public void configure(ServerBuilder<?> server) { %s }\n}\n")
+            _write(r / "common/src/main/java/com/rag/common/GrpcServerCfg.java",
+                   body % ("server.intercept(x);" if mount else ""))
+            _write(r / "service/x/pom.xml", "<project><artifactId>x-service</artifactId></project>")
+            if dup:
+                _write(r / "service/x/src/main/java/com/rag/x/DupCfg.java",
+                       "package com.rag.x;\n"
+                       "import net.devh.boot.grpc.server.serverfactory.GrpcServerConfigurer;\n"
+                       "public class DupCfg { GrpcServerConfigurer c() { return null; } }\n")
+            return r
+
+        results = []
+        r = check_a3(make(True, False), "B")
+        results.append(("合规树（common 挂载 + 域内 0 重复）⇒ 应 PASS", r.state == PASS, r.detail))
+        r = check_a3(make(False, False), "B")
+        results.append(("common 有 Configurer 但缺 server.intercept ⇒ 应 FAIL", r.state == FAIL, r.detail))
+        r = check_a3(make(True, True), "B")
+        results.append(("域内重复声明 GrpcServerConfigurer ⇒ 应 FAIL", r.state == FAIL, r.detail))
+        # ④ 空壳 ⇒ PENDING（判据未施加，不算 FAIL）
+        shell = base / "shell"
+        _write(shell / "pom.xml", "<project><artifactId>x-parent</artifactId></project>")
+        _write(shell / "common/pom.xml", "<project><artifactId>common</artifactId></project>")
+        _write(shell / "common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java",
+               "package com.rag.common.autoconfigure;\n"
+               "public class ProtectionAutoConfiguration { }\n")
+        r = check_a3(shell, "B")
+        results.append(("挂载点仍是空壳 ⇒ 应 PENDING（判据未施加）", r.state == PENDING, r.detail))
+        return all(ok for _, ok, _ in results), results
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
 def self_test() -> int:
     """红灯自检 —— 逐条断言「该红的必须红」。"""
     print("=" * 78)
@@ -769,6 +873,19 @@ def self_test() -> int:
             print(f"红灯自检失败：{len(failed)} 条判据**没红** ⇒ 该断言等于没有断言：{', '.join(failed)}")
             return 1
         print(f"红灯自检通过：{len(CHECKS)}/{len(CHECKS)} 条判据均能红")
+
+        # ── A3 的**契约 B（合并形态）**三向自检 ──────────────────────
+        print("-" * 78)
+        print("A3 · 契约 B（api+rpc 合并 · RAG-V1 形态）三向自检")
+        a3b_ok, a3b = self_test_a3_contract_b()
+        for title, okflag, detail in a3b:
+            mark = "✅" if okflag else "❌"
+            print(f"  {mark}  {title}")
+            print(f"          {detail}")
+        if not a3b_ok:
+            print("A3 契约 B 自检失败 ⇒ 该判据在合并形态下形同虚设")
+            return 1
+        print("A3 契约 B 自检通过：合规⇒绿 · 缺挂载⇒红 · 域内重复⇒红")
         return 0
     finally:
         shutil.rmtree(base, ignore_errors=True)
