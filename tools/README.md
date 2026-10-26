@@ -4,10 +4,10 @@
 |---|---|---|
 | `gen-file-tree.py` | **按实际文件系统生成 `docs/File_Tree/` 的 13 份逐模块文件树**（**源树路径镜像**：域模块落在 `File_Tree/<域>.md`，`users/` 下保留 `user/`·`admin/` 两级） | **改完目录结构后必跑**（否则文档与代码漂） |
 | `difftest/check-arch-invariants.py` | 架构符合性断言 A1–A12 | 提交前 / CI |
-| `difftest/check-proto-static.sh` | proto 契约对照 | 提交前 / CI |
-| `difftest/check-ddl-static.py` | DDL 列级对照 | 提交前 / CI |
-| `difftest/run-parity.sh` | 双侧语义探针（Go ↔ RAG-V1） | 提交前 / CI |
-| `check-mapping-coverage.py` | **三方对照文档的三重校验**：① A / C 列覆盖率（从文件系统反查，不采信文档自报数字）② **`_INDEX.md` 自报数字对账**（行数 / 覆盖 / 映射行 vs 实测值）③ 映射行计数（扫全行找类型词，避开多列表的列位陷阱） | 改完 `docs/Mapping_Table/` 任一域文档后；提交前（EXIT=0 才算通过） |
+| `difftest/check-proto-static.sh` | proto 契约对照 | ⬜ **待实现**（文件不存在）|
+| `difftest/check-ddl-static.py` | DDL 列级对照 | ⬜ **待实现**（文件不存在）|
+| `difftest/run-parity.sh` | 双侧语义探针（Go ↔ RAG-V1） | ⬜ **待实现**（文件不存在）|
+| `check-mapping-coverage.py` | **三方对照文档的四重校验**：① A / C 列覆盖率（从文件系统反查，不采信文档自报数字）② **`_INDEX.md` 自报数字对账**（行数 / 覆盖 / 映射行 vs 实测值）③ 映射行计数（扫全行找类型词，避开多列表的列位陷阱）④ **小节标题自报条数 == 表内实际行数**（P-08 同病 ⇒ 机器复算） | 改完 `docs/Mapping_Table/` 任一域文档后；提交前（EXIT=0 才算通过） |
 
 ## `gen-file-tree.py` 的约定
 

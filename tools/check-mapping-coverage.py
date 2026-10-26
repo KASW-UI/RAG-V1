@@ -201,6 +201,57 @@ def has_exemption(text, name):
                 return True
     return False
 
+def check_section_counts() -> list:
+    """守恒断言：**小节标题自报的条数 == 表内实际数据行数**。
+
+    ⚠️ **为什么要有这条**（P-08 同病）：各域 §缺口 / §「职责对不上」小节会在**标题里自报条数**
+    （如「（6 条，均需在实现前定死）」）⇒ 那是**自报数**，靠人复算 ⇒ 加一条就漂一次。
+    ⇒ 这里从文件系统反向数表格的**数据行**（去掉表头行与分隔行）⇒ 与标题自报值对账，不一致即报。
+
+    计数规则：取标题到**下一个同级或更高级标题**之间的表格行；
+    每个表格的第一行（表头）与 `---` 分隔行**不计入**。
+    """
+    problems = []
+    for doc in sorted(MT.rglob("*.md")):
+        if doc.name == "_INDEX.md":
+            continue
+        text = doc.read_text(encoding="utf-8")
+        lines = text.splitlines()
+        for i, ln in enumerate(lines):
+            if not ln.startswith("#"):
+                continue
+            m = re.search(r"（\s*(\d+)\s*条", ln)
+            if not m:
+                continue
+            claimed = int(m.group(1))
+            level = len(ln) - len(ln.lstrip("#"))
+            # 找本小节的结束行（下一个同级或更高级标题）
+            end = len(lines)
+            for j in range(i + 1, len(lines)):
+                if lines[j].startswith("#"):
+                    lv = len(lines[j]) - len(lines[j].lstrip("#"))
+                    if lv <= level:
+                        end = j
+                        break
+            # 数数据行：每张表的第一行是表头，`---` 是分隔行
+            n, in_table, seen_header = 0, False, False
+            for l2 in lines[i + 1:end]:
+                if not l2.startswith("|"):
+                    in_table, seen_header = False, False
+                    continue
+                cells = [c.strip() for c in l2.split("|") if c.strip()]
+                if set("".join(cells)) <= set("-: "):
+                    continue                      # 分隔行
+                if not in_table:
+                    in_table, seen_header = True, True
+                    continue                      # 表头行
+                n += 1
+            if n != claimed:
+                problems.append(
+                    f"❌ {doc.relative_to(MT)} 的「{ln.strip()[:46]}」自报 {claimed} 条 ≠ 实测 {n} 条")
+    return problems
+
+
 def main():
     targets = sys.argv[1:] or list(DOMAINS)
     total_c = total_c_missing = total_a = total_a_missing = 0
@@ -285,6 +336,14 @@ def main():
               f"（{len(actual)} 个域 × 4 项）")
     else:
         print("\n_INDEX.md 自报数字对账：跳过（索引不存在）")
+
+    # ── 小节标题自报条数 vs 表内实际行数（P-08 同病 ⇒ 机器复算）──────────
+    sec_problems = check_section_counts()
+    if sec_problems:
+        print(f"\n小节自报条数对账：❌ {len(sec_problems)} 处漂移")
+        problems.extend(sec_problems)
+    else:
+        print("\n小节自报条数对账：✅ 全部一致（标题自报 == 表内实际行数）")
 
     if problems:
         print("\n".join(problems))
