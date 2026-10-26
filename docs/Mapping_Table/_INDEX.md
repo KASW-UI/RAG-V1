@@ -67,7 +67,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 |---|---|---:|---|---|---:|
 | **users** | [_shared.md](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 410 + 200 + 249 + 274 = **1,133** | **103 / 103 = 100%** | **114 / 114 = 100%** | 127 |
  | **common** | [common.md](common.md) | 650 | **56 / 56 = 100%** | **11 / 11 = 100%** | 80 | 
-| **article** | [article.md](article/article.md) | 475 | **51 / 51 = 100%** | **45 / 45 = 100%** | 69 |
+| **article** | [article.md](article/article.md) | 476 | **51 / 51 = 100%** | **45 / 45 = 100%** | 70 |
 | **comment** | [comment.md](comment/comment.md) | 472 | **69 / 69 = 100%** | **58 / 58 = 100%** | 82 |
 | **favorite** | [favorite.md](favorite/favorite.md) | 508 | **60 / 60 = 100%** | **50 / 50 = 100%** | 84 |
 | **follow** | [follow.md](follow/follow.md) | 548 | **37 / 37 = 100%** | **46 / 46 = 100%** | 114 |
@@ -75,7 +75,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **like** | [like.md](like/like.md) | 501 | **67 / 67 = 100%** | **51 / 51 = 100%** | 79 |
 | **message** | [message.md](message/message.md) | 565 | **51 / 51 = 100%** | **55 / 55 = 100%** | 68 |
 | **task** | [task.md](task/task.md) | 408 | **29 / 29 = 100%** | **26 / 26 = 100%** | 53 |
-| **合计** | **13 份**（10 域，users 域拆 4 份） | **5,789** | **549 / 549 = 100%** | **482 / 482 = 100%** | **812** |
+| **合计** | **13 份**（10 域，users 域拆 4 份） | **5,791** | **549 / 549 = 100%** | **482 / 482 = 100%** | **813** |
 
 > 📌 **users 域拆分的守恒性**（2026-10-25 拆分后实测）：
 > 拆分前单文件 515 行 / 127 映射行 ⇒ 拆分后四份合计 **1,011 行 / 127 映射行**（行数增加是**导航与分节标题**带来的，非内容膨胀）。
@@ -85,14 +85,14 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 > ⚠️ **数「映射行」不能按固定列下标取** —— `follow` / `like` / `task` 三域存在**比标准表多一列**的表（映射类型落在第 5/6/7 个 `|` 之后而非第 4 个）。
 > ⇒ 计数必须**扫全行找类型词**，固定取 `parts[4]` 会**漏算 60 行**（follow **−47**、like **−2**、task **−11** ⇒ 实测 811 行会被数成 751 行）。
 
-### 映射类型分布（812 条映射行）
+### 映射类型分布（813 条映射行）
 
 | 类型 | 条数 | 占比 | 含义 |
 |---|---:|---:|---|
-| `1:1` | 446 | 55% | 一一对应（多数是 DTO / Entity / Mapper 这类直译件） |
-| `1:N` | 172 | 21% | 一个 Go 文件拆成多个 Java 文件（生态替代、职责细分） |
+| `1:1` | 447 | 55% | 一一对应（多数是 DTO / Entity / Mapper 这类直译件） |
+| `1:N` | 173 | 21% | 一个 Go 文件拆成多个 Java 文件（生态替代、职责细分） |
 | `N:1` | 181 | 22% | 多个 Go 文件合进一个 Java 文件（**api/rpc 合并的主因**） |
-| `C 新增` | 13 | 2% | Go / RAG 都没有，RAG-V1 形态自身需要（starter / auto-config 等） |
+| `C 新增` | 12 | 1% | Go / RAG 都没有，RAG-V1 形态自身需要（starter / auto-config 等） |
 
 ### B 列覆盖（RAG 侧 · 2026-10-26 实测）
 
@@ -100,7 +100,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 |---|---:|---|
 | RAG 侧业务 `.java` | **695** | 排除 `tools/`（语义探针 / 对拍 runner —— 非业务代码）、`src/test/`、`target/` |
 | B 列已覆盖 | **682** | 精确类名 669 + 通配 13（`Message<Case>Service` / `MessageAdmin<Case>Service`） |
-| **B 列未覆盖** | **0** | 剩 13 条全部登记在白名单（见 §六·五）⇒ **不是漏，是已登记的例外** |
+| **B 列未覆盖** | **0** | 剩 4 条全部登记在白名单（见 §六·五）⇒ **不是漏，是已登记的例外** |
 | B 列引用的类在 RAG 磁盘不存在 | **0** | B1 正向判据：文档没引用不存在的 RAG 类 |
 
 > 📌 **B 列此前长期无机器守卫** —— A / C 两列都有，B 列没有；而 §1.0c 已把 **B↔C 对应定为「逐类抄写路线图」**
@@ -207,7 +207,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 
 | 脚本 | 作用 | 何时跑 |
 |---|---|---|
-| `tools/check-mapping-coverage.py` | **六重校验**：① **从文件系统反查**每份文档的 C / A 列覆盖率（**不采信文档自报数字**）② **`_INDEX.md` 自报数字对账**（本表的行数 / 覆盖 / 映射行 vs 实测值）③ 映射行计数（扫全行找类型词）④ 小节标题自报条数 == 表内实际行数 ⑤ **B 列双向对账**（B1 正向 + B2 反向）⑥ **B↔C 指代消解后可判定性**（「同上」消解后每行都要读得出） | 改完任何一份域文档后；**提交前必跑**（EXIT=0 才算通过） |
+| `tools/check-mapping-coverage.py` | **八重校验**：① **从文件系统反查**每份文档的 C / A 列覆盖率（**不采信文档自报数字**）② **`_INDEX.md` 自报数字对账**（本表的行数 / 覆盖 / 映射行 vs 实测值）③ 映射行计数（扫全行找类型词）④ 小节标题自报条数 == 表内实际行数 ⑤ **B 列双向对账**（B1 正向 + B2 反向）⑥ **B↔C 指代消解后可判定性**（「同上」消解后每行都要读得出）⑦ **主表行形状**（列数必须为 5）⑧ **合计行对账** | 改完任何一份域文档后；**提交前必跑**（EXIT=0 才算通过） |
 
 > ⚠️ **脚本按文件计数，不按文件名去重** —— users 域的 `user/` 与 `admin/` 两个子域下存在同名文件
 > （如各自的 `UserController.java`）⇒ 去重会漏计 18 个。
@@ -219,7 +219,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 > ⇒ 现已由脚本第 ② 项做**机器对账**（10 个域 × 4 项 = 40 个数字），漂了就 `EXIT=1`。
 > 负向测试已做：故意注入 2 处漂移 ⇒ 脚本如实报出并 `EXIT=1` ⇒ **这不是不会失败的假守卫**。
 
-### 六·五、B 列已知例外（13 条 · 白名单）
+### 六·五、B 列已知例外（4 条 · 白名单）
 
 > **B 列守卫（⑤）的例外登记** —— 下列 RAG 侧**真实存在**的类，B 列没有对应条目。
 > 逐条核对后登记，**每条带原因 + 核对日期**；脚本里同名常量 `B_COLUMN_WHITELIST`。
@@ -227,22 +227,21 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 
 | # | RAG 侧类 | 域 | 性质 | 原因 | 核对日期 |
 |---|---|---|---|---|---|
-| 1 | `ArticleExceptions` | article | 🟡 **待补** | C 侧 `com.rag.article.exception.ArticleExceptions` 存在 ⇒ B 列漏写 RAG 前身 | 2026-10-26 |
-| 2 | `MessageExceptions` | message | 🟡 **待补** | C 侧 `com.rag.message.exception.MessageExceptions` 存在 ⇒ B 列漏写 RAG 前身 | 2026-10-26 |
-| 3 | `ConversationEntity` | message | 🟡 **待补** | C 侧 `com.rag.message.domain.entity.ConversationEntity` 存在 ⇒ B 列漏写 | 2026-10-26 |
-| 4 | `ConversationMessageEntity` | message | 🟡 **待补** | C 侧 `com.rag.message.domain.entity.ConversationMessageEntity` 存在 ⇒ B 列漏写 | 2026-10-26 |
-| 5 | `NotificationEntity` | message | 🟡 **待补** | C 侧 `com.rag.message.domain.entity.NotificationEntity` 存在 ⇒ B 列漏写 | 2026-10-26 |
-| 6 | `LikeCursorIdGenerator` | like | 🟡 **待补** | C 侧 `com.rag.like.service.LikeCursorIdGenerator` 存在 ⇒ B 列漏写 | 2026-10-26 |
-| 7 | `LikeDomainFactOutboxMapper` | like | 🟡 **待补** | C 侧 `com.rag.like.mapper.LikeDomainFactOutboxMapper` 存在 ⇒ B 列漏写 | 2026-10-26 |
-| 8 | `LikeFactStreamMapper` | like | 🟡 **待补** | C 侧 `com.rag.like.mapper.LikeFactStreamMapper` 存在 ⇒ B 列漏写 | 2026-10-26 |
-| 9 | `TaskProgressMapper` | task | 🟡 **待补** | C 侧 `com.rag.task.mapper.TaskProgressMapper` 存在 ⇒ B 列漏写 | 2026-10-26 |
-| 10 | `ArticleGoStyleCoercion` | article | ⚪ **有意不记** | RAG 域内局部副本 ⇒ C 侧由 `common/web/Coercion` 共享承担 | 2026-10-26 |
-| 11 | `ArticleGoStyleCorsFilter` | article | ⚪ **有意不记** | RAG 域内局部副本 ⇒ C 侧由 `common/web/` 过滤器承担 | 2026-10-26 |
-| 12 | `GoStyleRpcSheddingInterceptor` | common | ⚪ **有意不记** | RAG `service/common/protection/` 17 类之一 ⇒ C 侧 `protection/` 仅 2 类（生态吸收 D4） | 2026-10-26 |
-| 13 | `TaskTraceAttributes` | task | ⚪ **有意不记** | RAG 侧 task 的 trace 属性载体 ⇒ C 侧无对应物 | 2026-10-26 |
+| 1 | `ArticleGoStyleCoercion` | article | ⚪ **有意不记** | RAG 域内局部副本 ⇒ C 侧由 `common/web/Coercion` 共享承担 | 2026-10-26 |
+| 2 | `ArticleGoStyleCorsFilter` | article | ⚪ **有意不记** | RAG 域内局部副本 ⇒ C 侧由 `common/web/` 过滤器承担 | 2026-10-26 |
+| 3 | `GoStyleRpcSheddingInterceptor` | common | ⚪ **有意不记** | RAG `service/common/protection/` 17 类之一 ⇒ C 侧 `protection/` 仅 2 类（生态吸收 D4） | 2026-10-26 |
+| 4 | `TaskTraceAttributes` | task | ⚪ **有意不记** | RAG 侧 task 的 trace 属性载体 ⇒ C 侧无对应物 | 2026-10-26 |
 
-> ⇒ **🟡 待补 9 条**：抄写对应域时**顺手补进该域文档的 B 列**（B 列是 RAG 侧**真实类名**，补的是「漏记」不是「改写」）。
-> ⇒ **⚪ 有意不记 4 条**：C 侧确无对应物 ⇒ 保持不记。
+> 📌 **原 13 条中的 9 条已补进 B 列**（2026-10-26）—— 补的是「**漏记**」不是「改写」
+> （B 列是 RAG 侧**真实类名**）：`ArticleExceptions` · `MessageExceptions` · `ConversationEntity` ·
+> `ConversationMessageEntity` · `NotificationEntity` · `LikeCursorIdGenerator` ·
+> `LikeDomainFactOutboxMapper` · `LikeFactStreamMapper` · `TaskProgressMapper`。
+> ⇒ 留下的 4 条**全部是「有意不记」**（C 侧确无对应物）。
+>
+> ⚠️ **补这 9 条时发现并修掉了两个根因**（不是文档笔误，是**机制缺陷**）：
+> ① **单元格里的 `|` 未转义** ⇒ markdown 把它当列分隔符 ⇒ 整行被切成 6/7 列 ⇒ **B 列静默丢失**；
+> ② **花括号 / 通配写法**（`{A,B,C}.java` · `.../mapper/*`）⇒ 机器认不出具体类名。
+> ⇒ 现已由守门脚本第 ⑥ 重校验 + 「主表行形状」检查常态化拦截。
 
 ### 六·六、非文件级对照登记
 
