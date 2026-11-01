@@ -1,10 +1,17 @@
 package com.rag.common.autoconfigure;
 
+import com.rag.common.observability.RpcPrometheusInterceptor;
+import com.rag.common.observability.RpcRecoverInterceptor;
+import com.rag.common.observability.RpcStatInterceptor;
+import com.rag.common.protection.AdaptiveShedder;
 import com.rag.common.protection.CpuThresholdHealthIndicator;
 import com.rag.common.protection.MaxBytesFilter;
 import com.rag.common.protection.ProtectionProperties;
 import com.rag.common.protection.RouteResolution;
 import com.rag.common.protection.RouteTemplateSource;
+import com.rag.common.protection.RpcCircuitGateInterceptor;
+import com.rag.common.protection.RpcProtectionChain;
+import com.rag.common.protection.RpcSheddingInterceptor;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.grpc.Metadata;
@@ -197,7 +204,7 @@ public class ProtectionAutoConfiguration {
             ObjectProvider<ServerInterceptor> interceptors) {
         return server -> {
             List<ServerInterceptor> ordered = interceptors.orderedStream().toList();
-            ServerInterceptor chain = compose(ordered);
+            ServerInterceptor chain = RpcProtectionChain.compose(ordered);
             if (chain != null) {
                 // ⚠️ 只调一次：链的嵌套由 compose() 显式构造 ⇒ 不依赖「谁更外层」的 API 细节
                 server.intercept(chain);
@@ -205,50 +212,100 @@ public class ProtectionAutoConfiguration {
         };
     }
 
+    // ── gRPC 服务端保护链的 5 层（Go: recover → stat → prometheus → breaker → shedding） ──
+
     /**
-     * 把一组拦截器串成一条链：<b>列表第 0 个在最外层</b>。
+     * 链序常量：<b>数值越小越靠外层</b>（Spring 的 {@code orderedStream()} 升序 ⇒ 第 0 个最外层）。
      *
-     * <p>⚠️ <b>为什么用显式嵌套而不是「多次 {@code server.intercept(...)}」</b>：
-     * grpc-api 1.63.0 的 {@code ServerBuilder#intercept} 只有单参重载，多次调用时
-     * <b>最后 add 的在最外层</b> ⇒ 链序就押在一个容易记反的 API 事实上 ⇒
-     * ⇒ 本方法把顺序<b>写进代码结构</b>。
-     *
-     * @param ordered 已按「外 → 内」排好序的拦截器
-     * @return 合成后的链；入参为空时返回 {@code null}
+     * <p>⚠️ <b>这组数值是「行为契约」，不是排版</b>（Go 出处见 {@link RpcProtectionChain}）：
+     * <ul>
+     *   <li>{@code recover} 最外层 —— 否则内层的 panic 兜不住；</li>
+     *   <li>{@code stat} 在 {@code prometheus} 外层 —— 量到的耗时含降载 / 熔断开销；</li>
+     *   <li>{@code prometheus} 在 {@code breaker} / {@code shedding} 外层
+     *       —— 否则被拒绝的请求在指标里<b>整个消失</b>；</li>
+     *   <li>{@code breaker} 在 {@code shedding} 外层
+     *       —— Go 侧 shedding 的 {@code RESOURCE_EXHAUSTED} 冒泡上来被它记成失败。</li>
+     * </ul>
+     * ⇒ <b>业务观测层</b>（{@code ObservabilityAutoConfiguration.GrpcObservationInterceptor}）
+     * 不带 {@code @Order} ⇒ 落在 {@code Ordered.LOWEST_PRECEDENCE} ⇒ <b>最内层</b> ✓
+     * ⇒ ⇒ 链序 = {@code [recover, stat, prometheus, breaker, shedding, business]}。
      */
-    static ServerInterceptor compose(List<ServerInterceptor> ordered) {
-        if (ordered == null || ordered.isEmpty()) {
-            return null;
-        }
-        ServerInterceptor chain = null;
-        for (int i = ordered.size() - 1; i >= 0; i--) {
-            chain = wrap(ordered.get(i), chain);
-        }
-        return chain;
+    public static final int RPC_LAYER_RECOVER = 0;
+    public static final int RPC_LAYER_STAT = 1;
+    public static final int RPC_LAYER_PROMETHEUS = 2;
+    public static final int RPC_LAYER_BREAKER = 3;
+    public static final int RPC_LAYER_SHEDDING = 4;
+
+    /**
+     * ① recover 层：gRPC handler panic ⇒ {@code INTERNAL + "panic: "}。
+     *
+     * <p>⚠️ <b>{@code "panic: "} 是 L1 wire 契约</b>（Go {@code status.Errorf(codes.Internal, "panic: %v", r)}）
+     * ⇒ ⇒ <b>不得改写</b>（改了就与 Go 的客户端分叉）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnClass(name = "io.grpc.ServerInterceptor")
+    @Order(RPC_LAYER_RECOVER)
+    public RpcRecoverInterceptor rpcRecoverInterceptor() {
+        return new RpcRecoverInterceptor();
     }
 
-    /** 把 {@code outer} 串在 {@code inner} 的外层（{@code inner == null} 时原样返回）。 */
-    private static ServerInterceptor wrap(ServerInterceptor outer, ServerInterceptor inner) {
-        if (inner == null) {
-            return outer;
-        }
-        return new ServerInterceptor() {
-            @Override
-            public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
-                    ServerCall<ReqT, RespT> call,
-                    Metadata headers,
-                    ServerCallHandler<ReqT, RespT> next) {
-                ServerCallHandler<ReqT, RespT> delegate = new ServerCallHandler<ReqT, RespT>() {
-                    @Override
-                    public ServerCall.Listener<ReqT> startCall(ServerCall<ReqT, RespT> c, Metadata h) {
-                        // ⚠️ 必须调 inner.interceptCall(...)，**不能**把 next 直接透传
-                        //    ⇒ 透传 ⇒ inner 永远不被调用 ⇒ 整条内层链静默消失（零报错）
-                        return inner.interceptCall(c, h, next);
-                    }
-                };
-                return outer.interceptCall(call, headers, delegate);
-            }
-        };
+    /**
+     * ② stat 层：每请求耗时样本（进程内 RPC 聚合器 + 每 60s 统计日志）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnClass(name = "io.grpc.ServerInterceptor")
+    @Order(RPC_LAYER_STAT)
+    public RpcStatInterceptor rpcStatInterceptor(ProtectionProperties properties) {
+        return new RpcStatInterceptor();
+    }
+
+    /**
+     * ③ prometheus 层：耗时分布 + 状态码计数。
+     *
+     * <p>⚠️ <b>没有 registry ⇒ 本层整段跳过</b>（Go：{@code prometheus.Enabled()==false}）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnClass(name = "io.grpc.ServerInterceptor")
+    @Order(RPC_LAYER_PROMETHEUS)
+    public RpcPrometheusInterceptor rpcPrometheusInterceptor(
+            ObjectProvider<io.micrometer.core.instrument.MeterRegistry> registryProvider) {
+        return new RpcPrometheusInterceptor(registryProvider.getIfAvailable());
+    }
+
+    /**
+     * ④ breaker 层：gRPC 服务端熔断（隔离 key = gRPC 全方法名；失败判据 = 6 码白名单）。
+     *
+     * <p>⚠️ <b>拒绝形状是 wire 契约</b>：{@code UNAVAILABLE + "circuit breaker is open"}。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnClass(name = "io.grpc.ServerInterceptor")
+    @Order(RPC_LAYER_BREAKER)
+    public RpcCircuitGateInterceptor rpcCircuitGateInterceptor(
+            ProtectionProperties properties,
+            ObjectProvider<CircuitBreakerRegistry> registryProvider) {
+        return new RpcCircuitGateInterceptor(
+                properties.getBreaker().isEnabled(), registryProvider.getIfAvailable());
+    }
+
+    /**
+     * ⑤ shedding 层：gRPC 服务端 CPU 自适应降载（拒绝 = {@code RESOURCE_EXHAUSTED + "service overloaded"}）。
+     *
+     * <p>⚠️ <b>拒绝必须走 {@code call.close(...)}</b> ⇒ 让错误冒泡到外层的 breaker 层
+     * ⇒ ⇒ <b>持续降载最终会把熔断器打开</b>（Go 侧同形）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnClass(name = "io.grpc.ServerInterceptor")
+    @Order(RPC_LAYER_SHEDDING)
+    public RpcSheddingInterceptor rpcSheddingInterceptor(ProtectionProperties properties) {
+        ProtectionProperties.CpuShedding cpu = properties.getCpuShedding();
+        boolean enabled = cpu.isEnabled() && cpu.getCpuThreshold() > 0L;
+        AdaptiveShedder shedder = new AdaptiveShedder(cpu.getCpuThreshold(), cpu.getCpuSource());
+        return new RpcSheddingInterceptor(shedder, enabled);
     }
 
     // ── 内部实现 ──────────────────────────────────────────────────────────

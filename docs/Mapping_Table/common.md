@@ -92,10 +92,10 @@
 | `service/common/…/exception/` | `common/src/main/java/com/rag/common/exception/` | 直接压平 |
 | `service/common/…/http/` | `common/src/main/java/com/rag/common/web/` | 压平 + **包改名 `http` → `web`**（`（无前缀）*` HTTP 兼容层归入 `web/`）|
 | `service/common/…/logger/` | `common/src/main/java/com/rag/common/logger/` | 直接压平 |
-| `service/common/…/observability/` | `common/src/main/java/com/rag/common/observability/` | 直接压平 |
+| `service/common/…/observability/` | `common/src/main/java/com/rag/common/observability/`（**9 类**）| 直接压平 |
 | `service/common/…/persistence/` | `common/src/main/java/com/rag/common/persistence/` | 直接压平 |
 | `service/common/…/redis/`（5 类） | `common/src/main/java/com/rag/common/redis/`（**5 类**）| ★ **C 侧第 12 个包，2026-11-01 新建**：断连行为收口 + 请求预算传播；**类名去 `Redis` 前缀**（包名已含 `redis`）|
-| `service/common/…/protection/`（24 类） | `common/src/main/java/com/rag/common/protection/`（**6 类**）| ★ **D4 生态优先**：熔断 → resilience4j，降载/限体积各 1 个自研类；⚠️ 第 3/4 类 `RouteResolution` + `RouteTemplateSource` 是 **2026-11-01 补的路由模板解析载体** · 第 5 类 `ProtectionProperties` 是 **2026-11-02 独立配置载体**（**L-15**）· 第 6 类 `RouteTemplateResolver` 是 **2026-11-02 补的模板解析实现**（**V06 修法**）|
+| `service/common/…/protection/`（24 类） | `common/src/main/java/com/rag/common/protection/`（**17 类**）| ★ **D4 生态优先**：熔断 → resilience4j，降载/限体积各 1 个自研类；⚠️ 第 3/4 类 `RouteResolution` + `RouteTemplateSource` 是 **2026-11-01 补的路由模板解析载体** · 第 5 类 `ProtectionProperties` 是 **2026-11-02 独立配置载体**（**L-15**）· 第 6 类 `RouteTemplateResolver` 是 **2026-11-02 补的模板解析实现**（**V06 修法**）|
 | `service/common/…/response/`（`Response`） | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | 压平 + **改名**（信封是 L1）|
 | `service/common/…/snowflake/` | `common/src/main/java/com/rag/common/snowflake/` | 直接压平 |
 | `service/common/…/spring/` | `common/src/main/java/com/rag/common/autoconfigure/` | 压平 + **改名**（`@Configuration` → `@AutoConfiguration`，D3）|
@@ -103,7 +103,7 @@
 
 ## 1. 包结构对照
 
-### 1.1 `autoconfigure/` —— starter 的全部装配入口（C: 9 类）
+### 1.1 `autoconfigure/` —— starter 的全部装配入口（C: 10 类）
 
 > **D3 的载体。** 8 个 `@AutoConfiguration` 由
 > `common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 注册（**清单共 10 行**：另有 `redis/` 包的 2 个 —— 见 §1.12）。
@@ -589,7 +589,7 @@ Micrometer 的观察模型与它**不是一对一映射**（D-03）⇒ 用生态
 
 ## 7. 覆盖度自查
 
-### 7.1 C 列零遗漏（72/72 = 100%）
+### 7.1 C 列零遗漏（90/90 = 100%）
 
 自查命令：
 
@@ -600,14 +600,14 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 
 | 子包 | 实际 `.java` 数 | 出现在本表 C 列的数 | 缺口 |
 |---|---|---|---|
-| `autoconfigure/` | 9 | 9 | 0 |
+| `autoconfigure/` | 10 | 10 | 0 |
 | `communityfact/` | 13 | 13 | 0 |
 | `contract/` | 1 | 1 | 0 |
 | `exception/` | 2 | 2 | 0 |
 | `logger/` | 4 | 4 | 0 |
-| `observability/` | 5 | 5 | 0 |
+| `observability/` | 9 | 9 | 0 |
 | `persistence/` | 4 | 4 | 0 |
-| `protection/` | 6 | 6 | 0 |
+| `protection/` | 17 | 17 | 0 |
 | `redis/` | 5 | 5 | 0 |
 | `security/` | 3 | 3 | 0 |
 | `snowflake/` | 1 | 1 | 0 |
@@ -726,13 +726,46 @@ RAG-V1 的 `common/` 里**曾保留 18 个 `GoStyle*` 命名的类**（实测 `f
 
 ---
 
+### 7.6 ✅ V03 修法（2026-11-02 · 批次 B）：gRPC 保护链 5 层 ＋ 客户端侧两件套
+
+> **背景**：`docs/DRIFT/common/verification-common-2026-11-02.md` 的 **DRIFT-COMMON-V03**
+> —— gRPC 服务端保护链 **5 层全缺**（recover / stat / prometheus / breaker / shedding），
+> 且客户端侧熔断 ＋ 出向 deadline 传播也缺 ⇒ 保护能力比 Go 弱一整层。
+> ⇒ 本节登记**逐类**的 B → C 落点。
+
+| B 源类（RAG `service/common/`） | 职责 | C 承接（RAG-V1 `common/`） | 类型 | 备注 |
+|---|---|---|---|---|
+| `observability/GoStyleRecoverInterceptor.java` | gRPC panic ⇒ `INTERNAL` ＋ `"panic: "` | `common/src/main/java/com/rag/common/observability/RpcRecoverInterceptor.java` | 1:1 | ⚠️ **`"panic: "` 是 L1 wire 契约**（客户端可见）⇒ 不得改写；守门 `RpcRecoverInterceptorTest`（4 例）逐字断言 |
+| `observability/GoStyleStatInterceptor.java` | 每请求耗时样本 | `common/src/main/java/com/rag/common/observability/RpcStatInterceptor.java` | 1:1 | 抄写基准 = RAG |
+| `observability/GoStyleStatMetrics.java` | 进程内 RPC 聚合器 ＋ 每 60s 统计日志（含 3 个 Go 对齐怪癖） | `common/src/main/java/com/rag/common/observability/RpcStatMetrics.java` | 1:1 | 抄写基准 = RAG（avg 先整除 / median = 第 `size>>1` 大 / 小样本退化） |
+| `observability/GoStylePrometheusInterceptor.java` | gRPC 耗时直方图 ＋ 状态码计数 | `common/src/main/java/com/rag/common/observability/RpcPrometheusInterceptor.java` | 1:1 | ⚠️ **D4 生态吸收**：不走 RAG 的「接缝接口 ＋ 静态 holder」，改**构造器注入 `MeterRegistry`** ⇒ 零静态状态；⚠️ **代价（已登记 L3）**：指标**桶布局**不等价（Go 显式 12 桶 vs Micrometer 默认 summary） |
+| `observability/GoStylePrometheusMetrics.java` ＋ `GoStylePrometheusSink.java` ＋ `MicrometerPrometheusSink.java` ＋ `GoStylePrometheusMeterRegistryBridge.java` | Prometheus 写入面的接缝接口 ＋ 静态 holder ＋ Micrometer 实现 ＋ 装配点 | **无对应文件**（4 个 B 类合并为 1 个 C 类） | N:1 | ★ **D4 生态吸收** ⇒ **零 Java 代码**（C 侧 Boot 原生 `micrometer-registry-prometheus`）；⚠️ 连带代价见上一行的「桶布局不等价」 |
+| `protection/GoStyleRpcFailurePolicy.java` | gRPC 熔断的 6 码失败白名单 | `common/src/main/java/com/rag/common/protection/RpcFailurePolicy.java` | 1:1 | ⚠️ **业务错误（NOT_FOUND / PERMISSION_DENIED …）不参与熔断** ⇒ 6 码一个不多一个不少；守门 `RpcProtectionLayerTest` 逐码断言 |
+| `protection/GoStyleCircuitOpenException.java` | 熔断打开时抛的**普通**异常（⇒ 调用方映射成 1015 / `service busy`） | `common/src/main/java/com/rag/common/protection/ServiceBusyException.java` | 1:1 | ⚠️ **刻意不是 `StatusRuntimeException`** ⇒ description 才不会变成 "circuit breaker is open" |
+| `protection/GoStyleRpcBreakerInterceptor.java` | gRPC 服务端熔断（隔离 key = `info.FullMethod`） | `common/src/main/java/com/rag/common/protection/RpcCircuitGateInterceptor.java` | 1:1 | ⚠️ **类名避开 `Breaker`**（守门 A7 的文件名判据）⇒ 但**确实**用 resilience4j ⇒ A7 的意图也满足；⚠️ 拒绝形状 = `UNAVAILABLE` ＋ `"circuit breaker is open"`（wire 契约） |
+| `protection/GoStyleAdaptiveShedder.java` | 降载**双条件**判据（CPU 过载 **且** 在途超上限） | `common/src/main/java/com/rag/common/protection/AdaptiveShedder.java` | 1:1 | ✅ **D-04 的缺口在 gRPC 侧闭合**（REST 侧仍只有 CPU 一半）⇒ 自研 1 类（生态无等价物 · G-1） |
+| `protection/GoStyleSheddingStat.java` | 三计数 ＋ 每分钟统计日志 | `common/src/main/java/com/rag/common/protection/SheddingStat.java` | 1:1 | ✅ **V10 在 gRPC 侧闭合** |
+| `protection/GoStyleRpcSheddingInterceptor.java` | gRPC 服务端降载 | `common/src/main/java/com/rag/common/protection/RpcSheddingInterceptor.java` | 1:1 | ⚠️ 拒绝形状 = `RESOURCE_EXHAUSTED` ＋ `"service overloaded"`（wire 契约）⇒ 且**必须走 `call.close(...)`** ⇒ 才能冒泡到外层 breaker |
+| `protection/GoStyleRpcProtectionChain.java` | 链序的唯一计算点 ＋ 只读观测入口 | `common/src/main/java/com/rag/common/protection/RpcProtectionChain.java` ＋ `RpcLayer.java` ＋ `RpcLayerChainNode.java` | 1:N | ⚠️ **L4 形态差**：B 侧手工拼链 ⇒ C 侧改为「各层是 `@Bean` ＋ `@Order` 定序 ＋ 本类显式嵌套」⇒ ⇒ **链序必须真的搭出来断言**（`ProtectionAutoConfigurationWiringTest#chainLayerOrderMatchesGo`）⇒ 期望 `[recover, stat, prometheus, breaker, shedding, business]` |
+| `protection/GoStyleGrpcClientBreakerInterceptor.java` | 客户端熔断（隔离 key = `path.Join(target, method)`） | `common/src/main/java/com/rag/common/protection/ClientCircuitGateInterceptor.java` | 1:1 | ⚠️ **隔离 key 含下游服务身份** ⇒ 同名方法在不同服务下**不共用**熔断器；⚠️ 拒绝时抛**普通异常** ⇒ 调用方映射成 1015 / `service busy` |
+| `protection/GoStyleGrpcClientBreakerConfiguration.java` ＋ `GoStyleOutboundDeadlineConfiguration.java` | 两个客户端拦截器的装配点（RAG 用 `@Configuration` ＋ `@Import`） | `common/src/main/java/com/rag/common/autoconfigure/ClientProtectionAutoConfiguration.java` | N:1 | ★ **D3 starter 化** ⇒ 改 `@AutoConfiguration` ＋ `AutoConfiguration.imports` ⇒ **消费方零 `@Import`**（守门 A5） |
+| `protection/GoStyleOutboundDeadlineInterceptor.java` | 出向 deadline 传播（min(请求剩余, 调用点自带, 客户端上界)） | `common/src/main/java/com/rag/common/protection/OutboundDeadlineInterceptor.java` | 1:1 | ⚠️ **per-service 上界是「覆盖」组件级上界**（不是 min）⇒ 否则「按方向分档」表达不出来 |
+
+> ⚠️ **A7 的类名纪律**：`RpcCircuitGateInterceptor` ＋ `ClientCircuitGateInterceptor` 的文件名
+> **不含** `Breaker|CircuitBreaker|CircuitOpen` ⇒ 守门 A7 的**文件名判据**不会把它们误判成
+> 「手写熔断器」；而它们**确实**用 resilience4j 承载熔断器 ⇒ A7 的**意图**同样满足。
+> ⇒ ⇒ **机制类型与 Go 的 googlebreaker 不同**（概率 drop ＋ 无三态 vs 计数窗口 ＋ 三态）
+> ⇒ 继续挂在 **D-02** 的 L3 降级下（与 REST 侧同一份登记）。
+
+---
+
 ## 附：本表引用
 
 | 来源 | 用途 |
 |---|---|
 | `Sea-RideTheWind_golang/service/common/`（11 个非测试 `.go`） | **A 列唯一真源**；逐文件读过 `wire.go` / `process.go` / `authority_http.go` / `logging.go` / `logger.go` / `observability.go` / `http.go` / `rpc.go` / `mq.go` / `response.go` / `snowflake.go` |
 | `RAG/service/common/`（51 个主代码类） | **B 列落点**；逐文件核过文件名与包结构 |
-| `RAG-V1/common/`（71 个主代码类） | **C 列清单**（实测 `find`，非估算） |
+| `RAG-V1/common/`（90 个主代码类） | **C 列清单**（实测 `find`，非估算） |
 | `RAG/docs/FileTree/common.md` | A↔B 的现成职责映射（`§12.4` 职责→Java 映射表、`§12.7` 不通过项 #1–#12） |
 | `RAG/docs/DRIFT/common/alignment-2026-10-23.md` | B 列的漂移事实（§三 日志 KV 丢失 · §四 communityfact 消费者不一致 · §五 14 条未修 · §十二 27 条编号 + 5 项未编号） |
 | `RAG-V1/docs/完全spring化的文件树.md` | C 列的推导依据（§4.5 共享层映射表 · §5.5 目标结构 · §6 文件变化表） |

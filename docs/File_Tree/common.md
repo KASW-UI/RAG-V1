@@ -63,6 +63,7 @@
 │   │   │       └── rag/
 │   │   │           └── common/
 │   │   │               ├── autoconfigure/
+│   │   │               │   ├── ClientProtectionAutoConfiguration.java    # gRPC 客户端侧的共享装配点：出向熔断 ＋ 出向 deadline 传播。
 │   │   │               │   ├── GrpcExceptionMapperAutoConfiguration.java    # D2 / D5「统一错误模型」的 gRPC 边界适配器 ——
 │   │   │               │   ├── JsonBodyConverterAutoConfiguration.java    # Jackson 侧的共享装配点 —— 把「K-01 强转规则」与「K-02 请求体判据」两条
 │   │   │               │   ├── MybatisPlusOrderingBridgeAutoConfiguration.java    # Go 出处：无 —— Go 侧用 GORM，没有「MyBatis-Plus 自动配置排序」这个概念
@@ -101,19 +102,34 @@
 │   │   │               │   ├── DeadlineState.java    # 请求级 deadline 的服务端载体（ThreadLocal 绝对到期时刻，{@link System#nanoTime()} 域）。
 │   │   │               │   ├── GoStyleRequestDeadline.java    # 请求级 deadline 的载体：把 {@link HttpMiddleware} 的 HTTP 超时预算，
 │   │   │               │   ├── ObservabilityCustomizer.java    # 业务观测标记的唯一载体 —— 对齐 go-zero {@code service/common/observability/observability.go} 的
-│   │   │               │   └── ObservabilityProperties.java    # Observability 配置绑定（{@code application.yml}）：
+│   │   │               │   ├── ObservabilityProperties.java    # Observability 配置绑定（{@code application.yml}）：
+│   │   │               │   ├── RpcPrometheusInterceptor.java    # Prometheus 层 —— 对齐 go-zero 的 {@code UnaryPrometheusInterceptor}：
+│   │   │               │   ├── RpcRecoverInterceptor.java    # gRPC 服务端 panic 恢复拦截器 —— 对齐 go-zero 的 {@code UnaryRecoverInterceptor}。
+│   │   │               │   ├── RpcStatInterceptor.java    # Stat 层 —— 对齐 go-zero 的 {@code UnaryStatInterceptor}：
+│   │   │               │   └── RpcStatMetrics.java    # Go {@code core/stat} 的 Java 复刻 —— 进程内 RPC 耗时聚合器 ＋
 │   │   │               ├── persistence/
 │   │   │               │   ├── DeadlineQueryTimeoutInjector.java    # B-1 缓解（第一半）：把当前 rpc 的 deadline 落到每条 SQL 上，让 SQL 的取消时刻 == deadline 时刻。
 │   │   │               │   ├── JsonTextTypeHandler.java    # PostgreSQL {@code text} 列 ↔ {@code Map} 的 TypeHandler。
 │   │   │               │   ├── JsonbTypeHandler.java    # jsonb 列 ↔ String 的 TypeHandler —— 对应 Go 端 PG 的 {@code jsonb} 列。
 │   │   │               │   └── SqlTimeoutStatusTranslator.java    # B-1 缓解（第二半）：把「SQL 被 deadline 取消」翻译成 gRPC 的 {@code DEADLINE_EXCEEDED}。
 │   │   │               ├── protection/
+│   │   │               │   ├── AdaptiveShedder.java    # Go {@code core/load/adaptiveshedder.go} 的 Java 复刻 —— CPU 自适应降载的判据部分。
+│   │   │               │   ├── ClientCircuitGateInterceptor.java    # L4 idiomatization：gRPC client 侧按方法的熔断，对齐 Go
 │   │   │               │   ├── CpuThresholdHealthIndicator.java    # CPU 降载的观测面：把 Go {@code core/stat/usage.go:51} {@code CpuUsage()}
 │   │   │               │   ├── MaxBytesFilter.java    # L4 idiomatization：请求体大小上限，对齐 Go {@code handler.MaxBytesHandler}。
+│   │   │               │   ├── OutboundDeadlineInterceptor.java    # L4 idiomatization：把「请求 deadline 传播给出向 gRPC 调用」做成 client 侧拦截器。
 │   │   │               │   ├── ProtectionProperties.java    # Go「请求保护层」四道中间件的配置聚合点。
 │   │   │               │   ├── RouteResolution.java    # 路由模板解析的三态结果。
 │   │   │               │   ├── RouteTemplateResolver.java    # L4 idiomatization：在 Servlet Filter 里解析出「注册期路由模板」，
-│   │   │               │   └── RouteTemplateSource.java    # 「注册期路由模板」解析能力的窄接口。
+│   │   │               │   ├── RouteTemplateSource.java    # 「注册期路由模板」解析能力的窄接口。
+│   │   │               │   ├── RpcCircuitGateInterceptor.java    # gRPC 服务端熔断层 —— 对齐 go-zero 的 {@code UnaryBreakerInterceptor}。
+│   │   │               │   ├── RpcFailurePolicy.java    # zrpc 服务端熔断的「失败判据」 —— 对齐 Go {@code serverSideAcceptable}。
+│   │   │               │   ├── RpcLayer.java    # gRPC 服务端拦截链上的一层 —— 自报层名，可被只读查询入口观测。
+│   │   │               │   ├── RpcLayerChainNode.java    # 链上的一个节点 —— 在 {@link RpcLayer} 之外，额外暴露内层，
+│   │   │               │   ├── RpcProtectionChain.java    # gRPC 服务端拦截链的装配与观测（链序的唯一计算点 + 只读观测入口）。
+│   │   │               │   ├── RpcSheddingInterceptor.java    # gRPC 服务端 CPU 自适应降载 —— 对齐 go-zero 的 {@code UnarySheddingInterceptor}。
+│   │   │               │   ├── ServiceBusyException.java    # 熔断打开时抛出的异常 —— 刻意不是 {@code StatusRuntimeException}。
+│   │   │               │   └── SheddingStat.java    # Go {@code core/load/sheddingstat.go} 的 Java 复刻 —— 降载的三个计数 +
 │   │   │               ├── redis/
 │   │   │               │   ├── ClientAutoConfiguration.java    # L4 idiomatization：把 Lettuce 客户端的「断连行为」收进共享层，
 │   │   │               │   ├── Deadline.java    # 共享层的「Redis 期限感知」入口（G1 反馈单 2/3 · 2026-10-30 · G4 lane）。
@@ -159,18 +175,22 @@
 │                   └── common/
 │                       ├── autoconfigure/
 │                       │   ├── AutoConfigurationImportsTest.java    # §3.3「机制可证」守门：starter 的装配清单真的生效。
+│                       │   ├── ClientProtectionAutoConfigurationTest.java    # §3.3「机制可证」守门：客户端拦截器真的进了 devh 的收集器——
 │                       │   ├── GrpcExceptionMapperAutoConfigurationTest.java    # §3.3「机制可证」守门：业务异常在 gRPC 边界被映射成 Go 形状的 status。
 │                       │   ├── JsonBodyConverterAutoConfigurationTest.java    # §3.3「机制可证」守门：K-01 的强转规则真的施加到了 Boot 的 mapper 上。
 │                       │   ├── ObservabilityAutoConfigurationTest.java    # §3.3「机制可证」守门：观测的判定顺序真的按 Go 的口径。
 │                       │   ├── PersistenceAutoConfigurationTest.java    # §3.3「机制可证」守门：SQL 超时链路真的挂上了（DRIFT-COMMON-V02 的修法验证）。
-│                       │   ├── ProtectionAutoConfigurationWiringTest.java    # §3.3「机制可证」守门：gRPC 拦截链真的挂到了 server 上（A3 的运行时证据）。
+│                       │   ├── ProtectionAutoConfigurationWiringTest.java    # §3.3「机制可证」守门：gRPC 拦截链真的挂到了 server 上（A3 的运行时证据），
 │                       │   └── RouteIsolationFilterTest.java    # §3.3「机制可证」守门：熔断隔离 key 真的是 {@code METHOD://}，
 │                       ├── contract/
 │                       │   └── ApiResponseTest.java    # §3.3 真触发测试 —— {@link ApiResponse} 这个全局 L1 信封的序列化形状。
 │                       ├── logger/
 │                       │   └── GoStyleLoggerTest.java    # §3.3 真触发测试 —— 断言 **A8**：{@link GoStyleLogger} 是一个真正的
+│                       ├── observability/
+│                       │   └── RpcRecoverInterceptorTest.java    # §3.3「机制可证」守门：gRPC handler panic ⇒ {@code INTERNAL + "panic: "}。
 │                       ├── protection/
-│                       │   └── RouteTemplateResolverTest.java    # §3.3「机制可证」守门：路由模板解析真的能区分三态
+│                       │   ├── RouteTemplateResolverTest.java    # §3.3「机制可证」守门：路由模板解析真的能区分三态
+│                       │   └── RpcProtectionLayerTest.java    # §3.3「机制可证」守门：gRPC 降载拒绝的 wire 形状 ＋ 熔断失败判据 ＋
 │                       ├── redis/
 │                       │   └── RedisAutoConfigurationActivationTest.java    # §3.3「机制可证」守门：Redis 侧两个自动配置真的被激活（DRIFT-COMMON-V01 的修法验证）。
 │                       ├── snowflake/

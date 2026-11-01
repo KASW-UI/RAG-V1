@@ -3,6 +3,7 @@ package com.rag.common.autoconfigure;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rag.common.observability.ObservabilityCustomizer;
+import com.rag.common.protection.RpcLayer;
 import com.rag.common.observability.ObservabilityProperties;
 import io.grpc.ForwardingServerCall;
 import io.grpc.Metadata;
@@ -159,9 +160,24 @@ public class ObservabilityAutoConfiguration {
      * {@code List<GrpcServerConfigurer>} 注入 server factory ⇒
      * <b>真正挂上链的是 {@code ProtectionAutoConfiguration} 的挂载点</b>（A3）
      * ⇒ ⇒ 本拦截器通过 {@code @Order} 决定自己在链上的位置。
+     *
+     * <p>🔴 <b>2026-11-02（V03 修法）· {@code @ConditionalOnMissingBean} 必须按「bean 名」判，
+     * 不能按「返回类型」判</b>：
+     * <pre>
+     *   改前：@ConditionalOnMissingBean            // ← 无参 ⇒ 按**返回类型** ServerInterceptor 判
+     *   改后：@ConditionalOnMissingBean(name = "grpcObservationInterceptor")
+     * </pre>
+     * ⇒ 原因：本方法的返回类型是<b>接口</b> {@code ServerInterceptor}
+     * ⇒ ⇒ 无参写法会匹配「容器里<b>任意</b> {@code ServerInterceptor} 类型的 Bean」
+     * ⇒ ⇒ V03 修法在 {@code ProtectionAutoConfiguration} 里新增了 5 个 {@code ServerInterceptor} Bean
+     * ⇒ ⇒ 本 Bean 被 {@code @ConditionalOnMissingBean} 判成「已存在」⇒ <b>静默不注册</b>
+     * ⇒ ⇒ <b>业务观测层从链上消失</b>（零报错）⇒ ⇒ 由
+     * {@code ProtectionAutoConfigurationWiringTest#chainLayerOrderMatchesGo} 当场抓到。
+     * <br>⇒ 教训：<b>「按接口/父类型判缺失」在「同类 Bean 会变多」的场景里是陷阱</b>
+     * ⇒ ⇒ 本仓所有「返回类型是接口」的 Bean 一律按<b>名字</b>判缺失。
      */
     @Bean
-    @ConditionalOnMissingBean
+    @ConditionalOnMissingBean(name = "grpcObservationInterceptor")
     public ServerInterceptor grpcObservationInterceptor(
             ObjectProvider<ObservationRegistry> registryProvider,
             ObservabilityProperties properties) {
@@ -286,7 +302,7 @@ public class ObservabilityAutoConfiguration {
      * ⇒ close 与 start 同线程 ⇒ scope 正常闭合。
      * ⇒ ⇒ 流式调用接入前必须重新评估（本条已写入类注释，不留给下一个 agent 去踩）。
      */
-    static final class GrpcObservationInterceptor implements ServerInterceptor {
+    static final class GrpcObservationInterceptor implements ServerInterceptor, RpcLayer {
 
         private final ObjectProvider<ObservationRegistry> registryProvider;
         private final ObservabilityProperties properties;
@@ -392,6 +408,12 @@ public class ObservabilityAutoConfiguration {
         private Duration slowThreshold() {
             Duration configured = properties == null ? null : properties.getSlowThreshold();
             return configured != null ? configured : ObservabilityCustomizer.slowThreshold();
+        }
+
+        /** 链上的层名（供守门断言链序）—— 本层是<b>最内层</b>的业务观测层。 */
+        @Override
+        public String layerName() {
+            return "business";
         }
     }
 

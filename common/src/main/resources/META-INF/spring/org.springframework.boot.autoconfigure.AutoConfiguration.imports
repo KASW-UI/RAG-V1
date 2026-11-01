@@ -7,5 +7,6 @@ com.rag.common.autoconfigure.MybatisPlusOrderingBridgeAutoConfiguration
 com.rag.common.autoconfigure.GrpcExceptionMapperAutoConfiguration
 com.rag.common.autoconfigure.PersistenceAutoConfiguration
 com.rag.common.autoconfigure.RouteTemplateAutoConfiguration
+com.rag.common.autoconfigure.ClientProtectionAutoConfiguration
 com.rag.common.redis.ClientAutoConfiguration
 com.rag.common.redis.DeadlineAutoConfiguration
