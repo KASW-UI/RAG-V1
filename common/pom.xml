@@ -58,6 +58,16 @@
             <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
             <optional>true</optional>
         </dependency>
+        <!--
+            ⚠️ **PG 驱动必须是 compile 作用域**（不能像各域 pom 那样只写 runtime）：
+            `common/persistence/JsonbTypeHandler` 在**编译期**就要引用
+            `org.postgresql.util.PGobject`（BaseTypeHandler 的实现体里 new PGobject()）
+            ⇒ runtime scope ⇒ 编译期拿不到该类 ⇒ `cannot find symbol`。
+            ⚠️ 版本由 spring-boot-dependencies BOM 管（不写 <version>）。
+        -->
+        <dependency>
+            <groupId>org.postgresql</groupId><artifactId>postgresql</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.github.resilience4j</groupId>
             <artifactId>resilience4j-spring-boot3</artifactId>
