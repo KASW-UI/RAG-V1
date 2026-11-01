@@ -1,8 +1,10 @@
 package com.rag.common.web;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.cfg.CoercionAction;
 import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
+import com.fasterxml.jackson.databind.cfg.MutableCoercionConfig;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.type.LogicalType;
 
@@ -128,9 +130,50 @@ public final class Coercion {
         builder.disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT);
 
         // 规则 1：number / boolean 进 String 一律拒（Go：type mismatch）
-        builder.withCoercionConfig(LogicalType.Textual, cfg -> cfg
-                .setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)
+        builder.withCoercionConfig(LogicalType.Textual, Coercion::applyTextualCoercions);
+    }
+
+    /**
+     * 把同样两条规则施加到<b>已构建好的</b> Jackson 2 mapper 上。
+     *
+     * <p><b>为什么需要这条重载</b>（L4 · D3 starter 化 · D14 工具链回退）：
+     * <ul>
+     *   <li><b>Spring 6.2 的 {@code Jackson2ObjectMapperBuilder}</b> <b>没有</b> coercion API
+     *       （javap 实测：只有 {@code featuresToDisable} / {@code featuresToEnable} /
+     *       {@code modulesToInstall} 等，<b>无</b> {@code withCoercionConfig}）
+     *       ⇒ <b>builder 路线在 Boot 3.5 上走不通</b>；</li>
+     *   <li>但 {@code Jackson2ObjectMapperBuilder#postConfigurer(Consumer&lt;ObjectMapper&gt;)}
+     *       <b>存在</b>（javap 实测）⇒ ⇒ 可以在 builder 构建完之后对 mapper 施加规则
+     *       ⇒ ⇒ 这就是「postConfigurer 路线」。</li>
+     *   <li>关键前提：{@code ObjectMapper#coercionConfigFor(LogicalType)} 返回的是<b>活对象</b>
+     *       （探针实测：两次调用返回同一实例；就地 {@code setCoercion} 后 mapper 行为改变）
+     *       ⇒ ⇒ 就地改它就等于改 mapper 的行为。</li>
+     * </ul>
+     *
+     * <p><b>⚠️ 为什么走 postConfigurer 而不是「自己 new 一个 mapper 替换 Boot 的」</b>：
+     * 替换 ⇒ 各域 {@code spring.jackson.*}（时区 / 命名策略 / 序列化开关）的绑定全部失效
+     * ⇒ 那是把「加两条规则」变成「换掉整个 mapper」⇒ 是行为变更，不是等价改造。
+     *
+     * <p><b>与 {@link #applyTo(JsonMapper.Builder)} 的等价性</b>：两条路径最终都落到
+     * <b>同一个</b> {@link #applyTextualCoercions(MutableCoercionConfig)} ⇒ 规则逐条同源
+     * ⇒ ⇒ 不会出现「builder 路线与 mapper 路线规则不一致」的隐性分叉。
+     */
+    public static void applyTo(ObjectMapper mapper) {
+        if (mapper == null) {
+            return;
+        }
+        // 规则 2
+        mapper.disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT);
+        // 规则 1
+        applyTextualCoercions(mapper.coercionConfigFor(LogicalType.Textual));
+    }
+
+    /**
+     * 规则 1 的<b>唯一实现点</b>（builder 路线与 mapper 路线共用）⇒ 两条路径不可能分叉。
+     */
+    private static void applyTextualCoercions(MutableCoercionConfig cfg) {
+        cfg.setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)
                 .setCoercion(CoercionInputShape.Float, CoercionAction.Fail)
-                .setCoercion(CoercionInputShape.Boolean, CoercionAction.Fail));
+                .setCoercion(CoercionInputShape.Boolean, CoercionAction.Fail);
     }
 }

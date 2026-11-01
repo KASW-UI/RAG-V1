@@ -237,6 +237,39 @@
             </exclusions>
         </dependency>
 
+        <!--
+            ⚠️ **gRPC server starter（2026-11-02 批 3 追加）** ——
+            `common/autoconfigure/ProtectionAutoConfiguration` 要声明
+            `net.devh.boot.grpc.server.serverfactory.GrpcServerConfigurer`
+            （**A3 断言点名的 gRPC 拦截链挂载点**）⇒ ⇒ 编译期必须有这个类型。
+
+            ⚠️ **为什么必须 optional**（同 spring-web 的理由）：
+            `common` 是 10 个域共用的 starter ⇒ 共享层**不得**把下游不需要的框架塞给下游。
+            ⇒ optional ⇒ 不传递给下游 ⇒ 只有真正跑 gRPC 的域自己声明它。
+
+            ⚠️ **为什么不能只靠 client starter**：
+            `GrpcServerConfigurer` 这个类型**只存在于 server starter**里
+            （javap 实测：`net.devh.boot.grpc.server.serverfactory.GrpcServerConfigurer
+            extends java.util.function.Consumer<io.grpc.ServerBuilder<?>>`）
+            ⇒ client starter 上**根本没有这个类型** ⇒ 编译期就红。
+
+            ⚠️ **运行期安全**：本仓的 `ProtectionAutoConfiguration` 用
+            `@ConditionalOnClass(name = "net.devh.boot.grpc.server.serverfactory.GrpcServerConfigurer")`
+            守住 ⇒ 消费方没有这个 starter ⇒ 那条 `@Bean` **不装配** ⇒ 零报错。
+        -->
+        <dependency>
+            <groupId>net.devh</groupId>
+            <artifactId>grpc-server-spring-boot-starter</artifactId>
+            <optional>true</optional>
+            <exclusions>
+                <!-- devh 默认拖 grpc-core 1.63.0，版本统一由根 pom 的 grpc.version 管 -->
+                <exclusion>
+                    <groupId>io.grpc</groupId>
+                    <artifactId>grpc-core</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <!-- ============ 测试期依赖（test scope · **不传递给下游**） ============ -->
         <!--
             抄 RAG `service/common/pom.xml`：OTel 的**测试期**支撑（`InMemorySpanExporter` 等）

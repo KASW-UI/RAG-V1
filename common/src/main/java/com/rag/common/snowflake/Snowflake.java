@@ -425,6 +425,23 @@ public final class Snowflake {
         }
     }
 
-    private Snowflake() {
+    /**
+     * <p><b>⚠️ L4 idiomatization（D3 starter 化）：构造器由 {@code private} 改为 {@code public}</b>
+     *
+     * <p>RAG 侧本类的构造器是私有的 ⇒ 只能由 {@code SnowflakeBean}（一个 {@code @Component}）
+     * 内部 {@code new} 出来 ⇒ 而本仓的共享层是 <b>starter</b>（D3）⇒ 消费方不再扫
+     * {@code com.rag.common} ⇒ {@code @Component} 永远扫不到
+     * ⇒ ⇒ 注册动作改由 {@code SnowflakeAutoConfiguration} 的
+     * {@code @Bean @ConditionalOnMissingBean Snowflake snowflake(...)} 承担
+     * ⇒ ⇒ <b>框架要用 {@code new} 一个 Bean ⇒ 构造器必须可见</b>。
+     *
+     * <p>⚠️ <b>可见性放宽不等于「多了一个构造入口」</b>：本类的生成状态在
+     * <b>唯一的静态 {@code STATE}</b> 里（批 1 已落地）⇒ 无论 new 多少个实例，
+     * 生成状态始终只有那一份 ⇒ 不会出现「两个不同 workerId 的生成器交替产 ID」。
+     *
+     * <p>抄写基准：批 1 已落地的 {@code common/snowflake/Snowflake.java}（L2 · D13）
+     * ＋ <b>构造器可见性回改</b>（L4 · D3）。
+     */
+    public Snowflake() {
     }
 }

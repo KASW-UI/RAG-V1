@@ -1,8 +1,419 @@
 package com.rag.common.autoconfigure;
 
-/**
- * <p><b>TODO：职责待补</b> —— 推导依据见《完全spring化的文件树》对应条目。
- */
+import com.rag.common.protection.CpuThresholdHealthIndicator;
+import com.rag.common.protection.MaxBytesFilter;
+import com.rag.common.protection.ProtectionProperties;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.grpc.Metadata;
+import io.grpc.ServerCall;
+import io.grpc.ServerCallHandler;
+import io.grpc.ServerInterceptor;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.HandlerExecutionChain;
+import org.springframework.web.servlet.HandlerMapping;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * <p><b>保护层的共享装配点</b>，同时是 <b>A3 断言点名的 gRPC 拦截链挂载点</b>。
+ *
+ * ══════════════════════════════════════════════════════════════════════
+ * <p><b>⚠️ 为什么这里是「唯一的 gRPC 挂载点」（A3 · 契约 B）</b>
+ * ══════════════════════════════════════════════════════════════════════
+ * <p><b>实测依据</b>（javap，devh {@code grpc-server-spring-boot-starter 3.1.0.RELEASE}）：
+ * <pre>
+ *   net.devh.boot.grpc.server.serverfactory.GrpcServerConfigurer
+ *       extends java.util.function.Consumer&lt;io.grpc.ServerBuilder&lt;?&gt;&gt;
+ *   （三个 server factory 方法都只注入 List&lt;GrpcServerConfigurer&gt;，没有任何 interceptor 形参）
+ * </pre>
+ * ⇒ ⇒ <b>starter 只认 Configurer</b>；只产出一个 {@code ServerInterceptor} Bean
+ * ⇒ <b>链上什么都不会发生</b>，而且<b>零报错</b>。
+ * <br>⇒ ⇒ 本仓把挂载点收进共享层 <b>1 份</b>（域内 0 重复）⇒ 10 个域一次全挂上。
+ *
+ * <p><b>⚠️ 「链序」用代码结构写死，不押 API 细节</b>：
+ * {@code io.grpc.ServerBuilder#intercept(ServerInterceptor)}（grpc-api 1.63.0 <b>只有单参重载</b>）
+ * 多次调用时，<b>最后 add 的在最外层</b>
+ * （实测：{@code ServerImplBuilder.interceptors} 是 append 到 List ⇒ {@code ServerImpl} 逐个
+ * {@code interceptCallHandlerCreate} 包裹 ⇒ <b>越晚 add 的越外层</b>）。
+ * <br>⇒ ⇒ 本类<b>只调一次</b> {@code server.intercept(...)}，链的嵌套由
+ * {@link #compose(List)} <b>显式</b>构造 ⇒ ⇒ 链序不依赖「谁更外层」这种容易记反的 API 细节。
+ *
+ * ══════════════════════════════════════════════════════════════════════
+ * <p><b>⚠️ L3 降级（D-02 / D-04）：两处生态缺口，本类只做到「能对拍」的那一半</b>
+ * ══════════════════════════════════════════════════════════════════════
+ * <ol>
+ *   <li><b>D-02 熔断</b>：Go 的 {@code rest/handler/breakerhandler.go} 用 googlebreaker
+ *       （滑动窗口 / half-open 策略 / 错误率阈值全部自定义）⇒ resilience4j 的默认参数<b>不等价</b>
+ *       ⇒ ⇒ <b>隔离单位</b>与<b>成败判据</b>逐字对齐（见下），<b>阈值参数不等价</b>（L3）。</li>
+ *   <li><b>D-04 CPU 降载</b>：Go 的 adaptive shedder 是「<b>CPU 过载</b> + <b>在途超动态上限</b>」
+ *       <b>两个条件同时成立</b>才丢请求 ⇒ 生态无「在途超动态上限」的等价物
+ *       ⇒ ⇒ 本类<b>只提供 CPU 这一半判据</b> ⇒ <b>比 Go 更激进</b> ⇒ <b>L3</b>，<b>不得反向"修回"</b>。</li>
+ * </ol>
+ *
+ * <p><b>隔离 key（逐字对齐 Go）</b>：
+ * <pre>
+ *   go-zero@v1.10.2/rest/engine.go:149
+ *       chn = chn.Append(handler.BreakerHandler(route.Method, route.Path, metrics))
+ *   go-zero@v1.10.2/rest/handler/breakerhandler.go:18-19
+ *       brk := breaker.NewBreaker(breaker.WithName(strings.Join([]string{method, path}, "://")))
+ * </pre>
+ * ⇒ ⇒ 隔离 key = <b>{@code METHOD://<注册期路由模板>}</b>（<b>不是</b>原始 URI ⇒ 每路由一个实例）。
+ * <br>⚠️ <b>路由模板的记法与 Go 不同</b>：Go 侧 {@code route.Path} 是 goctl 生成的
+ * {@code /article/:id}（path-to-regexp 风格）· Spring 侧是 {@code /article/{id}}
+ * ⇒ ⇒ 隔离 key 的<b>字符串形态</b>两侧不同 ⇒ <b>L3（挂在 D-02 下）</b>。
+ *
+ * <p><b>成败判据（逐字对齐 Go）</b>：
+ * <pre>
+ *   go-zero@v1.10.2/rest/handler/breakerhandler.go:36-42
+ *       defer func() {
+ *           if cw.Code &lt; http.StatusInternalServerError { promise.Accept() }
+ *           else { promise.Reject(...) }
+ *       }()
+ * </pre>
+ * ⇒ ⇒ <b>失败 = HTTP 状态码 ≥ 500</b>；<b>下游 RPC 失败（HTTP 200 + 信封）不触发熔断</b>。
+ *
+ * <p><b>拒绝形状（逐字对齐 Go）</b>：
+ * <pre>
+ *   go-zero@v1.10.2/rest/handler/breakerhandler.go:27-31
+ *       w.WriteHeader(http.StatusServiceUnavailable)     // ← 503，**无 body**
+ * </pre>
+ * ⇒ ⇒ <b>裸 503</b>：只 {@code setStatus}，<b>不</b> {@code sendError}
+ * （后者会让容器补 {@code text/html} ⇒ 响应头比 Go 多一项）。
+ *
+ * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/protection/}
+ * 下的 {@code GoStyleBreakerFilter} / {@code GoStyleCpuSheddingFilter} / {@code GoStyleMaxBytesFilter}
+ * ＋ {@code GoStyleProtectionConfiguration}（L2 业务语义层以 RAG 为基准整段抄 · D13）
+ * ＋ <b>熔断实现由「手写 googlebreaker 移植」改为「resilience4j」</b>（L4 · D4 / L-2 / D-02）。
+ */
+@AutoConfiguration
+@EnableConfigurationProperties(ProtectionProperties.class)
 public class ProtectionAutoConfiguration {
+
+    // ── 体积上限 ──────────────────────────────────────────────────────────
+
+    /**
+     * 请求体大小上限 filter（Go {@code rest/handler/maxbyteshandler.go}）。
+     *
+     * <p>⚠️ <b>条件注解必须写在 {@code @Bean} 方法上</b>：本类的
+     * {@link MaxBytesFilter} 上的 {@code @ConditionalOnWebApplication} 只有在它被
+     * <b>组件扫描</b>注册时才生效；用 {@code @Bean} 注册时<b>类级条件不被评估</b>
+     * ⇒ ⇒ 条件必须落在方法上。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    public MaxBytesFilter maxBytesFilter(ProtectionProperties properties) {
+        return new MaxBytesFilter(properties);
+    }
+
+    // ── CPU 降载的观测面 ──────────────────────────────────────────────────
+
+    /**
+     * CPU 降载的 Actuator 健康指标（D-04 的「CPU 那一半」判据）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public CpuThresholdHealthIndicator cpuThresholdHealthIndicator(ProtectionProperties properties) {
+        return new CpuThresholdHealthIndicator(properties);
+    }
+
+    /**
+     * CPU 降载 filter：CPU 过载 ⇒ <b>裸 503</b>。
+     *
+     * <p>⚠️ <b>D-04 的 L3 缺口就在这里</b>：Go 的 adaptive shedder 还要求
+     * 「在途请求数超动态上限」⇒ 本 filter <b>只有 CPU 一个条件</b> ⇒ <b>比 Go 更早丢请求</b>
+     * ⇒ ⇒ 已登记为 L3 降级，<b>不得反向"修回"</b>（那会把「已知缺口」变成「静默行为漂移」）。
+     *
+     * <p><b>拒绝形状</b>：Go {@code rest/handler/sheddinghandler.go:33-35} ⇒ {@code w.WriteHeader(503)}
+     * ⇒ 裸状态码、<b>空 body</b>、<b>无 Content-Type</b>（D-04 的硬要求）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @Order(Ordered.HIGHEST_PRECEDENCE + 6)
+    public CpuSheddingFilter cpuSheddingFilter(ProtectionProperties properties,
+                                                CpuThresholdHealthIndicator indicator) {
+        return new CpuSheddingFilter(properties, indicator);
+    }
+
+    // ── 熔断 ──────────────────────────────────────────────────────────────
+
+    /**
+     * HTTP 熔断 filter：按 {@code METHOD://<路由模板>} 隔离，失败判据 = 状态码 ≥ 500。
+     *
+     * <p>⚠️ <b>熔断器实例由 resilience4j 的 {@link CircuitBreakerRegistry} 提供</b>
+     * ⇒ 隔离 key 就是 <b>registry 的 name</b> ⇒ 「每路由一个实例」这条不变式由生态保证。
+     * <br>⇒ ⚠️ registry <b>不</b>由本类创建：{@code resilience4j-spring-boot3} 自带
+     * {@code CircuitBreakerRegistryAutoConfiguration} ⇒ <b>生态优先（D4）</b>，不重复造。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @Order(Ordered.HIGHEST_PRECEDENCE + 5)
+    public RouteIsolationFilter routeIsolationFilter(
+            ProtectionProperties properties,
+            ObjectProvider<CircuitBreakerRegistry> registryProvider,
+            ObjectProvider<RequestMappingHandlerMapping> handlerMappings) {
+        return new RouteIsolationFilter(properties, registryProvider, handlerMappings);
+    }
+
+    // ── gRPC 拦截链的挂载点（A3） ──────────────────────────────────────────
+
+    /**
+     * <b>gRPC 服务端拦截链的<b>唯一</b>挂载点</b>（A3 · 契约 B）。
+     *
+     * <p>⚠️ <b>为什么必须在这里、且只能有一份</b>：
+     * <ul>
+     *   <li>devh starter 只认 {@code GrpcServerConfigurer}（见类注释的 javap 证据）⇒
+     *       没有它 ⇒ 拦截器 Bean 是「容器里没人用」的孤儿 ⇒ <b>静默失效</b>；</li>
+     *   <li>域内再来一份 ⇒ 同一进程挂 2 条链 ⇒ span 重复 / timeout 叠加 ⇒ A3 判 FAIL。</li>
+     * </ul>
+     *
+     * <p><b>链的构成</b>：容器里<b>全部</b> {@link ServerInterceptor} Bean
+     * ⇒ 按 {@code @Order} / {@link Ordered} 排序 ⇒ <b>序号小的在最外层</b>
+     * ⇒ ⇒ 与 Go 的注册序语义一致（Go：<b>先注册的最外层</b>）。
+     */
+    @Bean
+    @ConditionalOnClass(name = "net.devh.boot.grpc.server.serverfactory.GrpcServerConfigurer")
+    @ConditionalOnMissingBean(name = "seaGrpcServerConfigurer")
+    public net.devh.boot.grpc.server.serverfactory.GrpcServerConfigurer seaGrpcServerConfigurer(
+            ObjectProvider<ServerInterceptor> interceptors) {
+        return server -> {
+            List<ServerInterceptor> ordered = interceptors.orderedStream().toList();
+            ServerInterceptor chain = compose(ordered);
+            if (chain != null) {
+                // ⚠️ 只调一次：链的嵌套由 compose() 显式构造 ⇒ 不依赖「谁更外层」的 API 细节
+                server.intercept(chain);
+            }
+        };
+    }
+
+    /**
+     * 把一组拦截器串成一条链：<b>列表第 0 个在最外层</b>。
+     *
+     * <p>⚠️ <b>为什么用显式嵌套而不是「多次 {@code server.intercept(...)}」</b>：
+     * grpc-api 1.63.0 的 {@code ServerBuilder#intercept} 只有单参重载，多次调用时
+     * <b>最后 add 的在最外层</b> ⇒ 链序就押在一个容易记反的 API 事实上 ⇒
+     * ⇒ 本方法把顺序<b>写进代码结构</b>。
+     *
+     * @param ordered 已按「外 → 内」排好序的拦截器
+     * @return 合成后的链；入参为空时返回 {@code null}
+     */
+    static ServerInterceptor compose(List<ServerInterceptor> ordered) {
+        if (ordered == null || ordered.isEmpty()) {
+            return null;
+        }
+        ServerInterceptor chain = null;
+        for (int i = ordered.size() - 1; i >= 0; i--) {
+            chain = wrap(ordered.get(i), chain);
+        }
+        return chain;
+    }
+
+    /** 把 {@code outer} 串在 {@code inner} 的外层（{@code inner == null} 时原样返回）。 */
+    private static ServerInterceptor wrap(ServerInterceptor outer, ServerInterceptor inner) {
+        if (inner == null) {
+            return outer;
+        }
+        return new ServerInterceptor() {
+            @Override
+            public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
+                    ServerCall<ReqT, RespT> call,
+                    Metadata headers,
+                    ServerCallHandler<ReqT, RespT> next) {
+                ServerCallHandler<ReqT, RespT> delegate = new ServerCallHandler<ReqT, RespT>() {
+                    @Override
+                    public ServerCall.Listener<ReqT> startCall(ServerCall<ReqT, RespT> c, Metadata h) {
+                        // ⚠️ 必须调 inner.interceptCall(...)，**不能**把 next 直接透传
+                        //    ⇒ 透传 ⇒ inner 永远不被调用 ⇒ 整条内层链静默消失（零报错）
+                        return inner.interceptCall(c, h, next);
+                    }
+                };
+                return outer.interceptCall(call, headers, delegate);
+            }
+        };
+    }
+
+    // ── 内部实现 ──────────────────────────────────────────────────────────
+
+    /**
+     * CPU 降载 filter（裸 503）。
+     *
+     * <p>⚠️ 拒绝形状与 Go 一致：<b>只 setStatus</b>（不 {@code sendError}、不写 body）
+     * ⇒ ⇒ 无 body、无 Content-Type。
+     */
+    static final class CpuSheddingFilter implements jakarta.servlet.Filter {
+
+        private final boolean enabled;
+        private final CpuThresholdHealthIndicator indicator;
+
+        CpuSheddingFilter(ProtectionProperties properties, CpuThresholdHealthIndicator indicator) {
+            this.enabled = properties.getCpuShedding().isEnabled();
+            this.indicator = indicator;
+        }
+
+        @Override
+        public void doFilter(ServletRequest req, ServletResponse resp, FilterChain chain)
+                throws IOException, ServletException {
+            if (!enabled || !indicator.isOverloaded()) {
+                chain.doFilter(req, resp);
+                return;
+            }
+            HttpServletResponse response = (HttpServletResponse) resp;
+            response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+        }
+    }
+
+    /**
+     * HTTP 熔断 filter（resilience4j 承载熔断器本身）。
+     *
+     * <p>⚠️ <b>本类不是「手写熔断器」</b>：熔断状态机、窗口、half-open 全部由
+     * resilience4j 实现 ⇒ 本类只做三件事：
+     * <ol>
+     *   <li>算出<b>隔离 key</b>（{@code METHOD://<路由模板>}）；</li>
+     *   <li>问 resilience4j「放不放行」（{@code tryAcquirePermission}）；</li>
+     *   <li>把<b>最终状态码</b>回报给 resilience4j（≥500 = 失败）。</li>
+     * </ol>
+     */
+    static final class RouteIsolationFilter implements jakarta.servlet.Filter {
+
+        private final boolean enabled;
+        private final ObjectProvider<CircuitBreakerRegistry> registryProvider;
+        private final ObjectProvider<RequestMappingHandlerMapping> handlerMappings;
+
+        RouteIsolationFilter(ProtectionProperties properties,
+                             ObjectProvider<CircuitBreakerRegistry> registryProvider,
+                             ObjectProvider<RequestMappingHandlerMapping> handlerMappings) {
+            this.enabled = properties.getBreaker().isEnabled();
+            this.registryProvider = registryProvider;
+            this.handlerMappings = handlerMappings;
+        }
+
+        @Override
+        public void doFilter(ServletRequest req, ServletResponse resp, FilterChain chain)
+                throws IOException, ServletException {
+            HttpServletRequest request = (HttpServletRequest) req;
+            HttpServletResponse response = (HttpServletResponse) resp;
+
+            if (!enabled) {
+                chain.doFilter(request, response);
+                return;
+            }
+
+            String isolationKey = isolationKeyOf(request);
+            if (isolationKey == null) {
+                // ⚠️ 404 / 405（没匹配到路由）⇒ Go 侧**根本不进 breaker 链** ⇒ 放行
+                chain.doFilter(request, response);
+                return;
+            }
+
+            CircuitBreakerRegistry registry = registryProvider.getIfAvailable();
+            if (registry == null) {
+                // resilience4j 不在 classpath 上 ⇒ 熔断能力整体缺席 ⇒ 放行（不静默拒绝流量）
+                chain.doFilter(request, response);
+                return;
+            }
+
+            CircuitBreaker breaker = registry.circuitBreaker(isolationKey);
+            if (!breaker.tryAcquirePermission()) {
+                // ⚠️ 裸 503：只 setStatus（不 sendError、不写 body）⇒ 与 Go 的 w.WriteHeader(503) 等价
+                response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+                return;
+            }
+
+            long startNanos = System.nanoTime();
+            try {
+                chain.doFilter(request, response);
+            } catch (Throwable t) {
+                breaker.onError(elapsed(startNanos), TimeUnit.NANOSECONDS, t);
+                throw t;
+            }
+            int status = response.getStatus();
+            if (status >= 500) {
+                breaker.onError(elapsed(startNanos), TimeUnit.NANOSECONDS, ROUTE_FAILURE);
+            } else {
+                breaker.onSuccess(elapsed(startNanos), TimeUnit.NANOSECONDS);
+            }
+        }
+
+        /**
+         * 隔离 key = {@code METHOD://<注册期路由模板>}。
+         *
+         * <p>⚠️ <b>拿不到模板时返回 {@code null}</b>（⇒ 放行、不熔断）
+         * ⇒ ⇒ <b>绝不静默关掉熔断保护</b>，也<b>绝不</b>退化成「按原始 URI 隔离」
+         * （那会让同一路由的不同 URI 各建一个实例 ⇒ 隔离单位从「每路由」变成「每 URI」）。
+         */
+        private String isolationKeyOf(HttpServletRequest request) {
+            String template = routeTemplateOf(request);
+            if (template == null || template.isEmpty()) {
+                return null;
+            }
+            String method = request.getMethod();
+            return (method == null ? "" : method) + "://" + template;
+        }
+
+        /** 从 Spring 的路由匹配结果里取<b>注册期模板</b>（不是原始 URI）。 */
+        private String routeTemplateOf(HttpServletRequest request) {
+            RequestMappingHandlerMapping mapping = handlerMappings.getIfAvailable();
+            if (mapping == null) {
+                return null;
+            }
+            try {
+                HandlerExecutionChain chain = mapping.getHandler(request);
+                if (chain == null) {
+                    return null;
+                }
+                // ⚠️ 模板挂在**请求属性**上（不是 chain 上）——
+                //    `AbstractHandlerMapping#getHandler` 会把 BEST_MATCHING_PATTERN
+                //    写进 request attributes ⇒ 这里必须从 request 读。
+                Object pattern = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+                if (pattern == null) {
+                    return null;
+                }
+                return pattern.toString();
+            } catch (Exception e) {
+                // ⚠️ 解析失败 ⇒ 放行（绝不静默关掉熔断保护）
+                return null;
+            }
+        }
+
+        private static long elapsed(long startNanos) {
+            return System.nanoTime() - startNanos;
+        }
+    }
+
+    /**
+     * 「状态码 ≥ 500 但没有异常」的失败信号。
+     *
+     * <p>⚠️ resilience4j 的 {@code recordException} 谓词默认为「全记」⇒ 本信号会被计入失败
+     * ⇒ ⇒ 熔断器能感知「业务返回了 5xx」这件事（Go 侧靠 {@code cw.Code >= 500} 判定，
+     * <b>没有任何异常</b>）⇒ ⇒ 必须显式补一个信号，否则 Go 侧的 5xx 失败在 Java 侧<b>永不计入</b>。
+     */
+    private static final RuntimeException ROUTE_FAILURE = new RouteFailure();
+
+    /** 失败信号类型（私有嵌套，不产生文件 ⇒ 不影响 A12 的简单类名唯一性）。 */
+    private static final class RouteFailure extends RuntimeException {
+        private RouteFailure() {
+            super("route returned status >= 500");
+        }
+    }
 }
