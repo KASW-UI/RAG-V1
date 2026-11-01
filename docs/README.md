@@ -68,7 +68,7 @@
 |---|---|
 | 文件树 | ✅ 完整落地（**599** Java = 589 主代码 + 10 测试骨架 / **16** pom / **10** proto（根级 `proto/` 模块）/ 10 `application.yml`）—— **D7 打平后**（proto 集中 + 模块打平 + 包压平） |
 | 三方对照 | ✅ **13 份域文档**（`docs/Mapping_Table/<域>/<域>.md`，**按域分文件夹**；users 域拆四份：`_shared.md` + `users-common.md` + `user/user.md` + `admin/admin.md`）—— C 列 **591/591**、A 列 **482/482** 覆盖 **100%**；每份含 **§0.5「B → C 结构映射速查表」**；另登记 **90 条落点缺口**（🔴11 / 🟠 / 🟡） |
-| 实现内容 | 🟡 **共享层已开工** —— `common/` **71 类**中 **49 类已落地**（2026-11-02 批 1）· 3 类 2026-11-01 已落地 · **19 类仍空壳**（批 2 = Jackson 3→2 回改 5 类 · 批 3 = D4 生态重写 11 类 · `security/` 3 类待确认跨模块搬家）；**10 个业务域仍全为空壳** |
+| 实现内容 | 🟡 **共享层已开工** —— `common/` **71 类**中 **54 类已落地**（2026-11-02 批 1 = 49 类 ＋ 批 2 = 5 类）· 3 类 2026-11-01 已落地 · **14 类仍空壳**（批 3 = D4 生态重写 11 类 · `security/` 3 类待确认跨模块搬家）；**10 个业务域仍全为空壳** |
 | proto 契约 | ✅ 与 Go 逐字节一致（仅 `java_package` 属表达层）；**10 个 `.proto` 集中在根级 `proto/` 模块**，pb 包名 `com.rag.proto.<域>` |
 | 编译 | ✅ `mvn -o clean test-compile` 全仓 **16/16 BUILD SUCCESS**（protoc 离线可跑） |
 | Kafka 装配 | ✅ 已适配 Boot 3.5（`common` + 7 个域统一 `org.springframework.kafka:spring-kafka`；**Boot 3.5 的 `KafkaAutoConfiguration` 在 `spring-boot-autoconfigure` 里 ⇒ 无 Boot 4 的拆模块缺口**）—— 见 `RAG-困境反哺.md` §四 K-1 |
@@ -76,5 +76,5 @@
 | 台账 | ⬜ 三档已建索引 —— Intentional_Deviations 已有 **5** 条（like 2 · comment 2 · article 1）；**DRIFT 10 域仍为空**、Pitfalls **P-01~P-10**（实现开始后逐条填） |
 | **工具链** | ✅ **D14 已定并落地（2026-11-02）** —— **全项目 = Jackson 2 + Spring Boot 3.5**：Boot **3.5.11** · Jackson **2.19.4** · Spring Cloud **2025.0.3** · SCA **2025.0.0.0**（原生 nacos-client **3.0.3**）· Flyway **11.14.1** · Tomcat **10.1** · `jjwt-jackson` **可用** ⇒ **13 个 pom 已改造**，`mvn -o clean test-compile` **16/16 BUILD SUCCESS**；⚠️ **D12「全面 Jackson 3」已作废**（三份 Jackson 3 报告结论作废，文件留档） |
 | **lombok** | ✅ **已抄入（2026-11-02 用户定）** —— `common/` = **provided**、`service/users/` 聚合 = **optional**（RAG 同款落点），**注解处理器显式配 `annotationProcessorPaths`**（JDK 21+ 兜底）⇒ 字节码实测真生效；另补 `maven-enforcer-plugin` **构建期守门**（禁 `protobuf-java`/`javalite` ≤ 3.25.4，变异测试证明能红）—— 见 `决策记录.md` **D14 落地状态之三** |
-| **`common/` 搬运** | 🟡 **批 1 已落地（2026-11-02）** —— **49 类**已实现（纯抄 + 1:1/N:1 落点）+ 2 个跨批依赖载体（`ProtectionProperties` / `DeadlineState`，锁 **L-15/L-16**）；`mvn -o clean test-compile` **16/16 BUILD SUCCESS** · 三道守门 **EXIT=0**；⚠️ **批 2 / 批 3 未开工** · `common/src/test/` **仍 0 个测试**（§3.3 真触发测试待补）—— 见 `决策记录.md` **D14 落地状态之四** |
+| **`common/` 搬运** | 🟡 **批 1 + 批 2 已落地（2026-11-02）** —— 批 1 = **49 类**（纯抄 + 1:1/N:1 落点）+ 2 个跨批依赖载体（锁 **L-15/L-16**）；批 2 = **5 类**（Jackson 3→2 + Spring 7→6.2 回改，锁 **L-17**）；**`common/src/test/` 由 0 → 8 类 / 67 用例（§3.3 真触发）**；`mvn -o clean test` **16/16 BUILD SUCCESS** · 三道守门 **EXIT=0**；⚠️ **批 3 未开工** · **真 Tomcat 守门未写** —— 见 `决策记录.md` **D14 落地状态之四 / 之五** |
 | 待拍板 | ⬜ P1–P7 + **P4-④**（P4-③ ✅ 已实施，见 `决策记录.md` D7 · `命名债与包形状.md`） |

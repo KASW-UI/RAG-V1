@@ -47,6 +47,7 @@
 - `io.github.erdtman:java-json-canonicalization`
 - `org.apache.tomcat.embed:tomcat-embed-core`
 - `net.devh:grpc-client-spring-boot-starter`
+- `org.springframework.boot:spring-boot-starter-test`
 - `io.opentelemetry:opentelemetry-sdk-testing`
 - `org.springframework:spring-test`
 - `org.projectlombok:lombok`
@@ -55,98 +56,115 @@
 
 ```
 ├── src/
-│   └── main/
-│       ├── java/
-│       │   └── com/
-│       │       └── rag/
-│       │           └── common/
-│       │               ├── autoconfigure/
-│       │               │   ├── GrpcExceptionMapperAutoConfiguration.java
-│       │               │   ├── JsonBodyConverterAutoConfiguration.java
-│       │               │   ├── MybatisPlusOrderingBridgeAutoConfiguration.java
-│       │               │   ├── ObservabilityAutoConfiguration.java
-│       │               │   ├── ProtectionAutoConfiguration.java
-│       │               │   ├── SnowflakeAutoConfiguration.java
-│       │               │   └── WebAutoConfiguration.java
-│       │               ├── communityfact/
-│       │               │   ├── AuthorityFact.java    # ⚠️ L1 wire 契约（D13「L1 以 Go 为准」） ——
-│       │               │   ├── AuthorityHandler.java    # 对应 Go 版 service/common/communityfact/authority_http.go（80 行）
-│       │               │   ├── CanonicalHash.java    # Go 出处：{@code service/common/communityfact/wire.go} 的
-│       │               │   ├── DeliveryStatus.java    # ⚠️ L1 契约（取值 0/1/2/3 · D13「L1 以 Go 为准」） ——
-│       │               │   ├── Dispatcher.java    # 对应 Go 版 {@code service/common/communityfact/process.go} 的
-│       │               │   ├── Event.java    # ⚠️ L1 wire 契约（D13「L1 以 Go 为准」） ——
-│       │               │   ├── EventDispatcher.java    # 对应 Go 版 {@code service/common/communityfact/process.go}（69 行）的
-│       │               │   ├── EventSender.java    # Go 出处：{@code service/common/communityfact/wire.go} 的
-│       │               │   ├── ProcessLogger.java    # 对应 Go 版 service/common/communityfact/logging.go 的进程日志 + OTEL 本地追踪启动。
-│       │               │   ├── ProcessMetadata.java    # Go 出处：{@code service/common/communityfact/logging.go} 的
-│       │               │   ├── SubjectRef.java    # ⚠️ L1 wire 契约（D13「L1 以 Go 为准」） ——
-│       │               │   ├── TechnicalReceipt.java    # ⚠️ L1 wire 契约（D13「L1 以 Go 为准」） ——
-│       │               │   └── Wire.java    # 共享层 wire 协议的门面 —— 对应 Go 侧
-│       │               ├── contract/
-│       │               │   └── ApiResponse.java    # 共享层的响应信封 —— 对应 Go 侧 {@code service/common/response/response.go}。
-│       │               ├── exception/
-│       │               │   ├── AuthenticationException.java    # 鉴权层失败 —— 与 {@link BusinessException} 的区别只有一条：HTTP 状态码是 401。
-│       │               │   └── BusinessException.java    # Go 出处：{@code service/common/response/response.go:3-7}（信封三字段 code/msg/data）
-│       │               ├── logger/
-│       │               │   ├── FatalError.java    # H3 修复：致命错误的专用异常类型。
-│       │               │   ├── GoStyleLogger.java    # Go 出处：{@code service/common/logger/logger.go}（整个包，356 行）
-│       │               │   ├── LogOption.java    # Go 出处：{@code service/common/logger/logger.go:32}（{@code type LogOption func(*LogOptions)}）
-│       │               │   └── LogOptions.java    # Go 出处：{@code service/common/logger/logger.go:26-29}
-│       │               ├── observability/
-│       │               │   ├── ClientDisconnectProbe.java    # 客户端断连的主动探测 —— 往 socket 写 1xx 探针，把断连提前暴露出来。
-│       │               │   ├── DeadlineState.java    # 请求级 deadline 的服务端载体（ThreadLocal 绝对到期时刻，{@link System#nanoTime()} 域）。
-│       │               │   ├── GoStyleRequestDeadline.java    # 请求级 deadline 的载体：把 {@link HttpMiddleware} 的 HTTP 超时预算，
-│       │               │   ├── ObservabilityCustomizer.java
-│       │               │   └── ObservabilityProperties.java
-│       │               ├── persistence/
-│       │               │   ├── DeadlineQueryTimeoutInjector.java    # B-1 缓解（第一半）：把当前 rpc 的 deadline 落到每条 SQL 上，让 SQL 的取消时刻 == deadline 时刻。
-│       │               │   ├── JsonTextTypeHandler.java    # PostgreSQL {@code text} 列 ↔ {@code Map} 的 TypeHandler。
-│       │               │   ├── JsonbTypeHandler.java    # jsonb 列 ↔ String 的 TypeHandler —— 对应 Go 端 PG 的 {@code jsonb} 列。
-│       │               │   └── SqlTimeoutStatusTranslator.java    # B-1 缓解（第二半）：把「SQL 被 deadline 取消」翻译成 gRPC 的 {@code DEADLINE_EXCEEDED}。
-│       │               ├── protection/
-│       │               │   ├── CpuThresholdHealthIndicator.java
-│       │               │   ├── MaxBytesFilter.java
-│       │               │   ├── ProtectionProperties.java    # Go「请求保护层」四道中间件的配置聚合点。
-│       │               │   ├── RouteResolution.java    # 路由模板解析的三态结果。
-│       │               │   └── RouteTemplateSource.java    # 「注册期路由模板」解析能力的窄接口。
-│       │               ├── redis/
-│       │               │   ├── ClientAutoConfiguration.java    # L4 idiomatization：把 Lettuce 客户端的「断连行为」收进共享层，
-│       │               │   ├── Deadline.java    # 共享层的「Redis 期限感知」入口（G1 反馈单 2/3 · 2026-10-30 · G4 lane）。
-│       │               │   ├── DeadlineAutoConfiguration.java    # 把「Redis 请求期限感知」接到各域的 {@code RedisTemplate} / {@code StringRedisTemplate} 上。
-│       │               │   ├── DeadlineConnection.java    # 把「请求预算耗尽 ⇒ 不再下发 Redis 命令」这一层包在 {@link RedisConnection} 上。
-│       │               │   └── DeadlineConnectionFactory.java    # 把「请求预算」接到 {@link RedisConnectionFactory} 上（域侧零改动的那一环）。
-│       │               ├── security/
-│       │               │   ├── BearerTokenExtractor.java
-│       │               │   ├── JwtUtil.java
-│       │               │   └── PasswordUtil.java
-│       │               ├── snowflake/
-│       │               │   └── Snowflake.java    # 对应 Go 版 service/common/snowflake/snowflake.go 的整个包（102 行）。
-│       │               └── web/
-│       │                   ├── BadRequestException.java    # 承载「Go {@code httpx.ErrorCtx} 会写出的那种错误」—— 即裸状态码 + text/plain，
-│       │                   ├── Coercion.java
-│       │                   ├── Float64Deserializer.java
-│       │                   ├── GetFormValuesFilter.java    # 🔴 Go 风格的 query 解析与 form 值上限判据 —— 对应 go-zero {@code rest/httpx} 的
-│       │                   ├── GrpcStatusMapper.java    # Go {@code rest/internal/errcode/grpc.go} 的两条函数的 Java 等价物 ——
-│       │                   ├── HttpErrorException.java    # Go {@code http.Error(w, err.Error(), )} 的载体。
-│       │                   ├── JsonBodyConverter.java
-│       │                   ├── JsonBodyConverterConfig.java    # ⚠️ K-02 · Go「何时才读请求体」的判据字面量（唯一真源）。
-│       │                   ├── JsonBodyLimitFilter.java    # 🔴 DRIFT-002（已修）：JSON body 超过 8 MiB ⇒ 400。
-│       │                   ├── JsonContentTypeAdvice.java    # 🔴🔴 **T-6**：让 JSON 响应的 {@code Content-Type} 与 Go 一致地带上 {@code charset=utf-8}。
-│       │                   ├── LimitExceededException.java    # 🔴 「按 Go 的语义，这个 query 该被拒」 —— 由共享层的闸门抛出，
-│       │                   ├── LimitMode.java    # 🔴 本域的 form 值上限闸门用哪种拒绝形状 —— 对齐 Go 侧「该 api 有没有注册
-│       │                   ├── MapStringValueDeserializer.java
-│       │                   ├── PathNormalizingFilter.java    # 🔴 共享层的路径规范化 Filter —— 对齐 Go 的 {@code path.Clean}。
-│       │                   ├── PlainTextErrors.java    # Go {@code http.Error} 的形状 —— 本模块「解析层失败」与「上传失败」两条路径的
-│       │                   ├── RawStringListDeserializer.java
-│       │                   ├── RouterErrorResponses.java    # go-zero router 两种框架级错误响应的字节级复刻：404 与 405。
-│       │                   ├── StringFields.java    # JSON 入参里 String 字段的输入解释规则 —— 对应 go-zero
-│       │                   ├── StringInt64.java    # Go {@code json:",string"} int64 请求字段的逐条等价解析器。
-│       │                   ├── TraceparentFilter.java    # 🔴 T-8：把 W3C {@code traceparent} 写进响应头 —— 对齐 go-zero 的
-│       │                   └── ValueLimitInterceptor.java    # 🔴 Go 风格的 form 值上限闸门 —— 对齐 go-zero {@code rest/httpx} 的
-│       └── resources/
-│           └── META-INF/
-│               └── spring/
-│                   └── org.springframework.boot.autoconfigure.AutoConfiguration.imports
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── com/
+│   │   │       └── rag/
+│   │   │           └── common/
+│   │   │               ├── autoconfigure/
+│   │   │               │   ├── GrpcExceptionMapperAutoConfiguration.java
+│   │   │               │   ├── JsonBodyConverterAutoConfiguration.java
+│   │   │               │   ├── MybatisPlusOrderingBridgeAutoConfiguration.java
+│   │   │               │   ├── ObservabilityAutoConfiguration.java
+│   │   │               │   ├── ProtectionAutoConfiguration.java
+│   │   │               │   ├── SnowflakeAutoConfiguration.java
+│   │   │               │   └── WebAutoConfiguration.java
+│   │   │               ├── communityfact/
+│   │   │               │   ├── AuthorityFact.java    # ⚠️ L1 wire 契约（D13「L1 以 Go 为准」） ——
+│   │   │               │   ├── AuthorityHandler.java    # 对应 Go 版 service/common/communityfact/authority_http.go（80 行）
+│   │   │               │   ├── CanonicalHash.java    # Go 出处：{@code service/common/communityfact/wire.go} 的
+│   │   │               │   ├── DeliveryStatus.java    # ⚠️ L1 契约（取值 0/1/2/3 · D13「L1 以 Go 为准」） ——
+│   │   │               │   ├── Dispatcher.java    # 对应 Go 版 {@code service/common/communityfact/process.go} 的
+│   │   │               │   ├── Event.java    # ⚠️ L1 wire 契约（D13「L1 以 Go 为准」） ——
+│   │   │               │   ├── EventDispatcher.java    # 对应 Go 版 {@code service/common/communityfact/process.go}（69 行）的
+│   │   │               │   ├── EventSender.java    # Go 出处：{@code service/common/communityfact/wire.go} 的
+│   │   │               │   ├── ProcessLogger.java    # 对应 Go 版 service/common/communityfact/logging.go 的进程日志 + OTEL 本地追踪启动。
+│   │   │               │   ├── ProcessMetadata.java    # Go 出处：{@code service/common/communityfact/logging.go} 的
+│   │   │               │   ├── SubjectRef.java    # ⚠️ L1 wire 契约（D13「L1 以 Go 为准」） ——
+│   │   │               │   ├── TechnicalReceipt.java    # ⚠️ L1 wire 契约（D13「L1 以 Go 为准」） ——
+│   │   │               │   └── Wire.java    # 共享层 wire 协议的门面 —— 对应 Go 侧
+│   │   │               ├── contract/
+│   │   │               │   └── ApiResponse.java    # 共享层的响应信封 —— 对应 Go 侧 {@code service/common/response/response.go}。
+│   │   │               ├── exception/
+│   │   │               │   ├── AuthenticationException.java    # 鉴权层失败 —— 与 {@link BusinessException} 的区别只有一条：HTTP 状态码是 401。
+│   │   │               │   └── BusinessException.java    # Go 出处：{@code service/common/response/response.go:3-7}（信封三字段 code/msg/data）
+│   │   │               ├── logger/
+│   │   │               │   ├── FatalError.java    # H3 修复：致命错误的专用异常类型。
+│   │   │               │   ├── GoStyleLogger.java    # Go 出处：{@code service/common/logger/logger.go}（整个包，356 行）
+│   │   │               │   ├── LogOption.java    # Go 出处：{@code service/common/logger/logger.go:32}（{@code type LogOption func(*LogOptions)}）
+│   │   │               │   └── LogOptions.java    # Go 出处：{@code service/common/logger/logger.go:26-29}
+│   │   │               ├── observability/
+│   │   │               │   ├── ClientDisconnectProbe.java    # 客户端断连的主动探测 —— 往 socket 写 1xx 探针，把断连提前暴露出来。
+│   │   │               │   ├── DeadlineState.java    # 请求级 deadline 的服务端载体（ThreadLocal 绝对到期时刻，{@link System#nanoTime()} 域）。
+│   │   │               │   ├── GoStyleRequestDeadline.java    # 请求级 deadline 的载体：把 {@link HttpMiddleware} 的 HTTP 超时预算，
+│   │   │               │   ├── ObservabilityCustomizer.java
+│   │   │               │   └── ObservabilityProperties.java
+│   │   │               ├── persistence/
+│   │   │               │   ├── DeadlineQueryTimeoutInjector.java    # B-1 缓解（第一半）：把当前 rpc 的 deadline 落到每条 SQL 上，让 SQL 的取消时刻 == deadline 时刻。
+│   │   │               │   ├── JsonTextTypeHandler.java    # PostgreSQL {@code text} 列 ↔ {@code Map} 的 TypeHandler。
+│   │   │               │   ├── JsonbTypeHandler.java    # jsonb 列 ↔ String 的 TypeHandler —— 对应 Go 端 PG 的 {@code jsonb} 列。
+│   │   │               │   └── SqlTimeoutStatusTranslator.java    # B-1 缓解（第二半）：把「SQL 被 deadline 取消」翻译成 gRPC 的 {@code DEADLINE_EXCEEDED}。
+│   │   │               ├── protection/
+│   │   │               │   ├── CpuThresholdHealthIndicator.java
+│   │   │               │   ├── MaxBytesFilter.java
+│   │   │               │   ├── ProtectionProperties.java    # Go「请求保护层」四道中间件的配置聚合点。
+│   │   │               │   ├── RouteResolution.java    # 路由模板解析的三态结果。
+│   │   │               │   └── RouteTemplateSource.java    # 「注册期路由模板」解析能力的窄接口。
+│   │   │               ├── redis/
+│   │   │               │   ├── ClientAutoConfiguration.java    # L4 idiomatization：把 Lettuce 客户端的「断连行为」收进共享层，
+│   │   │               │   ├── Deadline.java    # 共享层的「Redis 期限感知」入口（G1 反馈单 2/3 · 2026-10-30 · G4 lane）。
+│   │   │               │   ├── DeadlineAutoConfiguration.java    # 把「Redis 请求期限感知」接到各域的 {@code RedisTemplate} / {@code StringRedisTemplate} 上。
+│   │   │               │   ├── DeadlineConnection.java    # 把「请求预算耗尽 ⇒ 不再下发 Redis 命令」这一层包在 {@link RedisConnection} 上。
+│   │   │               │   └── DeadlineConnectionFactory.java    # 把「请求预算」接到 {@link RedisConnectionFactory} 上（域侧零改动的那一环）。
+│   │   │               ├── security/
+│   │   │               │   ├── BearerTokenExtractor.java
+│   │   │               │   ├── JwtUtil.java
+│   │   │               │   └── PasswordUtil.java
+│   │   │               ├── snowflake/
+│   │   │               │   └── Snowflake.java    # 对应 Go 版 service/common/snowflake/snowflake.go 的整个包（102 行）。
+│   │   │               └── web/
+│   │   │                   ├── BadRequestException.java    # 承载「Go {@code httpx.ErrorCtx} 会写出的那种错误」—— 即裸状态码 + text/plain，
+│   │   │                   ├── Coercion.java    # E-3 根因 **R1** 的修复规则：关掉 Jackson 的标量强转与浮点截断，对齐 go-zero 的解析层。
+│   │   │                   ├── Float64Deserializer.java    # {@code float64} 字段的「Go 风格」反序列化 —— 修 DRIFT-LIKEAPI-016。
+│   │   │                   ├── GetFormValuesFilter.java    # 🔴 Go 风格的 query 解析与 form 值上限判据 —— 对应 go-zero {@code rest/httpx} 的
+│   │   │                   ├── GrpcStatusMapper.java    # Go {@code rest/internal/errcode/grpc.go} 的两条函数的 Java 等价物 ——
+│   │   │                   ├── HttpErrorException.java    # Go {@code http.Error(w, err.Error(), )} 的载体。
+│   │   │                   ├── JsonBodyConverter.java    # 复刻 go-zero {@code rest/httpx/requests.go:117-124,153-155} 的
+│   │   │                   ├── JsonBodyConverterConfig.java    # ⚠️ K-02 · Go「何时才读请求体」的判据字面量（唯一真源）。
+│   │   │                   ├── JsonBodyLimitFilter.java    # 🔴 DRIFT-002（已修）：JSON body 超过 8 MiB ⇒ 400。
+│   │   │                   ├── JsonContentTypeAdvice.java    # 🔴🔴 **T-6**：让 JSON 响应的 {@code Content-Type} 与 Go 一致地带上 {@code charset=utf-8}。
+│   │   │                   ├── LimitExceededException.java    # 🔴 「按 Go 的语义，这个 query 该被拒」 —— 由共享层的闸门抛出，
+│   │   │                   ├── LimitMode.java    # 🔴 本域的 form 值上限闸门用哪种拒绝形状 —— 对齐 Go 侧「该 api 有没有注册
+│   │   │                   ├── MapStringValueDeserializer.java    # {@code map[string]string} 的元素级解析器 —— 对齐 go-zero {@code generateMap} 的判据。
+│   │   │                   ├── PathNormalizingFilter.java    # 🔴 共享层的路径规范化 Filter —— 对齐 Go 的 {@code path.Clean}。
+│   │   │                   ├── PlainTextErrors.java    # Go {@code http.Error} 的形状 —— 本模块「解析层失败」与「上传失败」两条路径的
+│   │   │                   ├── RawStringListDeserializer.java    # {@code []string} 字段的「Go 风格」反序列化 —— 修 DRIFT-LIKEAPI-012。
+│   │   │                   ├── RouterErrorResponses.java    # go-zero router 两种框架级错误响应的字节级复刻：404 与 405。
+│   │   │                   ├── StringFields.java    # JSON 入参里 String 字段的输入解释规则 —— 对应 go-zero
+│   │   │                   ├── StringInt64.java    # Go {@code json:",string"} int64 请求字段的逐条等价解析器。
+│   │   │                   ├── TraceparentFilter.java    # 🔴 T-8：把 W3C {@code traceparent} 写进响应头 —— 对齐 go-zero 的
+│   │   │                   └── ValueLimitInterceptor.java    # 🔴 Go 风格的 form 值上限闸门 —— 对齐 go-zero {@code rest/httpx} 的
+│   │   └── resources/
+│   │       └── META-INF/
+│   │           └── spring/
+│   │               └── org.springframework.boot.autoconfigure.AutoConfiguration.imports
+│   └── test/
+│       └── java/
+│           └── com/
+│               └── rag/
+│                   └── common/
+│                       ├── contract/
+│                       │   └── ApiResponseTest.java    # §3.3 真触发测试 —— {@link ApiResponse} 这个全局 L1 信封的序列化形状。
+│                       ├── logger/
+│                       │   └── GoStyleLoggerTest.java    # §3.3 真触发测试 —— 断言 **A8**：{@link GoStyleLogger} 是一个真正的
+│                       ├── snowflake/
+│                       │   └── SnowflakeTest.java    # §3.3 真触发测试 —— {@link Snowflake} 的位布局与单调性。
+│                       └── web/
+│                           ├── CoercionTest.java    # §3.3「机制可证」的真触发测试 —— {@link Coercion} 的两条规则真的作用在 Jackson 上。
+│                           ├── Float64DeserializerTest.java    # §3.3 真触发测试 —— {@link Float64Deserializer} 的逐条 Go 判据。
+│                           ├── JsonBodyConverterTest.java    # §3.3 真触发测试 —— {@link JsonBodyConverter} 的「Go 何时才读 body」判据 + 8 MiB 上限。
+│                           ├── MapStringValueDeserializerTest.java    # §3.3 真触发测试 —— {@link MapStringValueDeserializer} 的 map 元素级判据。
+│                           └── RawStringListDeserializerTest.java    # §3.3 真触发测试 —— {@link RawStringListDeserializer} 的 go-zero {@code json.Number} 语义。
 └── pom.xml    # Maven 模块描述
 ```
 

@@ -16,7 +16,12 @@ import jakarta.servlet.http.HttpServletRequest;
  * <p><b>⚠️ 判据的两条硬约束（行为契约，改一个字就是漂移）</b>：
  * <ol>
  *   <li><b>Content-Type 是<b>字面</b> {@code contains}，不是媒体类型解析</b>
- *       ⇒ {@code application/vnd.api+json} <b>也</b>命中（contains 是子串匹配）
+ *       ⇒ {@code application/vnd.api+json} <b>不</b>命中（虽然判据是子串匹配，
+ *         但该串里<b>没有</b> {@code "application/json"} 这个子串 —— 子串匹配 ≠ 前缀匹配）
+ *         ⚠️ **此处 2026-11-02 订正**：批 1 首版把这条写成「<b>也</b>命中」⇒ 是错的
+ *         ⇒ 已由 {@code JsonBodyConverterTest#vendorJsonDoesNotMatch()} 钉住
+ *         （实测 {@code "application/vnd.api+json".contains("application/json") == false}），
+ *         且与 RAG 侧类注释的表述一致（RAG 写的是「<b>不</b>包含该子串」）
  *       ⇒ 而 {@code Application/JSON}（大写）<b>不</b>命中（大小写敏感）
  *       ⇒ ⚠️ <b>不可</b>改用 {@code MediaType.parseMediaType(...)}：那会把头值小写化
  *       ⇒ ⇒ 判定变成大小写<b>不</b>敏感 ⇒ 与 Go <b>相反</b>；</li>

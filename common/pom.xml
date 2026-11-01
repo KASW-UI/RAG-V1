@@ -241,7 +241,19 @@
         <!--
             抄 RAG `service/common/pom.xml`：OTel 的**测试期**支撑（`InMemorySpanExporter` 等）
             + Spring 的测试上下文。
+
+            ⚠️ **2026-11-02 批 2 追加 `spring-boot-starter-test`**：
+            RAG 侧 `service/common` 的测试是**自己列** JUnit / AssertJ / Mockito 的依赖；
+            本仓此前 `common/src/test/` 为空 ⇒ 没有任何测试依赖。
+            ⇒ 批 2 落 §3.3「真触发测试」时**一次性**引 Boot 的标准测试栈
+            （JUnit 5 + AssertJ + Mockito + spring-test + json-path）
+            ⇒ 后续各域直接复用同一套，不重复列依赖。
+            ⚠️ **test scope ⇒ 不传递给下游**（10 个域模块共享本 starter ⇒ 零污染）。
         -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId><artifactId>opentelemetry-sdk-testing</artifactId>
             <scope>test</scope>
@@ -299,6 +311,52 @@
                             <version>${lombok.version}</version>
                         </path>
                     </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+            <!--
+                ══════════════════════════════════════════════════════════════════════
+                surefire 压制 —— **随测试落地随迁**（2026-11-02 批 2）
+                ══════════════════════════════════════════════════════════════════════
+                ⚠️ **此前刻意不搬**（D14 落地状态之三）：RAG 侧这 16 处是**运行时压制**，
+                为**已有测试**服务；本仓测试当时还是空壳 ⇒ 搬过来是死配置。
+                ⇒ 现在 `common/src/test/` 落了第一批测试 ⇒ **按原判据随迁**。
+
+                ① `TESTCONTAINERS_RYUK_DISABLED=true`
+                   —— Testcontainers 2.x 的 ResourceReaper 读的是**环境变量**，
+                   `testcontainers.properties` 与 `-D` 无效 ⇒ 只有 surefire 注入 env 才有效。
+
+                ② 🔴 `spring.datasource.url` + `spring.datasource.hikari.initialization-fail-timeout=-1`
+                   —— ⚠️ **本仓的触发条件与 RAG 侧同源但更「硬」**：
+                   RAG 侧 `service/common` 的 pgjdbc 是 **test scope**；
+                   而本仓 `org.postgresql:postgresql` 是 **compile scope**
+                   （`JsonbTypeHandler` 编译期就要 `PGobject` ⇒ 不能是 runtime）
+                   ⇒ ⇒ **它必然在 test classpath 上**
+                   ⇒ ⇒ `DataSourceAutoConfiguration` 会被**激活**
+                   ⇒ ⇒ 而将来用 `@EnableAutoConfiguration` / `@SpringBootTest` 的守门上下文
+                   （真 Tomcat 守门 / 观测装配守门 等）若不配数据源 ⇒ 启动即炸：
+                   「Failed to configure a DataSource: 'url' attribute is not specified」。
+                   ⇒ ⇒ 两个系统属性把这条压掉（**只作用于本模块的测试**，
+                   对 10 个下游域模块零影响 —— test scope 不传递）：
+                     · `spring.datasource.url` = 一个**必然连不上**的地址
+                       （只为让自动配置有 url 可读，不代表真有人会连它）；
+                     · `hikari.initialization-fail-timeout=-1`
+                       —— Hikari 默认 1ms（fail fast）⇒ 启动即校验连接 ⇒ 连不上直接打挂；
+                       -1 = **启动时不去校验连接** ⇒ 不碰数据库的测试上下文可以起来。
+                   ⚠️ 需要真 PG 的守门用 `@DynamicPropertySource` 指向 testcontainers 起的真容器
+                   ⇒ `@DynamicPropertySource` 优先级**高于**系统属性 ⇒ 不受这两条影响。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <environmentVariables>
+                        <TESTCONTAINERS_RYUK_DISABLED>true</TESTCONTAINERS_RYUK_DISABLED>
+                    </environmentVariables>
+                    <systemPropertyVariables>
+                        <spring.datasource.url>jdbc:postgresql://127.0.0.1:1/none</spring.datasource.url>
+                        <spring.datasource.hikari.initialization-fail-timeout>-1</spring.datasource.hikari.initialization-fail-timeout>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
         </plugins>

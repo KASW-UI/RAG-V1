@@ -236,14 +236,14 @@
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
-|—（Go 侧无对应物：go-zero `httpx.Parse` 内置）|`common/http/GoStyleJsonBodyConverter.java`|`common/src/main/java/com/rag/common/web/JsonBodyConverter.java`|1:1|⚠️ **K-02**：判据是 `ContentLength > 0` 且 Content-Type **字面**含 `application/json` ⇒ `application/vnd.api+json` 在 Go 侧**不**匹配|
+|—（Go 侧无对应物：go-zero `httpx.Parse` 内置）|`common/http/GoStyleJsonBodyConverter.java`|`common/src/main/java/com/rag/common/web/JsonBodyConverter.java`|1:1|⚠️ **K-02**：判据是 `ContentLength > 0` 且 Content-Type **字面**含 `application/json` ⇒ `application/vnd.api+json` 在 Go 侧**不**匹配<br>✅ **已落地（2026-11-02 · 批 2）**：Jackson 3 → 2 + Spring 7 → 6.2 的 **5 处回改**（基类 / `read` 签名 / mapper 类型 / `canRead`·`canWrite` 覆写点 / 包名）⇒ 决策锁 **L-17**|
 |—（Go 侧无对应物）|`common/http/GoStyleJsonBodyConverterConfig.java`|`common/src/main/java/com/rag/common/web/JsonBodyConverterConfig.java`|1:1|注册点；⚠️ C 侧最终应并入 `JsonBodyConverterAutoConfiguration`（见 §7「职责对不上 #5」）|
 |—（Go 侧无对应物：go-zero `httpx.Error` 内置）|`common/http/GoStyleRouterErrorResponses.java`|`common/src/main/java/com/rag/common/web/RouterErrorResponses.java`|1:1|400 + **text/plain** 的错误形状（D-01 只降级**文案**，形状不受影响）|
-| —（Go 侧无对应物：go-zero `core/mapping` 内置） | `users-common/http/GoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/Coercion.java` | 1:1 | ⚠️ **K-01**：Jackson 原生 `CoercionConfig` ⇒ **不是自研**；数字/布尔不进 String 字段 |
+| —（Go 侧无对应物：go-zero `core/mapping` 内置） | `users-common/http/GoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/Coercion.java` | 1:1 | ⚠️ **K-01**：Jackson 原生 `CoercionConfig` ⇒ **不是自研**；数字/布尔不进 String 字段<br>✅ **已落地（2026-11-02 · 批 2）**：**回改量 = 0** —— Jackson 2.19.4 的 `withCoercionConfig(LogicalType, …)` / `MutableCoercionConfig.setCoercion(…)` / `CoercionInputShape` / `LogicalType` / `CoercionAction` **与 Jackson 3 逐项同构** ⇒ 只换包名；⚠️ **订正**：批 1 评估时写「Jackson 2 无此 API ⇒ 真重写」是**错的**（javap 实测） |
 | —（Go 侧无对应物） | `users-common/http/GoStyleStringInt64.java` + `message-api/dto/GoStyleStringInt64.java`（**2 份**） | `common/src/main/java/com/rag/common/web/StringInt64.java` | N:1 | 副本合一 |
-| —（Go 侧无对应物） | `like-api/dto/GoStyleFloat64Deserializer.java` | `common/src/main/java/com/rag/common/web/Float64Deserializer.java` | 1:1 | 归位 |
-| —（Go 侧无对应物） | `like-api/dto/GoStyleRawStringListDeserializer.java` | `common/src/main/java/com/rag/common/web/RawStringListDeserializer.java` | 1:1 | 归位 |
-| —（Go 侧无对应物） | `message-api/config/GoStyleMapStringValueDeserializer.java` | `common/src/main/java/com/rag/common/web/MapStringValueDeserializer.java` | 1:1 | 归位 |
+| —（Go 侧无对应物） | `like-api/dto/GoStyleFloat64Deserializer.java` | `common/src/main/java/com/rag/common/web/Float64Deserializer.java` | 1:1 | 归位<br>✅ **已落地（2026-11-02 · 批 2）**：包名回改 + **补 `throws IOException`**（Jackson 2 的 `JsonDeserializer#deserialize` 声明 checked 异常，Jackson 3 是 unchecked） |
+| —（Go 侧无对应物） | `like-api/dto/GoStyleRawStringListDeserializer.java` | `common/src/main/java/com/rag/common/web/RawStringListDeserializer.java` | 1:1 | 归位<br>✅ **已落地（2026-11-02 · 批 2）**：包名回改 + `throws IOException`；⚠️ **实测发现**：RAG 类注释写「整个字段 null ⇒ 空列表」，**实际** Jackson 走 `getNullValue` ⇒ 返回 **null** ⇒ **RAG 侧同样如此** ⇒ 照抄**行为**、订正注释 |
+| —（Go 侧无对应物） | `message-api/config/GoStyleMapStringValueDeserializer.java` | `common/src/main/java/com/rag/common/web/MapStringValueDeserializer.java` | 1:1 | 归位<br>✅ **已落地（2026-11-02 · 批 2）**：基类 Jackson 3 `ValueDeserializer` → Jackson 2 **`JsonDeserializer`**（Jackson 2 **没有** `ValueDeserializer` 这个类）＋ `getNullValue` 补 `throws JsonMappingException` |
 | —（Go 侧无对应物） | `article-api/dto/GoStyleStringFields.java` | `common/src/main/java/com/rag/common/web/StringFields.java` | 1:1 | 归位 |
 | —（Go 侧无对应物） | `article-api/http/GoStyleBadRequestException.java` | `common/src/main/java/com/rag/common/web/BadRequestException.java` | 1:1 | 归位 |
 | —（Go 侧无对应物） | `article-api/http/GoStyleHttpErrorException.java` | `common/src/main/java/com/rag/common/web/HttpErrorException.java` | 1:1 | 归位 |
@@ -338,6 +338,29 @@ RAG 形态实测 10 种 `@Import` 写法、9 份 MP bridge 副本 —— 这就�
 
 **为什么拆**：批 1 的边界是「纯抄 + 1:1/N:1 落点」，而这两处若按原样留在批 3 的 auto-config / RAG 的嵌套类里，
 **批 1 根本编译不过** ⇒ 「先抄后改」的原则在此让位于「可编译」⇒ 拆的都是**载体位置**，不改任何行为。
+
+**换 Jackson 3 → 2 ＋ Spring 7 → 6.2（5 类 / 11 处 API · 2026-11-02 批 2 落地 · L-17）**：
+1. `web/Coercion`：**回改量 = 0** —— Jackson 2.19.4 的 `withCoercionConfig(LogicalType, Consumer<MutableCoercionConfig>)`
+   ＋ `MutableCoercionConfig.setCoercion(shape, action)` ＋ `CoercionInputShape` ＋ `LogicalType` ＋ `CoercionAction`
+   **与 Jackson 3 逐项同构** ⇒ 只换包名；
+2. `web/Float64Deserializer` / `web/RawStringListDeserializer` / `web/MapStringValueDeserializer`：
+   包名回改 ＋ **补 `throws IOException`**（Jackson 2 的 `JsonDeserializer#deserialize` 声明 checked 异常）
+   ＋ `MapStringValueDeserializer` 的**基类换掉**（Jackson 2 **没有** `ValueDeserializer` 这个类 ⇒ 用 `JsonDeserializer`）；
+3. `web/JsonBodyConverter`：**5 处回改** —— 基类（`JacksonJsonHttpMessageConverter` → `AbstractJackson2HttpMessageConverter`）
+   ＋ `read` 签名（`read(ResolvableType, HttpInputMessage, Map)` → `read(Type, Class<?>, HttpInputMessage)`）
+   ＋ mapper 类型（`JsonMapper` → **`ObjectMapper`**，理由见类 javadoc）
+   ＋ **`canRead` / `canWrite` 覆写点**（Spring 7 的 `ResolvableType` 版 → Spring 6.2 的 `Type` 版）
+   ＋ 包名。
+
+**为什么换**：D14 全项目 = Jackson 2 + Boot 3.5 ⇒ RAG 侧（Boot 4.0.8）的 Jackson 3 / Spring 7 写法**不可直用**。
+
+**⚠️ 其中 1 处是「覆写点漂移」—— 照抄 RAG 的方法签名会静默失效**：
+Spring 6.2 的 `AbstractJackson2HttpMessageConverter` **不实现 `SmartHttpMessageConverter`**（只实现 `GenericHttpMessageConverter`）
+⇒ Spring 的转换器选择分支顺序（`javap -c` 实测）是 **Generic → Smart → PLAIN**
+⇒ ⇒ RAG 覆写的 `canWrite(ResolvableType, Class, MediaType)` / `canRead(ResolvableType, MediaType)` 在 Spring 6.2 下**根本不存在**
+⇒ ⇒ 必须改成 **Type 版三参**（`canWrite(Type, Class<?>, MediaType)` / `canRead(Type, Class<?>, MediaType)`）
+⇒ ⇒ **语义等价**（Spring 6.2 的分支顺序保证 Generic 版就是被调用的那一版）。
+⚠️ 若照抄 RAG 的签名 ⇒ **编译期就红**（`方法不会覆盖或实现超类型的方法`）⇒ 这条**不会静默**。
 
 ---
 
@@ -526,6 +549,7 @@ Micrometer 的观察模型与它**不是一对一映射**（D-03）⇒ 用生态
 | L-14 | **观测 / 保护 / 雪花 / Jackson / gRPC mapper 的 auto-config 化** | **7**（7 个 `@AutoConfiguration`） | 消费方零 `@Import`；`@ConditionalOnMissingBean` 让消费方可覆盖 | **D3** |
 | L-15 | **`ProtectionProperties` 独立成类**（不再并入 auto-config） | **2**（B 侧 1 个类 → C 侧 1 个载体 + 1 个装配点） | 跨批硬依赖（`redis/DeadlineAutoConfiguration` 要它）＋ Spring 生态惯例（`@ConfigurationProperties` 类独立）＋ 纯配置载体不属 D4 生态吸收对象 | **2026-11-02 批 1 落地** |
 | L-16 | **`DeadlineState` 从嵌套类提升为顶层类** | **1**（RAG `RpcInterceptor#DeadlineState` → 独立文件） | 188 行零外部依赖（纯 `ThreadLocal`）⇒ 可独立编译；`DeadlineQueryTimeoutInjector` 硬依赖它 ⇒ 不拆则批 1 不可编译 | **2026-11-02 批 1 落地** |
+| L-17 | **Jackson 3 → 2 ＋ Spring 7 → 6.2 的机制层回改** | **5 类 / 11 处 API** | D14 全项目 = Jackson 2 + Boot 3.5 ⇒ RAG 侧的 Jackson 3 / Spring 7 写法**不可直用**；本条锁定「哪些 API 必须换、哪些**逐项同构不用换**、哪些**覆写点会漂**」 | **2026-11-02 批 2 落地** |
 
 > ⚠️ **三条执行前提**：
 > ① **L-2 / L-4 / L-6 未完成对拍前不得判为完成**（D-02 明写：「未做对拍前，不得把 P2 判为 ③ 完成」）。
