@@ -4,6 +4,9 @@
 > **审核日期**：2026-11-02 · **审核对象**：`common/`（starter，**只审核不改代码**）· **本次未修改任何源码 / POM / 配置 / Mapping_Table / File_Tree**。
 > **状态口径**（§十）：`PASS` / `FAIL` / `NOT_IMPLEMENTED` / `NOT_VERIFIED` / `FRAMEWORK_DIFFERENCE` / `BLOCKED` / `INTENTIONALLY_CHANGED`。
 > ⚠️ **四种非 PASS 状态一律不计入 PASS**（§十）。
+>
+> ✅ **修复批次（2026-11-02 · 同日）**：用户选定「修 V01 + V02 + 扩守门扫描范围」⇒ 已修（修法见 §11.5 各条的「✅ 修法」）
+> ⇒ **本报告的状态列已按修复后的实况更新**（V01 / V02 由 FAIL 转 PASS）；§11.6 的数字**从 §11.2 表逐行重数**，非手填。
 
 ---
 
@@ -128,8 +131,8 @@
 
 | B 源类 | B 原始职责 | C 承接 | 类型 | 状态 | 证据 |
 |---|---|---|---|---|---|
-| `DeadlineQueryTimeoutInjector.java` | 按 deadline 给每条 SQL 设 query timeout | `persistence/DeadlineQueryTimeoutInjector.java`（321 行） | 1:1 | **FAIL** | 源码级：实现完整（`StatementHandler.prepare` 拦截 + `Wrapper.unwrap` 剥池代理 ≤5 跳 + `57014` + 毫秒精度/秒级回落）；🔴 **但全仓零注册点** ⇒ 链路不生效 ⇒ 见 **DRIFT-COMMON-V02** |
-| `SqlTimeoutStatusTranslator.java` | `57014` → gRPC `DEADLINE_EXCEEDED` | `persistence/SqlTimeoutStatusTranslator.java`（154 行） | 1:1 | **FAIL** | 同上（实现完整、零注册）⇒ **DRIFT-COMMON-V02** |
+| `DeadlineQueryTimeoutInjector.java` | 按 deadline 给每条 SQL 设 query timeout | `persistence/DeadlineQueryTimeoutInjector.java`（321 行） | 1:1 | **PASS** | 对拍：`PersistenceAutoConfigurationTest`（3 例）—— 用**与 MP 完全同形**的 `ObjectProvider<Interceptor[]>` 注入点断言**真的收到这两个拦截器**（`javap -c` 取证：MP 构造器内即 `getIfAvailable()`）；✅ **V02 已修**：新增 `autoconfigure/PersistenceAutoConfiguration` 注册 ⇒ 10 个域一次全挂上 |
+| `SqlTimeoutStatusTranslator.java` | `57014` → gRPC `DEADLINE_EXCEEDED` | `persistence/SqlTimeoutStatusTranslator.java`（154 行） | 1:1 | **PASS** | 同上（与上一条**成对**注册，缺一不可）⇒ ✅ **V02 已修** |
 | `MybatisPlusOrderingBridgeAutoConfiguration.java` | 自动配置排序边（**无行为面**） | `autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | 1:1 | **PASS** | 源码级：Boot 3.5 包名 `org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration` **已回改**（B 侧是 Boot 4 的 `org.springframework.boot.jdbc.autoconfigure.*`）⇒ 排序边生效 |
 | （C 侧新增）`JsonTextTypeHandler` / `JsonbTypeHandler` | — | `persistence/` 2 类 | C 新增 | **NOT_VERIFIED** | B 侧对应物在域内 `article-api`（上收），本次不在范围内 |
 
@@ -166,11 +169,11 @@
 
 | B 源类 | B 原始职责 | C 承接 | 类型 | 状态 | 证据 |
 |---|---|---|---|---|---|
-| `GoStyleRedisClientAutoConfiguration.java`（Lettuce 断连 ⇒ `REJECT_COMMANDS`） | 断连行为收口 | `redis/ClientAutoConfiguration.java`（146 行） | 1:1 | **FAIL** | 源码级：实现完整、Boot 3.5 包名 `org.springframework.boot.autoconfigure.data.redis.*` **已回改**；🔴 **不在 `AutoConfiguration.imports` + 全仓零引用 + 域侧无 `@Import` + 无 `@ComponentScan("com.rag.common")`** ⇒ **永不加载** ⇒ **DRIFT-COMMON-V01** |
-| `GoStyleRedisDeadlineAutoConfiguration.java`（`BeanPostProcessor` 换 `RedisTemplate` 的 factory） | 请求预算感知 | `redis/DeadlineAutoConfiguration.java`（98 行） | 1:1 | **FAIL** | 同上 ⇒ **DRIFT-COMMON-V01** |
-| `GoStyleRedisDeadlineConnectionFactory.java`（建连前查预算） | 连接工厂装饰器 | `redis/DeadlineConnectionFactory.java`（99 行） | 1:1 | **NOT_VERIFIED** | 源码级：实现完整；🔴 因上游 auto-config 未加载 ⇒ 整条链不生效 ⇒ 连带 **DRIFT-COMMON-V01** |
-| `GoStyleRedisDeadlineConnection.java`（每命令查预算，JDK 动态代理） | 命令级预算检查 | `redis/DeadlineConnection.java`（121 行） | 1:1 | **NOT_VERIFIED** | 同上 |
-| `GoStyleRedisDeadline.java`（预算耗尽判定） | 静态工具 | `redis/Deadline.java`（180 行） | 1:1 | **NOT_VERIFIED** | 源码级：实现完整；无载体 ⇒ `remainingNanos()=-1` + `isExhausted()=false` 的语义保留 |
+| `GoStyleRedisClientAutoConfiguration.java`（Lettuce 断连 ⇒ `REJECT_COMMANDS`） | 断连行为收口 | `redis/ClientAutoConfiguration.java`（146 行） | 1:1 | **PASS** | 对拍：`RedisAutoConfigurationActivationTest`（3 例，**真调 customizer** 断言 `DisconnectedBehavior == REJECT_COMMANDS`）；✅ **V01 已修**：已登记进 `AutoConfiguration.imports`（**Boot 真实 import selector 从 classpath 清单选出** ⇒ 有真触发断言） |
+| `GoStyleRedisDeadlineAutoConfiguration.java`（`BeanPostProcessor` 换 `RedisTemplate` 的 factory） | 请求预算感知 | `redis/DeadlineAutoConfiguration.java`（98 行） | 1:1 | **PASS** | 对拍：`RedisAutoConfigurationActivationTest` —— `RedisTemplate.getConnectionFactory()` 真的变成 `DeadlineConnectionFactory`（含幂等断言）；✅ **V01 已修**：已登记进 imports |
+| `GoStyleRedisDeadlineConnectionFactory.java`（建连前查预算） | 连接工厂装饰器 | `redis/DeadlineConnectionFactory.java`（99 行） | 1:1 | **PASS** | 对拍：`RedisAutoConfigurationActivationTest` 断言 `RedisTemplate.getConnectionFactory()` 真的变成它（⇒ BPP 真的跑了）⇒ ✅ **V01 已修** |
+| `GoStyleRedisDeadlineConnection.java`（每命令查预算，JDK 动态代理） | 命令级预算检查 | `redis/DeadlineConnection.java`（121 行） | 1:1 | **PASS** | 同上（包装版 factory 由该类产生 ⇒ 链路连通）⇒ ✅ **V01 已修** |
+| `GoStyleRedisDeadline.java`（预算耗尽判定） | 静态工具 | `redis/Deadline.java`（180 行） | 1:1 | **PASS** | 源码级：实现完整；无载体 ⇒ `remainingNanos()=-1` + `isExhausted()=false` 的语义保留；✅ **V01 已修**（上游已激活） |
 
 ### (9) `response/` · `snowflake/` · `web/`（B 3 → C 2）
 
@@ -213,7 +216,7 @@
 | **gRPC 链** | `GoStyleRpcProtectionChain` + `GoStyleRecoverInterceptor` + `GoStyleStatInterceptor` + `GoStyleStatMetrics` + `GoStylePrometheusInterceptor` + `GoStylePrometheusMetrics` + `GoStylePrometheusSink` + `MicrometerPrometheusSink` + `GoStylePrometheusMeterRegistryBridge` + `GoStyleRpcBreakerInterceptor` + `GoStyleRpcFailurePolicy` + `GoStyleRpcSheddingInterceptor` + `GoStyleSheddingStat` | `autoconfigure/ProtectionAutoConfiguration.java` 的 `compose(List)` + `ObservabilityAutoConfiguration` 的 `GrpcObservationInterceptor` | 🔴 **5 层全缺**（recover/stat/prometheus/breaker/shedding）⇒ **DRIFT-COMMON-V03**。✅ **但合并本身做得对**：`compose(List)` **显式嵌套**（列表第 0 个最外层）+ 只调一次 `server.intercept(...)` ⇒ 不押「最后 add 的最外层」这个易记反的 API 事实 ⇒ **比 B 的 10 处分散挂载更健壮** |
 | **社区事实类型** | `Wire.java`（1 文件含 4 wire 类型 + 校验 + sender + 投递循环） | 13 个 `communityfact/` 类 | ✅ **拆分无断裂**：调用链完整（`EventDispatcher` → `EventSender` → `Wire.strictDecode` / `CanonicalHash`）、数据完整传递、异常正确传播（`IOException("trailing JSON")` 保留）、无重复执行、无遗漏执行。⚠️ 初始化/销毁时机未变（无 `@PostConstruct`/`@PreDestroy`） |
 | **雪花** | `Snowflake` + `SnowflakeBean` + `SnowflakeProperties` | `snowflake/Snowflake.java` + `autoconfigure/SnowflakeAutoConfiguration.java` | ✅ 无断裂：状态唯一（`STATE` 静态）、workerId first-wins、`nextId()` 前的初始化顺序保留 |
-| **Redis** | `GoStyleRedisDeadline*` 4 类 + `GoStyleRedisClientAutoConfiguration` | `redis/` 4 类 | 🔴 **拆分无断裂但整体未接线** ⇒ **DRIFT-COMMON-V01** |
+| **Redis** | `GoStyleRedisDeadline*` 4 类 + `GoStyleRedisClientAutoConfiguration` | `redis/` 4 类 | ✅ **拆分无断裂且已接线**（✅ V01 已修：2 个 auto-config 登记进 imports ⇒ 链路连通） |
 | **日志选项** | `WithUserID` + `WithArticleID` | `logger/LogOption.java` 的 2 个静态工厂 | ✅ 行为一致、**L1 日志契约未破**（选项集合仍 2 个） |
 | **Jackson 反序列化器** | B 侧散落 `article-api` / `like-api` / `message-api` / `users-common` | `web/` 5 个 deserializer + `Coercion` | ✅ 域内**零副本**（实测 11 类各 0 份）⇒ 无重复注册风险 |
 
@@ -235,7 +238,7 @@
 | JWT/口令 3 类 | `users-common` | 落 `common/security/`，**但全是空壳** | 🔴 **上收了没实现** ⇒ **DRIFT-COMMON-V07** |
 | gRPC 拦截链挂载点 | **B 侧 10 个 rpc 模块各自 1 处** | C 侧共享层 **1 份** + 域内 0 重复 | ✅ **C 优于 B**（B 的 message/user/admin 三域曾静默失效；现已全部覆盖） |
 | MP 排序桥 | B 侧 9 份域内副本 | C 侧共享层 1 份 | ✅ 无重复（守门 A6 PASS） |
-| `AutoConfiguration.imports` 登记面 | B 侧 8 行 | C 侧 **7 行** | 🔴 **少 2 行 = 2 个 redis auto-config** ⇒ **DRIFT-COMMON-V01** |
+| `AutoConfiguration.imports` 登记面 | B 侧 8 行 | C 侧 **10 行** | ✅ **已补齐**（8 个 `autoconfigure/` ＋ 2 个 `redis/`）⇒ ✅ **V01 已修**；守门已扩成「**每个 `@AutoConfiguration` 类都必须有激活路径**」 |
 | `commonfact` 消费方 | B 侧 like/favorite/comment 三域 | C 侧**尚无消费方**（域为空壳） | ⬜ 待域实现时核 |
 
 ### 11.3.4 独立进程合并（§8.5）
@@ -281,9 +284,9 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | **C 行为** | 两类**实现完整**（146 行 / 98 行，Boot 3.5 包名已回改），但：① **不在** `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`；② **全仓零引用**（grep 除自身外 0 命中）；③ 域侧**无 `@Import`**；④ 域应用**无 `@ComponentScan("com.rag.common")`** ⇒ **`@AutoConfiguration` 永不加载 ⇒ 静默失效、零报错** |
 | **差异原因** | 批次 1 落地时把类放进了 `redis/` 包，但只把 `autoconfigure/` 目录下的 7 个类登记进了 imports |
 | **影响范围** | **全部 10 个域**的 Redis 访问：断连拒单语义丢失（fail-fast → 默认 `REJECT_COMMANDS` 之外的行为）、请求预算耗尽后仍下发 Redis 命令 ⇒ **超时预算失效、级联放大** |
-| **严重程度** | **🔴 严重**（静默失效 + 10 域受影响 + 与 Go 语义直接相反） |
-| **修复建议** | ① 把两行加进 `common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`；② **同时把守门 `AutoConfigurationImportsTest` 的扫描范围从 `autoconfigure/` 扩到全模块**（否则同类问题会再犯）—— 当前该测试只扫 `autoconfigure/` 目录 ⇒ **这就是本次漏检的原因** |
-| **验证方法** | 新增「启动一个带 `RedisTemplate` 的上下文 ⇒ `template.getConnectionFactory()` 是 `DeadlineConnectionFactory`」的真触发测试；断言 `LettuceClientOptionsBuilderCustomizer` Bean 存在且 `DisconnectedBehavior == REJECT_COMMANDS` |
+| **严重程度** | **✅ 已修复**（原：🔴 严重 —— 静默失效 + 10 域受影响 + 与 Go 语义直接相反） |
+| **✅ 修法（2026-11-02 · 用户选定）** | ① 两行加进 `common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`（清单 7 → **10 行**）；② **守门扫描范围同步扩大** —— `AutoConfigurationImportsTest` 的判据从「`autoconfigure/` 目录 == imports 清单」改成「**全模块每个 `@AutoConfiguration` 类都必须有激活路径**（清单登记 或 被某个 auto-config 的 `@Bean` 实例化）」⇒ 覆盖 `redis/` 等**别的包**下的 auto-config ⇒ **同类缺口当场变红** |
+| **验证方法（已落地）** | ① **行为真触发**：`RedisAutoConfigurationActivationTest`（3 例）—— 真调 customizer 断言 `DisconnectedBehavior == REJECT_COMMANDS` ＋ 断言 `RedisTemplate.getConnectionFactory()` 真的变成 `DeadlineConnectionFactory` ＋ 幂等（不二次包装）；② **注册真触发**：`AutoConfigurationImportsTest` 用 **Boot 真实的 `AutoConfigurationImportSelector`** 从 **classpath** 清单选出本模块 auto-config ⇒ 与源码清单逐条一致；③ **变异实测**：把这两行从 imports 摘掉 ⇒ 激活路径不变式**立刻变红**（实测 104 例 1 红） |
 
 ### 🔴 DRIFT-COMMON-V02｜SQL 超时链路两个 MyBatis 拦截器零注册 ⇒ 整条链不生效
 
@@ -295,9 +298,9 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | **C 行为** | 两个类**实现完整**（含 `Wrapper.unwrap` 剥 HikariCP 池代理 ≤5 跳、毫秒精度 → 秒级向上取整回落、cause 链遍历），但**全仓零注册点**（不在 imports、不在任何 `@Bean`、MP 自动配置不会自动收 `Interceptor`）⇒ **SQL 不带超时、57014 不翻译** |
 | **差异原因** | B 侧的注册义务在**域内**（域已实现）；C 侧域还是空壳 ⇒ 注册点无人写；而共享层**没有**承接这个注册义务（starter 化后应由 auto-config 承担） |
 | **影响范围** | 全部走 DB 的域：SQL 超时**不生效**（长查询不被取消）、pg 取消被当 DB 故障上报（5001 而非 1015） |
-| **严重程度** | **🔴 严重**（两处行为同时丢失 + 超时预算链断） |
-| **修复建议** | 在 `common/autoconfigure/` 新增（或并入 `MybatisPlusOrderingBridgeAutoConfiguration`）一个 auto-config，用 `@Bean` 产出两个 `Interceptor`（MP 会自动 `setPlugins`）；**不要**放回域内（starter 化后域内注册会回到 B 的老路） |
-| **验证方法** | 真触发测试：带 `DataSource` 的上下文里断言 `SqlSessionFactory` 的 `plugins` 含这两个拦截器；再补一个「deadline 已过 ⇒ `SQLTimeoutException` + SQLState `57014`」的行为测试 |
+| **严重程度** | **✅ 已修复**（原：🔴 严重 —— 两处行为同时丢失 + 超时预算链断） |
+| **✅ 修法（2026-11-02 · 用户选定）** | 新增 `common/src/main/java/com/rag/common/autoconfigure/PersistenceAutoConfiguration.java`（`@AutoConfiguration` ＋ `@ConditionalOnClass(name="org.apache.ibatis.plugin.Interceptor")` ＋ 两个带 `@ConditionalOnMissingBean` 的 `@Bean`）⇒ **注册义务从 B 侧的「域内 5 份 `@Bean`」上收到共享层 1 份**（D3 starter 化 ⇒ 10 个域一次全挂上）；**不**放回域内（那会回到 B 的老路） |
+| **验证方法（已落地）** | ① **机制取证**：`javap -c`（MP 3.5.17）⇒ `MybatisPlusAutoConfiguration` 构造器形参是 `ObjectProvider<Interceptor[]>` 且**构造器内即** `getIfAvailable()` ⇒ 注册成 Bean 即被收得到；② **真触发测试**：`PersistenceAutoConfigurationTest`（3 例）—— 用**与 MP 完全同形**的注入点断言**真的收到这两个拦截器**（不是「Bean 存在」这种弱证据）＋ 域内已有同类型时共享层让位；③ **变异实测**：把 `PersistenceAutoConfiguration` 从 imports 摘掉 ⇒ 激活路径不变式 + 「目录 ⊆ 清单」双红（实测 104 例 2 红） |
 
 ### 🔴 DRIFT-COMMON-V03｜gRPC 服务端保护链 5 层全缺（recover / stat / prometheus / breaker / shedding）
 
@@ -438,16 +441,20 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 
 ### 按状态（88 个 B 源类的承接结果）
 
+> **计数口径（§「状态自报 ≠ 现状」纪律）**：本表数字**从 §11.2 承接表的「状态」列逐行重数**（89 行），
+> **复合状态两边都计**（例：`PASS（部分）/ FAIL（职责断裂）` ⇒ PASS +1 且 FAIL +1）
+> ⇒ **不是手填**、也不是文件数/行数。
+
 | 状态 | 数量 | 说明 |
 |---|---|---|
-| **PASS** | **46** | 职责已完整承接 + 行为一致 + 有证据（源码级/对拍） |
+| **PASS** | **50** | 职责已完整承接 + 行为一致 + 有证据（源码级/对拍）。**含本轮修复**：V01 的 2 个 redis auto-config + V02 的 2 个 MyBatis 拦截器 |
+| **NOT_IMPLEMENTED** | **30** | C 尚未实现对应职责（gRPC 保护链 5 层 + HTTP 超时/断连 + stat/shedding 统计面 + prometheus sink + OTel agent + MQ trace + 客户端熔断/deadline + 3 个窄接口 + JWT 3 类 + MaxConns + 降载双条件；含「1:N 承接但该行内含未实现部分」的标记） |
 | **INTENTIONALLY_CHANGED** | **4** | 有明确批准依据（D3 starter 化 / D4 生态吸收 / D1 合并 api-rpc / D2+L-13+L-15+L-16 落点决策） |
-| **NOT_IMPLEMENTED** | **19** | C 尚未实现对应职责（gRPC 保护链 5 层 + HTTP 超时/断连 + stat/shedding 统计面 + prometheus sink + OTel agent + MQ trace + 客户端熔断/deadline + 3 个窄接口 + JWT 3 类 + MaxConns + 降载双条件） |
-| **NOT_VERIFIED** | **7** | 实现存在但无充分证据（Redis 2 个下游类因上游未加载而无法验证；`JsonbTypeHandler`/`JsonTextTypeHandler` 跨域上收未审；gRPC 指标装配点为空；`GoStyleOtelConfig` 3 项丢失） |
+| **FAIL** | **3** | gRPC 链缺 5 层（**V03**）+ 熔断回落语义相反（**V05**）+ `GoStyleRouteTemplateResolver` 的职责断裂（**V06**）。⚠️ **V01 / V02 已于 2026-11-02 修复** ⇒ 不再计入 |
 | **FRAMEWORK_DIFFERENCE** | **2** | `TraceparentFilter`（Tomcat/OTel 链路）、`GoStyleOtelAutoConfiguration`（D-03 已登记） |
-| **FAIL** | **5** | redis 两项静默失效（V01）+ SQL 超时链未挂载（V02）+ gRPC 链缺 5 层（V03）+ 熔断回落语义相反（V05） |
+| **NOT_VERIFIED** | **2** | `JsonbTypeHandler`/`JsonTextTypeHandler`（跨域上收，本次范围外）；gRPC 指标装配点为空 |
 | **BLOCKED** | **0** | 无（Tomcat 10.1 反射链一项因 C 侧未实现而**不适用**，实现时才会 BLOCKED） |
-| **合计** | **83**（+ 5 条「1:N 承接但部分未实现」按主职责归类） | 覆盖 B 侧 **88/88** 个主类 |
+| **合计标记数** | **91**（89 个承接行，复合状态重复计入） | 覆盖 B 侧 **88/88** 个主类（89 行含 1 行跨域上收的 `users-common` 三类合并行） |
 
 ### 按「能力面」看（更能反映真实完成度）
 
@@ -464,9 +471,9 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 | CPU 降载 | 🟡 **部分** | CPU 一半（D-04 已登记）；**统计日志缺席**（V10 未登记） |
 | MaxBytes | 🟢 **已承接** | 裸 413 + 空 body + 无 Content-Type + 只判 Content-Length |
 | MaxConns | 🔴 **未实现** | L-5 待办（yml 搬运已叫停） |
-| Redis 断连收口 | 🔴 **失效** | V01 |
-| Redis 预算感知 | 🔴 **失效** | V01 |
-| SQL 超时注入 + 57014 翻译 | 🔴 **失效** | V02 |
+| Redis 断连收口 | 🟢 **已承接** | ✅ **V01 已修**：真调 customizer 断言 `REJECT_COMMANDS`（`RedisAutoConfigurationActivationTest`） |
+| Redis 预算感知 | 🟢 **已承接** | ✅ **V01 已修**：断言 `RedisTemplate.getConnectionFactory()` 真的变成 `DeadlineConnectionFactory` |
+| SQL 超时注入 + 57014 翻译 | 🟢 **已承接** | ✅ **V02 已修**：新增 `PersistenceAutoConfiguration`；用**与 MP 同形**的 `ObjectProvider<Interceptor[]>` 断言真的收到两个拦截器 |
 | gRPC 保护链（recover/stat/prometheus/breaker/shedding） | 🔴 **未实现** | V03（**未登记**） |
 | gRPC 客户端熔断 + 出向 deadline | 🔴 **未实现** | V03 同源 |
 | HTTP 超时（503）+ 断连（499） | 🔴 **未实现** | V04（**已登记** L3） |
@@ -481,11 +488,11 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 
 | 指标 | B（`service/common`） | C（`common/`） | 比率 |
 |---|---|---|---|
-| 测试类 | **93** | **14** | 15% |
-| 测试例 | **488**（离线实测全绿） | **96** | 20% |
-| 有测试的 B 能力面 | 12 个包全覆盖 | **7 个能力面**（信封/雪花/日志/Jackson 5 类/观测/熔断/gRPC 适配器） | — |
+| 测试类 | **93** | **16** | 17% |
+| 测试例 | **488**（离线实测全绿） | **104** | 21% |
+| 有测试的 B 能力面 | 12 个包全覆盖 | **9 个能力面**（信封/雪花/日志/Jackson 5 类/观测/熔断/gRPC 适配器/**Redis 装配**/**SQL 超时装配**） | — |
 
-> ⚠️ **测试覆盖是本次最大的量化缺口**：B 侧 488 例里有 **392 例**在 C 侧**没有对应测试**（含 communityfact 41 例、protection 约 140 例、observability 约 130 例、redis 19 例、persistence 24 例、spring 34 例）。
+> ⚠️ **测试覆盖仍是本次最大的量化缺口**：B 侧 488 例里有 **384 例**在 C 侧**没有对应测试**（含 communityfact 41 例、protection 约 140 例、observability 约 130 例、redis 约 16 例、persistence 约 21 例、spring 34 例）。
 > ⇒ C 侧目前的 96 例**证明了「已实现的部分是对的」**，**不能证明「没实现的部分不需要」**。
 
 ---
@@ -494,18 +501,18 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 
 | # | 问题 | 结论 |
 |---|---|---|
-| 1 | **C 是否完整承接 B 的全部实际职责？** | ❌ **否**。88 个 B 源类中 **19 个 NOT_IMPLEMENTED** + **5 个 FAIL**。缺的主要是：**gRPC 保护链 5 层**、**HTTP 超时/断连**、**Redis 两项**（实现了但没接线）、**SQL 超时链**（实现了但没接线）、**Prometheus 写入面**、**每分钟统计面**、**OTel 全局装配**、**MQ trace**、**JWT/口令** |
+| 1 | **C 是否完整承接 B 的全部实际职责？** | ❌ **否**（**但比审核当日好一截**）。88 个 B 源类中 **30 个 NOT_IMPLEMENTED** + **3 个 FAIL**。缺的主要是：**gRPC 保护链 5 层**、**HTTP 超时/断连**、**Prometheus 写入面**、**每分钟统计面**、**OTel 全局装配**、**MQ trace**、**JWT/口令**、**MaxConns**、**降载双条件**。<br>✅ **已修**：**Redis 两项**（V01）与 **SQL 超时链**（V02）—— 审核当日这两项是「实现了但没接线」的静默失效，2026-11-02 已修并补了真触发测试 |
 | 2 | **Mapping_Table 的 RAG→RAG-V1 映射是否与当前真实代码一致？** | ⚠️ **部分不一致**。§7.4 #6 的 B 列实况**已过时**（B 现为 10/10 都有 `GrpcServerConfigurer`）⇒ **DRIFT-COMMON-V08**；§1.12 把 `ClientDisconnectProbe`/`RouteResolution`/`RouteTemplateSource` 标为「✅ 已落地」但**实际是空类** ⇒ **DRIFT-COMMON-V06**；§1.11 的 `web/` 落点数与 §2.3 的「68 已落地」口径需按 65/6 校正 ⇒ **DRIFT-COMMON-V07** |
 | 3 | **File_Tree 规定的目标结构是否正确落地？** | ✅ **基本落地**。`common/` 12 个包与 File_Tree 一致；`gen-file-tree.py` 幂等；守门 `check-docs-vs-tree.py` EXIT=0。⚠️ 唯一例外：**3 个空类占位**（窄接口）破坏了「结构已落地」的语义 |
 | 4 | **多文件合并是否造成职责、分支或异常路径遗漏？** | ⚠️ **是**。① gRPC 链合并 ⇒ **5 层全缺**（V03）；② HTTP 保护链合并 ⇒ MaxConns 层缺 + **模板解析三态压成两态且回落语义相反**（V05）+ **窄接口被绕过**（V06）。✅ 社区事实 1→13 拆分**无断裂**（调用链/数据/异常/事务/重复/遗漏/时机七项全过） |
 | 5 | **文件拆分是否造成调用链、数据传递或事务边界断裂？** | ✅ **否**（就已拆分的部分）。`Wire`→13 类、`Logger`→4 类、`Snowflake`→3 类、`GoStyleOtelConfig`→`ObservabilityProperties` 均链路完整。⚠️ 唯一异常：`GoStyleOtelConfig` 的 `protocol`/`sampler`/`endpoint` **3 项丢失** |
 | 6 | **API + RPC 合并是否改变原有入口和执行行为？** | ⚠️ **本次范围外**（只审 `common/`）。但已取得一条相关证据：**gRPC 拦截链挂载点上收到共享层 1 份后，10 个域全覆盖**，而 B 侧是 10 处分散（且历史上曾有 3 域漏挂）⇒ **合并方向是改善，不是破坏**。⚠️ 但 **gRPC 链只挂 1 层** ⇒ 合并后的 gRPC 入口**保护能力比 B 弱**（V03） |
-| 7 | **Common Starter 上收是否遗漏原有消费方？** | ⚠️ **部分是**。① 11 个 Jackson/HTTP 工具类上收后**域内零副本** ⇒ ✅ 无覆盖遗漏；② JWT/口令 3 类上收到 `common/security/` 但**全空壳** ⇒ 消费方无载体（V07）；③ `redis/` 2 个 auto-config 上收后**没进 imports** ⇒ **能力被上收但被搁浅**（V01）；④ `commonfact` 的 **favorite 域**上收会改变其 wire 行为 ⇒ **待裁决**（V11，映射表 §7.4 #1） |
-| 8 | **Spring Boot 4 → 3.5 是否引入业务可观察行为变化？** | ⚠️ **是，且有 1 项未被察觉**。已适配 11 项（F-1~F-5、F-7~F-15）；**未察觉的 1 项 = F-6**：imports 登记面从 8 行变 7 行 ⇒ **2 个已实现的能力静默失效**（V01）。其余：**Jackson 3→2** 经 52 例对拍覆盖；**Spring 7→6.2** 的 converter 覆写点漂移编译期即红（不会静默） |
+| 7 | **Common Starter 上收是否遗漏原有消费方？** | ⚠️ **部分是**。① 11 个 Jackson/HTTP 工具类上收后**域内零副本** ⇒ ✅ 无覆盖遗漏；② JWT/口令 3 类上收到 `common/security/` 但**全空壳** ⇒ 消费方无载体（V07）；③ ✅ **`redis/` 2 个 auto-config 已修**（V01：登记进 imports ⇒ 上收不再是「搁浅」）；④ **SQL 超时链的注册义务已从「B 侧域内 5 份 `@Bean`」上收到共享层 1 份**（V02）；⑤ `commonfact` 的 **favorite 域**上收会改变其 wire 行为 ⇒ **待裁决**（V11，映射表 §7.4 #1） |
+| 8 | **Spring Boot 4 → 3.5 是否引入业务可观察行为变化？** | ⚠️ **是，且有 1 项曾未被察觉 —— 现已修复**。已适配 11 项（F-1~F-5、F-7~F-15）；**曾未被察觉的 1 项 = F-6**：imports 登记面从 8 行变 7 行 ⇒ **2 个已实现的能力静默失效**（V01）⇒ ✅ **2026-11-02 已修**（登记回 10 行）**且守门已扩**：新判据「每个 `@AutoConfiguration` 类都必须有激活路径」⇒ 覆盖**别的包**下的 auto-config ⇒ 同类缺口当场变红。其余：**Jackson 3→2** 经 52 例对拍覆盖；**Spring 7→6.2** 的 converter 覆写点漂移编译期即红（不会静默） |
 | 9 | **Tomcat / Jackson / Spring Framework 的底层版本变化是否产生实际漂移？** | ✅ **Jackson / Spring 已回改且有对拍**（F-1~F-3）。⚠️ **Tomcat 11→10.1 的实际漂移尚未验证** —— B 的 `GoStyleClientDisconnectProbe` 反射链取证全部基于 Tomcat 11 ⇒ C 侧实现该能力时**必须重测**（F-7，当前因未实现而不适用） |
 | 10 | **哪些差异已经通过证据证明安全？** | ① communityfact 的 23 个 L1 JSON tag + `omitempty` 语义 + `DeliveryStatus` 取值；② JCS 同库 ⇒ 幂等指纹不漂；③ 响应信封 `{code,msg,data}` 与 `data:null` 保留；④ 404/405/400/413/503 的状态码 + 头 + body 字节；⑤ 雪花位段与时钟回拨免疫；⑥ `rag.protection` 12 项默认值；⑦ Filter 槽位；⑧ 观测 7 个 span key + 3 个 kind + 500ms + 严格 `>` + 判定顺序 + `http.route` 语义；⑨ HTTP 熔断隔离 key 与成败判据；⑩ 三处 Boot 4→3.5 包名回改；⑪ A3 的 gRPC 挂载点（有真触发测试）；⑫ A5/A6/A12 三条守门 |
 | 11 | **哪些差异仍然无法确认？** | ① Redis 2 项的**运行期**行为（上游未加载 ⇒ 无法验证）；② SQL 超时链的运行期行为（同上）；③ OTel span 的**真实**落地（bridge 离线不可得）；④ `Traceparent` 响应头的**真实**取值（依赖 OTel）；⑤ Tomcat 10.1 下 `ClientDisconnectProbe` 反射链是否可用；⑥ 跨域上收的 `JsonbTypeHandler`/`JsonTextTypeHandler`（不在本次范围） |
-| 12 | **当前 C 是否具备可靠的行为对拍条件？** | 🟡 **部分具备**。✅ 具备：B 侧 488 例可离线跑通（已实测）；C 侧 96 例可离线跑通；两侧共用同一套 JCS 库 ⇒ 指纹可比。⚠️ **不具备**：① 两侧**同 JVM 同输入**的对拍（Boot 4 + Boot 3.5 不能共载）⇒ 只能「B 的断言值 → C 的期望值」逐条搬运；② C 侧域为空壳 ⇒ **跨域的端到端对拍**（HTTP/gRPC/DB/Kafka）无法做；③ 真 Tomcat 对拍需补（AGENTS.md §八「HTTP 断言走真 Tomcat」尚未满足） |
+| 12 | **当前 C 是否具备可靠的行为对拍条件？** | 🟡 **部分具备**。✅ 具备：B 侧 488 例可离线跑通（已实测）；C 侧 **104 例**可离线跑通；两侧共用同一套 JCS 库 ⇒ 指纹可比；**Boot 真实的 `AutoConfigurationImportSelector` 可在 C 侧跑**（⇒ 装配面可对拍）。⚠️ **不具备**：① 两侧**同 JVM 同输入**的对拍（Boot 4 + Boot 3.5 不能共载）⇒ 只能「B 的断言值 → C 的期望值」逐条搬运；② C 侧域为空壳 ⇒ **跨域的端到端对拍**（HTTP/gRPC/DB/Kafka）无法做；③ 真 Tomcat 对拍需补（AGENTS.md §八「HTTP 断言走真 Tomcat」尚未满足） |
 
 ---
 
@@ -520,14 +527,18 @@ cd "/Users/pr/Documents/java&golang/RAG" && mvn -o -pl service/common test
 cd /Users/pr/Documents/GitHub/RAG-V1 && mvn -o clean test
 #   ⇒ common 模块 Tests run: 96, Failures: 0, Errors: 0, Skipped: 0 · 16/16 BUILD SUCCESS
 
-# 🔴 V01 的判定命令（真·@AutoConfiguration 减 imports 清单）
-grep -rn "^@AutoConfiguration" common/src/main --include=*.java   # 10 处
-grep -v "^#" common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports   # 7 行
-#   ⇒ 差集 = redis/ClientAutoConfiguration + redis/DeadlineAutoConfiguration（+ web/JsonContentTypeAdvice，
-#      后者由 WebAutoConfiguration 的 @Bean 显式注册，故实际失效的是前两个）
+# ✅ V01 修复后的判定命令（差集应为空 —— web/JsonContentTypeAdvice 由 @Bean 显式注册，故在「激活路径」里）
+grep -rn "^@AutoConfiguration" common/src/main --include=*.java   # 11 处
+grep -v "^#" common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports   # 10 行
 
-# 🔴 V02 的判定命令
-grep -rn "DeadlineQueryTimeoutInjector\|SqlTimeoutStatusTranslator" --include=*.java .   # 除自身外 0 命中
+# ✅ V02 修复后的判定命令（应命中 PersistenceAutoConfiguration）
+grep -rn "DeadlineQueryTimeoutInjector\|SqlTimeoutStatusTranslator" --include=*.java . | grep -v "common/src/main/java/com/rag/common/persistence/"
+
+# 🔴 变异实测（证明守门不是假绿）—— 摘掉 2 行 redis ⇒ 激活路径不变式变红
+grep -v "redis.ClientAutoConfiguration\|redis.DeadlineAutoConfiguration" \
+  common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports > /tmp/i && \
+  cp /tmp/i common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports
+mvn -o -pl common test     # ⇒ 实测：Tests run: 104, Failures: 1（everyAutoConfigurationHasAnActivationPath）
 
 # 🔴 V06 的判定命令（三个空类）
 for f in observability/ClientDisconnectProbe protection/RouteResolution protection/RouteTemplateSource; do

@@ -30,7 +30,7 @@ docs/DRIFT/
 | `like` | like-service | ⬜ 未建立 |
 | `message` | message-service | ⬜ 未建立 |
 | `task` | task-service | ⬜ 未建立 |
-| `common` | common | 🟡 **已建立** —— [`common/verification-common-2026-11-02.md`](common/verification-common-2026-11-02.md)（RAG → RAG-V1 迁移审核 · 八阶段全覆盖 · B 88 类逐类承接 · **PASS 46 / FAIL 5 / NOT_IMPLEMENTED 19 / NOT_VERIFIED 7 / FRAMEWORK_DIFFERENCE 2 / INTENTIONALLY_CHANGED 4**；🔴 5 条 FAIL 见报告 §11.5） |
+| `common` | common | 🟡 **已建立** —— [`common/verification-common-2026-11-02.md`](common/verification-common-2026-11-02.md)（RAG → RAG-V1 迁移审核 · 八阶段全覆盖 · B 88 类逐类承接 · **PASS 50 / FAIL 3 / NOT_IMPLEMENTED 30 / NOT_VERIFIED 2 / FRAMEWORK_DIFFERENCE 2 / INTENTIONALLY_CHANGED 4**（按 §11.2 状态列**逐行重数**）；🔴 剩余 3 条 FAIL = **V03**（gRPC 保护链 5 层）/ **V05**（熔断回落语义相反）/ **V06**（窄接口职责断裂）见报告 §11.5；✅ **V01**（Redis 两项未登记）/ **V02**（SQL 超时链零注册）已于 2026-11-02 修复并补真触发测试） |
 | `proto` | proto | ⬜ 未建立（根级 proto 契约模块，10 个 `.proto`） |
 
 ## 纪律

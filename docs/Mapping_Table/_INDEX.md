@@ -66,7 +66,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | 域 | 文档 | 行数 | C 列覆盖 | A 列覆盖 | 映射行 |
 |---|---|---:|---|---|---:|
 | **users** | [_shared.md](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 410 + 200 + 259 + 284 = **1,153** | **104 / 104 = 100%** | **114 / 114 = 100%** | 129 |
-| **common** | [common.md](common.md) | 739 | **71 / 71 = 100%** | **11 / 11 = 100%** | 99 |
+| **common** | [common.md](common.md) | 741 | **72 / 72 = 100%** | **11 / 11 = 100%** | 100 |
 | **article** | [article.md](article/article.md) | 488 | **58 / 58 = 100%** | **45 / 45 = 100%** | 72 |
 | **comment** | [comment.md](comment/comment.md) | 484 | **69 / 69 = 100%** | **58 / 58 = 100%** | 84 |
 | **favorite** | [favorite.md](favorite/favorite.md) | 520 | **61 / 61 = 100%** | **50 / 50 = 100%** | 87 |
@@ -75,7 +75,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **like** | [like.md](like/like.md) | 512 | **69 / 69 = 100%** | **51 / 51 = 100%** | 81 |
 | **message** | [message.md](message/message.md) | 575 | **52 / 52 = 100%** | **55 / 55 = 100%** | 69 |
 | **task** | [task.md](task/task.md) | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
-| **合计** | **13 份**（10 域，users 域拆 4 份） | **5,970** | **591 / 591 = 100%** | **482 / 482 = 100%** | **845** |
+| **合计** | **13 份**（10 域，users 域拆 4 份） | **5,972** | **592 / 592 = 100%** | **482 / 482 = 100%** | **846** |
 
 > 📌 **users 域拆分的守恒性**（2026-10-25 拆分后实测）：
 > 拆分前单文件 515 行 / 127 映射行 ⇒ 拆分后四份合计 **1,011 行 / 127 映射行**（行数增加是**导航与分节标题**带来的，非内容膨胀）。
@@ -85,7 +85,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 > ⚠️ **数「映射行」不能按固定列下标取** —— `follow` / `like` / `task` 三域存在**比标准表多一列**的表（映射类型落在第 5/6/7 个 `|` 之后而非第 4 个）。
 > ⇒ 计数必须**扫全行找类型词**，固定取 `parts[4]` 会**漏算 60 行**（follow **−47**、like **−2**、task **−11** ⇒ 实测 845 行会被数成 787 行）。
 
-### 映射类型分布（845 条映射行）
+### 映射类型分布（846 条映射行）
 
 | 类型 | 条数 | 占比 | 含义 |
 |---|---:|---:|---|
@@ -146,7 +146,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **task** | **`goka.Persist`（RocksDB 本地表）无生态等价物** ⇒ 存储后端需拍板（PG 表 / Redis `HINCRBY` / 专用 KV） | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
 | **task** | **`WebMvcConfig` 的 javadoc 与本域事实冲突** —— javadoc 写「注册 JwtAuthInterceptor」，但 Go 侧 `routes.go:16-25` **无 `rest.WithJwt`** ⇒ 本域**零鉴权** | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
 | **task** | **`TaskApiResponseAdvice` 的职责未定** —— Go 侧 `api/task.go` **无 `httpx.SetOkHandler`** ⇒ 成功响应**无信封** | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
-| **common** | **`communityfact` 的「三域共享」在 Go 侧只有两域**（favorite 自己写了一套 `rpc/internal/authority/http.go` + `model.NewFavoriteDCEventSender`） | 739 | **71 / 71 = 100%** | **11 / 11 = 100%** | 99 |
+| **common** | **`communityfact` 的「三域共享」在 Go 侧只有两域**（favorite 自己写了一套 `rpc/internal/authority/http.go` + `model.NewFavoriteDCEventSender`） | 741 | **72 / 72 = 100%** | **11 / 11 = 100%** | 100 |
 | **favorite** | **错误文案串味** —— `ErrorNotFound(5002)` 变成了英文 `not found`，且 `Success="OK"` / `Error="FAIL"` | 520 | **61 / 61 = 100%** | **50 / 50 = 100%** | 87 |
 | **comment** | `CommentController` javadoc 与 Go `.api` 端点清单不一致（2 处） | 484 | **69 / 69 = 100%** | **58 / 58 = 100%** | 84 |
 | **comment** | `CommentKafkaMsg` 与 `service/comment/src/main/java/com/rag/comment/messaging/CommentAuditMessage.java` 的载荷字段归属未锁定 | 484 | **69 / 69 = 100%** | **58 / 58 = 100%** | 84 |
@@ -166,7 +166,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **like** | Kafka 消费入口（listener / ack 契约 / 失败即丢弃不重投）无落点 · `like_outbox_event → article-hot-events` 发件箱中继无落点 · Jackson 2 `ObjectMapper` Bean 无落点 · `like` / `like-api` 配置段整个缺失 · DDL 迁移脚本为空 | 512 | **69 / 69 = 100%** | **51 / 51 = 100%** | 81 |
 | **message** | `controller/`（两个 Controller）· `interceptor/`（两组 JWT）· `metrics/` · `wiring/` · `service/` · `service/message/src/main/java/com/rag/message/contract/` 均有职责缺口 | 575 | **52 / 52 = 100%** | **55 / 55 = 100%** | 69 |
 | **favorite** | `POST /favorite/v1/folder/create` 端点缺失 · public 路径集 · preflight 触发入口 · DDL 迁移脚本 · `JsonbTypeHandler` / MP 排序桥的归属 · `GetFavoritesByFolderReq.FolderId` 的取参位置 · 域内 gRPC client · 端口号 | 520 | **61 / 61 = 100%** | **50 / 50 = 100%** | 87 |
-| **common** | `GrpcStatusMapper` 与 `GrpcExceptionMapperAutoConfiguration` **职责重叠** · 设计文档 §5.1 列了 `contract/ErrorCode.java` 但**实际树里没有** · 雪花 ID 有**两个落点** · `JsonBodyConverterConfig` 是「注册点」还是「配置类」 · **gRPC 拦截链挂载点缺位**（D9 ⇒ 落 `common/autoconfigure/ProtectionAutoConfiguration`，共享层 1 份） | 739 | **71 / 71 = 100%** | **11 / 11 = 100%** | 99 |
+| **common** | `GrpcStatusMapper` 与 `GrpcExceptionMapperAutoConfiguration` **职责重叠** · 设计文档 §5.1 列了 `contract/ErrorCode.java` 但**实际树里没有** · 雪花 ID 有**两个落点** · `JsonBodyConverterConfig` 是「注册点」还是「配置类」 · **gRPC 拦截链挂载点缺位**（D9 ⇒ 落 `common/autoconfigure/ProtectionAutoConfiguration`，共享层 1 份） | 741 | **72 / 72 = 100%** | **11 / 11 = 100%** | 100 |
 | **follow** | `db/migration/` 为空 · `application.yml` 缺段 · `*Properties` 聚合边界 · `FollowBlacklistInterceptor` + `FollowJwtAuthInterceptor` · `GoStyleLimitOffset` | 558 | **37 / 37 = 100%** | **46 / 46 = 100%** | 115 |
 
 ### 🟡 低优先级（要点）

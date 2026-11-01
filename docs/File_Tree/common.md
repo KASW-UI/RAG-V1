@@ -67,6 +67,7 @@
 │   │   │               │   ├── JsonBodyConverterAutoConfiguration.java    # Jackson 侧的共享装配点 —— 把「K-01 强转规则」与「K-02 请求体判据」两条
 │   │   │               │   ├── MybatisPlusOrderingBridgeAutoConfiguration.java    # Go 出处：无 —— Go 侧用 GORM，没有「MyBatis-Plus 自动配置排序」这个概念
 │   │   │               │   ├── ObservabilityAutoConfiguration.java    # 观测层的共享装配点 —— 把 {@link ObservabilityCustomizer}（业务标记的唯一载体）
+│   │   │               │   ├── PersistenceAutoConfiguration.java    # 持久层超时链路的唯一装配点（MyBatis 拦截器 ⇒ MP 自动配置收集 ⇒ 真正生效）。
 │   │   │               │   ├── ProtectionAutoConfiguration.java    # 保护层的共享装配点，同时是 A3 断言点名的 gRPC 拦截链挂载点。
 │   │   │               │   ├── SnowflakeAutoConfiguration.java    # Go 出处：{@code service/common/snowflake/snowflake.go:22-38}
 │   │   │               │   └── WebAutoConfiguration.java    # Web 层的共享装配点 —— 把「批 1 已落地、但因为 starter 化而没人注册」的那些
@@ -159,12 +160,15 @@
 │                       │   ├── GrpcExceptionMapperAutoConfigurationTest.java    # §3.3「机制可证」守门：业务异常在 gRPC 边界被映射成 Go 形状的 status。
 │                       │   ├── JsonBodyConverterAutoConfigurationTest.java    # §3.3「机制可证」守门：K-01 的强转规则真的施加到了 Boot 的 mapper 上。
 │                       │   ├── ObservabilityAutoConfigurationTest.java    # §3.3「机制可证」守门：观测的判定顺序真的按 Go 的口径。
+│                       │   ├── PersistenceAutoConfigurationTest.java    # §3.3「机制可证」守门：SQL 超时链路真的挂上了（DRIFT-COMMON-V02 的修法验证）。
 │                       │   ├── ProtectionAutoConfigurationWiringTest.java    # §3.3「机制可证」守门：gRPC 拦截链真的挂到了 server 上（A3 的运行时证据）。
 │                       │   └── RouteIsolationFilterTest.java    # §3.3「机制可证」守门：熔断隔离 key 真的是 {@code METHOD://}，
 │                       ├── contract/
 │                       │   └── ApiResponseTest.java    # §3.3 真触发测试 —— {@link ApiResponse} 这个全局 L1 信封的序列化形状。
 │                       ├── logger/
 │                       │   └── GoStyleLoggerTest.java    # §3.3 真触发测试 —— 断言 **A8**：{@link GoStyleLogger} 是一个真正的
+│                       ├── redis/
+│                       │   └── RedisAutoConfigurationActivationTest.java    # §3.3「机制可证」守门：Redis 侧两个自动配置真的被激活（DRIFT-COMMON-V01 的修法验证）。
 │                       ├── snowflake/
 │                       │   └── SnowflakeTest.java    # §3.3 真触发测试 —— {@link Snowflake} 的位布局与单调性。
 │                       └── web/

@@ -492,13 +492,18 @@ def check_a6(root: pathlib.Path, contract: str) -> Result:
 
     理由：Boot 4 把 `DataSourceAutoConfiguration` 挪了包 ⇒ MP 的 `@AutoConfigureAfter` 引用静默悬空
     ⇒ MP 自动配置不生效 ⇒ mapper 报 `sqlSessionFactory required`。这个桥**域无关**，不该有 9 份。
+
+    ⚠️ **判据必须是「类名」而不是「源码里提到 MybatisPlus」**（2026-11-02 实测修正）：
+    旧判据 `("MybatisPlus" in src and "AutoConfiguration" in f.name)` 会把
+    **任何在 javadoc / `@ConditionalOnClass` 里提到 MP 的 auto-config**
+    （例如 `PersistenceAutoConfiguration`）误判成「第 2 份 bridge」⇒ 假红。
+    ⇒ 现在按**专属类名**匹配 ⇒ 判据与本断言的语义一致。
     """
     hits = []
     for f in root.glob("**/src/main/java/**/*.java"):
         if "target" in f.parts:
             continue
-        src = f.read_text(encoding="utf-8")
-        if "MybatisPlus" in src and "AutoConfiguration" in f.name:
+        if "MybatisPlusOrderingBridge" in f.name:
             hits.append(f)
     if len(hits) > 1:
         return Result(FAIL, f"{len(hits)} 份 MP ordering bridge（应为 1 份）",

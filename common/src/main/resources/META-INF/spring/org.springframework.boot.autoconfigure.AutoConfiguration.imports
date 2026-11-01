@@ -5,3 +5,6 @@ com.rag.common.autoconfigure.ProtectionAutoConfiguration
 com.rag.common.autoconfigure.SnowflakeAutoConfiguration
 com.rag.common.autoconfigure.MybatisPlusOrderingBridgeAutoConfiguration
 com.rag.common.autoconfigure.GrpcExceptionMapperAutoConfiguration
+com.rag.common.autoconfigure.PersistenceAutoConfiguration
+com.rag.common.redis.ClientAutoConfiguration
+com.rag.common.redis.DeadlineAutoConfiguration

@@ -103,10 +103,10 @@
 
 ## 1. 包结构对照
 
-### 1.1 `autoconfigure/` —— starter 的全部装配入口（C: 7 类）
+### 1.1 `autoconfigure/` —— starter 的全部装配入口（C: 8 类）
 
-> **D3 的载体。** 7 个 `@AutoConfiguration` 由
-> `common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 注册（7 行）。
+> **D3 的载体。** 8 个 `@AutoConfiguration` 由
+> `common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 注册（**清单共 10 行**：另有 `redis/` 包的 2 个 —— 见 §1.12）。
 > ⇒ **消费方零 `@Import` 清单**（RAG 侧有 10 份）。
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
@@ -118,6 +118,8 @@
 | —（Go 侧无对应物） | `spring/SnowflakeBean.java` + `spring/SnowflakeProperties.java` + `snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` | N:1 | ⚠️ 与各域 `wiring/SnowflakeBootstrap.java`（3 个域有）**落点重复**，见 §7「职责对不上 #4」<br>✅ **已落地（2026-11-02 · 批 3）**：RAG 两类合一为 1 个 auto-config（配置载体作嵌套类）＋ 去 `@Component` 改 `@EnableConfigurationProperties`；⚠️ `Snowflake` 构造器 `private` → **`public`**（框架要 `new` 一个 Bean）⇒ **生成状态仍在唯一的静态 `STATE` 里 ⇒ 不变式不变** |
 | —（Go 侧无对应物） | 9 个 rpc 模块各一份 `MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | N:1 | **消掉 9 份重复**（Boot 4 下 MP 自动配置排序桥）；断言 A6<br>✅ **已落地（2026-11-02 · 批 3）**：`afterName` 回改成 **Boot 3.5 的包名**（`org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration`）⇒ Boot 3.5 下**不需要**救场 ⇒ 保留为「断言 A6 的唯一载体 + 升级护栏」 |
 | —（Go 侧无对应物：Go 在各域 `internal/logic` 里直接 `status.Error`） | `article-api/http/GoStyleGrpcStatusMapper.java` | `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java` | 1:1 | D2/D5 的统一错误模型：`BusinessException(code,msg)` → gRPC 边界 / HTTP 边界两个适配器<br>✅ **已落地（2026-11-02 · 批 3）**：**gRPC 边界** = server 侧把 `BusinessException` 映射成 `UNKNOWN` + description（业务文案逐字）+ trailer `sea-biz-code`（业务码），client 侧从 `Listener#onClose` 还原；⚠️ **grpc-java 承载不了任意数值 status code** ⇒ 业务码走 trailer ⇒ **L3 新增 D-05**；⚠️ **HTTP 边界不在本类**（业务码空间逐域隔离 ⇒ L-11 ⇒ 留在各域 `advice/`） |
+
+| —（Go 侧无对应物：Go 的 SQL 超时靠 ctx 传播，无「注册点」概念） | 5 个 rpc 模块各一份 `@Bean` 声明（`FollowRpcApplication:90` / `MessageRpcApplication:85` / `LikeRpcApplication:94` / `ArticleRpcApplication:88` / `UserRpcApplication:67`）＋ `persistence/DeadlineQueryTimeoutInjector.java` ＋ `persistence/SqlTimeoutStatusTranslator.java` | `common/src/main/java/com/rag/common/autoconfigure/PersistenceAutoConfiguration.java` | N:1 | 🔴 **DRIFT-COMMON-V02 的修法**（2026-11-02 审核实测）：两个拦截器**批 1 就实现完整**，但**零注册点** ⇒ MP 收不到 ⇒ **SQL 超时链整条静默失效**（SQL 不带超时、pg `57014` 不翻译成 `DEADLINE_EXCEEDED`）⇒ B 侧的注册义务在**域内**（5 份 `@Bean`）⇒ C 侧 starter 化（D3）后**必须上收到共享层** ⇒ 落在本类<br>✅ **已落地（2026-11-02）**：`@ConditionalOnClass(name="org.apache.ibatis.plugin.Interceptor")` ＋ 两个 `@Bean`（各带 `@ConditionalOnMissingBean`）⇒ **10 个域一次全挂上**；⚠️ 生效机制已用 `javap -c` 取证：MP 3.5.17 的 `MybatisPlusAutoConfiguration` 构造器形参是 `ObjectProvider<Interceptor[]>` 且**构造器内即** `getIfAvailable()` ⇒ 注册成 Bean 即被收得到；守门见 `PersistenceAutoConfigurationTest`（**与 MP 同一个注入点**取证，3 例） |
 
 ### 1.2 `communityfact/` —— comment · favorite · like 三域共享的跨服务事件协议（C: 13 类）
 
@@ -586,7 +588,7 @@ Micrometer 的观察模型与它**不是一对一映射**（D-03）⇒ 用生态
 
 ## 7. 覆盖度自查
 
-### 7.1 C 列零遗漏（71/71 = 100%）
+### 7.1 C 列零遗漏（72/72 = 100%）
 
 自查命令：
 
@@ -597,7 +599,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 
 | 子包 | 实际 `.java` 数 | 出现在本表 C 列的数 | 缺口 |
 |---|---|---|---|
-| `autoconfigure/` | 7 | 7 | 0 |
+| `autoconfigure/` | 8 | 8 | 0 |
 | `communityfact/` | 13 | 13 | 0 |
 | `contract/` | 1 | 1 | 0 |
 | `exception/` | 2 | 2 | 0 |
@@ -609,11 +611,11 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 | `security/` | 3 | 3 | 0 |
 | `snowflake/` | 1 | 1 | 0 |
 | `web/` | 21 | 21 | 0 |
-| **合计** | **71** | **71** | **0** |
+| **合计** | **72** | **72** | **0** |
 
 > C 列逐条清单（按子包，C 侧**真实类名**）：
 > `autoconfigure/`：GrpcExceptionMapperAutoConfiguration · JsonBodyConverterAutoConfiguration · MybatisPlusOrderingBridgeAutoConfiguration ·
-> ObservabilityAutoConfiguration · ProtectionAutoConfiguration · SnowflakeAutoConfiguration · WebAutoConfiguration
+> ObservabilityAutoConfiguration · PersistenceAutoConfiguration · ProtectionAutoConfiguration · SnowflakeAutoConfiguration · WebAutoConfiguration
 > `communityfact/`：AuthorityFact · AuthorityHandler · CanonicalHash · DeliveryStatus · Dispatcher · Event · EventDispatcher · EventSender ·
 > ProcessLogger · ProcessMetadata · SubjectRef · TechnicalReceipt · Wire
 > `contract/`：ApiResponse
