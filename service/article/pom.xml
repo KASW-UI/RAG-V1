@@ -94,11 +94,31 @@
             <artifactId>kafka</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+            ⚠️ **grpc-core 显式声明 + starter 上排除**（抄 RAG 的 rpc 模块）：
+            devh 的 `grpc-*-spring-boot-starter` 3.1.0.RELEASE 会拖自己的 `grpc-core`
+            ⇒ 在引入起点 exclude，版本只由根 pom 的 `grpc.version`（1.63.0）决定。
+        -->
+        <dependency>
+            <groupId>io.grpc</groupId><artifactId>grpc-core</artifactId>
+        </dependency>
         <dependency>
             <groupId>net.devh</groupId><artifactId>grpc-server-spring-boot-starter</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.grpc</groupId>
+                    <artifactId>grpc-core</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>net.devh</groupId><artifactId>grpc-client-spring-boot-starter</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.grpc</groupId>
+                    <artifactId>grpc-core</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>com.baomidou</groupId><artifactId>mybatis-plus-spring-boot3-starter</artifactId>

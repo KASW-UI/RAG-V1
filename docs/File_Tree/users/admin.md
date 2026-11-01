@@ -28,6 +28,7 @@
 - `io.grpc:grpc-inprocess`
 - `org.testcontainers:postgresql`
 - `org.testcontainers:junit-jupiter`
+- `io.grpc:grpc-core`
 - `net.devh:grpc-server-spring-boot-starter`
 - `net.devh:grpc-client-spring-boot-starter`
 - `com.baomidou:mybatis-plus-spring-boot3-starter`
@@ -36,6 +37,7 @@
 - `com.rag:users-common`
 - `com.rag:common`
 - `org.springframework.boot:spring-boot-starter-data-redis`
+- `org.apache.commons:commons-pool2`
 
 ## 三、目录树
 

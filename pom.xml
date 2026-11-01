@@ -197,6 +197,13 @@
             <dependency>
                 <groupId>io.grpc</groupId><artifactId>grpc-stub</artifactId><version>${grpc.version}</version>
             </dependency>
+            <!--
+                ⚠️ **grpc-core 单一真源**（抄 RAG 根 pom）—— devh 的 `grpc-*-spring-boot-starter` 3.1.0.RELEASE
+                会拖 `grpc-core`，RAG 的纪律是「**在 starter 上 exclude + 显式声明**」⇒ 版本只由这一处决定。
+            -->
+            <dependency>
+                <groupId>io.grpc</groupId><artifactId>grpc-core</artifactId><version>${grpc.version}</version>
+            </dependency>
             <dependency>
                 <groupId>io.grpc</groupId><artifactId>grpc-protobuf</artifactId><version>${grpc.version}</version>
             </dependency>

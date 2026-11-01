@@ -80,11 +80,31 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+            ⚠️ **grpc-core 显式声明 + starter 上排除**（抄 RAG 的 rpc 模块）：
+            devh 的 `grpc-*-spring-boot-starter` 3.1.0.RELEASE 会拖自己的 `grpc-core`
+            ⇒ 在引入起点 exclude，版本只由根 pom 的 `grpc.version`（1.63.0）决定。
+        -->
+        <dependency>
+            <groupId>io.grpc</groupId><artifactId>grpc-core</artifactId>
+        </dependency>
         <dependency>
             <groupId>net.devh</groupId><artifactId>grpc-server-spring-boot-starter</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.grpc</groupId>
+                    <artifactId>grpc-core</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>net.devh</groupId><artifactId>grpc-client-spring-boot-starter</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.grpc</groupId>
+                    <artifactId>grpc-core</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>com.baomidou</groupId><artifactId>mybatis-plus-spring-boot3-starter</artifactId>
@@ -103,6 +123,17 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!--
+            ⚠️ **commons-pool2 不可省**（抄 RAG 的 5 个模块）—— Boot 3.5 的 `spring-boot-starter-data-redis`
+            **同样不再传递** commons-pool2（只有 lettuce-core），而本域的 `application.yml` 一旦配
+            `spring.data.redis.lettuce.pool.enabled: true` ⇒ LettuceConnectionConfiguration 会构造
+            `org.apache.commons.pool2.impl.GenericObjectPoolConfig`
+            ⇒ 缺它启动即 `NoClassDefFoundError`（RAG 侧实测记录：`docs/DRIFT/like/rpc.md`）。
+            版本由 spring-boot-dependencies BOM 管理（2.12.1），不写 <version>。
+        -->
+        <dependency>
+            <groupId>org.apache.commons</groupId><artifactId>commons-pool2</artifactId>
         </dependency>
     </dependencies>
 

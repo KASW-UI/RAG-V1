@@ -46,6 +46,8 @@
 - `io.github.erdtman:java-json-canonicalization`
 - `org.apache.tomcat.embed:tomcat-embed-core`
 - `net.devh:grpc-client-spring-boot-starter`
+- `io.opentelemetry:opentelemetry-sdk-testing`
+- `org.springframework:spring-test`
 
 ## 三、目录树
 

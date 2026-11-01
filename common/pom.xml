@@ -226,5 +226,19 @@
                 </exclusion>
             </exclusions>
         </dependency>
+
+        <!-- ============ 测试期依赖（test scope · **不传递给下游**） ============ -->
+        <!--
+            抄 RAG `service/common/pom.xml`：OTel 的**测试期**支撑（`InMemorySpanExporter` 等）
+            + Spring 的测试上下文。
+        -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId><artifactId>opentelemetry-sdk-testing</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId><artifactId>spring-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>

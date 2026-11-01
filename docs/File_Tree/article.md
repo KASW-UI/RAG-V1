@@ -30,6 +30,7 @@
 - `org.testcontainers:postgresql`
 - `org.testcontainers:junit-jupiter`
 - `org.testcontainers:kafka`
+- `io.grpc:grpc-core`
 - `net.devh:grpc-server-spring-boot-starter`
 - `net.devh:grpc-client-spring-boot-starter`
 - `com.baomidou:mybatis-plus-spring-boot3-starter`
