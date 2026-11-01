@@ -104,10 +104,12 @@
 │   │   │               │   ├── ClientDisconnectProbe.java    # 客户端断连的主动探测 —— 往 socket 写 1xx 探针，把断连提前暴露出来。
 │   │   │               │   ├── DeadlineState.java    # 请求级 deadline 的服务端载体（ThreadLocal 绝对到期时刻，{@link System#nanoTime()} 域）。
 │   │   │               │   ├── GoStyleRequestDeadline.java    # 请求级 deadline 的载体：把 {@link HttpMiddleware} 的 HTTP 超时预算，
+│   │   │               │   ├── HttpMiddleware.java    # HTTP 观测中间件 —— 观测标记 ＋ 超时 503 ＋ 客户端断连 499 ＋ worker 池饱和 503。
 │   │   │               │   ├── MqConsumer.java    # MQ 消费端 trace 包装 —— 对齐 Go 版的 {@code TraceConsumer}。
 │   │   │               │   ├── ObservabilityCustomizer.java    # 业务观测标记的唯一载体 —— 对齐 go-zero {@code service/common/observability/observability.go} 的
 │   │   │               │   ├── ObservabilityLifecycle.java    # Spring 容器关闭时回收RPC 侧的观测层线程池。
 │   │   │               │   ├── ObservabilityProperties.java    # Observability 配置绑定（{@code application.yml}）：
+│   │   │               │   ├── ObservabilityResponseWriter.java    # 观测用的响应记录器 —— 捕获响应体，并允许在超时 / 断连之后掐掉底层的提交。
 │   │   │               │   ├── ObservabilityRuntime.java    # 观测层的进程级线程池持有者（本仓对 RAG {@code RpcInterceptor} 里那两个
 │   │   │               │   ├── RpcCallHandler.java    # gRPC 服务端业务调用处理器（Java 版与 Go 版 {@code grpc.UnaryHandler} 等价）。
 │   │   │               │   ├── RpcHandleRunner.java    # 非 gRPC Server 场景下的业务调用入口 —— 跑一次 handler，带超时控制与观测标记。
@@ -198,6 +200,8 @@
 │                       ├── logger/
 │                       │   └── GoStyleLoggerTest.java    # §3.3 真触发测试 —— 断言 **A8**：{@link GoStyleLogger} 是一个真正的
 │                       ├── observability/
+│                       │   ├── ClientDisconnectProbeTest.java    # §3.3「机制可证」守门：断连探针的四态语义真的按 Go / RAG 的口径走。
+│                       │   ├── HttpMiddlewareTest.java    # §3.3「机制可证」守门：HTTP 中间件的三条拒绝路径真的按 Go 的形状走。
 │                       │   ├── MqConsumerTest.java    # §3.3「机制可证」守门：MQ 消费端包装真的产出观测、真的按 Go 的口径分类错误。
 │                       │   ├── ObservabilityPropertiesTest.java    # §3.3「机制可证」守门：Go {@code Telemetry} 段的 3 个配置字段真的能被绑定。
 │                       │   ├── ObservabilityRuntimeTest.java    # §3.3「机制可证」守门：观测层的两个进程级池真的能被关闭钩子回收，且关掉后能重建。

@@ -1,5 +1,6 @@
 package com.rag.common.autoconfigure;
 
+import com.rag.common.observability.HttpMiddleware;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
@@ -36,8 +37,7 @@ class ObservabilityAutoConfigurationTest {
     void businessEnvelopeWinsOverStatus() {
         AtomicReference<Observation.Context> captured = new AtomicReference<>();
         runner.withBean(ObservationRegistry.class, () -> registry(captured)).run(context -> {
-            ObservabilityAutoConfiguration.HttpObservationFilter filter =
-                    context.getBean(ObservabilityAutoConfiguration.HttpObservationFilter.class);
+            HttpMiddleware filter = context.getBean(HttpMiddleware.class);
 
             MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/article");
             MockHttpServletResponse response = new MockHttpServletResponse();
@@ -58,8 +58,7 @@ class ObservabilityAutoConfigurationTest {
     void successEnvelopeIsNormal() {
         AtomicReference<Observation.Context> captured = new AtomicReference<>();
         runner.withBean(ObservationRegistry.class, () -> registry(captured)).run(context -> {
-            ObservabilityAutoConfiguration.HttpObservationFilter filter =
-                    context.getBean(ObservabilityAutoConfiguration.HttpObservationFilter.class);
+            HttpMiddleware filter = context.getBean(HttpMiddleware.class);
 
             MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/article");
             MockHttpServletResponse response = new MockHttpServletResponse();
@@ -78,8 +77,7 @@ class ObservabilityAutoConfigurationTest {
     void statusWithoutEnvelopeIsSystemError() {
         AtomicReference<Observation.Context> captured = new AtomicReference<>();
         runner.withBean(ObservationRegistry.class, () -> registry(captured)).run(context -> {
-            ObservabilityAutoConfiguration.HttpObservationFilter filter =
-                    context.getBean(ObservabilityAutoConfiguration.HttpObservationFilter.class);
+            HttpMiddleware filter = context.getBean(HttpMiddleware.class);
 
             MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/article");
             MockHttpServletResponse response = new MockHttpServletResponse();
@@ -97,8 +95,7 @@ class ObservabilityAutoConfigurationTest {
     void responseBodyIsPreserved() {
         AtomicReference<Observation.Context> captured = new AtomicReference<>();
         runner.withBean(ObservationRegistry.class, () -> registry(captured)).run(context -> {
-            ObservabilityAutoConfiguration.HttpObservationFilter filter =
-                    context.getBean(ObservabilityAutoConfiguration.HttpObservationFilter.class);
+            HttpMiddleware filter = context.getBean(HttpMiddleware.class);
 
             MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/article");
             MockHttpServletResponse response = new MockHttpServletResponse();
@@ -106,19 +103,6 @@ class ObservabilityAutoConfigurationTest {
 
             assertThat(response.getContentAsString()).contains("\"code\":200");
         });
-    }
-
-    @Test
-    @DisplayName("信封解析：解析失败 / 空 body ⇒ 当作「没有信封」")
-    void envelopeParsingFallsBackToNull() {
-        assertThat(ObservabilityAutoConfiguration.parseEnvelope(null)).isNull();
-        assertThat(ObservabilityAutoConfiguration.parseEnvelope(new byte[0])).isNull();
-        assertThat(ObservabilityAutoConfiguration.parseEnvelope("not json".getBytes())).isNull();
-        // ⚠️ code=0 且 msg 为空 ⇒ 「不存在」
-        assertThat(ObservabilityAutoConfiguration.parseEnvelope(
-                "{\"code\":0,\"msg\":\"\"}".getBytes())).isNull();
-        assertThat(ObservabilityAutoConfiguration.parseEnvelope(
-                "{\"code\":1001,\"msg\":\"x\"}".getBytes())).isNotNull();
     }
 
     // ── 测试替身 ────────────────────────────────────────────────────────

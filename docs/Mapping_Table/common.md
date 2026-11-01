@@ -175,13 +175,13 @@
 | `logger/logger.go`（`Init` 全局单例） | `spring/LoggerFactoryBean.java`（369 行，与 `Logger` **零行为差异**） | `common/src/main/java/com/rag/common/logger/LoggerFactoryBean.java`（由 `common/src/main/java/com/rag/common/autoconfigure/LoggerAutoConfiguration.java` 注册） | N:1 | B 侧「静态轨 + Bean 轨」双轨并存 ⇒ C **保留双轨**（静态入口 `GoStyleLogger` + Bean 入口 `LoggerFactoryBean`）但**算法只留一份**（Bean 委托给 `GoStyleLogger.doLogXxx`）⇒ ⇒ 不会出现「改一处忘一处」<br>✅ **已落地（2026-11-02 · 批次 D/E）**：抄 RAG 整段（L2 · D13）＋ **装配形态回改**（`@Component` → auto-config 的 `@Bean`，L4 · D3）；⚠️ `serviceName` **各自独立**（Bean 走构造注入，静态轨走 `GoStyleLogger.init`）⇒ 委托只复用算法、不共享状态 |
 | `logger/logger.go`（`getCallChain` + `isFiltered` 过滤框架帧） | `logger/Logger.java#getCallChain/isFiltered` | （并入 `common/src/main/java/com/rag/common/logger/GoStyleLogger.java`） | 1:1 | ⚠️ `call_chain` 是**行为契约**（SLF4J 无等价 ⇒ AGENTS.md §1.1c **G-4**）；过滤失效会让它变成不可读的栈转储 |
 
-### 1.6 `observability/` —— Observation + Deadline（C: 15 类）
+### 1.6 `observability/` —— Observation + Deadline（C: 17 类）
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
 | `observability/observability.go`（常量 + `Mark{Business,System,Timeout,DurationAndSlow}` + `IsTimeoutError`） | `observability/Observability.java` + `observability/ObservabilityConstants.java` | `common/src/main/java/com/rag/common/observability/ObservabilityCustomizer.java` | N:1 | Micrometer Observation + OTel bridge 承担 span 写入（D-03）；⚠️ `sea.slow=true` 与 `sea.biz_code` 是**业务定义的标记，必须保留**<br>✅ **已落地（2026-11-02 · 批 3）**：**业务标记的唯一载体**（判定是纯函数 + 写入双载体：OTel span 带类型 ＋ Micrometer `Observation.Context`）⇒ ⚠️ Micrometer `KeyValue` **只有 String 值** ⇒ Observation 侧属性类型退化为字符串（**D-03 已登记**）；OTel 侧类型逐字保住 |
 | `observability/observability.go`（`SlowThreshold` 读 env） | `observability/Observability.java#slowThreshold` + `spring/ObservabilityProperties.java` | `common/src/main/java/com/rag/common/observability/ObservabilityProperties.java` | 1:1 | ⚠️ Go 侧 `MarkBusinessError` 读的是 **env** 而不是 yml ⇒ 这条路径上 yml 不生效，**不能顺手修正**<br>✅ **已落地（2026-11-02 · 批 3）**：去 `@Component` 改由 `ObservabilityAutoConfiguration` 的 `@EnableConfigurationProperties` 注册（starter 化 ⇒ 消费方零装配代码） |
-| `observability/http.go`（`rest.Middleware` 超时 + 全 buffer response writer） | `observability/HttpMiddleware.java` + `spring/HttpMiddlewareFilter.java` | `common/src/main/java/com/rag/common/observability/ObservabilityCustomizer.java` | N:1 | Micrometer `Observation` 承担；⚠️ Go 侧超时写 **499**（客户端取消）/ **503**（服务端超时）两分支，B 侧**漏了 499 写回**（`DRIFT-COMMON-011` 未修） |
+| `observability/http.go`（`rest.Middleware` 超时 + 全 buffer response writer） | `observability/HttpMiddleware.java` + `spring/HttpMiddlewareFilter.java` + `observability/GoStyleClientDisconnectProbe.java` | `common/src/main/java/com/rag/common/observability/HttpMiddleware.java` ＋ `common/src/main/java/com/rag/common/observability/ObservabilityResponseWriter.java` ＋ `common/src/main/java/com/rag/common/observability/ClientDisconnectProbe.java` | 1:N | ⚠️ Go 侧超时写 **499**（客户端取消）/ **503**（服务端超时）两分支，B 侧**漏了 499 写回**（`DRIFT-COMMON-011` 未修）<br>✅ **已落地（2026-11-02 · 批次 C）**：抄 RAG 整段（L2 · D13）＋ **写入载体改为 Micrometer Observation**（L4 · D4 / D-03）⇒ **三条拒绝路径的形状逐条对齐**：超时 = **503 + body `Request Timeout\n`（16 字节）+ `text/plain; charset=utf-8` + `nosniff` + `Content-Length: 16`**；断连 = **499**（同款 body）；池饱和 = **裸 503（无 body、无 Content-Type）**；⇒ ⇒ **512 worker 池**（`obs-http-worker` ＋ `SynchronousQueue` ⇒ 满了直接拒绝）⇒ **池饱和 503** 这条路径由此而来；⚠️ **RAG 侧注释写「15 字节」是笔误**（`Request Timeout` 15 字符 + `\n` 1 字节 = **16**）⇒ 本仓照**代码**不照注释 |
 | `observability/rpc.go`（`grpc.UnaryServerInterceptor` + 7 个业务 gRPC code 集） | `observability/RpcInterceptor.java` + `spring/RpcServerInterceptorFactory.java` + `observability/GoStyleRecoverInterceptor.java` | `common/src/main/java/com/rag/common/observability/ObservabilityCustomizer.java` | N:1 | 7 个业务 code 集合（`InvalidArgument/NotFound/AlreadyExists/PermissionDenied/Unauthenticated/FailedPrecondition/OutOfRange`）是行为语义 |
 | —（Go 侧无对应物：Go 靠 `context.WithTimeout` 传播 ctx） | `observability/RpcInterceptor.java`（`handle(...)` 静态方法 + `RpcResult` + `RpcCallHandler` 嵌套类 + `TIMEOUT_SCHEDULER` / `HANDLE_EXECUTOR` 两个 static 池） | `common/src/main/java/com/rag/common/observability/RpcHandleRunner.java` + `common/src/main/java/com/rag/common/observability/RpcResult.java` + `common/src/main/java/com/rag/common/observability/RpcCallHandler.java` + `common/src/main/java/com/rag/common/observability/ObservabilityRuntime.java` | 1:N | **非 gRPC 路径**的业务调用入口（独立线程跑 handler + 到点 `cancel(true)` 打断 + 观测分类）<br>✅ **已落地（2026-11-02 · 批次 E）**：抄 RAG 的 `handle(...)` 整段（L2 · D13）＋ **写入载体改为 Micrometer Observation**（L4 · D4）＋ **嵌套类提到顶层 / 静态池抽到 `ObservabilityRuntime`**（L4 · D11 / 跨包可见性）<br>⚠️ **只有这一条路径能真正打断业务线程**（`cancel(true)` ⇒ interrupt）⇒ gRPC 拦截器路径**没有**（grpc-java 的 `ServerCall#close()` 无法取消已在跑的 handler）⇒ 业务超时感知靠 `DeadlineState.isExpired()` 主动自查 |
 | —（Go 侧无对应物：Go 的观测层不跑线程池） | `spring/ObservabilityLifecycle.java`（`@PreDestroy` → `RpcInterceptor.shutdown()`） | `common/src/main/java/com/rag/common/observability/ObservabilityLifecycle.java` | 1:1 | 容器关闭时回收 `obs-rpc-timeout` / `obs-rpc-worker` 两个池<br>✅ **已落地（2026-11-02 · 批次 E）**：抄 RAG 整段（L2 · D13）＋ **从 `spring` 包搬到 `observability` 包 + 改由 `ObservabilityAutoConfiguration` 的 `@Bean` 注册**（L4 · D3 / D11）<br>⚠️ **零 servlet 依赖** ⇒ 纯 gRPC 进程加载也安全（RAG 侧曾在这里炸 `NoClassDefFoundError: jakarta/servlet/Filter` ⇒ 本仓用**包结构**从根上避开）；⚠️ **池被终止后按需重建**（RAG 侧踩过的坑：surefire 一个模块多个上下文 ⇒ 前一个关闭后 `schedule(...)` 被拒 ⇒ 拦截器返回 `INTERNAL`） |
@@ -592,7 +592,7 @@ Micrometer 的观察模型与它**不是一对一映射**（D-03）⇒ 用生态
 
 ## 7. 覆盖度自查
 
-### 7.1 C 列零遗漏（99/99 = 100%）
+### 7.1 C 列零遗漏（101/101 = 100%）
 
 自查命令：
 
@@ -608,14 +608,14 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 | `contract/` | 1 | 1 | 0 |
 | `exception/` | 2 | 2 | 0 |
 | `logger/` | 5 | 5 | 0 |
-| `observability/` | 15 | 15 | 0 |
+| `observability/` | 17 | 17 | 0 |
 | `persistence/` | 4 | 4 | 0 |
 | `protection/` | 18 | 18 | 0 |
 | `redis/` | 5 | 5 | 0 |
 | `security/` | 3 | 3 | 0 |
 | `snowflake/` | 1 | 1 | 0 |
 | `web/` | 21 | 21 | 0 |
-| **合计** | **99** | **99** | **0** |
+| **合计** | **101** | **101** | **0** |
 
 > ⚠️ **核对日期 2026-11-02（批次 E 后重算）** —— 上一版自报 `72` 是**批 1 时的旧值**，
 > 批 2（+13）/ 批 3（+5）/ 批次 B（+5）/ 批次 D（+1）/ 批次 E（+8）都没回写 ⇒ **自报数长期漂着**。
@@ -630,9 +630,9 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 > `contract/`：ApiResponse
 > `exception/`：AuthenticationException · BusinessException
 > `logger/`：FatalError · GoStyleLogger · LogOption · LogOptions · LoggerFactoryBean
-> `observability/`：ClientDisconnectProbe · DeadlineState · GoStyleRequestDeadline · MqConsumer · ObservabilityCustomizer ·
-> ObservabilityLifecycle · ObservabilityProperties · ObservabilityRuntime · RpcCallHandler · RpcHandleRunner · RpcPrometheusInterceptor ·
-> RpcRecoverInterceptor · RpcResult · RpcStatInterceptor · RpcStatMetrics
+> `observability/`：ClientDisconnectProbe · DeadlineState · GoStyleRequestDeadline · HttpMiddleware · MqConsumer ·
+> ObservabilityCustomizer · ObservabilityLifecycle · ObservabilityProperties · ObservabilityResponseWriter · ObservabilityRuntime ·
+> RpcCallHandler · RpcHandleRunner · RpcPrometheusInterceptor · RpcRecoverInterceptor · RpcResult · RpcStatInterceptor · RpcStatMetrics
 > `persistence/`：DeadlineQueryTimeoutInjector · JsonTextTypeHandler · JsonbTypeHandler · SqlTimeoutStatusTranslator
 > `protection/`：AdaptiveShedder · ClientCircuitGateInterceptor · CpuThresholdHealthIndicator · MaxBytesFilter · MaxConnsFilter ·
 > OutboundDeadlineInterceptor · ProtectionProperties · RouteResolution · RouteTemplateResolver · RouteTemplateSource ·
@@ -791,6 +791,26 @@ RAG-V1 的 `common/` 里**曾保留 18 个 `GoStyle*` 命名的类**（实测 `f
 > ⚠️ **批次 D/E 的验证口径**：common 模块 **126 → 164 例**（新增 38 例）·
 > **3 次变异实测**（把回落改成放行 / 超时改成 `INTERNAL` / 关掉池重建）⇒ **每次都变红**
 > ⇒ ⇒ 证明这些断言**不是假绿**（AGENTS.md §3.3「变异测试是另一半」）。
+
+---
+
+### 7.8 ✅ V04 修法（2026-11-02 · 批次 C）：HTTP 超时 503 ＋ 断连 499 ＋ 512 worker 池 ＋ 断连探针
+
+> 本节逐条记录 **批次 C**（🔴 **DRIFT-COMMON-V04**）的 B → C 落点。
+> 抄写基准 = **RAG**（L2 业务语义层整段抄 · D13）；写入载体与装配形态按本仓的 **D3 / D1 / D4** 回改。
+
+| B 源类（RAG `service/common/`） | 职责 | C 承接（RAG-V1 `common/`） | 类型 | 抄写与回改要点 |
+|---|---|---|---|---|
+| `observability/HttpMiddleware.java` | HTTP 观测中间件（超时 503 ＋ 断连 499 ＋ worker 池 ＋ 观测标记） | `common/src/main/java/com/rag/common/observability/HttpMiddleware.java` | 1:1 | ✅ **已落地（批次 C）**：抄 RAG 整段（L2 · D13）＋ **写入载体改为「Micrometer Observation + OTel 双载体」**（L4 · D4 / D-03）＋ **静态工厂改为 Spring Bean**（L4 · D3）⇒ **三条拒绝路径的形状逐条对齐**：① 超时 = **503 + body `Request Timeout\n`（16 字节）+ `text/plain; charset=utf-8` + `nosniff` + `Content-Length: 16`**；② 断连 = **499**（同款 body）；③ **池饱和 = 裸 503（无 body、无 Content-Type）** —— ③ 刻意与 ①② 不同（容量不足是「现在别来」，超时是「来不及了」）<br>⚠️ **RAG 侧注释写「15 字节」是笔误**（15 字符 + `\n` = **16**）⇒ 本仓照**代码**不照注释 |
+| `observability/HttpMiddleware.java`（嵌套 `ObservabilityResponseWriter`） | 响应记录器（捕获 body ＋ 超时后掐掉底层提交 ＋ 底层写锁） | `common/src/main/java/com/rag/common/observability/ObservabilityResponseWriter.java` | 1:1 | ✅ **已落地（批次 C）**：抄 RAG 整段（L2 · D13）＋ **从嵌套类提到顶层**（L4 · D11）⇒ ⚠️ **不能直接用 Spring 的 `ContentCachingResponseWrapper`** —— 它的 `flushBuffer()` 会透传到底层 ⇒ worker 线程能抢先提交响应 ⇒ 两个写者 ⇒ 状态码被抢 + Tomcat `MimeHeaders` 留 null 洞 ⇒ NPE ⇒ 客户端只看到 EOF |
+| `observability/GoStyleClientDisconnectProbe.java` | 客户端断连主动探测（往 socket 写 103 探针 ＋ 4 态 ＋ 行数预算） | `common/src/main/java/com/rag/common/observability/ClientDisconnectProbe.java` | 1:1 | ✅ **已落地（批次 C）**：抄 RAG 整段（L2 · D13）＋ **改名**（去 `GoStyle` 前缀，L4 · D11）⇒ ⚠️ **Tomcat 10.1 的反射链已重新取证**（审核报告 **F-7**）：`RequestFacade.request` ✔ / `Request.getCoyoteRequest()` ✔ / `coyote.Request.hook` ✔ / `AbstractProcessor.getSocketWrapper()` ✔ / `SocketWrapperBase.write+flush` ✔ ⇒ **唯一差异**：`ActionHook` 在 10.1 是**接口**（无 `getSocketWrapper()`）⇒ 必须按**实例的类层次**找 ⇒ 与 RAG 同一写法 |
+| `spring/HttpMiddlewareFilter.java` | 把 HTTP 中间件挂进 Filter 链 | `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java`（`@Bean httpMiddleware(...)` ＋ `@Order(HIGHEST_PRECEDENCE + 7)`） | N:1 | ✅ **已落地（批次 C）**：RAG 侧是 `@Component`（靠组件扫描）⇒ 本仓 starter 化 ⇒ **改由 auto-config 的 `@Bean` 产出**（L4 · D3）⇒ **消费方零 `@Import`**（A5） |
+
+> ⚠️ **批次 C 的验证口径**：common 测试 **167 → 185 例**（新增 18 例：`HttpMiddlewareTest` 11 例 ＋ `ClientDisconnectProbeTest` 8 例 ＋ 调整 1 例）·
+> **4 次变异实测**（超时 503→500 / 池饱和改成写 body / panic 路径 499→500 / 探针断连 499→500）⇒ **每次都变红**。
+> ⚠️ **其中一次变异「探针断连 499→500」最初<b>没有</b>变红** ⇒ ⇒ 说明那条分支当时<b>没被覆盖</b>
+> ⇒ ⇒ 补了**探针接缝**（`HttpMiddleware.DisconnectProbe`，**仅单测注入**，生产路径恒走 `ClientDisconnectProbe.probe`）
+> ⇒ ⇒ 再变异 ⇒ **变红** ⇒ ⇒ **「变异没变红」＝「这条断言没覆盖到」**（§3.3 的另一半）。
 
 ---
 
