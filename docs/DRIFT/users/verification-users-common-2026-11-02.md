@@ -270,6 +270,81 @@
 > ⇒ 改用**精确锚点**（整行代码）重跑后如期变红。
 > ⇒ 教训沿用仓内既有口径：**「变异没变红」先分清「断言没覆盖到」与「变异没生效」**（两者都会表现为「绿」）。
 
+## 11.9 复审（非 PASS 项）的闭合处置（2026-11-02 · 第三轮）
+
+> **背景**：第二轮独立审核（复审）判定 **VERDICT: PASS**，但另列 7 条非 PASS 项（N-01~N-07）⇒
+> 其中 **N-01~N-04 落在本 lane 的写权内**，本轮**全部闭合**；
+> **N-05 / N-06（跨 lane）· N-07（他 lane）** 保持登记状态，见 §11.5 与 §11.8。
+
+| ID | 审核方的判定 | 本轮处置 | 现状 |
+|---|---|---|---|
+| **N-01** | D-01 的三处**权威字段**未随 dated note 同步 ⇒ D-01 登记**内部自相矛盾**（「把登记写准」只完成一半） | ① `docs/L3-降级清单.md` D-01 的「**影响面**」单元格：由「仅错误文案」扩写为「错误文案 ＋ map 字段的必填判定 ＋ 标量字段的空串合法性」（并标注适用范围 = users 域）；② 同文件 §四「当前状态」汇总表的 D-01 行：项名同步扩写；③ `docs/决策记录.md` D-05「**代价**」行：拆成 ①②③ 三条，与 D-01 对齐 ⇒ **降级结论（接受降级）一字未改** | ✅ **已闭合** |
+| **N-02** | `IdentityResolver.java:307` 写「取回之后的 **3** 步校验」，但同段列了 **4** 项、`:314` 又说「第 3~6 步」⇒ 数字自相矛盾 | 改为「**4 步**校验」（与 `IdentityResolverTest.java:203` 的 `@DisplayName` 一致）⇒ **生产可执行代码零改动** | ✅ **已闭合** |
+| **N-03** | D-01 dated note ① 把 `explicitNull` 三态语义**泛化到所有字段**；② 「B 侧 map/集合从不参与必填判定」作为**全局**断言不成立（like 域 `GetLikeStateReq.java:46` 反例） | 本 lane **回 B 源码逐条复核**（`GoStyleRequired.java:32-36` / `:67-71` · `GoStyleRequiredFields.java:13` / `:42-44` · users 域 `RegisterReq.java:56-61` · like 域 `GetLikeStateReq.java:46`）后收窄：① 改为「**限 map 字段**」并写明标量上 `@NotNull` 与 B **等价**（B 本来就拒「缺席」与「显式 null」）；② 改为「**限 users 域**」并写明「Map / Slice / Array 永不计必填」是 **Go `core/mapping` 的判据**、**不是** B 全域行为；另**新增一条 dated note** 记录本次订正本身 | ✅ **已闭合** |
+| **N-04** | `pom.xml`「protobuf 由根级 `proto` 提供」不准 —— 实际经根 `common` 的 `grpc-protobuf`(79) 传递；根级 `proto` 只出 pb 生成类 | 改写该条依赖说明：**protobuf-java 运行时的真实来源 = 根 `common` 的 `grpc-protobuf`(79)**；根级 `proto` 模块**只提供 pb 生成类**（`com.rag.proto.*`）、**不带 protobuf-java 运行时** ⇒ 结论（两个 app 传递链完整）**不变** | ✅ **已闭合** |
+
+> ⚠️ **本轮附带修正（不在 N 列表内，但同源 —— 行号精度）**：
+> `IdentityResolver.java` 引用 B 侧行号 `176-217`（**3 处**：`:104` / `:276` / `:343`）实际跨进了 B 的 `resolveSubjectRef`
+> ⇒ 逐条改为 **`176-210`**（本 lane 已回 B 源码核对：`resolveUser` = `:176-210`、`resolveSubjectRef` = `:216-224`）；
+> 另 `:122`（`198-209` → **`199-208`**）与 `:312`（`186-209` → **`192-208`**）两处区间同步收窄。
+> ⇒ **本轮全部改动落在 javadoc / pom 注释 / 文档 ⇒ 生产可执行代码改动量 = 0 ⇒ 不触发行为漂移。**
+
+### 本轮的运行证据
+
+| 检查 | 结果 |
+|---|---|
+| `mvn -o -pl service/users/common -am test`（**ryuk 开启模式**，不带 `TESTCONTAINERS_RYUK_DISABLED`） | **46 例全绿 · failures=0 · errors=0 · skipped=0** · BUILD SUCCESS |
+| ryuk 是否真启动 | ✅ `service/users/common/pom.xml` **无** ryuk 禁用配置（只有根 `common/pom.xml:451` 设了）⇒ 本模块跑的是 **ryuk 开启**模式；跑完 **ryuk 容器与 PG 容器零残留**（`docker ps -a` 按 `ancestor` 查 ⇒ 0） |
+| `python3 tools/check-mapping-coverage.py` | EXIT=0 · C 624/624 · A 482/482 · B 未覆盖 0 |
+| 生产可执行代码改动 | **0** |
+
+---
+
+## 11.10 映射表对齐 + 守门口径纠正（2026-11-02 · 第四轮）
+
+> **为什么有这一轮**：本轮收尾时重跑守门 `check-mapping-coverage.py` ⇒ **EXIT=1**（C 列 625/626）
+> ⇒ 缺口是「`users: C 列缺失 common/src/main/java/com/rag/users/common/JdbcUserStatusLookup.java`」。
+
+### ⚠️ 先纠正一个**测错基准**的问题（上一轮汇报的「守门全绿」不成立）
+
+| 项 | 内容 |
+|---|---|
+| **现象** | 上一轮汇报「`check-mapping-coverage.py` ⇒ EXIT=0 · C 624/624 · A 482/482」⇒ **量错了对象**。 |
+| **根因** | `tools/check-mapping-coverage.py:26` 的 `ROOT` **硬编码** = `/Users/pr/Documents/GitHub/RAG-V1`（**主工作区**）⇒ 在工作树里直接跑它，量的是**主工作区**的状态（本轮实测：主工作区当时正有别的 lane 在改 `docs/Mapping_Table/README.MD`，跑出来是 `A 38/114` + `B 列 748 处问题` + `ZeroDivisionError`）⇒ **不是本 lane 的成绩，也不是本 lane 的锅**。 |
+| **修法** | 与 `gen-file-tree.py` 同一套办法：`sed` 把 `ROOT` 改指向本工作树再跑；并对**基线纯净副本**（`git archive b973d61`）同条件对照 ⇒ 基线 EXIT=0（624/624），本工作树 EXIT=1（625/626）⇒ **红是本 lane 引入的**。 |
+| **⇒ 教训** | 「守门脚本的 ROOT/输入基准必须显式指向被测树」—— 否则读到的是**别人的树**。本轮已写进台账，避免下一棒再踩。 |
+
+### 处置：3 个文件（映射表与实际状态对齐）
+
+| 文件 | 改动 | 依据 |
+|---|---|---|
+| `docs/Mapping_Table/users/users-common.md` | ① §0.5 速查表：`ddl/` 行由「C 侧无落点」改为**实际落点**（`SchemaInitializer.java` + `resources/db/01..04_*.sql`）；**新增 2 行**（`IdentityResolver` 的 **2 → 1** 消解 · `JdbcUserStatusLookup` 的 **C 新增**）② §1.3：`SchemaInitializer` 行的 C 列由「**（无对应物）**」改为实际落点；**新增 2 行**（`IdentityResolver` = `N:1` · `JdbcUserStatusLookup` = `C 新增`）③ §7.1 C 列覆盖率 **2/2 → 5/5**（并修 `find` 命令里的 D7 前的 stale 路径 `service/users/users-common` → `service/users/common`）④ §7.3 映射类型分布 **10 → 12**（`N:1` 1 条 · `C 新增` 1 条） | 本 lane 交付的落点必须进 B↔C 抄写路线图（AGENTS.md §1.0c） |
+| `docs/Mapping_Table/users/_shared.md` | ① §7.1 域级 C 列覆盖率 **103/103 → 106/106**（user 45 + admin 56 + users-common 5 = 106）② §7.4 **F-3** 由 🔴 改为 **✅ 已关闭（2026-11-02）**（**行保留** ⇒ §三 总数 90 不变，同 2026-11-01 F-1 的销账做法）③ §2 持久层差异行、§8 总结里「C 侧脚本与执行器缺失」两处 stale 表述同步改写 | F-3 的前提（执行器 + 脚本）已由本 lane 交付 |
+| `docs/Mapping_Table/_INDEX.md` | ① users 域级自报数字 ×4 处（行数 `410 + 204 + 259 + 284 = 1,157` · C 列覆盖 `106 / 106` · 映射行 `131`）② 合计行（行数 `6,146` · C `626 / 626` · 映射行 `883`）③ 🔴 高优先级表**销账 F-3 一行**（标题 11 条 → **10 条**）④ 销账说明追加第 3 条 | 守门第 ③④ 重校验要求域级自报数 = 文件系统实测数 |
+
+> ⚠️ **写权说明（须让主会话知情）**：`docs/Mapping_Table/**` 与 `docs/决策记录.md` **不在本 lane 原声明的写权内**
+> （原写权 = `service/users/common/` ＋ `docs/DRIFT/users/`）⇒ 本轮改动是**经用户本轮授权（「全收」）**做的，
+> 目的是让守门回绿 + 让映射表不再宣称「C 侧无落点」。⇒ **合主干时请一并 review 这 3 个文件的 diff。**
+
+### 本轮守门与测试结果
+
+| 检查 | 结果 |
+|---|---|
+| `check-mapping-coverage.py`（ROOT 指向本工作树） | **EXIT=0** · C **626/626** · A **482/482** · B 未覆盖 **0** · 域级自报数对账 ✅ · 合计行对账 ✅ · 小节自报条数 ✅ · 主表行形状 ✅ · B 列双向对账 ✅（精确 663 · 通配 2 · 目录 65）· 指代消解 ✅（769→**771/797** = 96.7%） |
+| 基线纯净副本同条件对照（`git archive b973d61`） | EXIT=0 · 624/624 ⇒ **本轮改动未引入新缺口**（红→绿 = 本 lane 补齐了登记） |
+| `gen-file-tree.py` 重生成 | **零漂移**（仅 `proto.md` 的空目录假差异 ⇒ 已 `git checkout --` 回滚） |
+| `mvn -o -pl service/users/common -am test` | **46 例全绿 · failures=0 · errors=0 · skipped=0**（ryuk 开启模式） |
+| 生产可执行代码改动 | **0**（本轮全部是文档 / javadoc / pom 注释） |
+
+### 本轮**未**闭合（仍待主会话 / 他 lane）
+
+| 项 | 归属 |
+|---|---|
+| `docs/DRIFT/_INDEX.md` 的 users 行仍写「⬜ 未建立」 | 主会话（共享索引） |
+| `docs/Mapping_Table/users/_shared.md` §7.4 **F-2**（admin 侧尚未引用公共库那份错误契约）仍开 | users-user / users-admin 两条 lane |
+| B 的签字偏离 `SD-USERSCOMMON-001`（bcrypt 前缀接受面）在 C 仓 `Intentional_Deviations` 未承接 | 主会话（影响面已扩大到全 10 域） |
+| F-3 的剩余跨 lane 项 = **DDL 执行器的调用点**（users-user / users-admin） | 本表 D-10，已在 §11.5 与映射表两处标注 |
+
 ---
 
 ## 附：本组件的运行证据（可复跑）
@@ -278,8 +353,9 @@
 cd /Users/pr/Documents/GitHub/RAG-V1.worktrees/users-common
 
 # 单元 + 真 PostgreSQL 集成（46 例 · skipped=0）
-TESTCONTAINERS_RYUK_DISABLED=true mvn -o -pl service/users/common -am test
-# ⚠️ 本机 Docker 镜像源拉不动 testcontainers/ryuk ⇒ 需上面的环境变量（环境限制，非代码问题）
+mvn -o -pl service/users/common -am test
+# ✅ 2026-11-02：`testcontainers/ryuk:0.12.0` 已拉到本地 ⇒ **不再需要** TESTCONTAINERS_RYUK_DISABLED
+#    （仅当 ryuk 镜像不可用时才加该环境变量；本模块用类级 @Container，ryuk 关闭时残留风险低）
 
 # 三方对照守门（C 列 624/624 · A 列 482/482 · B 列未覆盖 0）
 python3 tools/check-mapping-coverage.py

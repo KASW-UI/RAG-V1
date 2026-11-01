@@ -101,7 +101,7 @@ public final class IdentityResolver {
      * 「按 UID 查用户并取回 status」的端口。
      *
      * <p>对应 B 侧的 {@code UserServiceGrpc.UserServiceBlockingStub#getUser}（B 出处：
-     * {@code IdentityResolver.java:176-217}）—— B 走 gRPC 是因为 api 与 rpc 分属两进程；
+     * {@code IdentityResolver.java:176-210}）—— B 走 gRPC 是因为 api 与 rpc 分属两进程；
      * C 侧合并为单进程 ⇒ 端口化（表达层差异，判定链不变）。
      */
     @FunctionalInterface
@@ -119,7 +119,7 @@ public final class IdentityResolver {
     /**
      * 一次查询的结果。
      *
-     * <p>B 出处：{@code IdentityResolver.java:198-209}（{@code user.getUid()} / {@code user.hasStatus()} /
+     * <p>B 出处：{@code IdentityResolver.java:199-208}（{@code user.getUid()} / {@code user.hasStatus()} /
      * {@code user.getStatus()}）—— B 走 proto3 的 {@code optional int64 status}，
      * <b>「字段不存在」与「字段值为 0」是两种状态</b> ⇒ 本记录用 {@code Long status} 的
      * {@code null} 表达「字段不存在」，用 {@code 0L} 表达「存在且为 0」。
@@ -273,7 +273,7 @@ public final class IdentityResolver {
     /**
      * 解析身份并产出<b>已校验的用户记录</b> —— ClaimedUID → GetUser → status presence 检查。
      *
-     * <p><b>B 出处</b>：{@code IdentityResolver.java:176-217}（{@code resolveUser}）——
+     * <p><b>B 出处</b>：{@code IdentityResolver.java:176-210}（{@code resolveUser}）——
      * B 侧返回的是 <b>proto {@code UserInfo}</b>（因为 api 与 rpc 分属两进程，api 只能经 gRPC 拿到整份 user）。
      * <p>⚠️ <b>C 侧的对应物是 {@link UserStatusRecord}</b>（found + uid + status），<b>不是</b>整份用户：
      * C 按 D1+D7 把 api + rpc <b>合并成一个进程</b> ⇒ 需要<b>完整用户数据</b>的调用点
@@ -304,12 +304,12 @@ public final class IdentityResolver {
     }
 
     /**
-     * 只做「取回之后的 3 步校验」（存在性 → UID 一致 → status presence → 活跃）。
+     * 只做「取回之后的 4 步校验」（存在性 → UID 一致 → status presence → 活跃）。
      *
      * <p><b>为什么单独暴露</b>：C 侧 api + rpc 合并成单进程后，需要<b>完整用户数据</b>的调用点
      * 会先从自己的 domain service 取到用户（<b>同一次查询</b>），再把 uid 与 status 交给本方法判定
      * ⇒ <b>既不重复查库，也保持 B 的判定顺序</b>（先判身份合法性，再判存在/一致/presence/活跃）。
-     * <p><b>B 出处</b>：{@code IdentityResolver.java:186-209}（B 侧这段逻辑内联在 {@code resolveUser} 里，
+     * <p><b>B 出处</b>：{@code IdentityResolver.java:192-208}（B 侧这段逻辑内联在 {@code resolveUser} 里，
      * 因为 B 的 user 是 rpc 返回的 proto 对象，调用方拿不到、也没理由自己去查）。
      * <p>⚠️ <b>判定顺序与 {@link #resolveUser} 完全一致</b>（本方法是它的第 3~6 步）。
      *
@@ -340,7 +340,7 @@ public final class IdentityResolver {
      * 解析身份并产出三元组 —— <b>ClaimedUID → GetUser → status presence 检查 → SubjectRef</b>。
      *
      * <p>B 出处：{@code IdentityResolver.java:212-223}（{@code resolveSubjectRef}）+
-     * {@code :176-217}（{@code resolveUser}）。
+     * {@code :176-210}（{@code resolveUser}）。
      * <p>⇒ 本方法 = {@link #resolveUser} ＋ 三元组封装；判定链与顺序与 B 一致。
      *
      * @param request 当前请求

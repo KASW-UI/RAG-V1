@@ -139,7 +139,7 @@
 | 实体 | GORM struct + struct tag | `@TableName` + `@TableId(type=ASSIGN_ID)` Entity | 同 B | — |
 | 数据访问 | `*Model` 上的方法（`FindOneByUid` / `Insert` / `Updates` …） | `Mapper extends BaseMapper<Entity>` + `LambdaQueryWrapper` | 同 B | 按实体拆 Mapper（B/C 同构） |
 | **表名** | `users`、`user_avatar_history`、`admins`、`admin_invites`（GORM `TableName()`） | `users_user`、`users_user_avatar_history`、`admin_admin`、`admin_invite` | 同 B（`@TableName`） | ⚠️ **A↔B/C 表名不同** —— 见 §7.4 F-4；本表只记职责对应，不判行为 |
-| Schema 演进 | `db.AutoMigrate(&User{}, &UserAvatarHistory{})`（**无状态、幂等**） | `SchemaInitializer` 幂等重放 `db/01..04_*.sql`（2026-10-21 起弃用 Flyway） | `*SchemaBootstrap` + `db/migration/`（**仅 `.gitkeep`**） | ⚠️ C 侧脚本与执行器缺失（F-3） |
+| Schema 演进 | `db.AutoMigrate(&User{}, &UserAvatarHistory{})`（**无状态、幂等**） | `SchemaInitializer` 幂等重放 `db/01..04_*.sql`（2026-10-21 起弃用 Flyway） | `*SchemaBootstrap` + `db/migration/`（**仅 `.gitkeep`**） | ⚠️ **C 侧已落地（2026-11-02 · users-common lane）**：执行器 `service/users/common/.../SchemaInitializer.java` + 4 份脚本 `service/users/common/src/main/resources/db/01..04_*.sql` ⇒ **F-3 已闭合**；⚠️ 调用点仍属 users-user / users-admin 两条 lane |
 | 事务 | `m.conn.Transaction(func(tx *gorm.DB) error {...})` 闭包 | `@Transactional`（独立 Bean，规避 self-invocation） | 同 B | `selectAvatar` / `SelectAvatarHistory` / `CreateAdmin` 是多步原子写 ⇒ **必须独立 Bean** |
 | 雪花 ID | `snowflake.GetID()`（`service/common/snowflake`） | `common/spring/SnowflakeBean` + 各 rpc 的 `SnowflakeBootstrap` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration` + 各 service 的 `SnowflakeBootstrap` | epoch / 位段是业务契约（like 域游标依赖 `>>22`） |
 | jsonb / text 列 | `gorm:"column:extra_info;serializer:json"` | `JsonTextTypeHandler`（user-rpc，text）+ `JsonbTypeHandler`（admin-rpc，jsonb） | `common/src/main/java/com/rag/common/persistence/JsonTextTypeHandler.java` + `JsonbTypeHandler.java` | ⚠️ `LambdaUpdateWrapper.set(Map)` 会丢 TypeHandler ⇒ 需 `setSql("CAST(... AS jsonb)")` 或走实体更新 |
@@ -284,7 +284,7 @@ RAG-V1 用 Spring 生态的原生形态（`@RestControllerAdvice` / Bean Validat
 
 ## 7. 覆盖度自查（域级汇总）
 
-### 7.1 C 列覆盖率 —— **103 / 103 = 100%**
+### 7.1 C 列覆盖率 —— **106 / 106 = 100%**
 
 自查命令（`RAG-V1` 仓根）：
 
@@ -297,7 +297,7 @@ find "service/users" -name '*.java' -not -path '*/src/test/*' -not -path '*/targ
 
 | C 模块 | `.java` 数 | 出现在本表 C 列的位置 | 覆盖 |
 |---|---|---|---|
-| **合计** | **103** | — | ✅ **103/103** |
+| **合计** | **106** | — | ✅ **106/106** |
 
 > ⚠️ **逐模块实测表的落点**：user 子域 2 行见 [`user/user.md`](./user/user.md) §7.1 · admin 子域 2 行见 [`admin/admin.md`](./admin/admin.md) §7.1 · users-common 1 行见 [`users-common.md`](./users-common.md) §7.1。
 
@@ -390,7 +390,7 @@ find "service/users" -name '*.java' -not -path '*/src/test/*' -not -path '*/targ
 |---|---|---|---|
 | **F-1** | ✅ **已关闭（2026-11-01）—— Go 的身份解析器在 C 侧已有承载**。`service/user/user/identity/resolve.go`（权威解析器：`ClaimedUID` → `GetUser` → status presence 检查 → `SubjectRef`；`AuthorityID="rtw.identity"` / `PlatformTenantID="platform"`；5 个 sentinel 错误 `ErrInvalidClaim` / `ErrUserNotFound` / `ErrIdentityMismatch` / `ErrUserInactive` / `ErrStatusUnavailable`）在 B 侧有 `IdentityResolver.java`（user-api 与 admin-api **各一份，共两份重复**）⇒ C 侧落 **`service/users/common/src/main/java/com/rag/users/common/IdentityResolver.java`（只 1 份，上收到域级共享层）** ⇒ **B 侧两份重复在 C 侧被消解**（用户 2026-11-01 定；`users-common` 已被 user / admin 依赖 ⇒ **不动 pom**） | L1（`AuthorityID` / `PlatformTenantID` / `SubjectRef` 形状）+ L2（5 个错误的判定顺序） | ✅ 落点已定并落地：域级共享层 `service/users/common/` ⇒ user / admin 两子域**共用**同一份权威实现，**不复制两份** |
 | **F-2** | 🟠 **错误契约在两个子域间仍然不对称（2026-10-26 D7 后收敛为「admin 无 `contract/` 包」）**。C 侧 `service/users/user/src/main/java/com/rag/user/contract/` 有 `ErrCodes.java` + `ErrMsg.java`；**admin 侧根本没有 `contract/` 包**（`admin-contract` 模块已随 D7 删除）。而 Go 侧 `service/user/common/errmsg/errmsg.go` 是 **user / admin 四方共用**的一份；RAG-V1 把它落在**公共库** `service/users/common/src/main/java/com/rag/users/common/`（`ErrCodes.java` + `ErrMsg.java`，artifactId `users-common`） | 若 admin 域要独立引用错误契约，须显式取公共库那份（`users-common` 是 admin 的 pom 依赖，**已接上**）；但 admin 源码**当前零引用** `ErrCodes` / `ErrMsg` | 明确 admin 域的错误码取「公共库 `users-common` 那份」还是「user 子域私有那份」；取前者则**不要**在 admin 侧复制一份（逐域隔离 ≠ 逐子域复制）。⚠️ **时点标注**：本条原文写的是「`admin/contract/` 一份都没有（该模块只有 `admin.proto`）」—— 那是 D7 之前的状态 |
-| **F-3** | 🔴 **幂等 DDL 重放机制在 C 侧无执行器、无脚本**。B 侧有 `users-common/.../ddl/SchemaInitializer.java` + `db/01..04_*.sql`；C 侧 `common/` **无 `SchemaInitializer`**，两个 `*-service` 的 `resources/db/migration/` **只有 `.gitkeep`** ⇒ `UserSchemaBootstrap` / `AdminSchemaBootstrap` 无处可重放 | Go 的 `AutoMigrate` 是**无状态幂等**的（L2 语义：谁先启动都行） | C 侧需补执行器（建议归 `common/src/main/java/com/rag/common/persistence/`）+ 4 个幂等 SQL 脚本（`CREATE TABLE IF NOT EXISTS`） |
+| **F-3** | ✅ **已关闭（2026-11-02 · users-common lane 填实现）—— 幂等 DDL 重放执行器 + 4 份幂等脚本已在 C 侧落地**。B 侧的 `users/users-common/.../ddl/SchemaInitializer.java` + `db/01..04_*.sql` ⇒ C 侧落 **`service/users/common/src/main/java/com/rag/users/common/SchemaInitializer.java`**（幂等重放执行器：advisory lock 串行化 + `ScriptUtils` 重放）＋ **`service/users/common/src/main/resources/db/01..04_*.sql`**（4 份 `CREATE TABLE IF NOT EXISTS` 脚本，users 域 users/user_avatar_history/admin/admin_invite 四表）⇒ 执行器与脚本**均已就位**。⚠️ **剩余跨 lane 项**：**执行器的调用点**在 `users-user` / `users-admin` 两条 lane（见域级台账 `docs/DRIFT/users/verification-users-common-2026-11-02.md` 的 D-10） | Go 的 `AutoMigrate` 是**无状态幂等**的（L2 语义：谁先启动都行） | C 侧需补执行器（建议归 `common/src/main/java/com/rag/common/persistence/`）+ 4 个幂等 SQL 脚本（`CREATE TABLE IF NOT EXISTS`）—— ✅ **已落地（执行器落 `service/users/common/`，脚本 4 份）** |
 | **F-4** | 🟡 **表名在 A 与 B/C 之间不同**。Go 的 GORM `TableName()` 是 `users` / `user_avatar_history` / `admins` / `admin_invites`；B/C 用 `users_user` / `users_user_avatar_history` / `admin_admin` / `admin_invite` | 表名是 L1 级可见面（客户端直查、报表、运维脚本都依赖） | 本表**不判**行为；该差异的现状与证据看 `RAG/docs/DRIFT/users/`。若 RAG-V1 要保留 B 的表名，需在 `users-common/ErrMsg` 之外**单独留档**（否则下一棒会把它当成"Go 就长这样"） |
 | **F-5** | 🟡 **C 的 HTTP DTO 命名与 Go `.api` 有 1 处不一致（user）/ 1 处改进（admin）**。① user 侧：Go `.api` 是 `AvatarHistoryResp`，C 是 `GetAvatarHistoryResp`（取了 proto 的名）；**同时** B 的 `RegisterReq/RegisterResp` 在 C 改成了 `CreateUserReq/CreateUserResp`（**这个改对了**，Go `.api` 就是 `CreateUserReq`）。② admin 侧：Go `.api` 是 `CreateInviteReq/Resp`，C 也是 `CreateInviteReq/Resp`（**改对了**），而 B 是 `CreateInviteCodeReq/Resp`（取了 proto 的名） | DTO 名 = HTTP 契约的一部分 | user 侧的 `GetAvatarHistoryResp` 与 Go `.api` 的 `AvatarHistoryResp` 不一致，需确认取哪个为准并统一 |
 | **F-6** | 🟡 **C 的 `UserController` / `AdminController` javadoc 里的 method 与端点清单，与 A、B 都不一致**。javadoc 写「Go 侧 method 分布：DELETE, GET, POST, PUT」并列出 `PUT /user/v1/updateuser`、`GET /user/v1/avatarhistory`、`GET /admin/v1/getself` 等；而 Go 源码（`routes.go`）**users 域零个 PUT**，user 是 `Get2·Post6·Delete1`、admin 是 `Get3·Post9·Delete1`；B 的两个 Controller 也**全是 `@PostMapping`** | 这两条 javadoc 是 RAG-V1 内部的**自相矛盾**：同一仓的 `File_Tree/users/user/user-service.md` 写「method 是签字偏离：Go Get2·Post6·Delete1 ⇒ 本仓库统一 POST」 | 以 A 列 `routes.go` 为准修正 javadoc；否则下一棒填实现时会把 `PUT` / `GET` 当成契约写进去 |
@@ -407,4 +407,4 @@ find "service/users" -name '*.java' -not -path '*/src/test/*' -not -path '*/targ
 
 ⇒ **C 列 103/103 覆盖（85 个唯一文件名零遗漏）、A 列 114/114 覆盖（67 个唯一文件名零遗漏）、映射类型 1:1 ×43 / 1:N ×15 / N:1 ×71 / C 新增 ×0（共 129 行）。**
 ⇒ **文件名与职责已逐条对应；行为是否一致，一律以 A 列 Go 源码为准，状态看 `RAG/docs/DRIFT/users/`。**
-⇒ **本表发现的 8 条职责缺口（F-1 ~ F-8）** 里，**F-1（身份解析器无落点）** 与 **F-3（DDL 重放无执行器/脚本）** 是硬缺口，填实现前应先补。
+⇒ **本表发现的 8 条职责缺口（F-1 ~ F-8）** 里，**F-1（身份解析器无落点）** 与 **F-3（DDL 重放无执行器/脚本）** 是硬缺口 —— ✅ **两条均已闭合**（F-1：2026-11-01 · `IdentityResolver` 落 `service/users/common/`；F-3：2026-11-02 · `SchemaInitializer` + `db/01..04_*.sql` 落 `service/users/common/`）；⚠️ **F-3 的剩余跨 lane 项 = 执行器的调用点**（users-user / users-admin 两条 lane）。

@@ -65,7 +65,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 
 | 域 | 文档 | 行数 | C 列覆盖 | A 列覆盖 | 映射行 |
 |---|---|---:|---|---|---:|
-| **users** | [_shared.md](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 410 + 200 + 259 + 284 = **1,153** | **104 / 104 = 100%** | **114 / 114 = 100%** | 129 |
+| **users** | [_shared.md](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 410 + **204** + 259 + 284 = **1,157** | **106 / 106 = 100%** | **114 / 114 = 100%** | 131 |
 | **common** | [common.md](common.md) | 911 | **104 / 104 = 100%** | **11 / 11 = 100%** | 135 |
 | **article** | [article.md](article/article.md) | 488 | **58 / 58 = 100%** | **45 / 45 = 100%** | 72 |
 | **comment** | [comment.md](comment/comment.md) | 484 | **69 / 69 = 100%** | **58 / 58 = 100%** | 84 |
@@ -75,7 +75,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **like** | [like.md](like/like.md) | 512 | **69 / 69 = 100%** | **51 / 51 = 100%** | 81 |
 | **message** | [message.md](message/message.md) | 575 | **52 / 52 = 100%** | **55 / 55 = 100%** | 69 |
 | **task** | [task.md](task/task.md) | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
-| **合计** | **13 份**（10 域，users 域拆 4 份） | **6,142** | **624 / 624 = 100%** | **482 / 482 = 100%** | **881** |
+| **合计** | **13 份**（10 域，users 域拆 4 份） | **6,146** | **626 / 626 = 100%** | **482 / 482 = 100%** | **883** |
 
 > 📌 **users 域拆分的守恒性**（2026-10-25 拆分后实测）：
 > 拆分前单文件 515 行 / 127 映射行 ⇒ 拆分后四份合计 **1,011 行 / 127 映射行**（行数增加是**导航与分节标题**带来的，非内容膨胀）。
@@ -138,11 +138,10 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 > ⚠️ 此前写的「76」是 **2026-10-26 的自报数，已过期**（此后各域小节逐条增补；§三 高优先级表里**另有 2 条已于 2026-11-01 销账**，见下）。
 > ⇒ 已在 `tools/check-mapping-coverage.py` 加守恒断言：**小节标题自报的条数必须等于表内实际行数**（P-08 同病，不再靠人复算）。
 
-### 🔴 高优先级（11 条）
+### 🔴 高优先级（10 条）
 
 | 域 | 缺口 |
 |---|---|
-| **users** | **幂等 DDL 重放机制在 C 侧无执行器、无脚本**（B 侧有 `SchemaInitializer` + `db/01..04_*.sql`） | 410 + 200 + 259 + 284 = **1,153** | **104 / 104 = 100%** | **114 / 114 = 100%** | 129 |
 | **task** | **`goka.Persist`（RocksDB 本地表）无生态等价物** ⇒ 存储后端需拍板（PG 表 / Redis `HINCRBY` / 专用 KV） | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
 | **task** | **`WebMvcConfig` 的 javadoc 与本域事实冲突** —— javadoc 写「注册 JwtAuthInterceptor」，但 Go 侧 `routes.go:16-25` **无 `rest.WithJwt`** ⇒ 本域**零鉴权** | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
 | **task** | **`TaskApiResponseAdvice` 的职责未定** —— Go 侧 `api/task.go` **无 `httpx.SetOkHandler`** ⇒ 成功响应**无信封** | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
@@ -156,12 +155,15 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 
 > ✅ **2026-11-01 销账 2 条**（本轮补空壳 + 修 C 列）：① **users · Go 的身份解析器在 C 侧无承载** ⇒ 已落 `service/users/common/src/main/java/com/rag/users/common/IdentityResolver.java`（**只 1 份**，上收到域级共享层）；② **task · Kafka 消费侧整体缺失** ⇒ 已落 `service/task/src/main/java/com/rag/task/messaging/`（10 类：2 个 sink + 3 个 consumer + router + store + 2 个事件 DTO + `TaskGoCompatibleJson`）。
 > ⇒ 两行**从本表删除**，但**仍留在各域 §「职责对不上」小节**里并标 ✅ ⇒ §三 总数（90）不变。
+>
+> ✅ **2026-11-02 销账 1 条**（users-common lane 填实现）：③ **users · 幂等 DDL 重放机制在 C 侧无执行器、无脚本** ⇒ 已落 `service/users/common/src/main/java/com/rag/users/common/SchemaInitializer.java`（幂等重放执行器）＋ `service/users/common/src/main/resources/db/01..04_*.sql`（4 份幂等 DDL 脚本）⇒ **F-3 闭合**。
+> ⇒ 该行**从本表删除**，**仍留在** [`users/_shared.md`](users/_shared.md) §7.4 里并标 ✅ ⇒ §三 总数（90）不变；⚠️ **剩余跨 lane 项 = 执行器的调用点**（users-user / users-admin 两条 lane，见域级台账 `docs/DRIFT/users/verification-users-common-2026-11-02.md` 的 D-10）。
 
 ### 🟠 中优先级（要点）
 
 | 域 | 缺口 |
 |---|---|
-| **users** | **错误契约在两个子域间不对称**（**F-2 · 2026-10-26 D7 后由 🔴 降级为 🟠**）—— C 的 `service/users/user/src/main/java/com/rag/user/contract/` 有 `ErrCodes`+`ErrMsg`，但 **admin 侧无 `contract/` 包**（`admin-contract` 模块已随 D7 删除）；公共库 `service/users/common/src/main/java/com/rag/users/common/` 那份 admin 尚未引用（但 pom 依赖已接上） | 410 + 200 + 259 + 284 = **1,153** | **104 / 104 = 100%** | **114 / 114 = 100%** | 129 |
+| **users** | **错误契约在两个子域间不对称**（**F-2 · 2026-10-26 D7 后由 🔴 降级为 🟠**）—— C 的 `service/users/user/src/main/java/com/rag/user/contract/` 有 `ErrCodes`+`ErrMsg`，但 **admin 侧无 `contract/` 包**（`admin-contract` 模块已随 D7 删除）；公共库 `service/users/common/src/main/java/com/rag/users/common/` 那份 admin 尚未引用（但 pom 依赖已接上） | 410 + **204** + 259 + 284 = **1,157** | **106 / 106 = 100%** | **114 / 114 = 100%** | 131 |
 | **task** | 持久层空位（`db/migration/` 只有 `.gitkeep`、yml 无 `flyway`/`hikari`/`id-type`）· RAG-V1 `common/` 无 `RpcServerInterceptorFactory`（Go 的 unary interceptor 无落点）· MQ 载荷契约 C 侧只剩 like 域那一份 · `grpc-client-spring-boot-starter` 本域无使用方 · **Kafka 消费侧仍整体缺失**（`messaging/` 只有 `TaskKafkaTopics` + `TaskRewardPublisher`，B 侧 11 个 `mq/*.java` 里的 9 个消费者无落点，全仓 `@KafkaListener` **零命中**） | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
 | **like** | Kafka 消费入口（listener / ack 契约 / 失败即丢弃不重投）无落点 · `like_outbox_event → article-hot-events` 发件箱中继无落点 · Jackson 2 `ObjectMapper` Bean 无落点 · `like` / `like-api` 配置段整个缺失 · DDL 迁移脚本为空 | 512 | **69 / 69 = 100%** | **51 / 51 = 100%** | 81 |
 | **message** | `controller/`（两个 Controller）· `interceptor/`（两组 JWT）· `metrics/` · `wiring/` · `service/` · `service/message/src/main/java/com/rag/message/contract/` 均有职责缺口 | 575 | **52 / 52 = 100%** | **55 / 55 = 100%** | 69 |
@@ -173,7 +175,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 
 | 域 | 缺口 |
 |---|---|
-| **users** | 表名 A 与 B/C 不同（Go `users`/`admins`/`admin_invites` vs B/C `users_user`/`admin_admin`/`admin_invite`）· HTTP DTO 命名 1 处不一致 · `UserController`/`AdminController` javadoc 的 method 分布与 A/B 都不一致 · `AdminController` javadoc 少列 1 个端点（12 vs 13）· HTTP 超时机制在 C 侧未落点（Go `default=3000`） | 410 + 200 + 259 + 284 = **1,153** | **104 / 104 = 100%** | **114 / 114 = 100%** | 129 |
+| **users** | 表名 A 与 B/C 不同（Go `users`/`admins`/`admin_invites` vs B/C `users_user`/`admin_admin`/`admin_invite`）· HTTP DTO 命名 1 处不一致 · `UserController`/`AdminController` javadoc 的 method 分布与 A/B 都不一致 · `AdminController` javadoc 少列 1 个端点（12 vs 13）· HTTP 超时机制在 C 侧未落点（Go `default=3000`） | 410 + **204** + 259 + 284 = **1,157** | **106 / 106 = 100%** | **114 / 114 = 100%** | 131 |
 | **task** | `TaskApiProperties` 的聚合边界未定 | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
 | **like** | `target_ids` 的 null 元素语义无独立文件 · 2 条 Jackson 强转补强是否还在未核对 · `like_api_reject_total` 的「Go 侧未注册」与 C 侧自动注册差异未声明 | 512 | **69 / 69 = 100%** | **51 / 51 = 100%** | 81 |
 

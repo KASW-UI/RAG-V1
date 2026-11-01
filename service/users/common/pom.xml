@@ -30,8 +30,12 @@
                      ⇒ 两个消费方（`service/users/user` · `service/users/admin`）都**直接依赖**
                      `com.rag:common`（各自 pom:122）⇒ 传递链完整；
                ② `grpc-stub` / `protobuf-java`
-                  ⇒ 根 `common` 声明 `grpc-stub`(76) / `grpc-protobuf`(79)（带 protobuf-java）
-                     ⇒ 且两个 app 另直接依赖根级 `proto` 模块（各自 pom:116）⇒ 传递链完整；
+                  ⇒ 根 `common` 声明 `grpc-stub`(76) / `grpc-protobuf`(79)（**protobuf-java 运行时经
+                     `grpc-protobuf` 传递进来**）⇒ 两个 app 都**直接依赖** `com.rag:common`（各自 pom:122）
+                     ⇒ 传递链完整；
+                     ⚠️ **口径澄清**：两个 app 另直接依赖根级 `proto` 模块（各自 pom:116），但那个模块
+                        **只提供 pb 生成类**（`com.rag.proto.*`）⇒ **不带 protobuf-java 运行时**
+                        ⇒ protobuf-java 的真实来源是根 `common` 的 `grpc-protobuf`(79)，**不是**根级 `proto`；
                ③ `javax.annotation-api` 是 `provided` 作用域 ⇒ **本就不传递给下游** ⇒ 删它零风险。
 
             ⚠️ **本模块自己真正需要的只剩 3 条**：`spring-jdbc`（`SchemaInitializer` 的 `ScriptUtils`
