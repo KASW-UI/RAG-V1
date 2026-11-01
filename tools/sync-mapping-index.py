@@ -5,6 +5,13 @@
 识别特征：数据行 = 6 格，且第 4/5 格含 `/`（覆盖度）、第 6 格是整数（映射行）
 ⇒ §二「覆盖度表」与 §三「落点缺口表」两张表都能命中；其余表不动。
 
+⚠️ **按 section 分派第 2 格**（2026-11-02 修）：
+  §二「覆盖度表」第 2 格 = **文档列** ⇒ 允许脚本写入域文档清单；
+  §三「落点缺口表」第 2 格 = **缺口描述列** ⇒ **必须原样保留**。
+  D16 落地时本脚本对两张表一视同仁地写 `doc_cells` ⇒ **21 条缺口描述被覆盖成文件列表**
+  （且 §三 表头仍是 2 列「域 | 缺口」而数据行 6 格 ⇒ 表格形状坏）。
+  ⇒ 修法：**按当前 `## ` 节标题分派** + **§三 表头补齐 6 格形状**。
+
 用法：python3 tools/sync-mapping-index.py [--apply]
 """
 import os
@@ -12,7 +19,7 @@ import pathlib
 import re
 import sys
 
-ROOT = pathlib.Path("/Users/pr/Documents/GitHub/RAG-V1")
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 from importlib import import_module
 _cov = import_module("check-mapping-coverage")
@@ -72,10 +79,26 @@ def main():
     }
 
     out, replaced = [], set()
+    section = ""          # "二" = 覆盖度表 · "三" = 落点缺口表
+    expect_sep = False    # §三 表头已改写 ⇒ 下一行若是分隔行也需补齐 6 格
     for ln in lines:
         s = ln.strip()
+        m_sec = re.match(r"^##\s*([二三四五六七八九十]+)、", ln)
+        if m_sec:
+            section = m_sec.group(1)
+            expect_sep = False
         if s.startswith("|") and s.endswith("|"):
             cells = [c.strip() for c in s.strip("|").split("|")]
+            # §三 子表：表头「| 域 | 缺口 |」补齐成 6 格（数据行本来就是 6 格）
+            if section == "三" and len(cells) == 2 and cells[0] == "域" and cells[1] == "缺口":
+                out.append("| 域 | 缺口 | 行数 | C 列覆盖 | B 列覆盖 | 映射行 |")
+                expect_sep = True
+                continue
+            if expect_sep and all(set(c) <= set("-: ") and c for c in cells):
+                out.append("|---|---|---:|---|---|---:|")
+                expect_sep = False
+                continue
+            expect_sep = False
             if is_cover_row(cells):
                 dom = cells[0].strip("*")
                 if dom == "合计":
@@ -90,7 +113,12 @@ def main():
                     continue
                 if dom in act:
                     l, cc, ct, bc, bt, mr = act[dom]
-                    out.append(f"| **{dom}** | {doc_cells.get(dom, cells[1])} | {l:,} | "
+                    # §二 第 2 格 = 文档列（可写）；§三 第 2 格 = 缺口描述（**原样保留**）
+                    if section == "二":
+                        col2 = doc_cells.get(dom, cells[1])
+                    else:
+                        col2 = cells[1]
+                    out.append(f"| **{dom}** | {col2} | {l:,} | "
                                f"**{cc} / {ct} = {cc*100//ct if ct else 0}%** | "
                                f"**{bc} / {bt} = {bc*100//bt if bt else 0}%** | {mr} |")
                     replaced.add(dom)

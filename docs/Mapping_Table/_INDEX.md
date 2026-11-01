@@ -144,40 +144,40 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 
 | 域 | 缺口 | 行数 | C 列覆盖 | B 列覆盖 | 映射行 |
 |---|---|---:|---|---|---:|
-| **users** | [`_shared.md`](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 1,127 | **104 / 104 = 100%** | **145 / 145 = 100%** | 129 |
-| **task** | [task/task.md](task/task.md) | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
-| **task** | [task/task.md](task/task.md) | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
-| **task** | [task/task.md](task/task.md) | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
-| **common** | [common.md](common.md) | 918 | **104 / 104 = 100%** | **88 / 88 = 100%** | 135 |
-| **favorite** | [favorite/favorite.md](favorite/favorite.md) | 519 | **61 / 61 = 100%** | **75 / 75 = 100%** | 88 |
-| **comment** | [comment/comment.md](comment/comment.md) | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
-| **comment** | [comment/comment.md](comment/comment.md) | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
-| **comment** | [comment/comment.md](comment/comment.md) | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
-| **article** | [article/article.md](article/article.md) | 474 | **58 / 58 = 100%** | **83 / 83 = 100%** | 72 |
-| **follow** | [follow/follow.md](follow/follow.md) | 517 | **37 / 37 = 100%** | **51 / 51 = 100%** | 116 |
+| **users** | **幂等 DDL 重放机制在 C 侧无执行器、无脚本**（B 侧有 `SchemaInitializer` + `db/01..04_*.sql`） | 1,127 | **104 / 104 = 100%** | **145 / 145 = 100%** | 129 |
+| **task** | **`goka.Persist`（RocksDB 本地表）无生态等价物** ⇒ 存储后端需拍板（PG 表 / Redis `HINCRBY` / 专用 KV） | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
+| **task** | **`WebMvcConfig` 的 javadoc 与本域事实冲突** —— javadoc 写「注册 JwtAuthInterceptor」，但 **B 侧 `task-api` 零 JWT 依赖、无 `interceptor/` 包** ⇒ 本域**零鉴权** | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
+| **task** | **`TaskApiResponseAdvice` 的职责未定** —— **B 侧 `task-api` 没有 ResponseAdvice** ⇒ 成功响应**无信封** | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
+| **common** | **`communityfact` 的「三域共享」** ⇒ ✅ **前提已变（D16 + 2026-11-02 实测）**：B 侧 `import com.rag.common.communityfact.*` 的主代码文件数 = **comment 4 / like 4 / favorite 10** ⇒ **B 侧已是三域共享**（favorite 走共享层 `Wire` / `Dispatcher` / `ProcessLogger`）⇒ C 侧按三域共享设计 = 照抄 B 侧；⚠️ **「favorite 域的接线是否已走共享层」归 `favorite.md` 核** | 918 | **104 / 104 = 100%** | **88 / 88 = 100%** | 135 |
+| **favorite** | **错误文案串味** —— 🔴 **`ErrorNotFound(5002)` = 英文 `not found`**（B 侧 `favorite-common/…/common/errmsg/FavoriteErrorMessages.java:52`，**本域唯一英文**）+ `Success`="OK" / `Error`="FAIL"（`:48`） | 519 | **61 / 61 = 100%** | **75 / 75 = 100%** | 88 |
+| **comment** | `CommentController` javadoc 与 **B 侧** 端点清单不一致（2 处） | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
+| **comment** | `CommentKafkaMsg` 与 `service/comment/src/main/java/com/rag/comment/messaging/CommentAuditMessage.java` 的载荷字段归属未锁定 | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
+| **comment** | `wiring/` 下的**装配落点已齐**（2026-10-25 补齐 `CommentFactProcessLogging`）但类内容仍为空壳；`db/migration/` 目录内容仍为空 | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
+| **article** | C 列整体职责缺口（详见 §1.5） | 474 | **58 / 58 = 100%** | **83 / 83 = 100%** | 72 |
+| **follow** | 原 `api/` vs `rpc/` 职责边界（D7 已压平，边界问题转为「单层包内的归属」）、`FollowApiSupport` 归属、`WebMvcConfig`/`FollowController` javadoc 与事实冲突 | 517 | **37 / 37 = 100%** | **51 / 51 = 100%** | 116 |
 
 > ✅ **2026-11-01 销账 2 条**（本轮补空壳 + 修 C 列）：① **users · B 侧的身份解析器在 C 侧无承载** ⇒ 已落 `service/users/common/src/main/java/com/rag/users/common/IdentityResolver.java`（**只 1 份**，上收到域级共享层）；② **task · Kafka 消费侧整体缺失** ⇒ 已落 `service/task/src/main/java/com/rag/task/messaging/`（10 类：2 个 sink + 3 个 consumer + router + store + 2 个事件 DTO + `TaskGoCompatibleJson`）。
 > ⇒ 两行**从本表删除**，但**仍留在各域 §「职责对不上」小节**里并标 ✅ ⇒ §三 总数（90）不变。
 
 ### 🟠 中优先级（要点）
 
-| 域 | 缺口 |
-|---|---|
-| **users** | [`_shared.md`](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 1,127 | **104 / 104 = 100%** | **145 / 145 = 100%** | 129 |
-| **task** | [task/task.md](task/task.md) | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
-| **like** | [like/like.md](like/like.md) | 451 | **69 / 69 = 100%** | **83 / 83 = 100%** | 81 |
-| **message** | [message/message.md](message/message.md) | 525 | **52 / 52 = 100%** | **71 / 71 = 100%** | 69 |
-| **favorite** | [favorite/favorite.md](favorite/favorite.md) | 519 | **61 / 61 = 100%** | **75 / 75 = 100%** | 88 |
-| **common** | [common.md](common.md) | 918 | **104 / 104 = 100%** | **88 / 88 = 100%** | 135 |
-| **follow** | [follow/follow.md](follow/follow.md) | 517 | **37 / 37 = 100%** | **51 / 51 = 100%** | 116 |
+| 域 | 缺口 | 行数 | C 列覆盖 | B 列覆盖 | 映射行 |
+|---|---|---:|---|---|---:|
+| **users** | **错误契约在两个子域间不对称**（**F-2 · 2026-10-26 D7 后由 🔴 降级为 🟠**）—— C 的 `service/users/user/src/main/java/com/rag/user/contract/` 有 `ErrCodes`+`ErrMsg`，但 **admin 侧无 `contract/` 包**（`admin-contract` 模块已随 D7 删除）；公共库 `service/users/common/src/main/java/com/rag/users/common/` 那份 admin 尚未引用（但 pom 依赖已接上） | 1,127 | **104 / 104 = 100%** | **145 / 145 = 100%** | 129 |
+| **task** | 持久层空位（`db/migration/` 只有 `.gitkeep`、yml 无 `flyway`/`hikari`/`id-type`）· RAG-V1 `common/` 无 `RpcServerInterceptorFactory`（**上游**的 unary interceptor 无落点）· MQ 载荷契约 C 侧只剩 like 域那一份 · `grpc-client-spring-boot-starter` 本域无使用方 · **Kafka 消费侧仍整体缺失**（`messaging/` 只有 `TaskKafkaTopics` + `TaskRewardPublisher`，B 侧 11 个 `mq/*.java` 里的 9 个消费者无落点，全仓 `@KafkaListener` **零命中**） | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
+| **like** | Kafka 消费入口（listener / ack 契约 / 失败即丢弃不重投）无落点 · `like_outbox_event → article-hot-events` 发件箱中继无落点 · Jackson 2 `ObjectMapper` Bean 无落点 · `like` / `like-api` 配置段整个缺失 · DDL 迁移脚本为空 | 451 | **69 / 69 = 100%** | **83 / 83 = 100%** | 81 |
+| **message** | `controller/`（两个 Controller）· `interceptor/`（两组 JWT）· `metrics/` · `wiring/` · `service/` · `service/message/src/main/java/com/rag/message/contract/` 均有职责缺口 | 525 | **52 / 52 = 100%** | **71 / 71 = 100%** | 69 |
+| **favorite** | `POST /favorite/v1/folder/create` 端点缺失 · public 路径集 · preflight 触发入口 · DDL 迁移脚本 · `JsonbTypeHandler` / MP 排序桥的归属 · `GetFavoritesByFolderReq.FolderId` 的取参位置 · 域内 gRPC client · 端口号 | 519 | **61 / 61 = 100%** | **75 / 75 = 100%** | 88 |
+| **common** | `GrpcStatusMapper` 与 `GrpcExceptionMapperAutoConfiguration` **职责重叠** · 设计文档 §5.1 列了 `contract/ErrorCode.java` 但**实际树里没有** · 雪花 ID 有**两个落点** · `JsonBodyConverterConfig` 是「注册点」还是「配置类」 · **gRPC 拦截链挂载点缺位**（D9 ⇒ 落 `common/autoconfigure/ProtectionAutoConfiguration`，共享层 1 份） | 918 | **104 / 104 = 100%** | **88 / 88 = 100%** | 135 |
+| **follow** | `db/migration/` 为空 · `application.yml` 缺段 · `*Properties` 聚合边界 · `FollowBlacklistInterceptor` + `FollowJwtAuthInterceptor` · `GoStyleLimitOffset` | 517 | **37 / 37 = 100%** | **51 / 51 = 100%** | 116 |
 
 ### 🟡 低优先级（要点）
 
-| 域 | 缺口 |
-|---|---|
-| **users** | [`_shared.md`](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 1,127 | **104 / 104 = 100%** | **145 / 145 = 100%** | 129 |
-| **task** | [task/task.md](task/task.md) | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
-| **like** | [like/like.md](like/like.md) | 451 | **69 / 69 = 100%** | **83 / 83 = 100%** | 81 |
+| 域 | 缺口 | 行数 | C 列覆盖 | B 列覆盖 | 映射行 |
+|---|---|---:|---|---|---:|
+| **users** | **表名：B 侧与更早一版的历史命名不同**（B 侧 `users_user` / `users_user_avatar_history` / `admin_admin` / `admin_invite`；更早一版是 `users` / `user_avatar_history` / `admins` / `admin_invites` —— **随旧基准移除，不再作数**）· HTTP DTO 命名 1 处不一致 · `UserController`/`AdminController` javadoc 的 method 分布与 **B 侧** 不一致 · `AdminController` javadoc 少列 1 个端点（12 vs 13）· HTTP 超时机制在 C 侧未落点（**上游** `default=3000`） | 1,127 | **104 / 104 = 100%** | **145 / 145 = 100%** | 129 |
+| **task** | `TaskApiProperties` 的聚合边界未定 | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
+| **like** | `target_ids` 的 null 元素语义无独立文件（B 侧 `like-api/.../service/GoStyleTargetIds.java` ⇒ 须并入 C 侧 `LikeApiSupport.java`）· 2 条 Jackson 强转补强是否还在未核对 · ✅ **`like_api_reject_total` 的注册差异已消解**（B 侧用 Micrometer `Counter.builder` 注册 ⇒ **两侧同样自动注册** ⇒ 无差异可声明） | 451 | **69 / 69 = 100%** | **83 / 83 = 100%** | 81 |
 
 ---
 
