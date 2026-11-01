@@ -20,7 +20,7 @@
 
 | 项 | 数 |
 |---|---|
-| Java 文件 | **615**（591 主代码 + 24 测试）—— `service/` **520 仍全为空壳** + `common/` **71（68 已落地 · 3 空壳）** |
+| Java 文件 | **615**（591 主代码 + 24 测试）—— `service/` **520 仍全为空壳** + `common/` **71（65 已落地 · 6 空壳）** |
 | Maven 模块 | **16** pom = **13 叶子** + **2 聚合**（`service`/`users`）+ 1 根 —— **D7 打平**：每域**一个** jar 模块（`service/<域>/`）；artifactId 保持长名唯一（`<域>-service`/`users-common`/`proto`/`common`）⇒ 依赖声明零改动 |
 | proto / `application.yml` | **10 / 10**（10 个 `.proto` 集中在**根级 `proto/` 模块**，pb 包名 `com.rag.proto.<域>`；内容与 Go 侧逐字节一致，仅 `java_package` 属表达层） |
 | `AutoConfiguration.imports` | **1**（`common/`，7 个 auto-config） |
@@ -130,7 +130,7 @@ RAG-V1 的目标架构（落地以 `docs/File_Tree/` 为准）：
 
 ### 2.3 `common/` 的准入（实测 · 有待裁决项）
 
-`common/` 共 **71** 个主代码类 / **12 个包**（**68 已落地 · 3 空壳**），按包：`web` 21 · `communityfact` 13 · `autoconfigure` 7 · `redis` 5 · `protection` 5 · `observability` 5 · `persistence` 4 · `logger` 4 · `security` 3 · `exception` 2 · `contract` 1 · `snowflake` 1。
+`common/` 共 **71** 个主代码类 / **12 个包**（**65 已落地 · 6 空壳**：security、窄接口各 3），按包：`web` 21 · `communityfact` 13 · `autoconfigure` 7 · `redis` 5 · `protection` 5 · `observability` 5 · `persistence` 4 · `logger` 4 · `security` 3 · `exception` 2 · `contract` 1 · `snowflake` 1。
 
 🔴 **待裁决**：`communityfact/` 13 类 = **7 个协议 DTO** ＋ **6 个行为类**（`Dispatcher`/`EventDispatcher`/`EventSender`/`AuthorityHandler`/`ProcessLogger`/`Wire`）。行为类**带域归属**（comment·favorite·like 共享）⇒ 与 §五.3 R1「`common/` 只放无域归属能力」**有张力**；10 个 app 全依赖 `common/` ⇒ 改一行锁住 10 域。⇒ **填实现前必须裁决**这 6 类归 `common/` 还是域内（另：G-2 `CanonicalHash` 在此 —— JCS 指纹不一致 ⇒ 幂等失效）
 
@@ -285,9 +285,7 @@ Go 真源路径见 §1.0b（**已冻结**，不接受写入）。RAG-V1 不是�
 
 - **三道守门** —— `check-mapping-coverage.py`（三方对照八重校验）· `check-arch-invariants.py`（**A1–A12**，`--self-test` 自证 **12/12 判据能红**，空壳类 `PENDING` **不算 PASS**）· `check-docs-vs-tree.py`（docs ↔ 文件树对账）· ⬜ 待实现 3 个
 
-> ⚠️ **RAG 仓库有 4 个已跑通的守门脚本 RAG-V1 还没有**：`semantic-probe/` · `errmsg-probe/` · `check-plaintext400-headers.sh` · `check-{grpc-interceptor-wiring,jar-executable,tomcat-limits}.py` ⇒ **移植清单见 [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)**。
-
-**Go 侧孤儿（勿照搬）**：`service/user/rpc/internal/logic/`（7 个 `_test.go`，无引用）。
+> ⚠️ **RAG 仓有 4 个已跑通的守门脚本本仓还没有**：`semantic-probe/` · `errmsg-probe/` · `check-plaintext400-headers.sh` · `check-{grpc-interceptor-wiring,jar-executable,tomcat-limits}.py` ⇒ 移植清单见 [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)。
 
 ## 八、新增组件检查清单
 

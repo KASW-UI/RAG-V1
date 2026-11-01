@@ -30,7 +30,7 @@ docs/DRIFT/
 | `like` | like-service | ⬜ 未建立 |
 | `message` | message-service | ⬜ 未建立 |
 | `task` | task-service | ⬜ 未建立 |
-| `common` | common | ⬜ 未建立 |
+| `common` | common | 🟡 **已建立** —— [`common/verification-common-2026-11-02.md`](common/verification-common-2026-11-02.md)（RAG → RAG-V1 迁移审核 · 八阶段全覆盖 · B 88 类逐类承接 · **PASS 46 / FAIL 5 / NOT_IMPLEMENTED 19 / NOT_VERIFIED 7 / FRAMEWORK_DIFFERENCE 2 / INTENTIONALLY_CHANGED 4**；🔴 5 条 FAIL 见报告 §11.5） |
 | `proto` | proto | ⬜ 未建立（根级 proto 契约模块，10 个 `.proto`） |
 
 ## 纪律
