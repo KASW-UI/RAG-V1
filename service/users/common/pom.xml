@@ -54,6 +54,51 @@
         <dependency>
             <groupId>org.springframework</groupId><artifactId>spring-jdbc</artifactId>
         </dependency>
+        <!--
+            Servlet API —— `IdentityResolver` 从 `HttpServletRequest` 的 attribute 取 claim。
+
+            ⚠️ **为什么是 `provided`**：本模块是**库** ⇒ servlet 容器由消费方（user-service /
+            admin-service，两者都有 `spring-boot-starter-web`）提供 ⇒ 库不应把 servlet 容器拖进来。
+            ⚠️ **`provided` 也不传递给下游**：消费方自己声明的 `spring-boot-starter-web` 才是真源。
+            ⚠️ **版本由 Boot BOM 管**（`jakarta.servlet:jakarta.servlet-api` ⇒ Boot 3.5 = 6.0.x）。
+        -->
+        <dependency>
+            <groupId>jakarta.servlet</groupId><artifactId>jakarta.servlet-api</artifactId><scope>provided</scope>
+        </dependency>
+        <!--
+            SLF4J —— `SchemaInitializer` 记日志（抄 B 的 `SchemaInitializer`，它用 slf4j）。
+            ⚠️ **只引 api，不引 logback**：日志实现由消费方（各 app 的 `spring-boot-starter-logging`）决定。
+        -->
+        <dependency>
+            <groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- ============ 测试基础设施（test 作用域**不传递给下游**） ============ -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+            Testcontainers + PG 驱动 —— `SchemaInitializer` 的 DDL 重放与 `JdbcUserStatusLookup`
+            的 status presence 判定**必须跑在真 PostgreSQL 上**（H2 不认 `TIMESTAMPTZ` / `ALTER ... TYPE` /
+            `SET TIME ZONE`，会假绿）。
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId><artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

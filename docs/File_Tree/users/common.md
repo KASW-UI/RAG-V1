@@ -24,20 +24,44 @@
 - `com.fasterxml.jackson.core:jackson-annotations`
 - `org.springframework.security:spring-security-crypto`
 - `org.springframework:spring-jdbc`
+- `jakarta.servlet:jakarta.servlet-api`
+- `org.slf4j:slf4j-api`
+- `org.springframework.boot:spring-boot-starter-test`
+- `org.junit.jupiter:junit-jupiter`
+- `org.testcontainers:postgresql`
+- `org.testcontainers:junit-jupiter`
+- `org.postgresql:postgresql`
 
 ## 三、目录树
 
 ```
 ├── src/
-│   └── main/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── com/
+│   │   │       └── rag/
+│   │   │           └── users/
+│   │   │               └── common/
+│   │   │                   ├── ErrCodes.java    # users 域错误码常量集 —— 逐条对应 B 侧 {@code ErrorCode} 枚举的 31 个 {@code code} 值。
+│   │   │                   ├── ErrMsg.java    # users 域 code → msg 文案映射 —— 逐条对应 B 侧 {@code ErrorCode} 枚举里每个常量的 {@code msg}。
+│   │   │                   ├── IdentityResolver.java    # 权威身份解析器 —— ClaimedUID → GetUser → status presence 检查 → SubjectRef（user/admin 两子域共用）。
+│   │   │                   ├── JdbcUserStatusLookup.java    # {@link IdentityResolver.UserStatusLookup} 的 JDBC 实现 —— 读 {@code users_user} 表取 {@code status}。
+│   │   │                   └── SchemaInitializer.java    # users 域 DDL 的幂等执行器（无版本账本，每次启动原样重放）。
+│   │   └── resources/
+│   │       └── db/
+│   │           ├── 01_create_user.sql
+│   │           ├── 02_create_user_avatar_history.sql
+│   │           ├── 03_create_admin.sql
+│   │           └── 04_create_admin_invite.sql
+│   └── test/
 │       └── java/
 │           └── com/
 │               └── rag/
 │                   └── users/
 │                       └── common/
-│                           ├── ErrCodes.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│                           ├── ErrMsg.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│                           └── IdentityResolver.java    # 权威身份解析器 —— ClaimedUID → GetUser → status presence 检查 → SubjectRef（user/admin 两子域共用）。
+│                           ├── ErrContractParityTest.java    # users 域错误契约逐条对拍 B（码值集 + 文案映射 + 未知码回落）。
+│                           ├── IdentityResolverTest.java    # 身份解析器的 5 个 sentinel + 两套 uid 语义 + 三元组产出（对 B 逐条）。
+│                           └── UsersSchemaAndStatusLookupTest.java    # 真 PostgreSQL 上的 users 域 DDL 重放 + status presence 判定。
 └── pom.xml    # Maven 模块描述
 ```
 
