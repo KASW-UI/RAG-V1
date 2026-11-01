@@ -76,7 +76,24 @@ public final class AdaptiveShedder {
         this.cpuSource = cpuSource;
     }
 
-    void setCpuPermilleReader(IntSupplier reader) {
+
+    // ⚠️ **2026-11-02 批次 H · 可见性放宽（L4 · D11 包压平 · 记留痕）**
+    //
+    // 本类原是 B 侧 {@code GoStyleAdaptiveShedder} 的**逐字抄**（同包 ⇒ 方法全是 package-private）。
+    // 但 RAG-V1 的 **D11 包压平**把「REST 侧的降载 filter」放进了
+    // {@code com.rag.common.autoconfigure}（与 13 个 auto-config 同包）
+    // ⇒ ⇒ **跨包调不到 package-private 方法** ⇒ ⇒ REST 侧只能退化到「只看 CPU 指示器」
+    // ⇒ ⇒ **丢掉了 B 侧 REST 侧本有的「双条件」判据**（CPU 过载 **且** 在途超动态上限）
+    // ⇒ ⇒ 属**真实漂移**（本仓比 B 更早丢请求）⇒ ⇒ 批次 H 把这 5 个方法放宽为 {@code public}。
+    //
+    // ⚠️ **只放宽可见性，不改任何一行逻辑** ⇒ 逐字对齐 B 侧仍成立。
+    // ⚠️ **为什么不用「把 filter 挪回 protection 包」**：那会新增顶层类文件 ⇒ 动 File_Tree 与
+    //     10 个域模块的装配面 ⇒ 代价远大于可见性放宽（且 D11 已定「域内单层技术角色包树」）。
+
+    /**
+     * 注入式 CPU 读数（覆盖用）—— 批次 H 起为 {@code public}（见类内「可见性放宽」注记）。
+     */
+    public void setCpuPermilleReader(IntSupplier reader) {
         this.cpuPermilleReader = reader;
     }
 
@@ -86,7 +103,7 @@ public final class AdaptiveShedder {
      *
      * @return {@code true} = 允许（调用方随后必须调 {@link #pass} 或 {@link #fail}）
      */
-    boolean allow() {
+    public boolean allow() {
         if (shouldDrop()) {
             synchronized (lock) {
                 droppedRecently = true;
@@ -120,7 +137,7 @@ public final class AdaptiveShedder {
      * <p>⇒ 现按 Go 逐字实现：<b>浮点毫秒 + ceil，无下限</b>
      * （Go 的 {@code Add(0)} 是合法的：{@code Count} 照样 +1，只是 {@code Sum} 不加）。
      */
-    void pass(double rtMs) {
+    public void pass(double rtMs) {
         addFlying(-1);
         synchronized (lock) {
             rollTo(System.currentTimeMillis());
@@ -131,7 +148,7 @@ public final class AdaptiveShedder {
     }
 
     /** {@code promise.Fail()}（{@code adaptiveshedder.go:280-282}）：只减在途。 */
-    void fail() {
+    public void fail() {
         addFlying(-1);
     }
 
@@ -347,7 +364,7 @@ public final class AdaptiveShedder {
     }
 
     /** 排障用：当前在途数。 */
-    long flying() {
+    public long flying() {
         synchronized (lock) {
             return flying;
         }

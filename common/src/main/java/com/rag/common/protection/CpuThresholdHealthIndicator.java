@@ -95,6 +95,12 @@ public class CpuThresholdHealthIndicator implements HealthIndicator {
      *
      * <p>⚠️ <b>不可用（-1）⇒ 恒判未过载</b>（fail-open）—— 这是 Go 侧
      * {@code systemOverloadChecker} 返回 false 的等价物。
+     *
+     * <p>⚠️ <b>2026-11-02 批次 H：本方法不再是「降载 filter 的判据」</b> ——
+     * REST 侧的降载 filter 此前用它当判据（<b>只有 CPU 一个条件</b> ⇒ 相对 B 侧是真实漂移）
+     * ⇒ 现已改走 {@link AdaptiveShedder}（<b>CPU 过载 <i>且</i> 在途超动态上限</b>双条件）
+     * ⇒ ⇒ 本方法<b>保留</b>为 health indicator 的公开 API（{@link #health()} 走的是另一条路径）
+     * ⇒ ⇒ <b>不是死代码，但也不再参与请求路径的判据</b>。
      */
     public boolean isOverloaded() {
         if (!config.isEnabled()) {

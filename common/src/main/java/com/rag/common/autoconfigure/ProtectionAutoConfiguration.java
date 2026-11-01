@@ -166,11 +166,16 @@ public class ProtectionAutoConfiguration {
     }
 
     /**
-     * CPU 降载 filter：CPU 过载 ⇒ <b>裸 503</b>。
+     * CPU 自适应降载 filter：<b>CPU 过载 <i>且</i> 在途超动态上限</b> ⇒ <b>裸 503</b>。
      *
-     * <p>⚠️ <b>D-04 的 L3 缺口就在这里</b>：Go 的 adaptive shedder 还要求
-     * 「在途请求数超动态上限」⇒ 本 filter <b>只有 CPU 一个条件</b> ⇒ <b>比 Go 更早丢请求</b>
-     * ⇒ ⇒ 已登记为 L3 降级，<b>不得反向"修回"</b>（那会把「已知缺口」变成「静默行为漂移」）。
+     * <p>⚠️ <b>2026-11-02 批次 H：本 bean 此前只把 {@code CpuThresholdHealthIndicator} 灌进 filter
+     * ⇒ filter 只判 CPU 一个条件 ⇒ 那是相对 B 侧的<b>真实漂移</b>（本仓比 B 更早丢请求）
+     * ⇒ 现改为<b>自建一个 {@link AdaptiveShedder}</b> ⇒ 双条件判据回到 B 侧形态。
+     *
+     * <p>⚠️ <b>刻意自建独立实例</b>（不与 gRPC 侧那个共用）：
+     * B 侧每个 filter <b>自建</b> {@code GoStyleAdaptiveShedder}；Go 侧 api / rpc 是<b>两个进程</b>
+     * ⇒ 各有一份 shedder ⇒ ⇒ 本仓合并成单进程后<b>仍要两份</b>
+     * ⇒ 否则 HTTP 在途数与 gRPC 在途数会<b>混在一个窗口里</b>（B 侧不会）⇒ 那才是新漂移。
      *
      * <p><b>拒绝形状</b>：Go {@code rest/handler/sheddinghandler.go:33-35} ⇒ {@code w.WriteHeader(503)}
      * ⇒ 裸状态码、<b>空 body</b>、<b>无 Content-Type</b>（D-04 的硬要求）。
@@ -179,9 +184,10 @@ public class ProtectionAutoConfiguration {
     @ConditionalOnMissingBean
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     @Order(Ordered.HIGHEST_PRECEDENCE + 6)
-    public CpuSheddingFilter cpuSheddingFilter(ProtectionProperties properties,
-                                                CpuThresholdHealthIndicator indicator) {
-        return new CpuSheddingFilter(properties, indicator);
+    public CpuSheddingFilter cpuSheddingFilter(ProtectionProperties properties) {
+        ProtectionProperties.CpuShedding cpu = properties.getCpuShedding();
+        AdaptiveShedder shedder = new AdaptiveShedder(cpu.getCpuThreshold(), cpu.getCpuSource());
+        return new CpuSheddingFilter(properties, shedder);
     }
 
     // ── 熔断 ──────────────────────────────────────────────────────────────
@@ -335,30 +341,107 @@ public class ProtectionAutoConfiguration {
     // ── 内部实现 ──────────────────────────────────────────────────────────
 
     /**
-     * CPU 降载 filter（裸 503）。
+     * CPU 自适应降载 filter（裸 503）。
      *
      * <p>⚠️ 拒绝形状与 Go 一致：<b>只 setStatus</b>（不 {@code sendError}、不写 body）
      * ⇒ ⇒ 无 body、无 Content-Type。
+     *
+     * <p><b>Go 出处（声明点 + 消费点）</b>：go-zero {@code rest/handler/sheddinghandler.go:22-56}
+     * <pre>
+     *   promise, err := shedder.Allow()
+     *   if err != nil {
+     *       metrics.AddDrop()
+     *       w.WriteHeader(http.StatusServiceUnavailable)      // ← 503，无 body
+     *       return
+     *   }
+     *   cw := response.NewWithCodeResponseWriter(w)
+     *   defer func() {
+     *       if cw.Code == http.StatusServiceUnavailable { promise.Fail() }
+     *       else { sheddingStat.IncrementPass(); promise.Pass() }
+     *   }()
+     *   next.ServeHTTP(cw, r)
+     * </pre>
+     *
+     * <p><b>抄写基准</b>：RAG {@code service/common/protection/GoStyleCpuSheddingFilter.java}
+     * （L2 业务语义层以 RAG 为基准整段抄 · D13）。
+     *
+     * <p><b>⚠️ 2026-11-02 批次 H：本类此前<b>只判 CPU</b>，那是真实漂移，现已按 B 侧修回</b>：
+     * <ul>
+     *   <li><b>漂移本体</b>：C 侧此前判据是 {@code indicator.isOverloaded()}（<b>只有 CPU 一个条件</b>）
+     *       ⇒ ⇒ <b>比 B 更早丢请求</b>（Go / B 是「CPU 过载 <b>且</b> 在途超动态上限」<b>两个条件同时成立</b>才丢）
+     *       ⇒ ⇒ 台账此前把这条记成「D-04 已登记的 L3 降级」⇒ <b>但那是拿 Go 比 C，不是拿 B 比 C</b>
+     *       ⇒ ⇒ B 侧 REST filter 本来就有完整自适应 shedder（{@code GoStyleAdaptiveShedder}）
+     *       ⇒ ⇒ <b>C 丢了 B 已有的能力</b> ⇒ 按 verification.md §十 属 <b>FAIL</b>，不是已批准的降级。</li>
+     *   <li><b>修法</b>：改用 {@link AdaptiveShedder}（本仓已有，是 B 侧 {@code GoStyleAdaptiveShedder} 的逐字抄）
+     *       ⇒ <b>双条件判据 + pass/fail 记账 + RT 口径</b>三样一起回到 B 侧形态。</li>
+     *   <li><b>L4 回改</b>：① {@code @Component} + {@code @ConditionalOnApiSide} → auto-config 的
+     *       {@code @Bean} + {@code @ConditionalOnWebApplication(SERVLET)}（D3 / D1）；
+     *       ② B 侧 {@code GoStyleStatusCapturingResponse}（包级私有 wrapper）→ <b>直接读 {@code response.getStatus()}</b>
+     *       ⇒ <b>等价论证</b>：servlet 规范下应用未显式设码时 {@code getStatus()} 返回 200（= B 侧 wrapper 的
+     *       {@code IMPLICIT_OK} 初值）；{@code sendError(sc)} 同样会反映到 {@code getStatus()}
+     *       ⇒ ⇒ 两侧判据同值；③ B 侧 filter <b>自建</b> {@code GoStyleAdaptiveShedder}
+     *       ⇒ C 侧也<b>自建独立实例</b>（不与 gRPC 侧共用）⇒ 对齐 Go 的「每进程一份」
+     *       （Go 的 api / rpc 是两个进程 ⇒ 两份 shedder）。</li>
+     *   <li><b>刻意保留</b>：B 侧 REST filter <b>没有</b>「cpuThreshold &gt; 0 才启用」的守卫
+     *       （gRPC 侧 bean 有）⇒ 本类<b>逐字跟随 B</b> ⇒ 默认 {@code cpuThreshold = 900} ⇒ 该分支实际不可达。</li>
+     * </ul>
      */
     static final class CpuSheddingFilter implements jakarta.servlet.Filter {
 
         private final boolean enabled;
-        private final CpuThresholdHealthIndicator indicator;
+        private final AdaptiveShedder shedder;
 
-        CpuSheddingFilter(ProtectionProperties properties, CpuThresholdHealthIndicator indicator) {
+        CpuSheddingFilter(ProtectionProperties properties, AdaptiveShedder shedder) {
             this.enabled = properties.getCpuShedding().isEnabled();
-            this.indicator = indicator;
+            this.shedder = shedder;
         }
 
         @Override
         public void doFilter(ServletRequest req, ServletResponse resp, FilterChain chain)
                 throws IOException, ServletException {
-            if (!enabled || !indicator.isOverloaded()) {
+            if (!enabled) {
                 chain.doFilter(req, resp);
                 return;
             }
             HttpServletResponse response = (HttpServletResponse) resp;
-            response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+
+            long startNanos = System.nanoTime();
+            if (!shedder.allow()) {
+                // sheddinghandler.go:29-35 —— 裸 503，无 body
+                response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+                return;
+            }
+
+            try {
+                chain.doFilter(req, response);
+            } finally {
+                // sheddinghandler.go:40-48 的 defer
+                // ⚠️ 判据是「状态码 == 503」，**不是「>= 500」**（与 breaker 的 `< 500` 判据刻意不同，两处都照搬）
+                if (response.getStatus() == HttpServletResponse.SC_SERVICE_UNAVAILABLE) {
+                    shedder.fail();
+                } else {
+                    shedder.pass(elapsedRtMs(startNanos, System.nanoTime()));
+                }
+            }
+        }
+
+        /**
+         * <b>RT 的计算口径</b> —— Go {@code adaptiveshedder.go:285}：
+         * <pre>
+         * rt := float64(timex.Since(p.start)) / float64(time.Millisecond)
+         * </pre>
+         * ⇒ <b>float64 毫秒</b>，之后由 {@code math.Ceil} 向上取整（向上取整在
+         * {@link AdaptiveShedder#pass(double)} 里做）。
+         *
+         * <p>⚠️ <b>必须是浮点除法</b>：若写成整型（{@code / 1_000_000L}）就是<b>截断</b>，
+         * RT 会系统性少记最多 1ms ⇒ {@code minRt()} 偏小 ⇒
+         * {@code maxFlight = maxPass * minRt * 0.01} 偏小 ⇒
+         * <b>在途上限系统性偏低 ⇒ 本仓比 Go 更早降载</b>。
+         *
+         * <p>把口径提成<b>纯函数</b>后，「截断 vs 浮点」这一位差别就可以被<b>确定性</b>断言。
+         */
+        static double elapsedRtMs(long startNanos, long endNanos) {
+            return (endNanos - startNanos) / 1_000_000.0D;
         }
     }
 

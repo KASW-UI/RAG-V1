@@ -194,7 +194,9 @@
 │                       ├── autoconfigure/
 │                       │   ├── AutoConfigurationImportsTest.java    # §3.3「机制可证」守门：starter 的装配清单真的生效。
 │                       │   ├── ClientProtectionAutoConfigurationTest.java    # §3.3「机制可证」守门：客户端拦截器真的进了 devh 的收集器——
+│                       │   ├── CpuSheddingFilterTest.java    # 🔴 **REST 侧降载 filter 的行为锁定** —— 对齐 go-zero
 │                       │   ├── GrpcExceptionMapperAutoConfigurationTest.java    # §3.3「机制可证」守门：业务异常在 gRPC 边界被映射成 Go 形状的 status。
+│                       │   ├── HttpCircuitBreakerConfigPinTest.java    # 🔴 **HTTP 侧熔断「有效参数」的钉桩测试** —— 把 **DRIFT-COMMON-V09** 的降级形状变成
 │                       │   ├── JsonBodyConverterAutoConfigurationTest.java    # §3.3「机制可证」守门：K-01 的强转规则真的施加到了 Boot 的 mapper 上。
 │                       │   ├── LoggerAutoConfigurationTest.java    # §3.3「机制可证」守门：共享日志门面真的被 auto-config 装配出来（不需要域侧任何代码）。
 │                       │   ├── ObservabilityAutoConfigurationTest.java    # §3.3「机制可证」守门：观测的判定顺序真的按 Go 的口径。
