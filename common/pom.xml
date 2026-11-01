@@ -300,6 +300,31 @@
             <groupId>io.opentelemetry</groupId><artifactId>opentelemetry-sdk-testing</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+            ⚠️ **`grpc-core` 显式声明（test scope）** —— 2026-11-02 批次 F 追加。
+
+            ⚠️ **为什么需要**：本模块在两个 devh starter 上都 **exclude 了 `grpc-core`**
+            （理由：版本统一由根 pom 的 `grpc.version` 管 ⇒ 不能让 devh 自己拖一个版本进来）。
+            ⇒ 但 Maven 的 exclusion **作用于整棵传递子树**
+            ⇒ ⇒ `grpc-netty-shaded → grpc-core` 这条边也被切断了
+            ⇒ ⇒ 本模块的 classpath 上**没有** `grpc-core`
+            ⇒ ⇒ 后果：只要 classpath 上出现 devh 的 gRPC server auto-config，
+            启动就会炸 `NoClassDefFoundError: io/grpc/internal/ObjectPool`
+            （实测：`GoStyleOtelAgentTest` 起真 Spring 上下文时炸的就是这个）。
+
+            ⚠️ **为什么是 test scope 而不是 compile**：
+            `common` 是 starter ⇒ 共享层**不得**把下游不需要的框架塞给下游
+            （与 spring-web / devh starter 的 optional 口径同款）
+            ⇒ ⇒ 10 个域模块**各自显式声明** `grpc-core`（同一套 exclusion 口径，见
+            `service/article/pom.xml`）⇒ 本模块只在**自己的测试**里需要它
+            ⇒ ⇒ test scope ⇒ 零下游影响。
+
+            ⚠️ **版本**：由根 pom 的 `grpc.version`（1.63.0）管 ⇒ 本模块**不写** `<version>`。
+        -->
+        <dependency>
+            <groupId>io.grpc</groupId><artifactId>grpc-core</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework</groupId><artifactId>spring-test</artifactId>
             <scope>test</scope>

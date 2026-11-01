@@ -12,7 +12,7 @@
 
 ## 〇、当前状态（2026-11-02）
 
-**形态：共享层 `common/` 已落地 101/101 类；10 个业务域仍全为空壳**。
+**形态：共享层 `common/` 已落地 104/104 类；10 个业务域仍全为空壳**。
 
 > **📌 往哪写** —— 只放**政策与索引**，**全文可进上下文（预算 32 KB）**：逐条漂移 ⇒ `docs/DRIFT/<域>/<组件>.md`；踩坑 ⇒ `docs/Pitfalls/`；签字偏离 ⇒ `docs/Intentional_Deviations/`。**只留结论 + 一行指针。超预算 = 没走这条约定。**
 
@@ -20,11 +20,11 @@
 
 | 项 | 数 |
 |---|---|
-| Java 文件 | **660**（621 主代码 + 39 测试）—— `service/` **520 仍全为空壳** + `common/` **101（101 已落地 · 0 空壳）** |
+| Java 文件 | **664**（624 主代码 + 43 测试）—— `service/` **520 仍全为空壳** + `common/` **104（104 已落地 · 0 空壳）** |
 | Maven 模块 | **16** pom = **13 叶子** + **2 聚合**（`service`/`users`）+ 1 根 —— **D7 打平**：每域**一个** jar 模块（`service/<域>/`）；artifactId 保持长名唯一（`<域>-service`/`users-common`/`proto`/`common`）⇒ 依赖声明零改动 |
 | proto / `application.yml` | **10 / 10**（10 个 `.proto` 集中在**根级 `proto/` 模块**，pb 包名 `com.rag.proto.<域>`；内容与 Go 侧逐字节一致，仅 `java_package` 属表达层） |
-| `AutoConfiguration.imports` | **1**（`common/`，12 个 auto-config） |
-| `docs/File_Tree/` · 三方对照 | **14 份 + `_INDEX.md`** 文件树 · **13 份**域文档（C **621/621**、A **482/482** 覆盖 **100%**；**90 条落点缺口** 🔴11） |
+| `AutoConfiguration.imports` | **1**（`common/`，14 个 auto-config） |
+| `docs/File_Tree/` · 三方对照 | **14 份 + `_INDEX.md`** 文件树 · **13 份**域文档（C **624/624**、A **482/482** 覆盖 **100%**；**90 条落点缺口** 🔴11） |
 | 三档台账 | DRIFT **10 域未建立**（common **已建立**）· Intentional_Deviations **4 条**（like/comment 各 2）· Pitfalls **P-01~P-12** |
 
 **已完成**：树结构、pom、proto、application.yml、断言清单、三方对照、**GitHub 仓**、**工具链（Jackson 2 + Boot 3.5）**、**共享层 `common/`**。**未完成**：10 个业务域的实现（⇒ §1.0c 抄 RAG）。

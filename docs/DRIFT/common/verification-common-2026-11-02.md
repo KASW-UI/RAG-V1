@@ -23,6 +23,12 @@
 > ✅ **修复批次 6（2026-11-02 · 同日 · 批次 C）**：🔴 **DRIFT-COMMON-V04**（HTTP 超时 503 ＋ 断连 499 ＋ 512 worker 池 ＋ `ClientDisconnectProbe`）⇒ 已修
 > ⇒ **NOT_IMPLEMENTED 4 → 1**（只剩 `GoStyleOtelAgent`，**D-07 明确不实现**）。common 测试 **164 → 185 例**，**4 次变异实测**每次都变红。
 > ⚠️ **其中一次变异「探针断连 499→500」最初<b>没有</b>变红** ⇒ ⇒ 说明那条分支当时<b>没被覆盖</b> ⇒ ⇒ 补了**探针接缝**（`HttpMiddleware.DisconnectProbe`，仅单测注入）⇒ ⇒ 再变异 ⇒ **变红** ⇒ ⇒ **「变异没变红」＝「这条断言没覆盖到」**。
+>
+> ✅ **修复批次 7（2026-11-02 · 同日 · 批次 F）**：🔴 **最后 1 条 NOT_IMPLEMENTED**（`GoStyleOtelAgent`）＋ **2 条 FRAMEWORK_DIFFERENCE**（`GoStyleOtelAutoConfiguration` / `GoStyleTraceparentFilter`）⇒ 已修
+> ⇒ 新增 `observability/GoStyleOtelConfig` ＋ `observability/GoStyleOtelAgent` ＋ `autoconfigure/GoStyleOtelAutoConfiguration`（**BFPP 装配点**，登记进 `AutoConfiguration.imports`）⇒ 抄 RAG 整段（L2 · D13）
+> ⇒ **NOT_IMPLEMENTED 1 → 0**（**清零**）· **FRAMEWORK_DIFFERENCE 2 → 0**。common 测试 **185 → 208 例**，**7 次变异实测**每次都变红。
+> ⚠️ **连带修掉一个真实缺陷**：本模块在两个 devh starter 上 exclude 了 `grpc-core` ⇒ Maven 的 exclusion 作用于整棵传递子树 ⇒ `grpc-netty-shaded → grpc-core` 也被切断 ⇒ classpath 上没有 `grpc-core` ⇒ 只要 devh 的 gRPC server auto-config 出现就炸 `NoClassDefFoundError: io/grpc/internal/ObjectPool` ⇒ 已按域模块同款口径**显式声明** `grpc-core`（**test scope**，不传给下游）。
+> ⚠️ **口径变更（需知悉）**：Go `Telemetry` 段的 3 个字段原先挂在 `ObservabilityProperties`（`observability.*` 命名空间）但**只承载、不驱动装配** ⇒ 本轮**移出**该类、归位到 `GoStyleOtelConfig`（B 侧同名类的 **1:1** 对应物）⇒ **键名随之回到 B 侧的 `otel.*`** ⇒ L1 配置契约与 B 侧逐字节同构。
 
 ---
 
@@ -35,8 +41,8 @@
 | 仓库 | `/Users/pr/Documents/java&golang/RAG` | `/Users/pr/Documents/GitHub/RAG-V1` |
 | 模块路径 | `service/common/` | `common/`（**根级 starter**） |
 | 包名 | `com.rag.common.*` | `com.rag.common.*` |
-| 主代码类 | **88**（12 个包） | **71**（12 个包） |
-| 测试 | **93 类 / 488 例**（离线实测全绿） | **14 类 / 96 例** |
+| 主代码类 | **88**（12 个包） | **104**（12 个包） |
+| 测试 | **93 类 / 488 例**（离线实测全绿） | **33 类 / 208 例** |
 | Spring Boot | **4.0.8** | **3.5.11** |
 | Spring Framework | 7.x | **6.2.x** |
 | Jackson | **3**（`tools.jackson.*`） | **2**（`com.fasterxml.*`，2.19.4） |
@@ -99,7 +105,7 @@
 | `GoStyleJsonContentTypeAdvice.java` | JSON 响应补 `charset=utf-8` | `web/JsonContentTypeAdvice.java` + `WebAutoConfiguration` 的 `@Bean` | 1:1 | **PASS** | 源码级：写 `application/json;charset=utf-8`（无空格小写） |
 | `GoStyleJsonBodyConverter.java` | Go `httpx.ParseJsonBody` 的「何时才读 body」判据 + 8 MiB 上限 | `web/JsonBodyConverter.java` | 1:1 | **PASS** | 源码级：`GO_MAX_BODY_LEN = 8*1024*1024`；`goReadsBody` 判据字面子串匹配（`Application/JSON` 大写 ⇒ 丢弃） |
 | `GoStyleJsonBodyConverterConfig.java` | 把 converter 插到 Boot Jackson **之前** | `web/JsonBodyConverterConfig.java` + `autoconfigure/JsonBodyConverterAutoConfiguration.java` | 1:N | **PASS** | 对拍：Spring 6.2 无 `JacksonJsonHttpMessageConverter` ⇒ 改判 `MappingJackson2HttpMessageConverter`；插入点断言在 `JsonBodyConverterAutoConfigurationTest`（7 例） |
-| `GoStyleTraceparentFilter.java` | 响应头写 W3C `traceparent` | `web/TraceparentFilter.java` `@Order(+3)` | 1:1 | **FRAMEWORK_DIFFERENCE** | 源码级：槽位 +3 一致；canonical 头名（大写 T）一致；⚠️ **值来源不同** —— B 从 `GlobalOpenTelemetry` 取 server span，C 侧 OTel 直写因 `micrometer-tracing-bridge-otel` 离线不可得而是 no-op（已登记 D-03）⇒ 头可能缺失 |
+| `GoStyleTraceparentFilter.java` | 响应头写 W3C `traceparent` | `web/TraceparentFilter.java` `@Order(+3)` | 1:1 | **PASS** | ✅ **批次 F 已修**：根因不是「值来源不同」，而是**全局 OTel 根本没装** ⇒ 装了 `GoStyleOtelAgent`（批次 F）后 `GlobalOpenTelemetry.get()` 才是真 SDK ⇒ 对拍：`TraceparentFilterTest`（**4 例**）—— ① **没装全局 ⇒ 头不出现**（no-op ⇒ span 无效 ⇒ propagator 不 inject）② 装了 ⇒ 头出现且是 W3C 形态 `00-<32hex>-<16hex>-<2hex>` ③ 头名 canonical 成 `Traceparent`（查 `getHeaderNames()`，因为 servlet 的 `getHeader(name)` 大小写不敏感、查不出键名）④ 注入的是 **server span 自己**（trace-id 沿用入向、span-id ≠ 入向 span-id）|
 | `GoStyleTomcatParameterLimitCustomizer.java` | Tomcat 参数上限抬到 10001 | `autoconfigure/WebAutoConfiguration.java`（`maxParameterCount=10001`） | N:1 | **PASS** | 源码级 + 守门：Boot 3.5 包名 `org.springframework.boot.web.embedded.tomcat.*` 已回改 |
 | `GoStyleRouterErrorResponses.java` | go-zero 404/405 字节级复刻 | `web/RouterErrorResponses.java` | 1:1 | **PASS** | 源码级：404 body 19 字节 `404 page not found\n` + `text/plain; charset=utf-8` + `X-Content-Type-Options: nosniff`；405 `Allow` 用 `", "` 连接**不排序** + 空 body **无 Content-Type** |
 | `GoStyleFormValues.java` | Go 口径 query 解析 + form 值上限 | `web/GetFormValuesFilter.java` + `web/PlainTextErrors.java` | N:1 | **PASS** | 源码级：段数上限 10000 / 非空值上限 2048；三条错误文案逐字（`number of URL query parameters exceeded limit` / `invalid URL escape "%zz"` / `invalid semicolon separator in query`）；400 + `text/plain; charset=utf-8` + nosniff + body 尾 `\n` |
@@ -137,9 +143,9 @@
 | `MicrometerPrometheusSink.java`（`rpc_server_requests_duration_ms` 12 桶 + `rpc_server_requests_code`） | Micrometer 实现 | — | — | **PASS** | 同上；C 侧 grep `rpc_server_requests` **零命中**；✅ **V03 已修**（2026-11-02 · 批次 B · 抄写基准 = RAG） |
 | `GoStylePrometheusMeterRegistryBridge.java` | sink 装配点 | — | — | **PASS** | 同上；✅ **V03 已修**（2026-11-02 · 批次 B · 抄写基准 = RAG） |
 | `GoStyleRpcMetricsConfiguration.java` | RPC 指标面装配（stat 名字） | `autoconfigure/ObservabilityAutoConfiguration.java` | N:1 | **PASS** | 源码级：auto-config 已承接该职责，但**其产出的两个 meter 无实现** ⇒ 装配点是空的；✅ **V03 已修**（2026-11-02 · 批次 B · 抄写基准 = RAG） |
-| `GoStyleOtelAutoConfiguration.java`（BFPP + 全局 OTel 安装） | 全局 OTel 装配 | `autoconfigure/ObservabilityAutoConfiguration.java` | N:1 | **FRAMEWORK_DIFFERENCE** | 源码级：C 侧无 `GlobalOpenTelemetry.set`、无 exporter、无 sampler 映射；⚠️ `micrometer-tracing-bridge-otel` 离线不可得 ⇒ `Span.current()` 是 no-op（**D-03 已登记**） |
-| `GoStyleOtelConfig.java`（Go `Telemetry` 配置投影） | 配置载体 | `observability/ObservabilityProperties.java` | 1:1 | **PASS** | 源码级：3 个 Duration 字段 + env 兜底名一致；✅ **批次 E 已补齐** B 的 `endpoint`/`protocol`/`samplerRatio` 三项（Go `Telemetry` 段的 3 个字段）⇒ 配置面不缺项；⚠️ **本字段目前只承载配置、尚未驱动任何装配**（全局 OTel 装配走 **D-03**，`micrometer-tracing-bridge-otel` 离线不可得 ⇒ 本仓 span 走 Micrometer Observation 路线） |
-| `GoStyleOtelAgent.java`（SDK + OTLP exporter + 传播器 + shutdown hook） | 全局 tracer provider | — | — | **NOT_IMPLEMENTED** | 同 D-03 |
+| `GoStyleOtelAutoConfiguration.java`（BFPP + 全局 OTel 安装） | 全局 OTel 装配 | `autoconfigure/GoStyleOtelAutoConfiguration.java` | 1:1 | **PASS** | ✅ **批次 F 已修**：抄 RAG 整段（L2 · D13）＋ **包名回改**（`observability/` → `autoconfigure/`，与本仓其余 13 个 auto-config 同包，L4 · D11/D3）⇒ 装配点仍是 **`static @Bean BeanFactoryPostProcessor` + `EnvironmentAware`**（⇒ 早于任何单例创建 ⇒ 不会被构造器里的 `GlobalOpenTelemetry.get()` 抢跑）⇒ 已登记进 `AutoConfiguration.imports`（⇒ `AutoConfigurationImportsTest` 的「清单 == 源码清单」与「每个 auto-config 有激活路径」两条守门覆盖）⇒ 对拍：`GoStyleOtelAgentTest#globalProviderIsRealInsideRealSpringContext`（**真 Spring 上下文** ⇒ 清单被读到 ⇒ auto-config 被应用 ⇒ BFPP 跑了 ⇒ 全局装上了）|
+| `GoStyleOtelConfig.java`（Go `Telemetry` 配置投影） | 配置载体 | `observability/GoStyleOtelConfig.java` | 1:1 | **PASS** | ✅ **批次 F 已改**：原先落在 `ObservabilityProperties`（`observability.*` 命名空间）但**只承载、不驱动装配** ⇒ 本轮**移出**、归位到与 B 同名的 `GoStyleOtelConfig`（**B ↔ C 真正 1:1**）⇒ ⇒ **键名回到 B 侧的 `otel.service.name` / `otel.resource.attributes.service.name` / `otel.exporter.otlp.endpoint` / `otel.exporter.otlp.protocol` / `otel.traces.sampler[.arg]`** ⇒ **L1 配置契约与 B 侧逐字节同构**；对拍：`GoStyleOtelConfigTest`（**13 例**）—— 服务名三套拼法的优先级 / 裸 `host:port` 补 `http://`（= Go 的 `WithInsecure()`）/ 协议缺默 `grpc` / 采样器名→比例映射 / **非法采样器名 ⇒ 炸** / 非法协议 ⇒ 装不上 / **端点为空 ⇒ 不校验协议** |
+| `GoStyleOtelAgent.java`（SDK + OTLP exporter + 传播器 + shutdown hook） | 全局 tracer provider | `observability/GoStyleOtelAgent.java` | 1:1 | **PASS** | ✅ **批次 F 已修**（**最后 1 条 NOT_IMPLEMENTED**）：抄 RAG 整段（L2 · D13）⇒ 幂等（`AtomicBoolean` + `LOCK`，= Go 的 `sync.Once`）/ `buildProvider` 逐行对齐 Go 的 `startAgent`（`parentBased(traceIdRatioBased(ratio))` ＋ `Resource(service.name)` ＋ **「endpoint 为空 ⇒ 不装 exporter」** 的短路）/ 全局 `set()` 失败**只记 ERROR 不抛**（= Go 的 `logx.Error` 后继续启动）/ shutdown hook flush。对拍：`GoStyleOtelAgentTest`（**7 例**）—— ① **真 Spring 上下文**里全局 provider 装上了（span 有效 ＋ 全局 propagator 能 inject `traceparent`）② **真 gRPC 假 OTLP 接收端**收到 ≥1 个非空 Export 请求（证「字节真出了机器」）③ **关停会 flush**（3s 窗口 < 5s 批量周期 ⇒ 只能是 flush 带来的）④ 装不上**不阻断启动**（返回 null ＋ 全局仍 no-op）⑤ 幂等（第二次 install 不重装）⑥ `Sampler=0.0` ⇒ 一个 span 都不导出 ⑦ **ParentBased**：入向 parent 已采样 ⇒ 即使比例 0 子 span 仍被采样并导出 |
 | `MqConsumer.java`（MQ 消费端 trace 包装） | Go `TraceConsumer` | `observability/MqConsumer.java` | 1:1 | **PASS** | ✅ **批次 E 已修**：抄 RAG 整段（L2 · D13）＋ **写入载体改为「Micrometer Observation + OTel 双载体」**（L4 · D4 / D-03）；对拍：`MqConsumerTest`（8 例）覆盖 成功/系统错/超时/panic 外抛/attrs 跳过 null/默认名/`mq.kind`/null registry；⚠️ Micrometer **无 span kind 概念** ⇒ 用 `mq.kind=consumer` 低基数键值承载（**本仓新增的键** ⇒ 登记 D-03 同族）；⚠️ **刻意不 catch `Throwable`**（照抄 Go 的裸调用语义 ⇒ panic 继续向上传播） |
 | `RpcInterceptor.java`（gRPC 最内层业务观测 + rpc-timeout + slow） | gRPC 业务观测 | `autoconfigure/ObservabilityAutoConfiguration.java` 的嵌套 `GrpcObservationInterceptor` ＋ `observability/RpcHandleRunner.java` ＋ `RpcResult.java` ＋ `RpcCallHandler.java` ＋ `ObservabilityRuntime.java` ＋ `ObservabilityLifecycle.java` | 1:N | **PASS** | 源码级：7 业务码集合 / `DEADLINE_EXCEEDED` 优先 / `rpc-timeout` 调度器 关 `DEADLINE_EXCEEDED`；✅ **批次 E 已补齐** B 的 `handle(...)` 非 gRPC 路径（独立线程 ＋ 到点 `cancel(true)` 打断 ＋ 观测分类）＋ 两个池的**生命周期关闭钩子**；对拍：`RpcHandleRunnerTest`（11 例）＋ `ObservabilityRuntimeTest`（4 例）；⚠️ **只有非 gRPC 路径能真正打断业务线程**（grpc-java 的 `ServerCall#close()` 无法取消已在跑的 handler）⇒ gRPC 路径靠 `DeadlineState.isExpired()` 主动自查 |
 
@@ -244,7 +250,7 @@
 | `Logger.java` | `GoStyleLogger` + `LogOption` + `LogOptions` + `FatalError` | ✅ | ✅ | ✅ | n/a | ✅ | ✅ | ✅ |
 | `GoStyleProtectionProperties` | `ProtectionProperties`（独立成类，L-15） | ✅ | ✅ | ✅ | n/a | ✅ | ✅ | ✅ |
 | `RpcInterceptor.DeadlineState`（嵌套） | `observability/DeadlineState.java`（提升顶层，L-16） | ✅ | ✅ | ✅ | n/a | ✅ | ✅ | ✅ |
-| `GoStyleOtelConfig` | `ObservabilityProperties` | ⚠️ **3 项丢失**（`protocol`/`sampler`/`endpoint`） | ✅ | ✅ | n/a | ✅ | ✅ | ✅ |
+| `GoStyleOtelConfig` | `observability/GoStyleOtelConfig.java`（**B ↔ C 1:1**，批次 F 从 `ObservabilityProperties` 归位） | ✅ **3 项齐备且真正驱动装配**（`protocol`/`sampler`/`endpoint` ⇒ exporter + sampler + 协议校验） | ✅ | ✅ | n/a | ✅ | ✅ | ✅ |
 
 ### 11.3.3 共享能力上收（§8.4）
 
@@ -278,7 +284,7 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | F-9 | `ResponseBodyAdvice` 收集机制 | Spring 7 | Spring 6.2：`RequestMappingHandlerAdapter#setResponseBodyAdvice` **无 `@Autowired`** ⇒ 不会自动收集 | `ResponseBodyAdvice` bean 需靠 `@RestControllerAdvice` 进 advice 链 | JSON 响应 Content-Type 补 charset | **会**（漏收集 ⇒ Content-Type 无 charset） | `JsonContentTypeAdvice` 同时挂 `@RestControllerAdvice` **且**由 `WebAutoConfiguration` 的 `@Bean` 显式注册 | 源码级：`WebAutoConfiguration.java:115-118` | **已适配** |
 | F-10 | `SpringBoot4-Jackson3` 专属 artifact | `spring-boot-data-redis` / `spring-boot-tomcat` | **不存在** | 依赖坐标需换 | Redis / Tomcat 装配 | 否 | C 用 `spring-boot-starter-data-redis` / starter 自带 tomcat | 源码级：`common/pom.xml` | **已适配（D14）** |
 | F-11 | Kafka 自动配置模块 | Boot 4 拆成 `spring-boot-kafka` | Boot 3.5 在 `spring-boot-autoconfigure` 内 | **Boot 3.5 无此风险** | `@KafkaListener` 消费 | 否 | C 用 `org.springframework.kafka:spring-kafka`（**零排除**） | `common/pom.xml` + AGENTS.md §3.3.3 订正 | **已适配（D14）** |
-| F-12 | OTel / tracing | `GlobalOpenTelemetry` + OTLP exporter + `parentBased(traceIdRatio)` | C 侧**无** `GlobalOpenTelemetry.set`；`micrometer-tracing-bridge-otel` **离线不可得** ⇒ `Span.current()` 是 no-op | span 直写被丢弃 | 观测埋点 / `traceparent` 响应头 | **会**（span 属性丢失；`Traceparent` 头可能缺失） | 缺 bridge ⇒ OTel 直写无效 | 源码级 + `ObservabilityAutoConfigurationTest`(5) 只验证 Observation 侧 | **FRAMEWORK_DIFFERENCE（D-03 已登记）** |
+| F-12 | OTel / tracing | `GlobalOpenTelemetry` + OTLP exporter + `parentBased(traceIdRatio)` | ✅ **批次 F 已补**：`GoStyleOtelAgent`（SDK + OTLP exporter + 传播器 + shutdown hook）+ `GoStyleOtelConfig`（Go `Telemetry` 四字段投影）+ `GoStyleOtelAutoConfiguration`（**BFPP** 装配点） | 无（全局 SDK 已装 ⇒ span 有效且可导出） | 观测埋点 / `traceparent` 响应头 | **不会**（`traceparent` 头已恢复；span 已可导出） | ① BFPP 装配点 ＋ ② `otel.*` 键名与 B 同构 ⇒ 配置契约零漂移 | `GoStyleOtelAgentTest`(7) + `GoStyleOtelConfigTest`(13) + `TraceparentFilterTest`(4) | **PASS（批次 F 已闭合；差异保留在本清单，§十「可判 PASS」）** |
 | F-13 | Resilience4j | **B 无此依赖**（手写 googlebreaker 移植） | `resilience4j-spring-boot3` | 熔断实现换实现 | HTTP 熔断 | **会**（拒绝语义类型都不同） | D4 生态优先 | `RouteIsolationFilterTest`(4) 只覆盖 key + 判据 | **INTENTIONALLY_CHANGED（D-02 已登记，但差异比登记更大 ⇒ DRIFT-COMMON-V09）** |
 | F-14 | Actuator | B 侧 `service/common` **无** actuator 依赖 | C 侧有 `spring-boot-starter-actuator` | 降载观测面换载体 | CPU 降载 | 否 | `CpuThresholdHealthIndicator` | 源码级 | **已适配（D4）** |
 | F-15 | `@ConfigurationProperties` 注册 | B 侧 `GoStyleProtectionConfiguration` 用 `@EnableConfigurationProperties`（靠扫描） | C 侧 `ProtectionAutoConfiguration` 用 `@EnableConfigurationProperties(ProtectionProperties.class)`（靠 imports） | 注册面不同 | 保护层配置 | 否 | D3 starter 化 | `ProtectionProperties` 12 项默认值逐条核对一致 | **已适配** |
@@ -447,6 +453,20 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 C 侧同时存在 `web/GrpcStatusMapper.java` 与 `autoconfigure/GrpcExceptionMapperAutoConfiguration.java` ⇒ 两处都做「gRPC code → 业务码」⇒ 装配顺序不同 ⇒ 同一异常可能映射出**两个不同 code**。
 **状态**：**⚪ 已登记**（映射表 §7.4 #2「建议删 `web/GrpcStatusMapper.java`」）⇒ 本次只落不删（AGENTS.md 明令「不擅自删类」）。
 
+### 🔴 DRIFT-COMMON-V14｜C 侧 `common/` 缺 `grpc-core` ⇒ devh gRPC server auto-config 一出现就崩
+
+| 项 | 内容 |
+|---|---|
+| **位置** | C：`common/pom.xml`（两个 devh starter 上的 `<exclusion>`） |
+| **B 源** | RAG `service/common/pom.xml`（无此 exclusion） |
+| **B 行为** | `service/common` 的 classpath 上**有** `grpc-core` ⇒ devh 的 gRPC server auto-config 能启动 |
+| **C 行为** | 两个 devh starter 上都 exclude 了 `grpc-core`（理由：版本由根 pom 的 `grpc.version` 统一管）⇒ 但 **Maven 的 exclusion 作用于整棵传递子树** ⇒ `grpc-netty-shaded → grpc-core` 也被切断 ⇒ ⇒ **C 侧 `common/` 的 classpath 上没有 `grpc-core`** ⇒ 任何启动 devh 的 gRPC server auto-config 的进程都会在启动时炸 `NoClassDefFoundError: io/grpc/internal/ObjectPool`（**实测：`GoStyleOtelAgentTest` 起真 Spring 上下文时炸的就是这个**） |
+| **差异原因** | exclusion 的**意图是「版本不让 devh 拉」**（正确），但**实现意图下变成了「把它整个剔掉」**（不正确）⇒ 10 个域模块后来都用同一套口径补了「显式声明 `grpc-core`」，**但 `common/` 自己漏了** |
+| **影响范围** | 任何依赖 `common/` 且 classpath 上有 devh gRPC server starter 的进程（= 10 个域）⇒ 启动期崩弩（模拟实测时由本模块的测试触发） |
+| **严重程度** | **✅ 已修复**（原：🔴 严重 —— 启动期崩弩） |
+| **✅ 修法（2026-11-02 · 批次 F）** | 按 **10 个域模块的同款口径**（见 `service/article/pom.xml`）在 `common/pom.xml` 里**显式声明 `grpc-core`**，版本仍由根 pom 的 `grpc.version`（1.63.0）管 ⇒ ⚠️ **采用 `test scope`**：`common` 是 starter ⇒ 不得把下游不需要的依赖塞给下游（与 spring-web / devh starter 的 optional 口径同款）⇒ 下游保持零影响 |
+| **验证方法（已落地）** | ① `GoStyleOtelAgentTest#globalProviderIsRealInsideRealSpringContext` 起**真 Spring 上下文** → 修前直接炸 `NoClassDefFoundError`，修后通过；② 全量 `mvn -o -pl common test` ⇒ **208 例全绿**；③ 域模块的同款显式声明**未动**（域 pom 本轮不改） |
+
 ### ⚪ DRIFT-COMMON-V13｜gRPC 业务码承载方式变更（**D-05 已登记**）
 
 Go = **status code 本身就是业务码** + description 业务文案；grpc-java 的 `Status.fromCodeValue(int)` 对未知码回落 `UNKNOWN` ⇒ **承载不了任意数值业务码** ⇒ C 侧走 **trailer `sea-biz-code`**。
@@ -470,11 +490,11 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 
 | 状态 | 数量 | 说明 |
 |---|---|---|
-| **PASS** | **84** | 职责已完整承接 + 行为一致 + 有证据（源码级/对拍）。**含已修项**：V01 的 2 个 redis auto-config + V02 的 2 个 MyBatis 拦截器 + **V05**（熔断回落语义）+ **V06**（窄接口 2 类 + 模板解析实现 + 消费方改走窄接口）+ **V03**（gRPC 保护链 5 层 + 客户端熔断 + 出向 deadline + Prometheus 写入面 + 失败判据 + 链序 + 降载双条件 + 降载统计）+ **V07**（`security/` 3 类）+ **批次 E**（`MaxConnsFilter` / `MqConsumer` / `ObservabilityLifecycle` + 两个池 / `LoggerFactoryBean` / `GoStyleOtelConfig` 的 3 个字段 / `handle(...)` 非 gRPC 路径）+ **批次 C**（`HttpMiddleware` 三条拒绝路径 + `ObservabilityResponseWriter` + `ClientDisconnectProbe` 4 态 + `HttpMiddlewareFilter` 装配 + `HttpPoolLifecycle`） |
-| **NOT_IMPLEMENTED** | **1** | C 尚未实现对应职责 —— **只剩 1 条**：`GoStyleOtelAgent.java`（OTel SDK ＋ OTLP exporter ＋ 传播器 ＋ shutdown hook）；⚠️ **明确不实现**（**D-07 已登记**）：`micrometer-tracing-bridge-otel` 在本仓离线仓不可得 ⇒ 本仓统一走 Micrometer Observation 路线 ⇒ 装了 OTel SDK 也**没有 bridge 把 Observation 导出去** ⇒ ⇒ 反而会多出一条「断头路」（一半数据走 Micrometer、一半走 OTel）⇒ ⇒ 保留登记，不实现 |
+| **PASS** | **87** | 职责已完整承接 + 行为一致 + 有证据（源码级/对拍）。**含已修项**：V01 的 2 个 redis auto-config + V02 的 2 个 MyBatis 拦截器 + **V05**（熔断回落语义）+ **V06**（窄接口 2 类 + 模板解析实现 + 消费方改走窄接口）+ **V03**（gRPC 保护链 5 层 + 客户端熔断 + 出向 deadline + Prometheus 写入面 + 失败判据 + 链序 + 降载双条件 + 降载统计）+ **V07**（`security/` 3 类）+ **批次 E**（`MaxConnsFilter` / `MqConsumer` / `ObservabilityLifecycle` + 两个池 / `LoggerFactoryBean` / `handle(...)` 非 gRPC 路径）+ **批次 C**（`HttpMiddleware` 三条拒绝路径 + `ObservabilityResponseWriter` + `ClientDisconnectProbe` 4 态 + `HttpMiddlewareFilter` 装配 + `HttpPoolLifecycle`）+ **批次 F**（`GoStyleOtelConfig` + `GoStyleOtelAgent` + `GoStyleOtelAutoConfiguration` + `traceparent` 响应头） |
+| **NOT_IMPLEMENTED** | **0** | ✅ **清零**（批次 F）。**最后 1 条**（`GoStyleOtelAgent.java`：OTel SDK ＋ OTLP exporter ＋ 传播器 ＋ shutdown hook）已实现 ⇒ 并带动合上 `GoStyleOtelConfig`（Go `Telemetry` 四字段投影）与 `GoStyleOtelAutoConfiguration`（BFPP 装配点）⇒ 并使 `traceparent` 响应头恢复（既往头缺失——根因是「全局 SDK 没装」）。⚠️ **剩下的是「配置值」而不是「能力」**：10 个域的 `application.yml` 里**没有** `otel:` 段（**yml 搬运已由用户叫停**）⇒ 端点为空 ⇒ 按 Go 的 `len(c.Endpoint) > 0` 不装 exporter ⇒ span 有效、可导出，但**本进程不向 jaeger 导出**（Go 侧 yml 写死 `Endpoint: jaeger:4317`） |
 | **INTENTIONALLY_CHANGED** | **3** | 有明确批准依据（D3 starter 化 / D4 生态吸收 / D1 合并 api-rpc / D2+L-13+L-15+L-16 落点决策） |
 | **FAIL** | **0** | ✅ **无**。⚠️ **V01 / V02 / V03 / V05 / V06 / V07 已于 2026-11-02 全部修复**（批次 A / B / D）⇒ 🔴 FAIL 清零 |
-| **FRAMEWORK_DIFFERENCE** | **2** | `TraceparentFilter`（Tomcat/OTel 链路）、`GoStyleOtelAutoConfiguration`（D-03 已登记） |
+| **FRAMEWORK_DIFFERENCE** | **0** | ✅ **清零**（批次 F）。既往 2 条：① `TraceparentFilter`（值来源不同 ⇒ 实际根因是「全局 OTel 没装」，装了就恢复，已用 `TraceparentFilterTest`（4 例）对拍）② `GoStyleOtelAutoConfiguration`（缺 `GlobalOpenTelemetry.set` / exporter / sampler 映射）⇒ 已补齐（对拍：真 Spring 上下文 + 真 gRPC 假 OTLP 接收端）。⚠️ **差异本身仍保留在 § 11.4 框架差异清单**（§十：已被测试证明不影响业务可观察行为 ⇒ 可判 PASS） |
 | **NOT_VERIFIED** | **1** | `JsonbTypeHandler`/`JsonTextTypeHandler`（跨域上收，本次范围外）；⚠️ gRPC 指标装配点已随 **V03** 转 PASS（两个 meter 已有实现） |
 | **BLOCKED** | **0** | 无（Tomcat 10.1 反射链一项因 C 侧未实现而**不适用**，实现时才会 BLOCKED） |
 | **合计标记数** | **91**（**91 个承接行**，V05/V06 修复后**无复合状态行** ⇒ 行数 = 标记数） | 覆盖 B 侧 **88/88** 个主类（88 行 = 87 行 B 类（`SnowflakeBean`+`SnowflakeProperties` 合并 1 行）+ 1 行 C 侧新增 typeHandler）**＋ 3 行 `users-common` 跨域上收** |
@@ -484,7 +504,15 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 > # 逐行扫 §11.2 区间 → 每行取第 5 格（状态）→ 匹配 **STATE** 标记 → 计数
 > # 复合状态（**PASS**…/ **FAIL**…）两边都计
 > ```
-> **本轮实测输出（2026-11-02 · 批次 C 后）**：`承接行 = 91 · 标记数 = 91 · 复合状态行 = 0 ·
+> **本轮实测输出（2026-11-02 · 批次 F 后）**：`承接行 = 91 · 标记数 = 91 · 复合状态行 = 0 · PASS **87** / NOT_IMPLEMENTED **0** / INTENTIONALLY_CHANGED 3 / FAIL **0** / FRAMEWORK_DIFFERENCE **0** / NOT_VERIFIED 1 / BLOCKED 0`
+>
+> ⚠️ **重数脚本（本轮实际运行，不是手填）**：
+> ```python
+> import re
+> STATES = ['NOT_IMPLEMENTED','INTENTIONALLY_CHANGED','FRAMEWORK_DIFFERENCE','NOT_VERIFIED','BLOCKED','PASS','FAIL']
+> # 逐行扫 §11.2 区间 → 每行拆成格 → 取**状态格**（正则以 ‘**STATE**’ 开头的那个格）
+> # ↳ 复合状态两边都计 → 行数 / 标记数 / 各档计数
+> ```
 > PASS **84** / NOT_IMPLEMENTED **1** / INTENTIONALLY_CHANGED 3 / FAIL **0** /
 > FRAMEWORK_DIFFERENCE 2 / NOT_VERIFIED 1 / BLOCKED 0`
 >
@@ -516,7 +544,7 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 | HTTP 超时（503）+ 断连（499）+ 池饱和（裸 503） | 🟢 **已承接** | ✅ **批次 C 已修**：抄 RAG 整段 ⇒ **三条拒绝路径的形状逐条对齐**（超时 503 + body `Request Timeout\n`（**16** 字节）+ `text/plain` + `nosniff` + `Content-Length: 16` / 断连 499 / 池饱和裸 503 无 body 无 Content-Type）＋ **512 worker 池**（`obs-http-worker`）；对拍：`HttpMiddlewareTest`（11 例）；**4 次变异实测**每次都变红 |
 | Prometheus 写入面（2 个 meter） | 🟢 **已承接** | ✅ **V03 已修**：耗时分布 ＋ 状态码计数 ＋ `code` 标签；⚠️ **D4 生态吸收** ⇒ 丢弃 RAG 的「接缝接口 + 静态 holder」，改构造器注入 `MeterRegistry` ⇒ 零静态状态；⚠️ **L3**：指标**桶布局**不等价（Go 显式 12 桶 vs Micrometer 默认 summary） |
 | RPC 统计面（每分钟日志） | 🟢 **已承接** | ✅ **V03 已修**：`RpcStatMetrics` 抄写 RAG（含 3 个 Go 对齐怪癖：avg 先整除 / median = 第 `size>>1` 大 / 小样本退化） |
-| OTel 全局装配（provider/exporter/sampler/传播器） | 🔴 **未实现** | D-03 已登记；⚠️ **批次 E 已明确取舍**：本仓统一走 Micrometer Observation 路线 ⇒ `GoStyleOtelAgent` **不实现**（保留登记）⇒ ⚠️ 代价 = 「配置面有 `endpoint`/`protocol`/`samplerRatio` 三字段，但**没有装配面**」 |
+| OTel 全局装配（provider/exporter/sampler/传播器） | 🟢 **已承接** | ✅ **批次 F 已修**：`GoStyleOtelAgent`（SDK ＋ OTLP exporter ＋ W3C 传播器 ＋ shutdown hook ＋ 幂等 ＋ 装不上不阻断启动）＋ `GoStyleOtelConfig`（Go `Telemetry` 四字段 ＋ 键名与 B 同构）＋ `GoStyleOtelAutoConfiguration`（**BFPP**，早于任何单例创建）⇒ 对拍：`GoStyleOtelAgentTest`(7) + `GoStyleOtelConfigTest`(13) + `TraceparentFilterTest`(4)；⚠️ **依然归类的两个差异**：① `traceparent` 响应头的**规范化**（头名 canonical）与 B 一致，但 **span 名**用 URI 而非 Go 的路由模板（不可 wire 观察））② **导出端点**（域 yml 的 `otel:` 段）尚未搬运（用户已叫停 yml 搬运）⇒ 本进程不向 jaeger 导出 |
 | MQ 消费端 trace | 🟢 **已承接** | ✅ **批次 E 已修**：抄 RAG 整段 ⇒ **Micrometer Observation + OTel 双载体**；⚠️ Micrometer 无 span kind ⇒ 用 `mq.kind=consumer` 承载（**本仓新增的键** ⇒ D-03 同族）；⚠️ **刻意不 catch `Throwable`**（panic 外抛） |
 | JWT / 口令 | 🟢 **已承接** | ✅ **批次 D 已修**：`JwtUtil`（jjwt 0.12.6 适配 ＋ 短密钥手写 HMAC 验签取证）/ `BearerTokenExtractor`（**按 Go 改 `>6`**）/ `PasswordUtil`（bcrypt ＋ 畸形 hash 不抛）；对拍：`SecurityUtilTest`（7 例） |
 | 共享日志门面（`LoggerFactoryBean`） | 🟢 **已承接** | ✅ **批次 E 已修**：抄 RAG 整段 ＋ **装配形态回改**（`@Component` → auto-config 的 `@Bean`）⇒ 消费方零装配代码（A5）；⚠️ **算法只留一份**（委托 `GoStyleLogger`） |
@@ -552,7 +580,7 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 | 9 | **Tomcat / Jackson / Spring Framework 的底层版本变化是否产生实际漂移？** | ✅ **Jackson / Spring 已回改且有对拍**（F-1~F-3）。⚠️ **Tomcat 11→10.1 的实际漂移尚未验证** —— B 的 `GoStyleClientDisconnectProbe` 反射链取证全部基于 Tomcat 11 ⇒ C 侧实现该能力时**必须重测**（F-7，当前因未实现而不适用） |
 | 10 | **哪些差异已经通过证据证明安全？** | ① communityfact 的 23 个 L1 JSON tag + `omitempty` 语义 + `DeliveryStatus` 取值；② JCS 同库 ⇒ 幂等指纹不漂；③ 响应信封 `{code,msg,data}` 与 `data:null` 保留；④ 404/405/400/413/503 的状态码 + 头 + body 字节；⑤ 雪花位段与时钟回拨免疫；⑥ `rag.protection` 12 项默认值；⑦ Filter 槽位；⑧ 观测 7 个 span key + 3 个 kind + 500ms + 严格 `>` + 判定顺序 + `http.route` 语义；⑨ HTTP 熔断隔离 key 与成败判据；⑩ 三处 Boot 4→3.5 包名回改；⑪ A3 的 gRPC 挂载点（有真触发测试）；⑫ A5/A6/A12 三条守门；⑬ ✅ **熔断回落语义**（`UNKNOWN` ⇒ 回落 raw URI、`NOT_MATCHED` ⇒ 不进 breaker）＋ **三态模板解析**（`RouteTemplateResolverTest` 5 例）；⑭ ✅ **V01/V02 的装配面**（Boot 真实 `AutoConfigurationImportSelector` 从 classpath 清单选出）；⑮ ✅ **V03 的链序**（真的搭出链 ⇒ 逐层断言 `[recover, stat, prometheus, breaker, shedding, business]`）；⑯ ✅ **V03 的 wire 契约**（`"panic: "` / `UNAVAILABLE + "circuit breaker is open"` / `RESOURCE_EXHAUSTED + "service overloaded"` / 6 码失败白名单）；⑰ ✅ **V03 的客户端装配面**（devh **真实收集器** `AnnotationGlobalClientInterceptorConfigurer` 收到了两个拦截器）；⑱ ✅ **V07 的 JWT 短密钥验签**（手写 HMAC 验签 ⇒ 证明「Go 的 15 字节短密钥能验过 C 签的 token」的 RFC 2104 零填充等价性）；⑲ ✅ **批次 E 的并发闸门**（把 `tryAcquire` 改成恒成功 ⇒ **2 例红**）；⑳ ✅ **批次 E 的超时语义**（把 `DEADLINE_EXCEEDED` 改成 `INTERNAL` ⇒ **1 例红**）；㉑ ✅ **批次 E 的池重建**（关掉重建 ⇒ **1 红 1 错**） |
 | 11 | **哪些差异仍然无法确认？** | ① ~~Redis 2 项的运行期行为~~ ⇒ ✅ **V01 已修并有真触发断言**；② ~~SQL 超时链的运行期行为~~ ⇒ ✅ **V02 已修并有真触发断言**；③ OTel span 的**真实**落地（bridge 离线不可得）；④ `Traceparent` 响应头的**真实**取值（依赖 OTel）；⑤ Tomcat 10.1 下 `ClientDisconnectProbe` 反射链是否可用（C 侧尚未实现 ⇒ 不适用）；⑥ 跨域上收的 `JsonbTypeHandler`/`JsonTextTypeHandler`（不在本次范围） |
-| 12 | **当前 C 是否具备可靠的行为对拍条件？** | 🟡 **部分具备**。✅ 具备：B 侧 488 例可离线跑通（已实测）；C 侧 **185 例**可离线跑通；两侧共用同一套 JCS 库 ⇒ 指纹可比；**Boot 真实的 `AutoConfigurationImportSelector` 可在 C 侧跑**（⇒ 装配面可对拍）。⚠️ **不具备**：① 两侧**同 JVM 同输入**的对拍（Boot 4 + Boot 3.5 不能共载）⇒ 只能「B 的断言值 → C 的期望值」逐条搬运；② C 侧域为空壳 ⇒ **跨域的端到端对拍**（HTTP/gRPC/DB/Kafka）无法做；③ 真 Tomcat 对拍需补（AGENTS.md §八「HTTP 断言走真 Tomcat」尚未满足） |
+| 12 | **当前 C 是否具备可靠的行为对拍条件？** | 🟡 **部分具备**。✅ 具备：B 侧 488 例可离线跑通（已实测）；C 侧 **208 例**可离线跑通（批次 F 后）；两侧共用同一套 JCS 库 ⇒ 指纹可比；**Boot 真实的 `AutoConfigurationImportSelector` 可在 C 侧跑**（⇒ 装配面可对拍）；**真 gRPC 假 OTLP 接收端**可在 C 侧跑（⇒ 导出面可对拍，批次 F 已用）。⚠️ **不具备**：① 两侧**同 JVM 同输入**的对拍（Boot 4 + Boot 3.5 不能共载）⇒ 只能「B 的断言值 → C 的期望值」逐条搬运；② C 侧域为空壳 ⇒ **跳域的端到端对拍**（HTTP/gRPC/DB/Kafka）无法做；③ 真 Tomcat 对拍需补（AGENTS.md §八「HTTP 断言走真 Tomcat」尚未满足） |
 
 ---
 

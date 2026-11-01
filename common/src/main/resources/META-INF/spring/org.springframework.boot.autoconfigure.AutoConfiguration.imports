@@ -1,3 +1,4 @@
+com.rag.common.autoconfigure.GoStyleOtelAutoConfiguration
 com.rag.common.autoconfigure.WebAutoConfiguration
 com.rag.common.autoconfigure.JsonBodyConverterAutoConfiguration
 com.rag.common.autoconfigure.LoggerAutoConfiguration

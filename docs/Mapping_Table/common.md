@@ -103,10 +103,10 @@
 
 ## 1. 包结构对照
 
-### 1.1 `autoconfigure/` —— starter 的全部装配入口（C: 11 类）
+### 1.1 `autoconfigure/` —— starter 的全部装配入口（C: 12 类）
 
-> **D3 的载体。** 9 个 `@AutoConfiguration` 由
-> `common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 注册（**清单共 13 行**：另有 `redis/` 包的 2 个 —— 见 §1.12）。
+> **D3 的载体。** 12 个 `@AutoConfiguration` 由
+> `common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 注册（**清单共 14 行**：另有 `redis/` 包的 2 个 —— 见 §1.12）。
 > ⇒ **消费方零 `@Import` 清单**（RAG 侧有 10 份）。
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
@@ -175,7 +175,7 @@
 | `logger/logger.go`（`Init` 全局单例） | `spring/LoggerFactoryBean.java`（369 行，与 `Logger` **零行为差异**） | `common/src/main/java/com/rag/common/logger/LoggerFactoryBean.java`（由 `common/src/main/java/com/rag/common/autoconfigure/LoggerAutoConfiguration.java` 注册） | N:1 | B 侧「静态轨 + Bean 轨」双轨并存 ⇒ C **保留双轨**（静态入口 `GoStyleLogger` + Bean 入口 `LoggerFactoryBean`）但**算法只留一份**（Bean 委托给 `GoStyleLogger.doLogXxx`）⇒ ⇒ 不会出现「改一处忘一处」<br>✅ **已落地（2026-11-02 · 批次 D/E）**：抄 RAG 整段（L2 · D13）＋ **装配形态回改**（`@Component` → auto-config 的 `@Bean`，L4 · D3）；⚠️ `serviceName` **各自独立**（Bean 走构造注入，静态轨走 `GoStyleLogger.init`）⇒ 委托只复用算法、不共享状态 |
 | `logger/logger.go`（`getCallChain` + `isFiltered` 过滤框架帧） | `logger/Logger.java#getCallChain/isFiltered` | （并入 `common/src/main/java/com/rag/common/logger/GoStyleLogger.java`） | 1:1 | ⚠️ `call_chain` 是**行为契约**（SLF4J 无等价 ⇒ AGENTS.md §1.1c **G-4**）；过滤失效会让它变成不可读的栈转储 |
 
-### 1.6 `observability/` —— Observation + Deadline（C: 17 类）
+### 1.6 `observability/` —— Observation + Deadline（C: 19 类）
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
@@ -258,7 +258,7 @@
 | —（Go 侧无对应物） | `article-api/config/GoStyleJsonBodyLimitFilter.java` | `common/src/main/java/com/rag/common/web/JsonBodyLimitFilter.java` | 1:1 | 归位；⚠️ 与 `protection/MaxBytesFilter.java` **语义相邻但不同**，别合并 |
 | —（Go 侧无对应物） | `article-api/config/GoStylePathNormalizingFilter.java` | `common/src/main/java/com/rag/common/web/PathNormalizingFilter.java` | 1:1 | 归位 |
 
-### 1.12 🔴 RAG 侧 `service/common` 增量补录（18 条 · 覆盖 35 个 `.java`）
+### 1.12 🔴 RAG 侧 `service/common` 增量补录（19 条 · 覆盖 35 个 `.java`）
 
 > ⚠️ **本节是 2026-11-01 的增量**：RAG 仓在映射表首版之后继续生长
 > （`service/common` 从 3 个包长到 **12 个包**）⇒ 首版 §1.1–§1.11 的 **B 列漏了 35 个 `.java`**。
@@ -275,8 +275,9 @@
 | go-zero `httpx.Parse` 的 form 值计数上限（容器上限之外的第二道） | `common/http/GoStyleFormLimitWebMvcConfig.java` ＋ `common/http/GoStyleTomcatParameterLimitCustomizer.java` ＋ `common/http/GoStylePathNormalizingAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/WebAutoConfiguration.java` | N:1 | 3 个注册点归 **starter**（D3）；⚠️ 拦截器必须 `HIGHEST_PRECEDENCE` ⇒ 先于域鉴权（**与 Go 的中间件顺序相反**，属已登记差异） |
 | go-zero `httpx.doWriteJson` 的 `Content-Type: application/json; charset=utf-8` | `common/http/GoStyleJsonContentTypeAdvice.java` | `common/src/main/java/com/rag/common/web/JsonContentTypeAdvice.java` | 1:1 | ✅ **已落地（2026-11-01）**：落 `common/web/` —— 共享层 1 份 `@ResponseBodyAdvice`，给 `Content-Type` 补 `charset=utf-8`（对齐 go-zero `httpx.doWriteJson`）；⚠️ 各域 `advice/<Dom>ApiResponseAdvice.java` 的**信封与错误码**不受影响 |
 | W3C `traceparent` 头的透传 | `common/http/GoStyleTraceparentFilter.java` | `common/src/main/java/com/rag/common/web/TraceparentFilter.java` | 1:1 | ✅ **已落地（2026-11-01）**：落 `common/web/` —— servlet `Filter` 形态透传 `traceparent`；⚠️ 与 `common/observability/ObservabilityCustomizer.java`（Observation 侧）**分工不同**：前者是 HTTP 头透传，后者是埋点装配 |
-| Go 侧 OTel 的全局装配（tracer provider ＋ propagator） | `common/observability/GoStyleOtelAgent.java` ＋ `common/observability/GoStyleOtelAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | N:1 | ⚠️ `GoStyleOtelAgent` 是 **javaagent 形态**（`-javaagent:` 启动参数）⇒ 落到 auto-config 是**形态差** ⇒ 需登记为签字偏离 |
-| Go `Telemetry` 配置段（`service.name` / `endpoint` / `sampler` / `insecure`） | `common/observability/GoStyleOtelConfig.java` | `common/src/main/java/com/rag/common/observability/ObservabilityProperties.java` | 1:1 | 配置载体（C 侧 `ObservabilityProperties` 是唯一 `@ConfigurationProperties`） |
+| Go 侧 OTel 的全局装配（tracer provider ＋ OTLP exporter ＋ propagator ＋ shutdown hook） | `common/observability/GoStyleOtelAgent.java` | `common/src/main/java/com/rag/common/observability/GoStyleOtelAgent.java` | 1:1 | ✅ **已落地（2026-11-02 · 批次 F）**：抄 RAG 整段（L2 · D13）⇒ 幂等（`AtomicBoolean` = Go 的 `sync.Once`）/ `buildProvider` 逐行对齐 Go 的 `startAgent`（`parentBased(traceIdRatioBased(ratio))` ＋ `Resource(service.name)` ＋ **「endpoint 为空 ⇒ 不装 exporter」** 的短路）/ 全局 `set()` 失败**只记 ERROR 不抛**（= Go 的 `logx.Error` 后继续启动）/ shutdown hook flush ⇒ **【DRIFT 报告】的最后 1 条 NOT_IMPLEMENTED 清零**；⚠️ **旧口径已被批次 F 推翻**（「`GoStyleOtelAgent` 是 javaagent 形态 ⇒ 归到 `ObservabilityAutoConfiguration`（N:1）」）⇒ 本行改回 **1:1**；对拍：`GoStyleOtelAgentTest`（7 例，含**真 Spring 上下文**＋**真 gRPC 假 OTLP 接收端**） |
+| Go 侧 OTel 的**全局装配点**（`BeanFactoryPostProcessor` + `EnvironmentAware`，早于任何单例创建） | `common/observability/GoStyleOtelAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/GoStyleOtelAutoConfiguration.java` | 1:1 | ✅ **已落地（2026-11-02 · 批次 F）**：抄 RAG 整段（L2 · D13）＋ **包名回改**（`observability/` → `autoconfigure/`，与本仓其余 11 个 auto-config 同包，L4 · D11/D3）⇒ 仍用 `static @Bean BeanFactoryPostProcessor` + `EnvironmentAware`（⇒ 早于任何单例创建 ⇒ 不会被构造器里的 `GlobalOpenTelemetry.get()` 抢跑）⇒ 已登记进 `AutoConfiguration.imports`（清单 13 → **14 行**）；⚠️ **旧口径已被批次 F 推翻**（「归到 `ObservabilityAutoConfiguration`（N:1）」）⇒ 本行改回 **1:1** |
+| Go `Telemetry` 配置段（`service.name` / `endpoint` / `sampler` / `insecure`） | `common/observability/GoStyleOtelConfig.java` | `common/src/main/java/com/rag/common/observability/GoStyleOtelConfig.java` | 1:1 | ✅ **已落地（2026-11-02 · 批次 F）**：**B ↔ C 真正 1:1**（原先 C 侧挂在 `ObservabilityProperties` 的 `observability.*` 命名空间下但**只承载、不驱动装配** ⇒ 本轮移出、归位到本类）⇒ **键名随之回到 B 侧的 `otel.service.name` / `otel.resource.attributes.service.name` / `otel.exporter.otlp.endpoint` / `otel.exporter.otlp.protocol` / `otel.traces.sampler[.arg]`** ⇒ **L1 配置契约与 B 侧逐字节同构**；对拍：`GoStyleOtelConfigTest`（13 例） |
 | go-zero `zrpc` 的 `UnaryPrometheusInterceptor` ＋ `UnaryStatInterceptor` ＋ `core/stat` 聚合器 | `common/observability/GoStylePrometheusInterceptor.java` ＋ `common/observability/GoStyleStatInterceptor.java` ＋ `common/observability/GoStyleStatMetrics.java` ＋ `common/observability/GoStylePrometheusMetrics.java` | `common/src/main/java/com/rag/common/observability/ObservabilityCustomizer.java` | N:1 | Micrometer `Observation` ＋ `Timer` 承担（D4）；⚠️ B 侧 `GoStylePrometheusMetrics` 是**静态 holder** ⇒ C 侧 registry 是 **Bean** ⇒ **无静态 holder**（形态差，非行为差） |
 | Prometheus 写入面接缝（接口 ＋ Micrometer 实现 ＋ 装配点） | `common/observability/GoStylePrometheusSink.java` ＋ `common/observability/MicrometerPrometheusSink.java` ＋ `common/observability/GoStylePrometheusMeterRegistryBridge.java` | `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | N:1 | ⚠️ **D4 生态吸收**：C 侧 Boot 原生 `micrometer-registry-prometheus` ⇒ **不复制 RAG 的接缝接口**（零 Java 代码） |
 | gRPC 侧的 Stat ＋ Prometheus 指标面装配 | `common/observability/GoStyleRpcMetricsConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | 1:1 | 指标名 / 标签 / 调用点是**业务定义** ⇒ 由各域 `metrics/<Dom>RpcMetrics.java` 承载（见各域表） |
@@ -592,7 +593,7 @@ Micrometer 的观察模型与它**不是一对一映射**（D-03）⇒ 用生态
 
 ## 7. 覆盖度自查
 
-### 7.1 C 列零遗漏（101/101 = 100%）
+### 7.1 C 列零遗漏（104/104 = 100%）
 
 自查命令：
 
@@ -603,26 +604,26 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 
 | 子包 | 实际 `.java` 数 | 出现在本表 C 列的数 | 缺口 |
 |---|---|---|---|
-| `autoconfigure/` | 11 | 11 | 0 |
+| `autoconfigure/` | 12 | 12 | 0 |
 | `communityfact/` | 13 | 13 | 0 |
 | `contract/` | 1 | 1 | 0 |
 | `exception/` | 2 | 2 | 0 |
 | `logger/` | 5 | 5 | 0 |
-| `observability/` | 17 | 17 | 0 |
+| `observability/` | 19 | 19 | 0 |
 | `persistence/` | 4 | 4 | 0 |
 | `protection/` | 18 | 18 | 0 |
 | `redis/` | 5 | 5 | 0 |
 | `security/` | 3 | 3 | 0 |
 | `snowflake/` | 1 | 1 | 0 |
 | `web/` | 21 | 21 | 0 |
-| **合计** | **101** | **101** | **0** |
+| **合计** | **104** | **104** | **0** |
 
-> ⚠️ **核对日期 2026-11-02（批次 E 后重算）** —— 上一版自报 `72` 是**批 1 时的旧值**，
+> ⚠️ **核对日期 2026-11-02（批次 F 后重算）** —— 上一版自报 `72` 是**批 1 时的旧值**，批 2（+13）/ 批 3（+5）/ 批次 B（+5）/ 批次 D（+1）/ 批次 E（+8）/ **批次 F（+3）** 都没回写 ⇒ **自报数长期漂着**。⇒ ⇒ 与 P-08 同病：**没人复算的数**。现由 `tools/check-mapping-coverage.py` 从文件系统反向取实际清单对账。
 > 批 2（+13）/ 批 3（+5）/ 批次 B（+5）/ 批次 D（+1）/ 批次 E（+8）都没回写 ⇒ **自报数长期漂着**。
 > ⇒ ⇒ 与 P-08 同病：**没人复算的数**。现由 `tools/check-mapping-coverage.py` 从文件系统反向取实际清单对账。
 
 > C 列逐条清单（按子包，C 侧**真实类名**）：
-> `autoconfigure/`：ClientProtectionAutoConfiguration · GrpcExceptionMapperAutoConfiguration · JsonBodyConverterAutoConfiguration ·
+> `autoconfigure/`：ClientProtectionAutoConfiguration · GoStyleOtelAutoConfiguration · GrpcExceptionMapperAutoConfiguration · JsonBodyConverterAutoConfiguration ·
 > LoggerAutoConfiguration · MybatisPlusOrderingBridgeAutoConfiguration · ObservabilityAutoConfiguration · PersistenceAutoConfiguration ·
 > ProtectionAutoConfiguration · RouteTemplateAutoConfiguration · SnowflakeAutoConfiguration · WebAutoConfiguration
 > `communityfact/`：AuthorityFact · AuthorityHandler · CanonicalHash · DeliveryStatus · Dispatcher · Event · EventDispatcher · EventSender ·
@@ -630,7 +631,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 > `contract/`：ApiResponse
 > `exception/`：AuthenticationException · BusinessException
 > `logger/`：FatalError · GoStyleLogger · LogOption · LogOptions · LoggerFactoryBean
-> `observability/`：ClientDisconnectProbe · DeadlineState · GoStyleRequestDeadline · HttpMiddleware · MqConsumer ·
+> `observability/`：ClientDisconnectProbe · DeadlineState · GoStyleOtelAgent · GoStyleOtelConfig · GoStyleRequestDeadline · HttpMiddleware · MqConsumer ·
 > ObservabilityCustomizer · ObservabilityLifecycle · ObservabilityProperties · ObservabilityResponseWriter · ObservabilityRuntime ·
 > RpcCallHandler · RpcHandleRunner · RpcPrometheusInterceptor · RpcRecoverInterceptor · RpcResult · RpcStatInterceptor · RpcStatMetrics
 > `persistence/`：DeadlineQueryTimeoutInjector · JsonTextTypeHandler · JsonbTypeHandler · SqlTimeoutStatusTranslator
@@ -672,17 +673,23 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 
 ### 7.3 映射类型分布
 
-> **统计口径**：本表所有 5 列对照表（§0 + §1.1 – §1.13）里**填了映射类型的行** = **99 行**，全部落在 4 种合法词内。
+> **统计口径**：本表**§0 + §1.1 – §1.13** 的 5 列对照表里**填了映射类型的行** = **105 行**，全部落在 4 种合法词内。
+> 统计脚本（**只数本节范围内的 5 列表**，避开章节里的表）：
+> ```bash
+> awk -F'|' 'NR>=FNR{s=1} /^## 2\. /{s=0} s && /^\|/ && NF==7 {print $5}' docs/Mapping_Table/common.md | sed 's/^ *//;s/ *$//' | sort | uniq -c
+> ```
+> ⚠️ **核对日期 2026-11-02（批次 F 后重算）**。⚠️ **本分布表此前**无人复算** —— 旧值 `1:1=57 / 1:N=11 / N:1=30 / C 新增=1`（合计 99）与实测不符（实测合计 **105**）⇒ 已按实测改写（同 P-08「没人复算的数」）。
+> ⚠️ **口径区分**：本表的“105 行”是 **§0 – §1.13** 的对照行；而 `_INDEX.md` 里 common 的「映射行」是**全文扫描**的口径（`tools/check-mapping-coverage.py` 的 `count_map_rows`，会把 §7.x 的小表也算进去）⇒ **两个数不同口径**，不要混用。
 > 统计脚本：`awk -F'|' '/^\|/ && NF==7 {print $5}' common.md | sort | uniq -c`。
 > ⚠️ **核对日期 2026-11-02**（批 1 落 2 行后重算）。⚠️ **本分布表此前无人复算** —— 旧值 `1:1=52 / 1:N=14` 与实测 `55 / 11` 不符（守门只核**总数**不核**分布**）⇒ 已按实测改写（同 P-08「没人复算的数」）。
 
 | 映射类型 | 行数 | 主要集中在 |
 |---|---|---|
-| **1:1** | **57** | `web/` 15 个（13 个从各域 api 归位 + 2 个来自 `common/http`）、**§1.12 增量 12 个**、`logger/` 5 个、`communityfact/` 4 个、`observability/` 4 个、`protection/` 3 个、`security/` 3 个、§0 顶层 4 个、`exception/` 2 个、`persistence/` 2 个、`autoconfigure/` / `contract/` / `snowflake` 各 1 个 |
-| **1:N** | **11** | 9 个在 `communityfact/` 的 wire 类型拆分（`Event` / `TechnicalReceipt` / `SubjectRef` / `AuthorityFact` / `DeliveryStatus` / `CanonicalHash` / `EventSender` / `EventDispatcher` / `ProcessMetadata`）+ §0 顶层 2 个 |
-| **N:1** | **30** | `autoconfigure/` 6 个、`protection/` 5 个、§0 顶层 5 个、**§1.12 增量 5 个**（3 个注册点合 `WebAutoConfiguration` ＋ 2 个 OTel 装配合 `ObservabilityAutoConfiguration`）、`observability/` 3 个、`logger/` 2 个、`persistence/` 2 个、`snowflake/` 1 个、`web/` 1 个（`GoStyleStringInt64` 合 2 份） |
+| **1:1** | **60** | `web/` 15 个（13 个从各域 api 归位 + 2 个来自 `common/http`）、**§1.12 增量 14 个**（含批次 F 新增的 `GoStyleOtelAgent` / `GoStyleOtelConfig` / `GoStyleOtelAutoConfiguration`）、`logger/` 5 个、`communityfact/` 4 个、`observability/` 4 个、`protection/` 3 个、`security/` 3 个、§0 顶层 4 个、`exception/` 2 个、`persistence/` 2 个、`autoconfigure/` / `contract/` / `snowflake` 各 1 个 |
+| **1:N** | **14** | 9 个在 `communityfact/` 的 wire 类型拆分（`Event` / `TechnicalReceipt` / `SubjectRef` / `AuthorityFact` / `DeliveryStatus` / `CanonicalHash` / `EventSender` / `EventDispatcher` / `ProcessMetadata`）+ §0 顶层 2 个 + **§1.12 的「1 个 B 类 拆成 3 个 C 类」（`HttpMiddleware` 一行）** |
+| **N:1** | **30** | `autoconfigure/` 6 个、`protection/` 5 个、§0 顶层 5 个、**§1.12 增量 4 个**（批次 F 推翻了旧口径的 1 行 N:1）、`observability/` 3 个、`logger/` 2 个、`persistence/` 2 个、`snowflake` 1 个、`web/` 1 个（`GoStyleStringInt64` 合 2 份） |
 | **C 新增** | **1** | §0 顶层的 `autoconfigure/`（A 侧无源形态；其余 6 个 auto-config 因 B 侧有落点故记 `N:1`） |
-| **合计** | **99** | — |
+| **合计** | **105** | — |
 
 > ⚠️ **分布读法**：`N:1` 偏多（30 行，占 31%）**不是缺陷** —— 它正是 D3（starter 化）与 D4（生态替代）的直接账单：
 > Go 的 11 个 `.go` 里，**6 个文件的能力在 Go 侧是「框架内置」**（熔断 / 降载 / 限连接 / 限体积 / HTTP 解析 / 错误形状），
@@ -813,6 +820,25 @@ RAG-V1 的 `common/` 里**曾保留 18 个 `GoStyle*` 命名的类**（实测 `f
 > ⇒ ⇒ 再变异 ⇒ **变红** ⇒ ⇒ **「变异没变红」＝「这条断言没覆盖到」**（§3.3 的另一半）。
 
 ---
+
+### 7.9 ✅ 批次 F 修法（2026-11-02）：全局 OTel 装配 ＋ `traceparent` 响应头恢复
+
+> 本节逐条记录 **批次 F**（**DRIFT 报告里最后 1 条 NOT_IMPLEMENTED** 与 **2 条 FRAMEWORK_DIFFERENCE**）的 B → C 落点。
+> 抄写基准 = **RAG**（L2 业务语义层整段拇 · D13）；装配形态按本仓的 **D3 / D1 / D4 / D11** 回改。
+
+| B 源类（RAG `service/common/`） | 职责 | C 承接（RAG-V1 `common/`） | 类型 | 抄写与回改要点 |
+|---|---|---|---|---|
+| `observability/GoStyleOtelAgent.java` | 全局 tracer provider（SDK ＋ OTLP exporter ＋ 传播器 ＋ shutdown hook） | `common/src/main/java/com/rag/common/observability/GoStyleOtelAgent.java` | 1:1 | ✅ **已落地（批次 F）**：抄 RAG 整段（L2 · D13）⇒ 幂等（`AtomicBoolean` = Go 的 `sync.Once`）/ `buildProvider` 逐行对齐 Go 的 `startAgent`（`parentBased(traceIdRatioBased(ratio))` ＋ `Resource(service.name)` ＋ **「endpoint 为空 ⇒ 不装 exporter」**的短路）/ 全局 `set()` 失败**只记 ERROR 不抛**（= Go 的 `logx.Error` 后继续启动） |
+| `observability/GoStyleOtelAutoConfiguration.java` | 全局装配点（`BeanFactoryPostProcessor` + `EnvironmentAware`） | `common/src/main/java/com/rag/common/autoconfigure/GoStyleOtelAutoConfiguration.java` | 1:1 | ✅ **已落地（批次 F）**：抄 RAG 整段＋ **包名回改**（`observability/` → `autoconfigure/`，与本仓其余 11 个 auto-config 同包，L4 · D11/D3）⇒ 已登记进 `AutoConfiguration.imports`（清单 13 → **14 行**）；⚠️ **为什么仍用 BFPP**：OTel 的 `GlobalOpenTelemetry.set()` **只能调一次**，且**先调 `get()` 会让后续 `set()` 抛 `IllegalStateException`** ⇒ 装配点必须早于**任何单例创建** |
+| `observability/GoStyleOtelConfig.java` | Go `Telemetry` 四字段投影 | `common/src/main/java/com/rag/common/observability/GoStyleOtelConfig.java` | 1:1 | ✅ **已落地（批次 F）**：**B ↔ C 真正 1:1**（原先挂在 `ObservabilityProperties` 但**只承载、不驱动装配**）⇒ **键名随之回到 B 侧的 `otel.*`** ⇒ **L1 配置契约与 B 侧逐字节同构** |
+| （连带）`spring/ObservabilityProperties.java` 的 3 个 Telemetry 字段 | 配置彽数 | —（**移出**） | — | ⚠️ **口径变更**：`observability.endpoint` / `observability.protocol` / `observability.sampler-ratio` 三字段**移出** `ObservabilityProperties`（它们必须真正驱动装配，不能「只承载」）⇒ 该类现只留 `slow-threshold` / `http-timeout` / `rpc-timeout` 三个 Duration |
+
+> ⚠️ **批次 F 的验证口径**：common 测试 **185 → 208 例**（新增 `GoStyleOtelAgentTest` 7 例 ＋ `GoStyleOtelConfigTest` 13 例 ＋ `TraceparentFilterTest` 4 例 ＋ 调整 `ObservabilityPropertiesTest` −1 例）·
+> **7 次变异实测**（去 `GlobalOpenTelemetry.set` / 去 exporter / shutdown 不 close / 去 `ParentBased` / 端点不补 `http://` / 不校验 batcher / imports 摘掉那一行）⇒ **每次都变红**。
+> ⚠️ **连带修掉的真实缺陷（DRIFT-COMMON-V14）**：`common/pom.xml` 在两个 devh starter 上 exclude 了 `grpc-core` ⇒ Maven 的 exclusion 作用于**整棵传递子树** ⇒ `grpc-netty-shaded → grpc-core` 也被切断 ⇒ classpath 上没有 `grpc-core` ⇒ 只要 devh 的 gRPC server auto-config 出现就炸 `NoClassDefFoundError: io/grpc/internal/ObjectPool` ⇒ 已按**域模块同款口径**显式声明（**test scope** ⇒ 零下游影响）。
+
+---
+
 
 ## 附：本表引用
 

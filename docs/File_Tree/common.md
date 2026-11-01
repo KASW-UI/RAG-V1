@@ -51,6 +51,7 @@
 - `net.devh:grpc-server-spring-boot-starter`
 - `org.springframework.boot:spring-boot-starter-test`
 - `io.opentelemetry:opentelemetry-sdk-testing`
+- `io.grpc:grpc-core`
 - `org.springframework:spring-test`
 - `org.projectlombok:lombok`
 
@@ -65,6 +66,7 @@
 │   │   │           └── common/
 │   │   │               ├── autoconfigure/
 │   │   │               │   ├── ClientProtectionAutoConfiguration.java    # gRPC 客户端侧的共享装配点：出向熔断 ＋ 出向 deadline 传播。
+│   │   │               │   ├── GoStyleOtelAutoConfiguration.java    # 🔴 **全局 OpenTelemetry 的装配点** —— 对应 Go 侧
 │   │   │               │   ├── GrpcExceptionMapperAutoConfiguration.java    # D2 / D5「统一错误模型」的 gRPC 边界适配器 ——
 │   │   │               │   ├── JsonBodyConverterAutoConfiguration.java    # Jackson 侧的共享装配点 —— 把「K-01 强转规则」与「K-02 请求体判据」两条
 │   │   │               │   ├── LoggerAutoConfiguration.java    # 共享日志门面的装配点 —— 产出 {@link LoggerFactoryBean}。
@@ -103,6 +105,8 @@
 │   │   │               ├── observability/
 │   │   │               │   ├── ClientDisconnectProbe.java    # 客户端断连的主动探测 —— 往 socket 写 1xx 探针，把断连提前暴露出来。
 │   │   │               │   ├── DeadlineState.java    # 请求级 deadline 的服务端载体（ThreadLocal 绝对到期时刻，{@link System#nanoTime()} 域）。
+│   │   │               │   ├── GoStyleOtelAgent.java    # 🔴🔴 **全局 OpenTelemetry 装配** —— 对应 Go 侧
+│   │   │               │   ├── GoStyleOtelConfig.java    # Go「Telemetry」配置段在 RAG-V1 侧的投影 —— 对应 Go 各服务的
 │   │   │               │   ├── GoStyleRequestDeadline.java    # 请求级 deadline 的载体：把 {@link HttpMiddleware} 的 HTTP 超时预算，
 │   │   │               │   ├── HttpMiddleware.java    # HTTP 观测中间件 —— 观测标记 ＋ 超时 503 ＋ 客户端断连 499 ＋ worker 池饱和 503。
 │   │   │               │   ├── MqConsumer.java    # MQ 消费端 trace 包装 —— 对齐 Go 版的 {@code TraceConsumer}。
@@ -201,9 +205,12 @@
 │                       │   └── GoStyleLoggerTest.java    # §3.3 真触发测试 —— 断言 **A8**：{@link GoStyleLogger} 是一个真正的
 │                       ├── observability/
 │                       │   ├── ClientDisconnectProbeTest.java    # §3.3「机制可证」守门：断连探针的四态语义真的按 Go / RAG 的口径走。
+│                       │   ├── FakeOtlpCollector.java    # 🔴 **假 OTLP 接收端**（扮演 jaeger）—— 一个**真的** gRPC 服务端，
+│                       │   ├── GoStyleOtelAgentTest.java    # 🔴🔴 **全局 OpenTelemetry 装配守门**（对应 Go {@code core/trace/agent.go} 的 {@code startAgent}）。
+│                       │   ├── GoStyleOtelConfigTest.java    # 🔴 **Go {@code Telemetry} 段的配置投影守门** —— 对应 Go
 │                       │   ├── HttpMiddlewareTest.java    # §3.3「机制可证」守门：HTTP 中间件的三条拒绝路径真的按 Go 的形状走。
 │                       │   ├── MqConsumerTest.java    # §3.3「机制可证」守门：MQ 消费端包装真的产出观测、真的按 Go 的口径分类错误。
-│                       │   ├── ObservabilityPropertiesTest.java    # §3.3「机制可证」守门：Go {@code Telemetry} 段的 3 个配置字段真的能被绑定。
+│                       │   ├── ObservabilityPropertiesTest.java    # §3.3「机制可证」守门：观测层自己用的 3 个 Duration 字段真的能被绑定。
 │                       │   ├── ObservabilityRuntimeTest.java    # §3.3「机制可证」守门：观测层的两个进程级池真的能被关闭钩子回收，且关掉后能重建。
 │                       │   ├── RpcHandleRunnerTest.java    # §3.3「机制可证」守门：非 gRPC 路径的业务调用真的带超时控制 + 观测分类。
 │                       │   └── RpcRecoverInterceptorTest.java    # §3.3「机制可证」守门：gRPC handler panic ⇒ {@code INTERNAL + "panic: "}。
@@ -222,7 +229,8 @@
 │                           ├── Float64DeserializerTest.java    # §3.3 真触发测试 —— {@link Float64Deserializer} 的逐条 Go 判据。
 │                           ├── JsonBodyConverterTest.java    # §3.3 真触发测试 —— {@link JsonBodyConverter} 的「Go 何时才读 body」判据 + 8 MiB 上限。
 │                           ├── MapStringValueDeserializerTest.java    # §3.3 真触发测试 —— {@link MapStringValueDeserializer} 的 map 元素级判据。
-│                           └── RawStringListDeserializerTest.java    # §3.3 真触发测试 —— {@link RawStringListDeserializer} 的 go-zero {@code json.Number} 语义。
+│                           ├── RawStringListDeserializerTest.java    # §3.3 真触发测试 —— {@link RawStringListDeserializer} 的 go-zero {@code json.Number} 语义。
+│                           └── TraceparentFilterTest.java    # 🔴🔴 **`traceparent` 响应头守门** —— 对应 Go 的
 └── pom.xml    # Maven 模块描述
 ```
 

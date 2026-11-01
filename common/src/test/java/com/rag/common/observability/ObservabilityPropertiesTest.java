@@ -8,16 +8,17 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * §3.3「机制可证」守门：<b>Go {@code Telemetry} 段的 3 个配置字段真的能被绑定</b>。
+ * §3.3「机制可证」守门：<b>观测层自己用的 3 个 Duration 字段真的能被绑定</b>。
  *
- * <p>⚠️ <b>Go 出处</b>：{@code etc/*.yaml} 的 {@code Telemetry: { Endpoint / Batcher / Sampler }}
- * ⇒ Go 的 {@code otlptracegrpc.WithEndpoint(c.Endpoint) + WithInsecure()}。
+ * <p>⚠️ <b>Go 的 {@code Telemetry} 段已不在本类</b>（2026-11-02 批次 F）——
+ * {@code endpoint} / {@code protocol} / {@code sampler-ratio} 三个字段
+ * ⇒ 已<b>移出</b>本类、归位到 {@link GoStyleOtelConfig}
+ * ⇒ 因为它们必须**真正驱动装配**（全局 OTel SDK + OTLP exporter），而不是「只承载配置」。
+ * ⇒ ⇒ 它们的绑定与解析断言在 {@code GoStyleOtelConfigTest} 里。
  *
- * <p>⚠️ <b>抄写基准 = RAG</b>：{@code GoStyleOtelConfig} 的 3 个字段（L2 · D13）⇒
- * <b>本轮（批次 E）补齐</b> —— 原先 C 侧只留 slow/httpTimeout/rpcTimeout 三个 Duration。
- *
- * <p>⚠️ <b>这三条字段只承载配置、尚未驱动任何装配</b>（全局 OTel 装配走 **D-03** /
- * **D-07**）⇒ ⇒ 本测试**只断言「能绑上」**，**不**断言「会导出 span」。
+ * <p>⚠️ <b>为什么键名回到 {@code otel.*}</b>：Go 的 {@code Telemetry} 段在 B 侧被投影成
+ * {@code otel.exporter.otlp.*} / {@code otel.traces.sampler} ⇒ 本仓沿用<b>同一套键名</b>
+ * ⇒ ⇒ **L1 配置契约与 B 侧逐字节同构**（yml 搬运时零改写）。
  */
 class ObservabilityPropertiesTest {
 
@@ -26,33 +27,7 @@ class ObservabilityPropertiesTest {
                     com.rag.common.autoconfigure.ObservabilityAutoConfiguration.class));
 
     @Test
-    @DisplayName("Go Telemetry 的 3 个字段可绑定：endpoint / protocol / sampler-ratio")
-    void telemetryFieldsAreBindable() {
-        runner.withPropertyValues(
-                        "observability.endpoint=otel-collector:4317",
-                        "observability.protocol=grpc",
-                        "observability.sampler-ratio=0.25")
-                .run(context -> {
-                    ObservabilityProperties props = context.getBean(ObservabilityProperties.class);
-                    assertThat(props.getEndpoint()).isEqualTo("otel-collector:4317");
-                    assertThat(props.getProtocol()).isEqualTo("grpc");
-                    assertThat(props.getSamplerRatio()).isEqualTo(0.25);
-                });
-    }
-
-    @Test
-    @DisplayName("未配置时 endpoint/protocol 为 null、sampler-ratio 为 0（不臆造默认值）")
-    void defaultsAreEmpty() {
-        runner.run(context -> {
-            ObservabilityProperties props = context.getBean(ObservabilityProperties.class);
-            assertThat(props.getEndpoint()).isNull();
-            assertThat(props.getProtocol()).isNull();
-            assertThat(props.getSamplerRatio()).isZero();
-        });
-    }
-
-    @Test
-    @DisplayName("原有的 3 个 Duration 字段仍在（批次 E 只补不改）")
+    @DisplayName("原有的 3 个 Duration 字段仍可绑定（slow-threshold / http-timeout / rpc-timeout）")
     void durationFieldsStillPresent() {
         runner.withPropertyValues(
                         "observability.slow-threshold=750ms",
@@ -64,5 +39,16 @@ class ObservabilityPropertiesTest {
                     assertThat(props.getHttpTimeout()).hasSeconds(3);
                     assertThat(props.getRpcTimeout()).hasSeconds(4);
                 });
+    }
+
+    @Test
+    @DisplayName("未配置时 3 个 Duration 字段为 null（缺省即不限时 ⇒ 对齐 Go 的 TimeoutFromMillis(0) → 0）")
+    void durationsDefaultToNull() {
+        runner.run(context -> {
+            ObservabilityProperties props = context.getBean(ObservabilityProperties.class);
+            assertThat(props.getSlowThreshold()).isNull();
+            assertThat(props.getHttpTimeout()).isNull();
+            assertThat(props.getRpcTimeout()).isNull();
+        });
     }
 }
