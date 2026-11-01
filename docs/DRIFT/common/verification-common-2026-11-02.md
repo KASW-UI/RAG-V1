@@ -29,6 +29,13 @@
 > ⇒ **NOT_IMPLEMENTED 1 → 0**（**清零**）· **FRAMEWORK_DIFFERENCE 2 → 0**。common 测试 **185 → 208 例**，**7 次变异实测**每次都变红。
 > ⚠️ **连带修掉一个真实缺陷**：本模块在两个 devh starter 上 exclude 了 `grpc-core` ⇒ Maven 的 exclusion 作用于整棵传递子树 ⇒ `grpc-netty-shaded → grpc-core` 也被切断 ⇒ classpath 上没有 `grpc-core` ⇒ 只要 devh 的 gRPC server auto-config 出现就炸 `NoClassDefFoundError: io/grpc/internal/ObjectPool` ⇒ 已按域模块同款口径**显式声明** `grpc-core`（**test scope**，不传给下游）。
 > ⚠️ **口径变更（需知悉）**：Go `Telemetry` 段的 3 个字段原先挂在 `ObservabilityProperties`（`observability.*` 命名空间）但**只承载、不驱动装配** ⇒ 本轮**移出**该类、归位到 `GoStyleOtelConfig`（B 侧同名类的 **1:1** 对应物）⇒ **键名随之回到 B 侧的 `otel.*`** ⇒ L1 配置契约与 B 侧逐字节同构。
+>
+> ✅ **修复批次 8（2026-11-02 · 同日 · 批次 G）**：🔴 **最后 1 条 NOT_VERIFIED**（`JsonbTypeHandler` / `JsonTextTypeHandler`）⇒ 已闭合
+> ⇒ 新增 `common/src/test/java/com/rag/common/persistence/JsonTypeHandlerPgTest.java`（**真 PostgreSQL 集成测试 · 10 例**）＋ `common/pom.xml` 补 **Testcontainers（test scope）**
+> ⇒ **NOT_VERIFIED 1 → 0**（**清零**）· **PASS 87 → 88**。common 测试 **208 → 218 例**，**7 次变异实测**每次都变红。
+> ⚠️ **为什么必须真 PG（mock / H2 都验不到要验的东西）**：这两个类的**全部业务语义都长在 PG 的列类型上** —— jsonb 列**规范化**键序与空白（读回文本 ≠ 写入原文）· 按 VARCHAR 绑定 jsonb 列 ⇒ PG 报 **42804** · jsonb 列**拒收** `\u0000` 转义 ⇒ **22P05** · **text 列照单全收** `\u0000` ⇒ 这正是「两个 handler 必须分开」的**唯一判据**（Go 侧 `encoding/json` 产出的是 6 个 ASCII 字符 `\u0000`，**不是**裸 NUL 字节 ⇒ Go 的 text 列必须收下 ⇒ 活体对拍证据见 RAG 侧 **DRIFT-ARPC-004①**）。
+> ⚠️ **禁 `@EnabledIfDockerAvailable`**（AGENTS.md §五.8 守门脚本 4 硬规则 ③）⇒ Docker 不可用时**必须红**、不许静默跳过 ⇒ 守门脚本才能断言 `skipped=0`。
+> ⚠️ **本轮无新缺陷**：两个 handler 的实现**未改一字节**（抄 RAG 整段 · L2 · D13）⇒ 本轮只补**证据**（此前是「有实现、无证据」⇒ 判 NOT_VERIFIED）。
 
 ---
 
@@ -42,7 +49,7 @@
 | 模块路径 | `service/common/` | `common/`（**根级 starter**） |
 | 包名 | `com.rag.common.*` | `com.rag.common.*` |
 | 主代码类 | **88**（12 个包） | **104**（12 个包） |
-| 测试 | **93 类 / 488 例**（离线实测全绿） | **33 类 / 208 例** |
+| 测试 | **93 类 / 488 例**（离线实测全绿） | **34 类 / 218 例** |
 | Spring Boot | **4.0.8** | **3.5.11** |
 | Spring Framework | 7.x | **6.2.x** |
 | Jackson | **3**（`tools.jackson.*`） | **2**（`com.fasterxml.*`，2.19.4） |
@@ -156,7 +163,7 @@
 | `DeadlineQueryTimeoutInjector.java` | 按 deadline 给每条 SQL 设 query timeout | `persistence/DeadlineQueryTimeoutInjector.java`（321 行） | 1:1 | **PASS** | 对拍：`PersistenceAutoConfigurationTest`（3 例）—— 用**与 MP 完全同形**的 `ObjectProvider<Interceptor[]>` 注入点断言**真的收到这两个拦截器**（`javap -c` 取证：MP 构造器内即 `getIfAvailable()`）；✅ **V02 已修**：新增 `autoconfigure/PersistenceAutoConfiguration` 注册 ⇒ 10 个域一次全挂上 |
 | `SqlTimeoutStatusTranslator.java` | `57014` → gRPC `DEADLINE_EXCEEDED` | `persistence/SqlTimeoutStatusTranslator.java`（154 行） | 1:1 | **PASS** | 同上（与上一条**成对**注册，缺一不可）⇒ ✅ **V02 已修** |
 | `MybatisPlusOrderingBridgeAutoConfiguration.java` | 自动配置排序边（**无行为面**） | `autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | 1:1 | **PASS** | 源码级：Boot 3.5 包名 `org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration` **已回改**（B 侧是 Boot 4 的 `org.springframework.boot.jdbc.autoconfigure.*`）⇒ 排序边生效 |
-| （C 侧新增）`JsonTextTypeHandler` / `JsonbTypeHandler` | — | `persistence/` 2 类 | C 新增 | **NOT_VERIFIED** | B 侧对应物在域内 `article-api`（上收），本次不在范围内 |
+| （C 侧新增）`JsonTextTypeHandler` / `JsonbTypeHandler` | — | `persistence/` 2 类 | C 新增 | **PASS** | ✅ **批次 G 已闭合**（**最后 1 条 NOT_VERIFIED**）：**实现未改一字节**（抄 RAG 整段 · L2 · D13 —— `JsonbTypeHandler` 取 comment/favorite/like **三份逐字一致**的版本；`JsonTextTypeHandler` 取 user/admin **两份逐字一致**的版本）⇒ 本轮只补**证据**（此前是「有实现、无证据」）。**对拍：`JsonTypeHandlerPgTest`（10 例 · 真 PostgreSQL · Testcontainers `postgres:16-alpine`）** —— ① **对照组**：同一个 jsonb 列若按 VARCHAR 绑定 ⇒ PG 报 **42804** ⇒ 证 `PGobject` 路径是**承重**的 ② 写走 `PGobject` ⇒ 真落进 jsonb 列（`information_schema` 复核列类型 = `jsonb`）且读回是 **PG 的规范化形态**（`{"b":1,"a":2}` → `{"a": 2, "b": 1}`）③ **写入前不校验 JSON** ⇒ 非法 JSON 由 PG 报错 **22P02** ④ jsonb 列**拒收** `\u0000` ⇒ **22P05** ⑤ text 走 `setString` ⇒ 原样 JSON 文本落 text 列 ⑥ **text 列照单全收** `\u0000`（jsonb 会拒）⇒ **Go 对拍证据**（DRIFT-ARPC-004①）⑦ 读回 Map 逐条相等 ⑧ null map ⇒ 列写 **NULL**（不是字符串 `"null"`）⑨ 列里是空白 ⇒ 读回 null ⑩ 列里是非法 JSON ⇒ 包成 `SQLException`（消息可读）。**变异实测 7 次每次都变红**（M1 `PGobject`→`setString` / M2 type 改 `text` / M3 jsonb 读返 null / M4 text 写写死内容 / M5 text 读返 null / M6 去 `isBlank` 分支 / M7 异常不再包 `SQLException`）。⚠️ **装配面取证**（`javap -c TypeHandlerRegistry#getInstance`）：MyBatis 先试 `(Class)` 构造、失败回落无参构造 ⇒ `JsonTextTypeHandler`（**只有** `(Class)` 构造）走前者、`JsonbTypeHandler`（**只有**无参构造）走后者 ⇒ ⇒ **两个 handler 都能被生产路径（MP `autoResultMap` / `@TableField(typeHandler=)`）实例化**。⚠️ **口径**：本仓 `common/` 是 starter ⇒ **尚无域模块消费**（域为空壳，不在本工作线范围）⇒ 判 PASS 的依据是「类已落地 + 行为已对真 PG 证过」，**不是**「端到端链路已跑通」 |
 
 ### (7) `protection/`（B 24 → C 5）
 
@@ -465,7 +472,7 @@ C 侧同时存在 `web/GrpcStatusMapper.java` 与 `autoconfigure/GrpcExceptionMa
 | **影响范围** | 任何依赖 `common/` 且 classpath 上有 devh gRPC server starter 的进程（= 10 个域）⇒ 启动期崩弩（模拟实测时由本模块的测试触发） |
 | **严重程度** | **✅ 已修复**（原：🔴 严重 —— 启动期崩弩） |
 | **✅ 修法（2026-11-02 · 批次 F）** | 按 **10 个域模块的同款口径**（见 `service/article/pom.xml`）在 `common/pom.xml` 里**显式声明 `grpc-core`**，版本仍由根 pom 的 `grpc.version`（1.63.0）管 ⇒ ⚠️ **采用 `test scope`**：`common` 是 starter ⇒ 不得把下游不需要的依赖塞给下游（与 spring-web / devh starter 的 optional 口径同款）⇒ 下游保持零影响 |
-| **验证方法（已落地）** | ① `GoStyleOtelAgentTest#globalProviderIsRealInsideRealSpringContext` 起**真 Spring 上下文** → 修前直接炸 `NoClassDefFoundError`，修后通过；② 全量 `mvn -o -pl common test` ⇒ **208 例全绿**；③ 域模块的同款显式声明**未动**（域 pom 本轮不改） |
+| **验证方法（已落地）** | ① `GoStyleOtelAgentTest#globalProviderIsRealInsideRealSpringContext` 起**真 Spring 上下文** → 修前直接炸 `NoClassDefFoundError`，修后通过；② 全量 `mvn -o -pl common test` ⇒ **218 例全绿**（批次 G 后）；③ 域模块的同款显式声明**未动**（域 pom 本轮不改） |
 
 ### ⚪ DRIFT-COMMON-V13｜gRPC 业务码承载方式变更（**D-05 已登记**）
 
@@ -490,12 +497,12 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 
 | 状态 | 数量 | 说明 |
 |---|---|---|
-| **PASS** | **87** | 职责已完整承接 + 行为一致 + 有证据（源码级/对拍）。**含已修项**：V01 的 2 个 redis auto-config + V02 的 2 个 MyBatis 拦截器 + **V05**（熔断回落语义）+ **V06**（窄接口 2 类 + 模板解析实现 + 消费方改走窄接口）+ **V03**（gRPC 保护链 5 层 + 客户端熔断 + 出向 deadline + Prometheus 写入面 + 失败判据 + 链序 + 降载双条件 + 降载统计）+ **V07**（`security/` 3 类）+ **批次 E**（`MaxConnsFilter` / `MqConsumer` / `ObservabilityLifecycle` + 两个池 / `LoggerFactoryBean` / `handle(...)` 非 gRPC 路径）+ **批次 C**（`HttpMiddleware` 三条拒绝路径 + `ObservabilityResponseWriter` + `ClientDisconnectProbe` 4 态 + `HttpMiddlewareFilter` 装配 + `HttpPoolLifecycle`）+ **批次 F**（`GoStyleOtelConfig` + `GoStyleOtelAgent` + `GoStyleOtelAutoConfiguration` + `traceparent` 响应头） |
+| **PASS** | **88** | 职责已完整承接 + 行为一致 + 有证据（源码级/对拍）。**含已修项**：V01 的 2 个 redis auto-config + V02 的 2 个 MyBatis 拦截器 + **V05**（熔断回落语义）+ **V06**（窄接口 2 类 + 模板解析实现 + 消费方改走窄接口）+ **V03**（gRPC 保护链 5 层 + 客户端熔断 + 出向 deadline + Prometheus 写入面 + 失败判据 + 链序 + 降载双条件 + 降载统计）+ **V07**（`security/` 3 类）+ **批次 E**（`MaxConnsFilter` / `MqConsumer` / `ObservabilityLifecycle` + 两个池 / `LoggerFactoryBean` / `handle(...)` 非 gRPC 路径）+ **批次 C**（`HttpMiddleware` 三条拒绝路径 + `ObservabilityResponseWriter` + `ClientDisconnectProbe` 4 态 + `HttpMiddlewareFilter` 装配 + `HttpPoolLifecycle`）+ **批次 F**（`GoStyleOtelConfig` + `GoStyleOtelAgent` + `GoStyleOtelAutoConfiguration` + `traceparent` 响应头）+ **批次 G**（`JsonbTypeHandler` + `JsonTextTypeHandler` · 真 PG 对拍） |
 | **NOT_IMPLEMENTED** | **0** | ✅ **清零**（批次 F）。**最后 1 条**（`GoStyleOtelAgent.java`：OTel SDK ＋ OTLP exporter ＋ 传播器 ＋ shutdown hook）已实现 ⇒ 并带动合上 `GoStyleOtelConfig`（Go `Telemetry` 四字段投影）与 `GoStyleOtelAutoConfiguration`（BFPP 装配点）⇒ 并使 `traceparent` 响应头恢复（既往头缺失——根因是「全局 SDK 没装」）。⚠️ **剩下的是「配置值」而不是「能力」**：10 个域的 `application.yml` 里**没有** `otel:` 段（**yml 搬运已由用户叫停**）⇒ 端点为空 ⇒ 按 Go 的 `len(c.Endpoint) > 0` 不装 exporter ⇒ span 有效、可导出，但**本进程不向 jaeger 导出**（Go 侧 yml 写死 `Endpoint: jaeger:4317`） |
 | **INTENTIONALLY_CHANGED** | **3** | 有明确批准依据（D3 starter 化 / D4 生态吸收 / D1 合并 api-rpc / D2+L-13+L-15+L-16 落点决策） |
 | **FAIL** | **0** | ✅ **无**。⚠️ **V01 / V02 / V03 / V05 / V06 / V07 已于 2026-11-02 全部修复**（批次 A / B / D）⇒ 🔴 FAIL 清零 |
 | **FRAMEWORK_DIFFERENCE** | **0** | ✅ **清零**（批次 F）。既往 2 条：① `TraceparentFilter`（值来源不同 ⇒ 实际根因是「全局 OTel 没装」，装了就恢复，已用 `TraceparentFilterTest`（4 例）对拍）② `GoStyleOtelAutoConfiguration`（缺 `GlobalOpenTelemetry.set` / exporter / sampler 映射）⇒ 已补齐（对拍：真 Spring 上下文 + 真 gRPC 假 OTLP 接收端）。⚠️ **差异本身仍保留在 § 11.4 框架差异清单**（§十：已被测试证明不影响业务可观察行为 ⇒ 可判 PASS） |
-| **NOT_VERIFIED** | **1** | `JsonbTypeHandler`/`JsonTextTypeHandler`（跨域上收，本次范围外）；⚠️ gRPC 指标装配点已随 **V03** 转 PASS（两个 meter 已有实现） |
+| **NOT_VERIFIED** | **0** | ✅ **清零**（批次 G）。最后 1 条（`JsonbTypeHandler` / `JsonTextTypeHandler`，跨域上收）已用**真 PostgreSQL** 闭合（`JsonTypeHandlerPgTest` 10 例）—— 此前判 NOT_VERIFIED 的理由是「**有实现、无证据**」，不是「实现缺失」⇒ 本轮**实现未改一字节**、只补证据。⚠️ gRPC 指标装配点已随 **V03** 转 PASS（两个 meter 已有实现） |
 | **BLOCKED** | **0** | 无（Tomcat 10.1 反射链一项因 C 侧未实现而**不适用**，实现时才会 BLOCKED） |
 | **合计标记数** | **91**（**91 个承接行**，V05/V06 修复后**无复合状态行** ⇒ 行数 = 标记数） | 覆盖 B 侧 **88/88** 个主类（88 行 = 87 行 B 类（`SnowflakeBean`+`SnowflakeProperties` 合并 1 行）+ 1 行 C 侧新增 typeHandler）**＋ 3 行 `users-common` 跨域上收** |
 
@@ -504,7 +511,7 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 > # 逐行扫 §11.2 区间 → 每行取第 5 格（状态）→ 匹配 **STATE** 标记 → 计数
 > # 复合状态（**PASS**…/ **FAIL**…）两边都计
 > ```
-> **本轮实测输出（2026-11-02 · 批次 F 后）**：`承接行 = 91 · 标记数 = 91 · 复合状态行 = 0 · PASS **87** / NOT_IMPLEMENTED **0** / INTENTIONALLY_CHANGED 3 / FAIL **0** / FRAMEWORK_DIFFERENCE **0** / NOT_VERIFIED 1 / BLOCKED 0`
+> **本轮实测输出（2026-11-02 · 批次 G 后）**：`承接行 = 91 · 标记数 = 91 · 复合状态行 = 0 · PASS **88** / NOT_IMPLEMENTED **0** / INTENTIONALLY_CHANGED 3 / FAIL **0** / FRAMEWORK_DIFFERENCE **0** / NOT_VERIFIED **0** / BLOCKED 0`
 >
 > ⚠️ **重数脚本（本轮实际运行，不是手填）**：
 > ```python
@@ -513,12 +520,8 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 > # 逐行扫 §11.2 区间 → 每行拆成格 → 取**状态格**（正则以 ‘**STATE**’ 开头的那个格）
 > # ↳ 复合状态两边都计 → 行数 / 标记数 / 各档计数
 > ```
-> PASS **84** / NOT_IMPLEMENTED **1** / INTENTIONALLY_CHANGED 3 / FAIL **0** /
-> FRAMEWORK_DIFFERENCE 2 / NOT_VERIFIED 1 / BLOCKED 0`
->
-> ⚠️ **订正说明**：本行此前停在「PASS 53 / NOT_IMPLEMENTED 29 / FAIL 1」—— 那是**批次 A 之前**的读数，
-> **与上方状态表（PASS 71 / NOT_IMPLEMENTED 13 / FAIL 0）自相矛盾** ⇒ 属「状态自报 ≠ 现状」的老毛病
-> ⇒ ⇒ 现全部按**同一脚本重数**写，并注明核对日期。
+> ⚠️ **订正说明**：此前**同一处并存过两行读数** —— 一行是批次 F 前的 `PASS 84 / NOT_IMPLEMENTED 1 / FRAMEWORK_DIFFERENCE 2 / NOT_VERIFIED 1`，另一行是更早的 `PASS 53 / NOT_IMPLEMENTED 29 / FAIL 1` ⇒ ⇒ **彼此自相矛盾**（且都低于上方状态表）⇒ 属「状态自报 ≠ 现状」的老毛病
+> ⇒ ⇒ 现**只保留一行权威读数**，且**每次改判 §11.2 后必须重跑同一脚本覆盖它**（禁手填、禁并存两行）。
 
 ### 按「能力面」看（更能反映真实完成度）
 
@@ -539,6 +542,7 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 | Redis 断连收口 | 🟢 **已承接** | ✅ **V01 已修**：真调 customizer 断言 `REJECT_COMMANDS`（`RedisAutoConfigurationActivationTest`） |
 | Redis 预算感知 | 🟢 **已承接** | ✅ **V01 已修**：断言 `RedisTemplate.getConnectionFactory()` 真的变成 `DeadlineConnectionFactory` |
 | SQL 超时注入 + 57014 翻译 | 🟢 **已承接** | ✅ **V02 已修**：新增 `PersistenceAutoConfiguration`；用**与 MP 同形**的 `ObjectProvider<Interceptor[]>` 断言真的收到两个拦截器 |
+| jsonb / text 列的 TypeHandler | 🟢 **已承接** | ✅ **批次 G 已闭合**：`JsonbTypeHandler`（jsonb ↔ String · 写走 `PGobject`）＋ `JsonTextTypeHandler`（text ↔ Map · 写走 `setString`）⇒ 对拍：**真 PostgreSQL**（Testcontainers `postgres:16-alpine`）10 例 ⇒ 证 ① jsonb 列**规范化**键序与空白（读回 ≠ 写入原文）② 按 VARCHAR 绑定 jsonb ⇒ PG 报 **42804**（⇒ `PGobject` 路径承重）③ 非法 JSON 由 PG 报错 **22P02**（写入前不校验）④ jsonb 拒收 `\u0000` ⇒ **22P05** ⑤ **text 照单全收** `\u0000` ⇒ **两个 handler 必须分开的唯一判据**（Go 对拍证据 DRIFT-ARPC-004①）⑥ null map ⇒ 列写 NULL ⑦ 列里非法 JSON ⇒ 包成 `SQLException`；**变异实测 7 次每次都变红**；⚠️ **尚无域模块消费**（域为空壳 ⇒ 不在本工作线范围）|
 | gRPC 保护链（recover/stat/prometheus/breaker/shedding） | 🟢 **已承接** | ✅ **V03 已修**：链序 = `recover → stat → prometheus → breaker → shedding → business`（Go 注册序），由 `ProtectionAutoConfigurationWiringTest#chainLayerOrderMatchesGo` **真的搭出链**逐层断言；⚠️ 熔断器本体由 resilience4j 承载（机制类型差异仍挂 **D-02** 的 L3） |
 | gRPC 客户端熔断 + 出向 deadline | 🟢 **已承接** | ✅ **V03 已修**：客户端熔断隔离 key = `(下游服务, 方法)`；出向 deadline = min(请求剩余, 调用点自带, 客户端上界)，**per-service 上界是「覆盖」组件级**；装配走 `ClientProtectionAutoConfiguration`（starter 化，消费方零 `@Import`）⇒ 已由 devh **真实收集器**断言（`ClientProtectionAutoConfigurationTest`）|
 | HTTP 超时（503）+ 断连（499）+ 池饱和（裸 503） | 🟢 **已承接** | ✅ **批次 C 已修**：抄 RAG 整段 ⇒ **三条拒绝路径的形状逐条对齐**（超时 503 + body `Request Timeout\n`（**16** 字节）+ `text/plain` + `nosniff` + `Content-Length: 16` / 断连 499 / 池饱和裸 503 无 body 无 Content-Type）＋ **512 worker 池**（`obs-http-worker`）；对拍：`HttpMiddlewareTest`（11 例）；**4 次变异实测**每次都变红 |
@@ -556,12 +560,12 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 
 | 指标 | B（`service/common`） | C（`common/`） | 比率 |
 |---|---|---|---|
-| 测试类 | **93** | **30** | 32% |
-| 测试例 | **488**（离线实测全绿） | **185** | 38% |
-| 有测试的 B 能力面 | 12 个包全覆盖 | **13 个能力面**（信封/雪花/日志/Jackson 5 类/观测/熔断/gRPC 适配器/**Redis 装配**/**SQL 超时装配**/**gRPC 保护链**/**客户端保护**/**并发闸门**/**MQ trace**/**非 gRPC 调用**/**池生命周期**/**共享日志门面**/**JWT·口令·Bearer**） | — |
+| 测试类 | **93** | **34** | 37% |
+| 测试例 | **488**（离线实测全绿） | **218** | 45% |
+| 有测试的 B 能力面 | 12 个包全覆盖 | **28 个能力面**（**27** 🟢 已承接 ＋ **1** 🟡 部分＝CPU 降载）—— 明细见上方「按『能力面』看」表 | — |
 
-> ⚠️ **测试覆盖仍是本次最大的量化缺口**：B 侧 488 例里有 **303 例**在 C 侧**没有对应测试**（含 communityfact 41 例、protection 约 140 例、observability 约 130 例、redis 约 16 例、persistence 约 21 例、spring 34 例）。
-> ⇒ C 侧目前的 185 例**证明了「已实现的部分是对的」**，**不能证明「没实现的部分不需要」**。
+> ⚠️ **测试覆盖仍是本次最大的量化缺口**：B 侧 488 例里有 **270 例**在 C 侧**没有对应测试**（含 communityfact 41 例、protection 约 140 例、observability 约 130 例、redis 约 16 例、persistence 约 21 例、spring 34 例）。
+> ⇒ C 侧目前的 **218 例**（批次 G 后）**证明了「已实现的部分是对的」**，**不能证明「没实现的部分不需要」**。
 
 ---
 
@@ -579,8 +583,8 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 | 8 | **Spring Boot 4 → 3.5 是否引入业务可观察行为变化？** | ⚠️ **是，且有 1 项曾未被察觉 —— 现已修复**。已适配 11 项（F-1~F-5、F-7~F-15）；**曾未被察觉的 1 项 = F-6**：imports 登记面从 8 行变 7 行 ⇒ **2 个已实现的能力静默失效**（V01）⇒ ✅ **2026-11-02 已修**（登记回 10 行）**且守门已扩**：新判据「每个 `@AutoConfiguration` 类都必须有激活路径」⇒ 覆盖**别的包**下的 auto-config ⇒ 同类缺口当场变红。其余：**Jackson 3→2** 经 52 例对拍覆盖；**Spring 7→6.2** 的 converter 覆写点漂移编译期即红（不会静默） |
 | 9 | **Tomcat / Jackson / Spring Framework 的底层版本变化是否产生实际漂移？** | ✅ **Jackson / Spring 已回改且有对拍**（F-1~F-3）。⚠️ **Tomcat 11→10.1 的实际漂移尚未验证** —— B 的 `GoStyleClientDisconnectProbe` 反射链取证全部基于 Tomcat 11 ⇒ C 侧实现该能力时**必须重测**（F-7，当前因未实现而不适用） |
 | 10 | **哪些差异已经通过证据证明安全？** | ① communityfact 的 23 个 L1 JSON tag + `omitempty` 语义 + `DeliveryStatus` 取值；② JCS 同库 ⇒ 幂等指纹不漂；③ 响应信封 `{code,msg,data}` 与 `data:null` 保留；④ 404/405/400/413/503 的状态码 + 头 + body 字节；⑤ 雪花位段与时钟回拨免疫；⑥ `rag.protection` 12 项默认值；⑦ Filter 槽位；⑧ 观测 7 个 span key + 3 个 kind + 500ms + 严格 `>` + 判定顺序 + `http.route` 语义；⑨ HTTP 熔断隔离 key 与成败判据；⑩ 三处 Boot 4→3.5 包名回改；⑪ A3 的 gRPC 挂载点（有真触发测试）；⑫ A5/A6/A12 三条守门；⑬ ✅ **熔断回落语义**（`UNKNOWN` ⇒ 回落 raw URI、`NOT_MATCHED` ⇒ 不进 breaker）＋ **三态模板解析**（`RouteTemplateResolverTest` 5 例）；⑭ ✅ **V01/V02 的装配面**（Boot 真实 `AutoConfigurationImportSelector` 从 classpath 清单选出）；⑮ ✅ **V03 的链序**（真的搭出链 ⇒ 逐层断言 `[recover, stat, prometheus, breaker, shedding, business]`）；⑯ ✅ **V03 的 wire 契约**（`"panic: "` / `UNAVAILABLE + "circuit breaker is open"` / `RESOURCE_EXHAUSTED + "service overloaded"` / 6 码失败白名单）；⑰ ✅ **V03 的客户端装配面**（devh **真实收集器** `AnnotationGlobalClientInterceptorConfigurer` 收到了两个拦截器）；⑱ ✅ **V07 的 JWT 短密钥验签**（手写 HMAC 验签 ⇒ 证明「Go 的 15 字节短密钥能验过 C 签的 token」的 RFC 2104 零填充等价性）；⑲ ✅ **批次 E 的并发闸门**（把 `tryAcquire` 改成恒成功 ⇒ **2 例红**）；⑳ ✅ **批次 E 的超时语义**（把 `DEADLINE_EXCEEDED` 改成 `INTERNAL` ⇒ **1 例红**）；㉑ ✅ **批次 E 的池重建**（关掉重建 ⇒ **1 红 1 错**） |
-| 11 | **哪些差异仍然无法确认？** | ① ~~Redis 2 项的运行期行为~~ ⇒ ✅ **V01 已修并有真触发断言**；② ~~SQL 超时链的运行期行为~~ ⇒ ✅ **V02 已修并有真触发断言**；③ OTel span 的**真实**落地（bridge 离线不可得）；④ `Traceparent` 响应头的**真实**取值（依赖 OTel）；⑤ Tomcat 10.1 下 `ClientDisconnectProbe` 反射链是否可用（C 侧尚未实现 ⇒ 不适用）；⑥ 跨域上收的 `JsonbTypeHandler`/`JsonTextTypeHandler`（不在本次范围） |
-| 12 | **当前 C 是否具备可靠的行为对拍条件？** | 🟡 **部分具备**。✅ 具备：B 侧 488 例可离线跑通（已实测）；C 侧 **208 例**可离线跑通（批次 F 后）；两侧共用同一套 JCS 库 ⇒ 指纹可比；**Boot 真实的 `AutoConfigurationImportSelector` 可在 C 侧跑**（⇒ 装配面可对拍）；**真 gRPC 假 OTLP 接收端**可在 C 侧跑（⇒ 导出面可对拍，批次 F 已用）。⚠️ **不具备**：① 两侧**同 JVM 同输入**的对拍（Boot 4 + Boot 3.5 不能共载）⇒ 只能「B 的断言值 → C 的期望值」逐条搬运；② C 侧域为空壳 ⇒ **跳域的端到端对拍**（HTTP/gRPC/DB/Kafka）无法做；③ 真 Tomcat 对拍需补（AGENTS.md §八「HTTP 断言走真 Tomcat」尚未满足） |
+| 11 | **哪些差异仍然无法确认？** | ① ~~Redis 2 项的运行期行为~~ ⇒ ✅ **V01 已修并有真触发断言**；② ~~SQL 超时链的运行期行为~~ ⇒ ✅ **V02 已修并有真触发断言**；③ OTel span 的**真实**落地（bridge 离线不可得）；④ `Traceparent` 响应头的**真实**取值（依赖 OTel）；⑤ Tomcat 10.1 下 `ClientDisconnectProbe` 反射链是否可用（C 侧尚未实现 ⇒ 不适用）；⑥ ~~跨域上收的 `JsonbTypeHandler`/`JsonTextTypeHandler`（不在本次范围）~~ ⇒ ✅ **批次 G 已闭合**（真 PostgreSQL 对拍 10 例 · 变异 7 次全红） |
+| 12 | **当前 C 是否具备可靠的行为对拍条件？** | 🟡 **部分具备**。✅ 具备：B 侧 488 例可离线跑通（已实测）；C 侧 **218 例**可离线跑通（批次 G 后）；两侧共用同一套 JCS 库 ⇒ 指纹可比；**Boot 真实的 `AutoConfigurationImportSelector` 可在 C 侧跑**（⇒ 装配面可对拍）；**真 gRPC 假 OTLP 接收端**可在 C 侧跑（⇒ 导出面可对拍，批次 F 已用）；**真 PostgreSQL 可在 C 侧跑**（⇒ 数据面可对拍，批次 G 已用 —— jsonb/text 列的类型语义、PG 错误码、列规范化全部可对拍）。⚠️ **不具备**：① 两侧**同 JVM 同输入**的对拍（Boot 4 + Boot 3.5 不能共载）⇒ 只能「B 的断言值 → C 的期望值」逐条搬运；② C 侧域为空壳 ⇒ **跳域的端到端对拍**（HTTP/gRPC/DB/Kafka）无法做；③ 真 Tomcat 对拍需补（AGENTS.md §八「HTTP 断言走真 Tomcat」尚未满足） |
 
 ---
 
@@ -591,13 +595,19 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 cd "/Users/pr/Documents/java&golang/RAG" && mvn -o -pl service/common test
 #   ⇒ Tests run: 488, Failures: 0, Errors: 0, Skipped: 0 · BUILD SUCCESS
 
-# C 侧（Boot 3.5.11）离线全量测试 —— 185 例全绿
+# C 侧（Boot 3.5.11）离线全量测试 —— 218 例全绿（批次 G 后实测）
 cd /Users/pr/Documents/GitHub/RAG-V1 && mvn -o clean test
-#   ⇒ common 模块 Tests run: 185, Failures: 0, Errors: 0, Skipped: 0 · 16/16 BUILD SUCCESS
+#   ⇒ common 模块 Tests run: 218, Failures: 0, Errors: 0, Skipped: 0 · 16/16 BUILD SUCCESS
+#   ⚠️ 批次 G 起 common 的测试**依赖 Docker**（Testcontainers 起真 PG）⇒ Docker 不可用 ⇒ 直接红
+#      （刻意不用 @EnabledIfDockerAvailable ⇒ §五.8 硬规则 ③「禁跳过」⇒ 守门才能断言 skipped=0）
 
 # ✅ V01 修复后的判定命令（差集应为空 —— web/JsonContentTypeAdvice 由 @Bean 显式注册，故在「激活路径」里）
-grep -rn "^@AutoConfiguration" common/src/main --include=*.java   # 12 处
-grep -v "^#" common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports   # 13 行
+# ⚠️ 计数核对日期 2026-11-02（批次 G 后实测）：源码里 @AutoConfiguration 注解 **15 处**，
+#    但 imports 清单只有 **14 行** ⇒ 差的那 1 个是 web/JsonContentTypeAdvice
+#    ⇒ 它由 WebAutoConfiguration#jsonContentTypeAdvice 的 @Bean 显式注册（**不重复进清单**）
+#    ⇒ 由 AutoConfigurationImportsTest#everyAutoConfigurationHasAnActivationPath 覆盖（清单登记 或 被 @Bean 实例化，二者其一）
+grep -rn "^@AutoConfiguration" common/src/main --include=*.java   # 15 处
+grep -v "^#" common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports   # 14 行
 
 # ✅ V02 修复后的判定命令（应命中 PersistenceAutoConfiguration）
 grep -rn "DeadlineQueryTimeoutInjector\|SqlTimeoutStatusTranslator" --include=*.java . | grep -v "common/src/main/java/com/rag/common/persistence/"
@@ -606,7 +616,7 @@ grep -rn "DeadlineQueryTimeoutInjector\|SqlTimeoutStatusTranslator" --include=*.
 grep -v "redis.ClientAutoConfiguration\|redis.DeadlineAutoConfiguration" \
   common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports > /tmp/i && \
   cp /tmp/i common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports
-mvn -o -pl common test     # ⇒ 实测：Tests run: 104, Failures: 1（everyAutoConfigurationHasAnActivationPath）
+mvn -o -pl common test     # ⇒ 实测（**2026-11-02 · 批次 A 当时**）：Tests run: 104, Failures: 1（everyAutoConfigurationHasAnActivationPath）
 
 # 🔴 V06 的判定命令（三个空类 —— 批次 A 已把后两个填实 ⇒ 现在只剩 1 个）
 for f in observability/ClientDisconnectProbe protection/RouteResolution protection/RouteTemplateSource; do

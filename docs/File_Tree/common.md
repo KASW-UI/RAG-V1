@@ -53,6 +53,8 @@
 - `io.opentelemetry:opentelemetry-sdk-testing`
 - `io.grpc:grpc-core`
 - `org.springframework:spring-test`
+- `org.testcontainers:postgresql`
+- `org.testcontainers:junit-jupiter`
 - `org.projectlombok:lombok`
 
 ## 三、目录树
@@ -214,6 +216,8 @@
 │                       │   ├── ObservabilityRuntimeTest.java    # §3.3「机制可证」守门：观测层的两个进程级池真的能被关闭钩子回收，且关掉后能重建。
 │                       │   ├── RpcHandleRunnerTest.java    # §3.3「机制可证」守门：非 gRPC 路径的业务调用真的带超时控制 + 观测分类。
 │                       │   └── RpcRecoverInterceptorTest.java    # §3.3「机制可证」守门：gRPC handler panic ⇒ {@code INTERNAL + "panic: "}。
+│                       ├── persistence/
+│                       │   └── JsonTypeHandlerPgTest.java    # 🔴 **两个 TypeHandler 的真 PostgreSQL 守门** ——
 │                       ├── protection/
 │                       │   ├── MaxConnsFilterTest.java    # §3.3「机制可证」守门：并发连接闸门真的在超限时立刻 503（而不是排队）。
 │                       │   ├── RouteTemplateResolverTest.java    # §3.3「机制可证」守门：路由模板解析真的能区分三态

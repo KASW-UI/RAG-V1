@@ -195,8 +195,8 @@
 |---|---|---|---|---|
 | —（Go 侧无对应物：Go 靠 `context` + `database/sql` 的 ctx-aware 查询，无拦截器） | `persistence/DeadlineQueryTimeoutInjector.java` | `common/src/main/java/com/rag/common/persistence/DeadlineQueryTimeoutInjector.java` | 1:1 | 把当前 rpc 的 deadline 落到每条 SQL 的 `setQueryTimeout`；⚠️ **无 deadline 时不注入** |
 | —（Go 侧无对应物） | `persistence/SqlTimeoutStatusTranslator.java` | `common/src/main/java/com/rag/common/persistence/SqlTimeoutStatusTranslator.java` | 1:1 | `SQLState=57014` → `DEADLINE_EXCEEDED`；⚠️ **必须拦 `Executor` 而非 `StatementHandler`**，且 `catch(SQLException)` 匹配不上 MyBatis 抛的 `InvocationTargetException` |
-| —（Go 侧无对应物：Go 侧 JSONB/JSON 字段由 GORM 直接读写） | 5 份 `JsonbTypeHandler.java`（`like-rpc` / `comment-rpc` / `favorite-rpc` / `admin-rpc` / `article-rpc` 各一份） | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | N:1 | **7 份副本合 1** |
-| —（Go 侧无对应物） | 2 份 `JsonTextTypeHandler.java`（`user-rpc` / `admin-rpc` 各一份） | `common/src/main/java/com/rag/common/persistence/JsonTextTypeHandler.java` | N:1 | **副本合 1** |
+| —（Go 侧无对应物：Go 侧 JSONB/JSON 字段由 GORM 直接读写） | 5 份 `JsonbTypeHandler.java`（`like-rpc` / `comment-rpc` / `favorite-rpc` / `admin-rpc` / `article-rpc` 各一份） | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | N:1 | **7 份副本合 1**；⚠️ **5 份并非同一份** —— comment/favorite/like **三份代码体逐字一致**（本类取 comment 版）⇒ **article 那份不是 TypeHandler**（是工具类 `final class` ＋ 静态方法 ＋ 内嵌 `StringListTypeHandler`/`StringMapTypeHandler`）⇒ **不并入**（其落点属 article 域）；✅ **批次 G 已用真 PostgreSQL 证过行为**（见 §7.10） |
+| —（Go 侧无对应物） | 2 份 `JsonTextTypeHandler.java`（`user-rpc` / `admin-rpc` 各一份） | `common/src/main/java/com/rag/common/persistence/JsonTextTypeHandler.java` | N:1 | **副本合 1**（两份代码体逐字一致 ⇒ 取 admin 版）；⚠️ **它不是 `JsonbTypeHandler` 的重复**：Go 侧 `extra_info` 列是 **text**（`serializer:json` ⇒ GORM 按 String 建列）⇒ jsonb 的 unicode escape 校验会拒收 ` `（**22P05**）而 text 照单全收 ⇒ **两个 handler 必须分开**（活体对拍证据 RAG 侧 **DRIFT-ARPC-004①**）；✅ **批次 G 已用真 PostgreSQL 证过行为**（见 §7.10） |
 
 ### 1.8 `protection/` —— 请求保护链（C: 18 类）
 
@@ -837,8 +837,44 @@ RAG-V1 的 `common/` 里**曾保留 18 个 `GoStyle*` 命名的类**（实测 `f
 > **7 次变异实测**（去 `GlobalOpenTelemetry.set` / 去 exporter / shutdown 不 close / 去 `ParentBased` / 端点不补 `http://` / 不校验 batcher / imports 摘掉那一行）⇒ **每次都变红**。
 > ⚠️ **连带修掉的真实缺陷（DRIFT-COMMON-V14）**：`common/pom.xml` 在两个 devh starter 上 exclude 了 `grpc-core` ⇒ Maven 的 exclusion 作用于**整棵传递子树** ⇒ `grpc-netty-shaded → grpc-core` 也被切断 ⇒ classpath 上没有 `grpc-core` ⇒ 只要 devh 的 gRPC server auto-config 出现就炸 `NoClassDefFoundError: io/grpc/internal/ObjectPool` ⇒ 已按**域模块同款口径**显式声明（**test scope** ⇒ 零下游影响）。
 
----
+### 7.10 ✅ 批次 G 修法（2026-11-02）：真 PostgreSQL 对拍 —— 闭合**最后 1 条 NOT_VERIFIED**
 
+> 本节记录**批次 G** 的落点。**本轮没有新增任何主代码类** —— `JsonbTypeHandler` / `JsonTextTypeHandler`
+> **一字未改**（抄 RAG 整段 · L2 · D13）⇒ 本轮补的是**证据**：此前判 `NOT_VERIFIED` 的理由是
+> 「**有实现、无证据**」，不是「实现缺失」。
+
+| 项 | 内容 |
+|---|---|
+| **新增测试** | `common/src/test/java/com/rag/common/persistence/JsonTypeHandlerPgTest.java`（**10 例**）⇒ common 测试 **208 → 218 例** |
+| **新增依赖** | `common/pom.xml` 补 **Testcontainers**（`org.testcontainers:postgresql` + `junit-jupiter`，**test scope**）⇒ 版本由 **Boot BOM**（`spring-boot-dependencies` 的 `<testcontainers.version>` = **1.21.4**）管 ⇒ 与 10 个域模块的既有口径**逐字一致**（`service/like/pom.xml:74-82`） |
+| **为什么必须真 PG** | 这两个类的**全部业务语义都长在 PG 的列类型上**：jsonb 列**规范化**键序与空白（读回文本 ≠ 写入原文）· 按 VARCHAR 绑定 jsonb 列 ⇒ PG 报 **42804** · jsonb 列**拒收** ` ` ⇒ **22P05** · **text 列照单全收** ` ` ⇒ ⇒ mock 不执行 SQL、H2 没有 JSONB 类型 ⇒ **都验不到要验的东西** |
+| **禁 `@EnabledIfDockerAvailable`** | AGENTS.md §五.8 守门脚本 4 硬规则 ③ ⇒ Docker 不可用时**必须红**、不许静默跳过 ⇒ 守门脚本才能断言 `skipped=0` |
+
+**10 条对拍（真 PG · `postgres:16-alpine`）**
+
+| # | 断言 | 证的是什么 |
+|---|---|---|
+| 1 | 对照组：同一 jsonb 列按 VARCHAR 绑定 ⇒ PG 报 **42804** | `PGobject` 路径是**承重**的（不是可有可无的包装） |
+| 2 | 写走 `PGobject` ⇒ `information_schema` 复核列类型 = `jsonb`，且读回 `{"a": 2, "b": 1}`（写入原文是 `{"b":1,"a":2}`） | 列真是 jsonb ＋ **PG 的规范化语义**（javadoc 已预警的「读回 ≠ 写入原文」） |
+| 3 | 写入非法 JSON ⇒ PG 报 **22P02** | **写入前不校验**（Go 侧也不校验 ⇒ 让 PG 报错而非静默吞掉） |
+| 4 | 写 `{"k":"\u0000"}` 进 jsonb ⇒ PG 报 **22P05** | jsonb 的 unicode escape 校验 |
+| 5 | text 列走 `setString` ⇒ 原样 JSON 文本落库（`information_schema` 复核列类型 = `text`） | 写路径确实是 **text 原生绑定**（不是 jsonb 味） |
+| 6 | text 列收下 `\u0000`（jsonb 会拒）⇒ 读回 Map 值逐条相等 | **两个 handler 必须分开的唯一判据**（Go 对拍证据 DRIFT-ARPC-004①） |
+| 7 | 读回 Map 字段逐条相等 | Jackson `TypeReference<Map<String,String>>` 解析 |
+| 8 | null map ⇒ 列写 **NULL**（不是字符串 `"null"`） | 空值语义（与 Go 侧 GORM 的 nil map 一致） |
+| 9 | 列里是空白 ⇒ 读回 null | `parse` 的 `isBlank()` 分支 |
+| 10 | 列里是非法 JSON ⇒ 包成 `SQLException`（消息 `Failed to deserialize JSON to Map: …`） | 异常包装契约 |
+
+> ⚠️ **装配面取证**（`javap -c org.apache.ibatis.type.TypeHandlerRegistry#getInstance`）：
+> MyBatis **先试 `(Class)` 构造、失败回落无参构造** ⇒ `JsonTextTypeHandler`（**只有** `(Class)` 构造）走前者、
+> `JsonbTypeHandler`（**只有**无参构造）走后者 ⇒ ⇒ **两个 handler 都能被生产路径实例化**
+> （MyBatis-Plus 的 `autoResultMap` / `@TableField(typeHandler=)` 走的正是 `registry.getInstance(javaType, handlerClass)`）。
+>
+> ⚠️ **变异实测 7 次，每次都变红**（AGENTS.md §3.3.3「变异测试是另一半」）：
+> M1 `PGobject` → `setString`（2 红 1 错）· M2 `PGobject.setType("jsonb")` → `"text"`（2 红 1 错）· M3 jsonb 读返 null（1 红）·
+> M4 text 写写死内容（4 红）· M5 text 读返 null（4 红）· M6 去 `isBlank` 分支（1 错）· M7 异常不再包 `SQLException`（1 红）。
+
+---
 
 ## 附：本表引用
 

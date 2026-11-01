@@ -329,6 +329,36 @@
             <groupId>org.springframework</groupId><artifactId>spring-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+            ⚠️ **Testcontainers（test scope）** —— 2026-11-02 批次 G 追加。
+            用途：`common/persistence/` 的两个 TypeHandler（`JsonbTypeHandler` / `JsonTextTypeHandler`）
+            必须**对真 PostgreSQL** 证明行为 —— 理由不是「测得好看」，而是这两个类的
+            **全部业务语义都长在 PG 的列类型上**：
+              · jsonb 列**会规范化**空白与键序 ⇒ 读回文本 ≠ 写入原文（javadoc 明写 ⇒ 必须真 PG 才能证）；
+              · jsonb 列**拒收** `\u0000` 转义（SQLSTATE 22P05）而 **text 列照单全收**
+                ⇒ 这正是「两个 handler 必须分开」的**唯一判据**（Go 侧 `encoding/json` 产出的是
+                6 个 ASCII 字符 `\u0000`，不是裸 NUL 字节 ⇒ Go 侧 text 列必须收下）。
+            ⇒ mock 数据层不执行 SQL、H2 没有 JSONB 类型 ⇒ 二者都**验不到要验的东西**
+              （RAG 侧 `ArticleJsonbResultMapWiringTest` 的 javadoc 已写明同款理由）。
+
+            ⚠️ **坐标用 Boot BOM 管的那一套**（`org.testcontainers:postgresql` / `junit-jupiter`）
+            —— 与 10 个域模块的既有口径**逐字一致**（见 `service/like/pom.xml:74-82`）
+            ⇒ 版本由 `spring-boot-dependencies` 的 `<testcontainers.version>` 管（3.5.11 ⇒ **1.21.4**）
+            ⇒ 本模块**不写** `<version>`（与域模块同款）。
+
+            ⚠️ **禁 `@EnabledIfDockerAvailable`**（AGENTS.md §五.8 守门脚本 4 硬规则 ③）：
+            Docker 不可用时**必须红**，不许静默跳过 ⇒ 守门脚本才能断言 `skipped=0`。
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <!-- ============ Lombok（provided · **不传递给下游**） ============ -->
         <!--
