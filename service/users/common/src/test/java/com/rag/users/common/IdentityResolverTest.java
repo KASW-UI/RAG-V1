@@ -172,6 +172,54 @@ class IdentityResolverTest {
                         uid -> new IdentityResolver.UserStatusRecord(true, 1001L, 0L)));
     }
 
+    // ============== resolveUser 的返回面（B 的 resolveUser 对外返回用户） ==============
+
+    @Test
+    @DisplayName("resolveUser 返回已校验的用户记录（uid + status）")
+    void resolveUserReturnsVerifiedRecord() {
+        IdentityResolver.UserStatusRecord record = IdentityResolver.resolveUser(requestWith(1001L),
+                uid -> new IdentityResolver.UserStatusRecord(true, 1001L, 0L));
+        assertTrue(record.found());
+        assertTrue(record.hasStatus());
+        assertEquals(1001L, record.uid());
+        assertEquals(0L, record.status());
+    }
+
+    @Test
+    @DisplayName("resolveUser 的判定链与 resolveSubjectRef 同款（同一个 6 步链）")
+    void resolveUserSharesTheSameDecisionChain() {
+        assertThrows(IdentityResolver.ErrUserNotFoundException.class,
+                () -> IdentityResolver.resolveUser(requestWith(1001L),
+                        uid -> IdentityResolver.UserStatusRecord.notFound()));
+        assertThrows(IdentityResolver.ErrStatusUnavailableException.class,
+                () -> IdentityResolver.resolveUser(requestWith(1001L),
+                        uid -> new IdentityResolver.UserStatusRecord(true, 1001L, null)));
+        assertThrows(IdentityResolver.ErrUserInactiveException.class,
+                () -> IdentityResolver.resolveUser(requestWith(1001L),
+                        uid -> new IdentityResolver.UserStatusRecord(true, 1001L, 3L)));
+    }
+
+    @Test
+    @DisplayName("verifyUser：只做「取回之后」的 4 步判定（供已自取用户的调用点复用，避免二次查询）")
+    void verifyUserChecksFetchedRecord() {
+        // 成功
+        IdentityResolver.verifyUser(1001L, new IdentityResolver.UserStatusRecord(true, 1001L, 0L));
+        // 查无此人（record 为 null 也算）
+        assertThrows(IdentityResolver.ErrUserNotFoundException.class,
+                () -> IdentityResolver.verifyUser(1001L, null));
+        assertThrows(IdentityResolver.ErrUserNotFoundException.class,
+                () -> IdentityResolver.verifyUser(1001L, IdentityResolver.UserStatusRecord.notFound()));
+        // UID 错配
+        assertThrows(IdentityResolver.ErrIdentityMismatchException.class,
+                () -> IdentityResolver.verifyUser(1001L, new IdentityResolver.UserStatusRecord(true, 2002L, 0L)));
+        // status 缺失
+        assertThrows(IdentityResolver.ErrStatusUnavailableException.class,
+                () -> IdentityResolver.verifyUser(1001L, new IdentityResolver.UserStatusRecord(true, 1001L, null)));
+        // 非活跃
+        assertThrows(IdentityResolver.ErrUserInactiveException.class,
+                () -> IdentityResolver.verifyUser(1001L, new IdentityResolver.UserStatusRecord(true, 1001L, 1L)));
+    }
+
     // ============== 三元组 ==============
 
     @Test

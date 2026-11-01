@@ -266,12 +266,15 @@ public final class IdentityResolver {
     }
 
     /**
-     * 解析身份并产出三元组 —— <b>ClaimedUID → GetUser → status presence 检查 → SubjectRef</b>。
+     * 解析身份并产出<b>已校验的用户记录</b> —— ClaimedUID → GetUser → status presence 检查。
      *
-     * <p>B 出处：{@code IdentityResolver.java:212-223}（{@code resolveSubjectRef}）+
-     * {@code :176-217}（{@code resolveUser}）。
-     * <p><b>判定顺序逐条与 B 一致</b>（顺序本身是行为：先判身份合法性、再判查无此人、再判错配、
-     * 再判 status presence、再判是否活跃）：
+     * <p><b>B 出处</b>：{@code IdentityResolver.java:176-217}（{@code resolveUser}）——
+     * B 侧返回的是 <b>proto {@code UserInfo}</b>（因为 api 与 rpc 分属两进程，api 只能经 gRPC 拿到整份 user）。
+     * <p>⚠️ <b>C 侧的对应物是 {@link UserStatusRecord}</b>（found + uid + status），<b>不是</b>整份用户：
+     * C 按 D1+D7 把 api + rpc <b>合并成一个进程</b> ⇒ 需要<b>完整用户数据</b>的调用点
+     * 直接问本域的 domain service / mapper 即可（同一进程、同一事务上下文），
+     * 本类只负责<b>身份判定</b> ⇒ 避免「为了拿一份用户再跨网络问自己一次」。
+     * <p><b>判定顺序逐条与 B 一致</b>（顺序本身是行为）：
      * <ol>
      *   <li>{@code claimedUID} 失败 ⇒ {@link ErrInvalidClaimException}</li>
      *   <li>查询端口为 null ⇒ {@link ErrIdentityMismatchException}（B：{@code users == null}）</li>
@@ -283,14 +286,36 @@ public final class IdentityResolver {
      *
      * @param request 当前请求
      * @param lookup  用户查询端口（不可为 null）
-     * @return 身份三元组
+     * @return 已通过全部 6 步判定的用户记录
      */
-    public static SubjectRef resolveSubjectRef(HttpServletRequest request, UserStatusLookup lookup) {
+    public static UserStatusRecord resolveUser(HttpServletRequest request, UserStatusLookup lookup) {
         long uid = claimedUID(request);
         if (lookup == null) {
             throw new ErrIdentityMismatchException("user lookup is nil: " + MSG_IDENTITY_MISMATCH);
         }
         UserStatusRecord record = lookup.findByUid(uid);
+        verifyUser(uid, record);
+        return record;
+    }
+
+    /**
+     * 只做「取回之后的 3 步校验」（存在性 → UID 一致 → status presence → 活跃）。
+     *
+     * <p><b>为什么单独暴露</b>：C 侧 api + rpc 合并成单进程后，需要<b>完整用户数据</b>的调用点
+     * 会先从自己的 domain service 取到用户（<b>同一次查询</b>），再把 uid 与 status 交给本方法判定
+     * ⇒ <b>既不重复查库，也保持 B 的判定顺序</b>（先判身份合法性，再判存在/一致/presence/活跃）。
+     * <p><b>B 出处</b>：{@code IdentityResolver.java:186-209}（B 侧这段逻辑内联在 {@code resolveUser} 里，
+     * 因为 B 的 user 是 rpc 返回的 proto 对象，调用方拿不到、也没理由自己去查）。
+     * <p>⚠️ <b>判定顺序与 {@link #resolveUser} 完全一致</b>（本方法是它的第 3~6 步）。
+     *
+     * @param uid    请求里的 UID（判定的基准）
+     * @param record 取回的用户记录（{@code null} 视为查无此人）
+     * @throws ErrUserNotFoundException     查无此人
+     * @throws ErrIdentityMismatchException 取回的 UID 与请求不符
+     * @throws ErrStatusUnavailableException status 字段不存在
+     * @throws ErrUserInactiveException     status 不为 0
+     */
+    public static void verifyUser(long uid, UserStatusRecord record) {
         if (record == null || !record.found()) {
             throw new ErrUserNotFoundException(MSG_USER_NOT_FOUND);
         }
@@ -304,6 +329,21 @@ public final class IdentityResolver {
         if (record.status() != 0L) {
             throw new ErrUserInactiveException(MSG_USER_INACTIVE);
         }
+    }
+
+    /**
+     * 解析身份并产出三元组 —— <b>ClaimedUID → GetUser → status presence 检查 → SubjectRef</b>。
+     *
+     * <p>B 出处：{@code IdentityResolver.java:212-223}（{@code resolveSubjectRef}）+
+     * {@code :176-217}（{@code resolveUser}）。
+     * <p>⇒ 本方法 = {@link #resolveUser} ＋ 三元组封装；判定链与顺序与 B 一致。
+     *
+     * @param request 当前请求
+     * @param lookup  用户查询端口（不可为 null）
+     * @return 身份三元组
+     */
+    public static SubjectRef resolveSubjectRef(HttpServletRequest request, UserStatusLookup lookup) {
+        UserStatusRecord record = resolveUser(request, lookup);
         return new SubjectRef(
                 AUTHORITY_ID,
                 PLATFORM_TENANT_ID,
