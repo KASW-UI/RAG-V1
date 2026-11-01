@@ -7,6 +7,7 @@ import io.opentelemetry.api.trace.StatusCode;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * <b>业务观测标记的<b>唯一载体</b></b> —— 对齐 go-zero {@code service/common/observability/observability.go} 的
@@ -141,6 +142,52 @@ public final class ObservabilityCustomizer {
      * ⇒ ⇒ Go 的属性类型在 OTel 侧逐字保住。
      */
     private static final String TRUE_STRING = "true";
+
+    // ── gRPC 侧的码语义（被 gRPC 拦截器 与 RpcHandleRunner 共用） ──────────
+
+    /**
+     * Go 的业务码集合（gRPC 侧「算 business 错误」的那 7 个码）。
+     *
+     * <p>⚠️ <b>顺序无关</b>（是集合不是优先级）。
+     * <p>⚠️ <b>为什么用字符串而不是 {@code io.grpc.Status.Code} 枚举</b>：
+     * 本类被放在 {@code com.rag.common.observability} 包（<b>零 grpc 依赖</b>的语义载体）
+     * ⇒ ⇒ 码名以字符串固化 ⇒ 任何进程都能加载本类而不必带上 grpc 运行时。
+     *
+     * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java}
+     * 的 {@code isBusinessGrpcCode} 用的同一组码（L2 · D13）。
+     */
+    public static final Set<String> BUSINESS_GRPC_CODES = Set.of(
+            "INVALID_ARGUMENT",
+            "NOT_FOUND",
+            "ALREADY_EXISTS",
+            "PERMISSION_DENIED",
+            "UNAUTHENTICATED",
+            "FAILED_PRECONDITION",
+            "OUT_OF_RANGE");
+
+    /**
+     * 码名是否属于「业务错误」集合。
+     *
+     * @param codeName gRPC 码名（如 {@code "NOT_FOUND"}）；{@code null} ⇒ {@code false}
+     */
+    public static boolean isBusinessGrpcCode(String codeName) {
+        return codeName != null && BUSINESS_GRPC_CODES.contains(codeName);
+    }
+
+    /**
+     * Go {@code status.Error(...).Error()} 的文本形状。
+     *
+     * <p>⚠️ <b>已知残留差异</b>：gRPC Java 的 {@code Code#name()} 返回全大写（{@code NOT_FOUND}），
+     * Go 的 {@code codes.Code.String()} 返回驼峰（{@code NotFound}）⇒
+     * <b>语言常量表示不同，不做臆造映射</b>（照抄 RAG 的同一处取舍）。
+     *
+     * @param codeName    gRPC 码名
+     * @param description 状态描述（{@code null} ⇒ 空串）
+     */
+    public static String goStyleStatusMessage(String codeName, String description) {
+        String desc = description != null ? description : "";
+        return "rpc error: code = " + codeName + " desc = " + desc;
+    }
 
     private ObservabilityCustomizer() {
     }

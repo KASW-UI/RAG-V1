@@ -6,6 +6,7 @@ import com.rag.common.observability.RpcStatInterceptor;
 import com.rag.common.protection.AdaptiveShedder;
 import com.rag.common.protection.CpuThresholdHealthIndicator;
 import com.rag.common.protection.MaxBytesFilter;
+import com.rag.common.protection.MaxConnsFilter;
 import com.rag.common.protection.ProtectionProperties;
 import com.rag.common.protection.RouteResolution;
 import com.rag.common.protection.RouteTemplateSource;
@@ -128,6 +129,29 @@ public class ProtectionAutoConfiguration {
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     public MaxBytesFilter maxBytesFilter(ProtectionProperties properties) {
         return new MaxBytesFilter(properties);
+    }
+
+    // ── 并发连接上限 ──────────────────────────────────────────────────────
+
+    /**
+     * 并发连接数上限 filter（Go {@code rest/handler/maxconnshandler.go}）。
+     *
+     * <p>⚠️ <b>为什么不能只靠 Tomcat 的 {@code max-connections} / {@code max-threads}</b>：
+     * Tomcat 在超限时<b>排队</b>（连接排队 / 等线程空闲），Go 是<b>立刻 503</b>
+     * ⇒ ⇒ 「变慢」与「被拒」是两种不同的可观察行为 ⇒ ⇒ 必须自己实现闸门
+     * （详见 {@link MaxConnsFilter} 的类注释）。
+     *
+     * <p>⚠️ <b>条件注解必须写在 {@code @Bean} 方法上</b>（同 {@link #maxBytesFilter} 的理由：
+     * 类级条件在 {@code @Bean} 注册路径下不被评估）。
+     *
+     * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/protection/GoStyleMaxConnsFilter.java}
+     * 整段抄（L2 · D13）＋ <b>装配形态回改</b>（L4 · D3 + D1）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    public MaxConnsFilter maxConnsFilter(ProtectionProperties properties) {
+        return new MaxConnsFilter(properties);
     }
 
     // ── CPU 降载的观测面 ──────────────────────────────────────────────────

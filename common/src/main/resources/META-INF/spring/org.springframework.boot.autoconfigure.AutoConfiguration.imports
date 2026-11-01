@@ -1,5 +1,6 @@
 com.rag.common.autoconfigure.WebAutoConfiguration
 com.rag.common.autoconfigure.JsonBodyConverterAutoConfiguration
+com.rag.common.autoconfigure.LoggerAutoConfiguration
 com.rag.common.autoconfigure.ObservabilityAutoConfiguration
 com.rag.common.autoconfigure.ProtectionAutoConfiguration
 com.rag.common.autoconfigure.SnowflakeAutoConfiguration

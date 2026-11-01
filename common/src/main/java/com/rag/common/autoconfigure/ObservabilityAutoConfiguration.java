@@ -3,6 +3,8 @@ package com.rag.common.autoconfigure;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rag.common.observability.ObservabilityCustomizer;
+import com.rag.common.observability.ObservabilityLifecycle;
+import com.rag.common.observability.ObservabilityRuntime;
 import com.rag.common.protection.RpcLayer;
 import com.rag.common.observability.ObservabilityProperties;
 import io.grpc.ForwardingServerCall;
@@ -106,23 +108,34 @@ public class ObservabilityAutoConfiguration {
     /** gRPC 侧的观测名。 */
     public static final String GRPC_OBSERVATION_NAME = "rpc.server.requests";
 
-    /**
-     * Go 的业务码集合（gRPC 侧「算 business 错误」的那 7 个码）。
-     *
-     * <p>⚠️ <b>顺序无关</b>（是集合不是优先级）⇒ 用 {@link EnumSet} 固化，避免每次请求新建。
-     */
-    private static final Set<Status.Code> BUSINESS_GRPC_CODES = EnumSet.of(
-            Status.Code.INVALID_ARGUMENT,
-            Status.Code.NOT_FOUND,
-            Status.Code.ALREADY_EXISTS,
-            Status.Code.PERMISSION_DENIED,
-            Status.Code.UNAUTHENTICATED,
-            Status.Code.FAILED_PRECONDITION,
-            Status.Code.OUT_OF_RANGE);
+    // ⚠️ Go 的业务码集合（gRPC 侧「算 business 错误」的那 7 个码）**不在这里**：
+    // 2026-11-02（批次 E）已上收到 {@link ObservabilityCustomizer#BUSINESS_GRPC_CODES}
+    // ⇒ 因为 gRPC 拦截器与 {@code RpcHandleRunner}（非 gRPC 路径）**两处**都要用同一组码
+    // ⇒ ⇒ 留在本类会变成第二份副本 ⇒ ⇒ 判定统一走
+    // {@link ObservabilityCustomizer#isBusinessGrpcCode(String)}。
 
     /** 解析响应信封用的 mapper（**不**复用 Boot 的那个 —— 它可能带命名策略等配置）。 */
     private static final ObjectMapper ENVELOPE_MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+    // ── 生命周期 ──────────────────────────────────────────────────────────
+
+    /**
+     * 容器关闭时回收观测层的两个进程级线程池（{@code obs-rpc-timeout} / {@code obs-rpc-worker}）。
+     *
+     * <p>⚠️ <b>为什么必须由共享层收口</b>：两个池都是<b>进程级静态</b>的
+     * ⇒ ⇒ 各域各写一份 {@code @PreDestroy} 只是把同一个调用复制 N 份、漏一份就静默失效
+     * ⇒ ⇒ 共享层一份 ⇒ 凡是引入本 starter 的进程都自动生效。
+     *
+     * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/spring/ObservabilityLifecycle.java}
+     * （L2 · D13）＋ <b>从 {@code spring} 包搬到 {@code observability} 包 + 改由 auto-config 注册</b>
+     * （L4 · D3 / D11）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public ObservabilityLifecycle observabilityLifecycle() {
+        return new ObservabilityLifecycle();
+    }
 
     // ── HTTP ──────────────────────────────────────────────────────────────
 
@@ -373,7 +386,7 @@ public class ObservabilityAutoConfiguration {
                     ObservabilityCustomizer.markDurationAndSlow(ctx, duration, slowThreshold());
                 } else if (status.getCode() == Status.Code.DEADLINE_EXCEEDED) {
                     ObservabilityCustomizer.markTimeout(ctx, timeoutError(status), duration);
-                } else if (BUSINESS_GRPC_CODES.contains(status.getCode())) {
+                } else if (ObservabilityCustomizer.isBusinessGrpcCode(status.getCode().name())) {
                     ObservabilityCustomizer.markBusinessError(ctx, status.getCode().value(),
                             goStyleStatusMessage(status), duration);
                 } else {
@@ -393,7 +406,7 @@ public class ObservabilityAutoConfiguration {
             if (timeout == null || timeout.isZero() || timeout.isNegative()) {
                 return null;
             }
-            return TIMEOUT_SCHEDULER.schedule(
+            return timeoutScheduler().schedule(
                     () -> call.close(Status.DEADLINE_EXCEEDED
                             .withDescription("rpc deadline exceeded"), new Metadata()),
                     timeout.toNanos(), TimeUnit.NANOSECONDS);
@@ -421,13 +434,14 @@ public class ObservabilityAutoConfiguration {
      * gRPC 超时用的调度器（<b>守护线程</b> ⇒ 不阻止 JVM 退出）。
      *
      * <p>⚠️ 静态单例 ⇒ 全进程一份（与 Go 的观测层进程级静态池同形）。
+     * <p>⚠️ <b>2026-11-02（批次 E）：本池已上收到 {@link ObservabilityRuntime}</b>
+     * ⇒ 因为它要与 {@code obs-rpc-worker} 池<b>一起</b>被关闭钩子回收
+     * ⇒ ⇒ 而关闭钩子（{@code ObservabilityLifecycle}）在本仓的 {@code observability} 包
+     * ⇒ ⇒ 跨包 ⇒ ⇒ 池必须有一个<b>公开的持有者</b>。
      */
-    private static final ScheduledExecutorService TIMEOUT_SCHEDULER =
-            Executors.newSingleThreadScheduledExecutor(runnable -> {
-                Thread thread = new Thread(runnable, "obs-grpc-timeout");
-                thread.setDaemon(true);
-                return thread;
-            });
+    private static ScheduledExecutorService timeoutScheduler() {
+        return ObservabilityRuntime.timeoutScheduler();
+    }
 
     /**
      * Go {@code status.Error(...).Error()} 的文本形状。
@@ -435,10 +449,13 @@ public class ObservabilityAutoConfiguration {
      * <p>⚠️ <b>已知残留差异</b>：gRPC Java 的 {@code Code#name()} 返回全大写（{@code NOT_FOUND}），
      * Go 的 {@code codes.Code.String()} 返回驼峰（{@code NotFound}）⇒
      * <b>语言常量表示不同，不做臆造映射</b>（照抄 RAG 的同一处取舍）。
+     * <p>⚠️ <b>2026-11-02（批次 E）</b>：实现已上收到
+     * {@link ObservabilityCustomizer#goStyleStatusMessage(String, String)}
+     * （{@code RpcHandleRunner} 也要用同一份拼法）⇒ 本方法只做一次转调。
      */
     private static String goStyleStatusMessage(Status status) {
-        String desc = status.getDescription() != null ? status.getDescription() : "";
-        return "rpc error: code = " + status.getCode().name() + " desc = " + desc;
+        return ObservabilityCustomizer.goStyleStatusMessage(status.getCode().name(),
+                status.getDescription());
     }
 
     /** 超时异常：沿 Go 的语义用实际 status 拼，而不是硬编码文案。 */

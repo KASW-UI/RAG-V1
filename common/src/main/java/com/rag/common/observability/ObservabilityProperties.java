@@ -108,4 +108,62 @@ public class ObservabilityProperties {
     public void setRpcTimeout(Duration rpcTimeout) {
         this.rpcTimeout = rpcTimeout;
     }
+
+    // ── Go `Telemetry` 段的 3 个字段（2026-11-02 批次 E 补齐 · DRIFT-COMMON-V07 同族） ──
+
+    /**
+     * OTLP exporter 的端点（{@code observability.endpoint}）。
+     *
+     * <p><b>Go 出处</b>：{@code etc/*.yaml} 的 {@code Telemetry: { Endpoint }}；
+     * Go 的 {@code otlptracegrpc.WithEndpoint(c.Endpoint) + WithInsecure()}。
+     *
+     * <p>⚠️ <b>{@code null} / 空串 ⇒ 不装 exporter</b>（照 Go 的 {@code len(c.Endpoint) > 0} 判据）。
+     *
+     * <p>⚠️ <b>本字段目前只承载配置、尚未驱动任何装配</b> ——
+     * 全局 OTel 装配（provider / exporter / sampler / 传播器）走 <b>D-03</b>，
+     * 而 {@code micrometer-tracing-bridge-otel} 在本仓的离线仓里<b>不可得</b>
+     * ⇒ ⇒ 本仓的 span 走 Micrometer Observation 路线（{@code ObservabilityCustomizer}）。
+     * ⇒ ⇒ 保留这三个字段是为了<b>配置面不缺项</b>（Go 侧可读到的配置项本仓也能读到），
+     * 而<b>不是</b>声称 OTel 装配已实现。
+     */
+    private String endpoint;
+
+    /**
+     * 导出协议（{@code observability.protocol}）—— Go 的 {@code Telemetry.Batcher}。
+     *
+     * <p>⚠️ Go 的字段名叫 {@code Batcher}，取值是 {@code grpc} / {@code http}；
+     * 本仓沿用 Go 的<b>取值域</b>，字段名取 {@code protocol}（语义更准）。
+     */
+    private String protocol;
+
+    /**
+     * 采样比例（{@code observability.sampler-ratio}）—— Go 的 {@code Telemetry.Sampler}。
+     *
+     * <p>⚠️ Go 的 {@code Sampler} 是<b>比例</b>（0.0 ~ 1.0）⇒ 本仓同口径。
+     */
+    private double samplerRatio;
+
+    public String getEndpoint() {
+        return endpoint;
+    }
+
+    public void setEndpoint(String endpoint) {
+        this.endpoint = endpoint;
+    }
+
+    public String getProtocol() {
+        return protocol;
+    }
+
+    public void setProtocol(String protocol) {
+        this.protocol = protocol;
+    }
+
+    public double getSamplerRatio() {
+        return samplerRatio;
+    }
+
+    public void setSamplerRatio(double samplerRatio) {
+        this.samplerRatio = samplerRatio;
+    }
 }

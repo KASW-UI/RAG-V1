@@ -26,6 +26,7 @@
 - `io.github.resilience4j:resilience4j-spring-boot3`
 - `io.grpc:grpc-stub`
 - `io.grpc:grpc-protobuf`
+- `org.springframework.security:spring-security-crypto`
 - `io.jsonwebtoken:jjwt-api`
 - `io.jsonwebtoken:jjwt-impl`
 - `com.fasterxml.jackson.core:jackson-databind`
@@ -66,6 +67,7 @@
 │   │   │               │   ├── ClientProtectionAutoConfiguration.java    # gRPC 客户端侧的共享装配点：出向熔断 ＋ 出向 deadline 传播。
 │   │   │               │   ├── GrpcExceptionMapperAutoConfiguration.java    # D2 / D5「统一错误模型」的 gRPC 边界适配器 ——
 │   │   │               │   ├── JsonBodyConverterAutoConfiguration.java    # Jackson 侧的共享装配点 —— 把「K-01 强转规则」与「K-02 请求体判据」两条
+│   │   │               │   ├── LoggerAutoConfiguration.java    # 共享日志门面的装配点 —— 产出 {@link LoggerFactoryBean}。
 │   │   │               │   ├── MybatisPlusOrderingBridgeAutoConfiguration.java    # Go 出处：无 —— Go 侧用 GORM，没有「MyBatis-Plus 自动配置排序」这个概念
 │   │   │               │   ├── ObservabilityAutoConfiguration.java    # 观测层的共享装配点 —— 把 {@link ObservabilityCustomizer}（业务标记的唯一载体）
 │   │   │               │   ├── PersistenceAutoConfiguration.java    # 持久层超时链路的唯一装配点（MyBatis 拦截器 ⇒ MP 自动配置收集 ⇒ 真正生效）。
@@ -96,15 +98,22 @@
 │   │   │               │   ├── FatalError.java    # H3 修复：致命错误的专用异常类型。
 │   │   │               │   ├── GoStyleLogger.java    # Go 出处：{@code service/common/logger/logger.go}（整个包，356 行）
 │   │   │               │   ├── LogOption.java    # Go 出处：{@code service/common/logger/logger.go:32}（{@code type LogOption func(*LogOptions)}）
-│   │   │               │   └── LogOptions.java    # Go 出处：{@code service/common/logger/logger.go:26-29}
+│   │   │               │   ├── LogOptions.java    # Go 出处：{@code service/common/logger/logger.go:26-29}
+│   │   │               │   └── LoggerFactoryBean.java    # {@code Logger} 的 Spring 适配 —— 把 {@code spring.application.name} 注入的
 │   │   │               ├── observability/
 │   │   │               │   ├── ClientDisconnectProbe.java    # 客户端断连的主动探测 —— 往 socket 写 1xx 探针，把断连提前暴露出来。
 │   │   │               │   ├── DeadlineState.java    # 请求级 deadline 的服务端载体（ThreadLocal 绝对到期时刻，{@link System#nanoTime()} 域）。
 │   │   │               │   ├── GoStyleRequestDeadline.java    # 请求级 deadline 的载体：把 {@link HttpMiddleware} 的 HTTP 超时预算，
+│   │   │               │   ├── MqConsumer.java    # MQ 消费端 trace 包装 —— 对齐 Go 版的 {@code TraceConsumer}。
 │   │   │               │   ├── ObservabilityCustomizer.java    # 业务观测标记的唯一载体 —— 对齐 go-zero {@code service/common/observability/observability.go} 的
+│   │   │               │   ├── ObservabilityLifecycle.java    # Spring 容器关闭时回收RPC 侧的观测层线程池。
 │   │   │               │   ├── ObservabilityProperties.java    # Observability 配置绑定（{@code application.yml}）：
+│   │   │               │   ├── ObservabilityRuntime.java    # 观测层的进程级线程池持有者（本仓对 RAG {@code RpcInterceptor} 里那两个
+│   │   │               │   ├── RpcCallHandler.java    # gRPC 服务端业务调用处理器（Java 版与 Go 版 {@code grpc.UnaryHandler} 等价）。
+│   │   │               │   ├── RpcHandleRunner.java    # 非 gRPC Server 场景下的业务调用入口 —— 跑一次 handler，带超时控制与观测标记。
 │   │   │               │   ├── RpcPrometheusInterceptor.java    # Prometheus 层 —— 对齐 go-zero 的 {@code UnaryPrometheusInterceptor}：
 │   │   │               │   ├── RpcRecoverInterceptor.java    # gRPC 服务端 panic 恢复拦截器 —— 对齐 go-zero 的 {@code UnaryRecoverInterceptor}。
+│   │   │               │   ├── RpcResult.java    # gRPC 调用结果（resp + 错误），对应 Go 版 {@code (any, error)}。
 │   │   │               │   ├── RpcStatInterceptor.java    # Stat 层 —— 对齐 go-zero 的 {@code UnaryStatInterceptor}：
 │   │   │               │   └── RpcStatMetrics.java    # Go {@code core/stat} 的 Java 复刻 —— 进程内 RPC 耗时聚合器 ＋
 │   │   │               ├── persistence/
@@ -117,6 +126,7 @@
 │   │   │               │   ├── ClientCircuitGateInterceptor.java    # L4 idiomatization：gRPC client 侧按方法的熔断，对齐 Go
 │   │   │               │   ├── CpuThresholdHealthIndicator.java    # CPU 降载的观测面：把 Go {@code core/stat/usage.go:51} {@code CpuUsage()}
 │   │   │               │   ├── MaxBytesFilter.java    # L4 idiomatization：请求体大小上限，对齐 Go {@code handler.MaxBytesHandler}。
+│   │   │               │   ├── MaxConnsFilter.java    # L4 idiomatization：并发连接数上限，对齐 Go {@code handler.MaxConnsHandler}。
 │   │   │               │   ├── OutboundDeadlineInterceptor.java    # L4 idiomatization：把「请求 deadline 传播给出向 gRPC 调用」做成 client 侧拦截器。
 │   │   │               │   ├── ProtectionProperties.java    # Go「请求保护层」四道中间件的配置聚合点。
 │   │   │               │   ├── RouteResolution.java    # 路由模板解析的三态结果。
@@ -137,9 +147,9 @@
 │   │   │               │   ├── DeadlineConnection.java    # 把「请求预算耗尽 ⇒ 不再下发 Redis 命令」这一层包在 {@link RedisConnection} 上。
 │   │   │               │   └── DeadlineConnectionFactory.java    # 把「请求预算」接到 {@link RedisConnectionFactory} 上（域侧零改动的那一环）。
 │   │   │               ├── security/
-│   │   │               │   ├── BearerTokenExtractor.java
-│   │   │               │   ├── JwtUtil.java
-│   │   │               │   └── PasswordUtil.java
+│   │   │               │   ├── BearerTokenExtractor.java    # Authorization 头的 token 提取 —— Go 侧两套互不相同的取法的逐字等价实现。
+│   │   │               │   ├── JwtUtil.java    # L1 契约类：HS256 JWT 的签发。
+│   │   │               │   └── PasswordUtil.java    # bcrypt 口令散列工具。
 │   │   │               ├── snowflake/
 │   │   │               │   └── Snowflake.java    # 对应 Go 版 service/common/snowflake/snowflake.go 的整个包（102 行）。
 │   │   │               └── web/
@@ -178,6 +188,7 @@
 │                       │   ├── ClientProtectionAutoConfigurationTest.java    # §3.3「机制可证」守门：客户端拦截器真的进了 devh 的收集器——
 │                       │   ├── GrpcExceptionMapperAutoConfigurationTest.java    # §3.3「机制可证」守门：业务异常在 gRPC 边界被映射成 Go 形状的 status。
 │                       │   ├── JsonBodyConverterAutoConfigurationTest.java    # §3.3「机制可证」守门：K-01 的强转规则真的施加到了 Boot 的 mapper 上。
+│                       │   ├── LoggerAutoConfigurationTest.java    # §3.3「机制可证」守门：共享日志门面真的被 auto-config 装配出来（不需要域侧任何代码）。
 │                       │   ├── ObservabilityAutoConfigurationTest.java    # §3.3「机制可证」守门：观测的判定顺序真的按 Go 的口径。
 │                       │   ├── PersistenceAutoConfigurationTest.java    # §3.3「机制可证」守门：SQL 超时链路真的挂上了（DRIFT-COMMON-V02 的修法验证）。
 │                       │   ├── ProtectionAutoConfigurationWiringTest.java    # §3.3「机制可证」守门：gRPC 拦截链真的挂到了 server 上（A3 的运行时证据），
@@ -187,12 +198,19 @@
 │                       ├── logger/
 │                       │   └── GoStyleLoggerTest.java    # §3.3 真触发测试 —— 断言 **A8**：{@link GoStyleLogger} 是一个真正的
 │                       ├── observability/
+│                       │   ├── MqConsumerTest.java    # §3.3「机制可证」守门：MQ 消费端包装真的产出观测、真的按 Go 的口径分类错误。
+│                       │   ├── ObservabilityPropertiesTest.java    # §3.3「机制可证」守门：Go {@code Telemetry} 段的 3 个配置字段真的能被绑定。
+│                       │   ├── ObservabilityRuntimeTest.java    # §3.3「机制可证」守门：观测层的两个进程级池真的能被关闭钩子回收，且关掉后能重建。
+│                       │   ├── RpcHandleRunnerTest.java    # §3.3「机制可证」守门：非 gRPC 路径的业务调用真的带超时控制 + 观测分类。
 │                       │   └── RpcRecoverInterceptorTest.java    # §3.3「机制可证」守门：gRPC handler panic ⇒ {@code INTERNAL + "panic: "}。
 │                       ├── protection/
+│                       │   ├── MaxConnsFilterTest.java    # §3.3「机制可证」守门：并发连接闸门真的在超限时立刻 503（而不是排队）。
 │                       │   ├── RouteTemplateResolverTest.java    # §3.3「机制可证」守门：路由模板解析真的能区分三态
 │                       │   └── RpcProtectionLayerTest.java    # §3.3「机制可证」守门：gRPC 降载拒绝的 wire 形状 ＋ 熔断失败判据 ＋
 │                       ├── redis/
 │                       │   └── RedisAutoConfigurationActivationTest.java    # §3.3「机制可证」守门：Redis 侧两个自动配置真的被激活（DRIFT-COMMON-V01 的修法验证）。
+│                       ├── security/
+│                       │   └── SecurityUtilTest.java    # §3.3「机制可证」守门：**JWT / Bearer / 口令** 三条 L1 契约。
 │                       ├── snowflake/
 │                       │   └── SnowflakeTest.java    # §3.3 真触发测试 —— {@link Snowflake} 的位布局与单调性。
 │                       └── web/

@@ -12,7 +12,7 @@
 
 ## 〇、当前状态（2026-11-02）
 
-**形态：共享层 `common/` 已落地 86/90 类；10 个业务域仍全为空壳**。
+**形态：共享层 `common/` 已落地 98/99 类；10 个业务域仍全为空壳**。
 
 > **📌 往哪写** —— 只放**政策与索引**，**全文可进上下文（预算 32 KB）**：逐条漂移 ⇒ `docs/DRIFT/<域>/<组件>.md`；踩坑 ⇒ `docs/Pitfalls/`；签字偏离 ⇒ `docs/Intentional_Deviations/`。**只留结论 + 一行指针。超预算 = 没走这条约定。**
 
@@ -20,12 +20,12 @@
 
 | 项 | 数 |
 |---|---|
-| Java 文件 | **640**（610 主代码 + 30 测试）—— `service/` **520 仍全为空壳** + `common/` **90（86 已落地 · 4 空壳）** |
+| Java 文件 | **656**（619 主代码 + 37 测试）—— `service/` **520 仍全为空壳** + `common/` **99（98 已落地 · 1 空壳）** |
 | Maven 模块 | **16** pom = **13 叶子** + **2 聚合**（`service`/`users`）+ 1 根 —— **D7 打平**：每域**一个** jar 模块（`service/<域>/`）；artifactId 保持长名唯一（`<域>-service`/`users-common`/`proto`/`common`）⇒ 依赖声明零改动 |
 | proto / `application.yml` | **10 / 10**（10 个 `.proto` 集中在**根级 `proto/` 模块**，pb 包名 `com.rag.proto.<域>`；内容与 Go 侧逐字节一致，仅 `java_package` 属表达层） |
-| `AutoConfiguration.imports` | **1**（`common/`，7 个 auto-config） |
-| `docs/File_Tree/` · 三方对照 | **14 份 + `_INDEX.md`** 文件树 · **13 份**域文档（C **589/589**、A **482/482** 覆盖 **100%**；**90 条落点缺口** 🔴11） |
-| 三档台账 | DRIFT **10 域未建立** · Intentional_Deviations **4 条**（like/comment 各 2）· Pitfalls **P-01~P-10** |
+| `AutoConfiguration.imports` | **1**（`common/`，12 个 auto-config） |
+| `docs/File_Tree/` · 三方对照 | **14 份 + `_INDEX.md`** 文件树 · **13 份**域文档（C **619/619**、A **482/482** 覆盖 **100%**；**90 条落点缺口** 🔴11） |
+| 三档台账 | DRIFT **10 域未建立**（common **已建立**）· Intentional_Deviations **4 条**（like/comment 各 2）· Pitfalls **P-01~P-11** |
 
 **已完成**：树结构、pom、proto、application.yml、断言清单、三方对照、**GitHub 仓**、**工具链（Jackson 2 + Boot 3.5）**、**共享层 `common/`**。**未完成**：10 个业务域的实现（⇒ §1.0c 抄 RAG）。
 
@@ -116,7 +116,7 @@ RAG-V1 的目标架构（落地以 `docs/File_Tree/` 为准）：
 
 | 层 | 判定 |
 |---|---|
-| **模块/构建层** | ✅ 非常像 —— 13 个叶子模块（+2 聚合 pom 嵌套 reactor）；`common/` 是**真 starter**（`AutoConfiguration.imports` 注册 7 个 auto-config） |
+| **模块/构建层** | ✅ 非常像 —— 13 个叶子模块（+2 聚合 pom 嵌套 reactor）；`common/` 是**真 starter**（`AutoConfiguration.imports` 注册 12 个 auto-config） |
 | **进程/部署层** | ✅ 完全像 —— 10 个 `*Application.java` + 10 份 `application.yml`（Actuator）+ Flyway + Nacos |
 | **包/代码组织层** | ✅ **接近惯例** —— 域内**单层**技术角色包树（包名见 §2.1）⇒ **不再按传输协议纵向切** |
 
@@ -130,7 +130,7 @@ RAG-V1 的目标架构（落地以 `docs/File_Tree/` 为准）：
 
 ### 2.3 `common/` 的准入（实测 · 有待裁决项）
 
-`common/` 共 **90** 个主代码类 / **12 个包**（**86 已落地 · 4 空壳**：security 3、断连探针 1），按包：`web` 21 · `communityfact` 13 · `autoconfigure` 10 · `redis` 5 · `protection` 17 · `observability` 9 · `persistence` 4 · `logger` 4 · `security` 3 · `exception` 2 · `contract` 1 · `snowflake` 1。
+`common/` 共 **99** 个主代码类 / **12 个包**（**98 已落地 · 1 空壳**：断连探针 1），按包：`web` 21 · `communityfact` 13 · `autoconfigure` 11 · `redis` 5 · `protection` 18 · `observability` 15 · `persistence` 4 · `logger` 5 · `security` 3 · `exception` 2 · `contract` 1 · `snowflake` 1。
 
 🔴 **待裁决**：`communityfact/` 13 类 = **7 个协议 DTO** ＋ **6 个行为类**（`Dispatcher`/`EventDispatcher`/`EventSender`/`AuthorityHandler`/`ProcessLogger`/`Wire`）。行为类**带域归属**（comment·favorite·like 共享）⇒ 与 §五.3 R1「`common/` 只放无域归属能力」**有张力**；10 个 app 全依赖 `common/` ⇒ 改一行锁住 10 域。⇒ **填实现前必须裁决**这 6 类归 `common/` 还是域内（另：G-2 `CanonicalHash` 在此 —— JCS 指纹不一致 ⇒ 幂等失效）
 

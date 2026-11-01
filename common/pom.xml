@@ -78,6 +78,15 @@
         <dependency>
             <groupId>io.grpc</groupId><artifactId>grpc-protobuf</artifactId>
         </dependency>
+        <!--
+            ⚠️ **spring-security-crypto（B 侧 `users-common/cryptx/PasswordUtil` 的依赖）**
+            —— 只取 bcrypt 那一小块（`BCryptPasswordEncoder`），**不引整个 spring-security**
+            ⇒ 共享层不引入 FilterChain / SecurityContext 等 servlet 安全栈。
+            ⇒ 版本由 spring-boot-dependencies BOM 管理（Boot 3.5 ⇒ 6.5.x）⇒ 不写 <version>。
+        -->
+        <dependency>
+            <groupId>org.springframework.security</groupId><artifactId>spring-security-crypto</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId><artifactId>jjwt-api</artifactId>
         </dependency>
