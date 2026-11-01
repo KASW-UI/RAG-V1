@@ -69,6 +69,7 @@
 │   │   │               │   ├── ObservabilityAutoConfiguration.java    # 观测层的共享装配点 —— 把 {@link ObservabilityCustomizer}（业务标记的唯一载体）
 │   │   │               │   ├── PersistenceAutoConfiguration.java    # 持久层超时链路的唯一装配点（MyBatis 拦截器 ⇒ MP 自动配置收集 ⇒ 真正生效）。
 │   │   │               │   ├── ProtectionAutoConfiguration.java    # 保护层的共享装配点，同时是 A3 断言点名的 gRPC 拦截链挂载点。
+│   │   │               │   ├── RouteTemplateAutoConfiguration.java    # 注册「注册期路由模板」解析器 —— 让共享层的 HTTP 熔断器
 │   │   │               │   ├── SnowflakeAutoConfiguration.java    # Go 出处：{@code service/common/snowflake/snowflake.go:22-38}
 │   │   │               │   └── WebAutoConfiguration.java    # Web 层的共享装配点 —— 把「批 1 已落地、但因为 starter 化而没人注册」的那些
 │   │   │               ├── communityfact/
@@ -111,6 +112,7 @@
 │   │   │               │   ├── MaxBytesFilter.java    # L4 idiomatization：请求体大小上限，对齐 Go {@code handler.MaxBytesHandler}。
 │   │   │               │   ├── ProtectionProperties.java    # Go「请求保护层」四道中间件的配置聚合点。
 │   │   │               │   ├── RouteResolution.java    # 路由模板解析的三态结果。
+│   │   │               │   ├── RouteTemplateResolver.java    # L4 idiomatization：在 Servlet Filter 里解析出「注册期路由模板」，
 │   │   │               │   └── RouteTemplateSource.java    # 「注册期路由模板」解析能力的窄接口。
 │   │   │               ├── redis/
 │   │   │               │   ├── ClientAutoConfiguration.java    # L4 idiomatization：把 Lettuce 客户端的「断连行为」收进共享层，
@@ -167,6 +169,8 @@
 │                       │   └── ApiResponseTest.java    # §3.3 真触发测试 —— {@link ApiResponse} 这个全局 L1 信封的序列化形状。
 │                       ├── logger/
 │                       │   └── GoStyleLoggerTest.java    # §3.3 真触发测试 —— 断言 **A8**：{@link GoStyleLogger} 是一个真正的
+│                       ├── protection/
+│                       │   └── RouteTemplateResolverTest.java    # §3.3「机制可证」守门：路由模板解析真的能区分三态
 │                       ├── redis/
 │                       │   └── RedisAutoConfigurationActivationTest.java    # §3.3「机制可证」守门：Redis 侧两个自动配置真的被激活（DRIFT-COMMON-V01 的修法验证）。
 │                       ├── snowflake/

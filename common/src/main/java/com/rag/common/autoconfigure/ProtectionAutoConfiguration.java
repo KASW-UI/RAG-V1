@@ -3,6 +3,8 @@ package com.rag.common.autoconfigure;
 import com.rag.common.protection.CpuThresholdHealthIndicator;
 import com.rag.common.protection.MaxBytesFilter;
 import com.rag.common.protection.ProtectionProperties;
+import com.rag.common.protection.RouteResolution;
+import com.rag.common.protection.RouteTemplateSource;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.grpc.Metadata;
@@ -24,10 +26,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.web.method.HandlerMethod;
-import org.springframework.web.servlet.HandlerExecutionChain;
-import org.springframework.web.servlet.HandlerMapping;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.io.IOException;
 import java.util.List;
@@ -172,8 +170,8 @@ public class ProtectionAutoConfiguration {
     public RouteIsolationFilter routeIsolationFilter(
             ProtectionProperties properties,
             ObjectProvider<CircuitBreakerRegistry> registryProvider,
-            ObjectProvider<RequestMappingHandlerMapping> handlerMappings) {
-        return new RouteIsolationFilter(properties, registryProvider, handlerMappings);
+            ObjectProvider<RouteTemplateSource> routeTemplateSource) {
+        return new RouteIsolationFilter(properties, registryProvider, routeTemplateSource);
     }
 
     // ── gRPC 拦截链的挂载点（A3） ──────────────────────────────────────────
@@ -298,14 +296,14 @@ public class ProtectionAutoConfiguration {
 
         private final boolean enabled;
         private final ObjectProvider<CircuitBreakerRegistry> registryProvider;
-        private final ObjectProvider<RequestMappingHandlerMapping> handlerMappings;
+        private final ObjectProvider<RouteTemplateSource> routeTemplateSource;
 
         RouteIsolationFilter(ProtectionProperties properties,
                              ObjectProvider<CircuitBreakerRegistry> registryProvider,
-                             ObjectProvider<RequestMappingHandlerMapping> handlerMappings) {
+                             ObjectProvider<RouteTemplateSource> routeTemplateSource) {
             this.enabled = properties.getBreaker().isEnabled();
             this.registryProvider = registryProvider;
-            this.handlerMappings = handlerMappings;
+            this.routeTemplateSource = routeTemplateSource;
         }
 
         @Override
@@ -319,9 +317,19 @@ public class ProtectionAutoConfiguration {
                 return;
             }
 
-            String isolationKey = isolationKeyOf(request);
+            // ⚠️ 三态解析（V06 的职责断裂已修）：只有「确定未命中」才让本层完全不参与。
+            RouteResolution resolution = resolveRoute(request);
+            if (resolution.kind() == RouteResolution.Kind.NOT_MATCHED) {
+                // Go 出处：rest/engine.go:244-268 —— 404 的链只有 Trace + Log，**没有 breaker**
+                //          （patrouter.go:73 没匹配上 ⇒ handleNotFound ⇒ notFoundHandler）
+                // ⇒ 判定「确定未命中」时，本层**完全不参与**（既不建 breaker，也不计数）
+                chain.doFilter(request, response);
+                return;
+            }
+
+            String isolationKey = isolationKeyOf(request, resolution);
             if (isolationKey == null) {
-                // ⚠️ 404 / 405（没匹配到路由）⇒ Go 侧**根本不进 breaker 链** ⇒ 放行
+                // ⚠️ 只在 method 与 URI 都取不到时才走到这里（理论上不可达）
                 chain.doFilter(request, response);
                 return;
             }
@@ -356,44 +364,51 @@ public class ProtectionAutoConfiguration {
         }
 
         /**
-         * 隔离 key = {@code METHOD://<注册期路由模板>}。
+         * 解析路由模板；<b>三态</b>里只有「确定未命中」会让调用方跳过 breaker。
          *
-         * <p>⚠️ <b>拿不到模板时返回 {@code null}</b>（⇒ 放行、不熔断）
-         * ⇒ ⇒ <b>绝不静默关掉熔断保护</b>，也<b>绝不</b>退化成「按原始 URI 隔离」
-         * （那会让同一路由的不同 URI 各建一个实例 ⇒ 隔离单位从「每路由」变成「每 URI」）。
+         * <p>⚠️ <b>解析不了（null / 抛异常）⇒ {@code UNKNOWN}</b>
+         * ⇒ ⇒ 调用方<b>回落 raw URI 分桶</b>（熔断仍然生效）⇒ 绝不因为「解析不了」而静默关掉熔断保护。
          */
-        private String isolationKeyOf(HttpServletRequest request) {
-            String template = routeTemplateOf(request);
-            if (template == null || template.isEmpty()) {
-                return null;
-            }
-            String method = request.getMethod();
-            return (method == null ? "" : method) + "://" + template;
-        }
-
-        /** 从 Spring 的路由匹配结果里取<b>注册期模板</b>（不是原始 URI）。 */
-        private String routeTemplateOf(HttpServletRequest request) {
-            RequestMappingHandlerMapping mapping = handlerMappings.getIfAvailable();
-            if (mapping == null) {
-                return null;
+        private RouteResolution resolveRoute(HttpServletRequest request) {
+            RouteTemplateSource source = routeTemplateSource.getIfAvailable();
+            if (source == null) {
+                return RouteResolution.UNKNOWN;
             }
             try {
-                HandlerExecutionChain chain = mapping.getHandler(request);
-                if (chain == null) {
-                    return null;
-                }
-                // ⚠️ 模板挂在**请求属性**上（不是 chain 上）——
-                //    `AbstractHandlerMapping#getHandler` 会把 BEST_MATCHING_PATTERN
-                //    写进 request attributes ⇒ 这里必须从 request 读。
-                Object pattern = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
-                if (pattern == null) {
-                    return null;
-                }
-                return pattern.toString();
-            } catch (Exception e) {
-                // ⚠️ 解析失败 ⇒ 放行（绝不静默关掉熔断保护）
-                return null;
+                RouteResolution resolution = source.resolve(request);
+                return resolution == null ? RouteResolution.UNKNOWN : resolution;
+            } catch (RuntimeException e) {
+                // 解析本身抛异常 ⇒ 判不出来 ⇒ 回落旧行为
+                return RouteResolution.UNKNOWN;
             }
+        }
+
+        /**
+         * 隔离 key = {@code METHOD://<注册期路由模板>}。
+         *
+         * <p>⚠️ <b>解析不出来时（{@code UNKNOWN}）回落 raw URI</b>（= 旧行为，不是新语义）：
+         * RAG 侧 {@code GoStyleBreakerFilter#routeKey} 的写法是
+         * <pre>
+         *   if (resolution.kind() == Kind.TEMPLATE) { return method + "://" + resolution.template(); }
+         *   return method + "://" + request.getRequestURI();
+         * </pre>
+         * ⇒ ⇒ <b>熔断能力在解析失败时依然生效</b>（只是隔离单位退化成「每 URI 一个」）。
+         *
+         * <p>⚠️ <b>⚠️ V05 的修法就在这一行</b>：修正前本方法在拿不到模板时返回 {@code null}
+         * ⇒ 上游「放行、不熔断」⇒ ⇒ <b>熔断被静默关掉</b>（与 RAG 语义<b>相反</b>，
+         * 且与本类 javadoc 自称的「绝不静默关掉熔断保护」<b>自相矛盾</b>）。
+         * ⇒ 现改为回落 raw URI ⇒ 与 RAG 一致。
+         */
+        private String isolationKeyOf(HttpServletRequest request, RouteResolution resolution) {
+            String method = request.getMethod();
+            String prefix = (method == null ? "" : method) + "://";
+            if (resolution.kind() == RouteResolution.Kind.TEMPLATE
+                    && resolution.template() != null && !resolution.template().isEmpty()) {
+                return prefix + resolution.template();
+            }
+            // ⚠️ UNKNOWN ⇒ 回落 raw URI 分桶（熔断仍生效）
+            String uri = request.getRequestURI();
+            return prefix + (uri == null ? "" : uri);
         }
 
         private static long elapsed(long startNanos) {

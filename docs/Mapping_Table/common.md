@@ -95,7 +95,7 @@
 | `service/common/…/observability/` | `common/src/main/java/com/rag/common/observability/` | 直接压平 |
 | `service/common/…/persistence/` | `common/src/main/java/com/rag/common/persistence/` | 直接压平 |
 | `service/common/…/redis/`（5 类） | `common/src/main/java/com/rag/common/redis/`（**5 类**）| ★ **C 侧第 12 个包，2026-11-01 新建**：断连行为收口 + 请求预算传播；**类名去 `Redis` 前缀**（包名已含 `redis`）|
-| `service/common/…/protection/`（24 类） | `common/src/main/java/com/rag/common/protection/`（**5 类**）| ★ **D4 生态优先**：熔断 → resilience4j，降载/限体积各 1 个自研类；⚠️ 第 3/4 类 `RouteResolution` + `RouteTemplateSource` 是 **2026-11-01 补的路由模板解析载体** · 第 5 类 `ProtectionProperties` 是 **2026-11-02 独立配置载体**（**L-15**） |
+| `service/common/…/protection/`（24 类） | `common/src/main/java/com/rag/common/protection/`（**6 类**）| ★ **D4 生态优先**：熔断 → resilience4j，降载/限体积各 1 个自研类；⚠️ 第 3/4 类 `RouteResolution` + `RouteTemplateSource` 是 **2026-11-01 补的路由模板解析载体** · 第 5 类 `ProtectionProperties` 是 **2026-11-02 独立配置载体**（**L-15**）· 第 6 类 `RouteTemplateResolver` 是 **2026-11-02 补的模板解析实现**（**V06 修法**）|
 | `service/common/…/response/`（`Response`） | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | 压平 + **改名**（信封是 L1）|
 | `service/common/…/snowflake/` | `common/src/main/java/com/rag/common/snowflake/` | 直接压平 |
 | `service/common/…/spring/` | `common/src/main/java/com/rag/common/autoconfigure/` | 压平 + **改名**（`@Configuration` → `@AutoConfiguration`，D3）|
@@ -103,7 +103,7 @@
 
 ## 1. 包结构对照
 
-### 1.1 `autoconfigure/` —— starter 的全部装配入口（C: 8 类）
+### 1.1 `autoconfigure/` —— starter 的全部装配入口（C: 9 类）
 
 > **D3 的载体。** 8 个 `@AutoConfiguration` 由
 > `common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 注册（**清单共 10 行**：另有 `redis/` 包的 2 个 —— 见 §1.12）。
@@ -255,7 +255,7 @@
 | —（Go 侧无对应物） | `article-api/config/GoStyleJsonBodyLimitFilter.java` | `common/src/main/java/com/rag/common/web/JsonBodyLimitFilter.java` | 1:1 | 归位；⚠️ 与 `protection/MaxBytesFilter.java` **语义相邻但不同**，别合并 |
 | —（Go 侧无对应物） | `article-api/config/GoStylePathNormalizingFilter.java` | `common/src/main/java/com/rag/common/web/PathNormalizingFilter.java` | 1:1 | 归位 |
 
-### 1.12 🔴 RAG 侧 `service/common` 增量补录（17 条 · 覆盖 35 个 `.java`）
+### 1.12 🔴 RAG 侧 `service/common` 增量补录（18 条 · 覆盖 35 个 `.java`）
 
 > ⚠️ **本节是 2026-11-01 的增量**：RAG 仓在映射表首版之后继续生长
 > （`service/common` 从 3 个包长到 **12 个包**）⇒ 首版 §1.1–§1.11 的 **B 列漏了 35 个 `.java`**。
@@ -278,8 +278,9 @@
 | Prometheus 写入面接缝（接口 ＋ Micrometer 实现 ＋ 装配点） | `common/observability/GoStylePrometheusSink.java` ＋ `common/observability/MicrometerPrometheusSink.java` ＋ `common/observability/GoStylePrometheusMeterRegistryBridge.java` | `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | N:1 | ⚠️ **D4 生态吸收**：C 侧 Boot 原生 `micrometer-registry-prometheus` ⇒ **不复制 RAG 的接缝接口**（零 Java 代码） |
 | gRPC 侧的 Stat ＋ Prometheus 指标面装配 | `common/observability/GoStyleRpcMetricsConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | 1:1 | 指标名 / 标签 / 调用点是**业务定义** ⇒ 由各域 `metrics/<Dom>RpcMetrics.java` 承载（见各域表） |
 | 客户端断连的主动探测（往 socket 写 1xx 探针） | `common/observability/GoStyleClientDisconnectProbe.java` | `common/src/main/java/com/rag/common/observability/ClientDisconnectProbe.java` | 1:1 | ✅ **已落地（2026-11-01）**：落 `common/observability/` —— 往 socket 写 1xx 探针，把客户端断连**提前暴露**出来（探针式断连暴露在 Java 侧终于有载体） |
-| 共享层 HTTP 熔断器的**注册期路由模板** ＋ gRPC client 熔断 ＋ 出向 deadline 传播 | `common/protection/GoStyleBreakerRouteTemplateAutoConfiguration.java` ＋ `common/protection/GoStyleRouteTemplateResolver.java` ＋ `common/protection/GoStyleGrpcClientBreakerConfiguration.java` ＋ `common/protection/GoStyleOutboundDeadlineConfiguration.java` ＋ `common/protection/GoStyleOutboundDeadlineInterceptor.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java` | N:1 | resilience4j `CircuitBreakerRegistry`（D-02）；隔离 key 仍是 `METHOD://path` ⇒ **路由模板解析不能省** |
-| 路由模板解析的**三态结果** ＋ 「注册期路由模板」窄接口 | `common/protection/GoStyleRouteResolution.java` ＋ `common/protection/GoStyleRouteTemplateSource.java` | `common/src/main/java/com/rag/common/protection/RouteResolution.java` ＋ `common/src/main/java/com/rag/common/protection/RouteTemplateSource.java` | 1:1 | ✅ **已落地（2026-11-01）**：落 `common/protection/` ⇒ C 侧 `protection/` 由 2 类扩到 **4 类**；⚠️ 隔离 key 仍是 `METHOD://path`（resilience4j `CircuitBreakerRegistry`）⇒ **路由模板解析不能省**这条前提已被载体兑现 |
+| 共享层 HTTP 熔断器的**注册期路由模板**（解析器 + 注册点） | `common/protection/GoStyleBreakerRouteTemplateAutoConfiguration.java` ＋ `common/protection/GoStyleRouteTemplateResolver.java` | `common/src/main/java/com/rag/common/autoconfigure/RouteTemplateAutoConfiguration.java` ＋ `common/src/main/java/com/rag/common/protection/RouteTemplateResolver.java` | 1:N | ✅ **已落地（2026-11-02 · V06 修法）**：拆成**独立的窄接口实现 + 独立 auto-config** ⇒ ① `RouteTemplateResolver` 引用 Spring MVC 类型 ⇒ 必须独立成类 + 类级 `@ConditionalOnClass` ⇒ 否则 10 个 rpc 进程加载 `ProtectionAutoConfiguration` 时 `NoClassDefFoundError`；② `RouteTemplateAutoConfiguration` 独立 ⇒ `ProtectionAutoConfiguration` 常量池里不出现 MVC 类型；⚠️ **V05 同批修**：`RouteIsolationFilter` 改走窄接口 ⇒ 模板判不出来（`UNKNOWN`）时**回落 raw URI 分桶**（熔断仍生效）⇒ 修正前是「放行、不熔断」⇒ **熔断被静默关掉** |
+| gRPC client 熔断 ＋ 出向 deadline 传播 | `common/protection/GoStyleGrpcClientBreakerConfiguration.java` ＋ `common/protection/GoStyleOutboundDeadlineConfiguration.java` ＋ `common/protection/GoStyleOutboundDeadlineInterceptor.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java` | N:1 | resilience4j `CircuitBreakerRegistry`（D-02）；隔离 key 仍是 `METHOD://path` ⇒ **路由模板解析不能省** |
+| 路由模板解析的**三态结果** ＋ 「注册期路由模板」窄接口 | `common/protection/GoStyleRouteResolution.java` ＋ `common/protection/GoStyleRouteTemplateSource.java` | `common/src/main/java/com/rag/common/protection/RouteResolution.java` ＋ `common/src/main/java/com/rag/common/protection/RouteTemplateSource.java` | 1:1 | ✅ **已落地（2026-11-01 建壳 → 2026-11-02 填实现 · V06 修法）**：三态（`TEMPLATE` / `NOT_MATCHED` / `UNKNOWN`）语义逐条保留 ⇒ ① `NOT_MATCHED` ⇒ Go 侧 404 链里**没有 breaker** ⇒ 本层完全不参与；② `UNKNOWN` ⇒ **回落 raw URI**（不是「放行」）⇒ 熔断不消失；⚠️ 隔离 key 仍是 `METHOD://path`（resilience4j `CircuitBreakerRegistry`）⇒ **路由模板解析不能省**这条前提已被载体兑现 |
 | Lettuce 客户端的**断连行为**收口（`ClientOptions.DisconnectedBehavior`） | `common/redis/GoStyleRedisClientAutoConfiguration.java` | `common/src/main/java/com/rag/common/redis/ClientAutoConfiguration.java` | 1:1 | ✅ **已落地（2026-11-01）**：C 侧新建 **`common/redis/`**（= `common/` 第 **12** 个包）⇒ 断连行为收口（`ClientOptions.DisconnectedBehavior`，对齐 Go 侧 fail-open 语义）；⚠️ **去 `Redis` 前缀**（包名已含 `redis`，类名再带前缀即冗余）；⚠️ RAG 已把域内 5 份 `RedisDisconnectedBehaviorConfig` 收进本类（**B 侧旧类名已不存在**） |
 | 请求预算耗尽 ⇒ 不再下发 Redis 命令 | `common/redis/GoStyleRedisDeadline.java` ＋ `common/redis/GoStyleRedisDeadlineAutoConfiguration.java` ＋ `common/redis/GoStyleRedisDeadlineConnection.java` ＋ `common/redis/GoStyleRedisDeadlineConnectionFactory.java` | `common/src/main/java/com/rag/common/redis/Deadline.java` ＋ `common/src/main/java/com/rag/common/redis/DeadlineAutoConfiguration.java` ＋ `common/src/main/java/com/rag/common/redis/DeadlineConnection.java` ＋ `common/src/main/java/com/rag/common/redis/DeadlineConnectionFactory.java` | 1:1 | ✅ **已落地（2026-11-01）**：4 个类落 `common/redis/`（**去 `Redis` 前缀**）；请求预算耗尽 ⇒ 不再下发 Redis 命令；⚠️ 与 `common/persistence/DeadlineQueryTimeoutInjector.java` **语义相邻但不同**（一个拦 SQL，一个拦 Redis 命令）⇒ 两个载体都要在 |
 | Go 侧 HTTP 中间件池由**进程生命周期**托管 | `common/spring/HttpPoolLifecycle.java` | **无对应文件** | 1:1 | ⚠️ **D4 生态吸收**：C 侧 Tomcat 自管连接池 ⇒ **零 Java 代码**（Go 侧亦无显式关闭 ⇒ 语义等价） |
@@ -599,14 +600,14 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 
 | 子包 | 实际 `.java` 数 | 出现在本表 C 列的数 | 缺口 |
 |---|---|---|---|
-| `autoconfigure/` | 8 | 8 | 0 |
+| `autoconfigure/` | 9 | 9 | 0 |
 | `communityfact/` | 13 | 13 | 0 |
 | `contract/` | 1 | 1 | 0 |
 | `exception/` | 2 | 2 | 0 |
 | `logger/` | 4 | 4 | 0 |
 | `observability/` | 5 | 5 | 0 |
 | `persistence/` | 4 | 4 | 0 |
-| `protection/` | 5 | 5 | 0 |
+| `protection/` | 6 | 6 | 0 |
 | `redis/` | 5 | 5 | 0 |
 | `security/` | 3 | 3 | 0 |
 | `snowflake/` | 1 | 1 | 0 |

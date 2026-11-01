@@ -1,5 +1,7 @@
 package com.rag.common.autoconfigure;
 
+import com.rag.common.protection.RouteResolution;
+import com.rag.common.protection.RouteTemplateSource;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import jakarta.servlet.FilterChain;
@@ -9,14 +11,8 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.web.servlet.HandlerExecutionChain;
-import org.springframework.web.servlet.HandlerMapping;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * §3.3「机制可证」守门：<b>熔断隔离 key 真的是 {@code METHOD://<路由模板>}</b>，
@@ -31,6 +27,9 @@ import static org.mockito.Mockito.when;
  *   go-zero@v1.10.2/rest/handler/breakerhandler.go:36-42
  *       if cw.Code &lt; http.StatusInternalServerError { promise.Accept() } else { promise.Reject(...) }
  * </pre>
+ *
+ * <p>⚠️ <b>抄写基准 = RAG</b>：{@code GoStyleBreakerFilter#routeKey} 的三态回落语义
+ * （TEMPLATE ⇒ 模板；NOT_MATCHED ⇒ 跳过 breaker；UNKNOWN ⇒ <b>回落 raw URI</b>）。
  */
 class RouteIsolationFilterTest {
 
@@ -39,11 +38,11 @@ class RouteIsolationFilterTest {
 
     @Test
     @DisplayName("隔离 key = METHOD://<注册期路由模板>（不是原始 URI）")
-    void isolationKeyUsesRouteTemplate() throws Exception {
+    void isolationKeyUsesRouteTemplate() {
         CircuitBreakerRegistry registry = CircuitBreakerRegistry.ofDefaults();
         runner
                 .withBean(CircuitBreakerRegistry.class, () -> registry)
-                .withBean(RequestMappingHandlerMapping.class, () -> mappingOf("/article/{id}"))
+                .withBean(RouteTemplateSource.class, () -> templateSource("/article/{id}"))
                 .run(context -> {
                     ProtectionAutoConfiguration.RouteIsolationFilter filter =
                             context.getBean(ProtectionAutoConfiguration.RouteIsolationFilter.class);
@@ -64,11 +63,11 @@ class RouteIsolationFilterTest {
 
     @Test
     @DisplayName("失败判据 = 状态码 ≥ 500（4xx 不算失败）")
-    void onlyServerErrorsCountAsFailure() throws Exception {
+    void onlyServerErrorsCountAsFailure() {
         CircuitBreakerRegistry registry = CircuitBreakerRegistry.ofDefaults();
         runner
                 .withBean(CircuitBreakerRegistry.class, () -> registry)
-                .withBean(RequestMappingHandlerMapping.class, () -> mappingOf("/article"))
+                .withBean(RouteTemplateSource.class, () -> templateSource("/article"))
                 .run(context -> {
                     ProtectionAutoConfiguration.RouteIsolationFilter filter =
                             context.getBean(ProtectionAutoConfiguration.RouteIsolationFilter.class);
@@ -86,11 +85,11 @@ class RouteIsolationFilterTest {
 
     @Test
     @DisplayName("5xx 计入失败（Go 的 cw.Code >= 500）")
-    void serverErrorCountsAsFailure() throws Exception {
+    void serverErrorCountsAsFailure() {
         CircuitBreakerRegistry registry = CircuitBreakerRegistry.ofDefaults();
         runner
                 .withBean(CircuitBreakerRegistry.class, () -> registry)
-                .withBean(RequestMappingHandlerMapping.class, () -> mappingOf("/article"))
+                .withBean(RouteTemplateSource.class, () -> templateSource("/article"))
                 .run(context -> {
                     ProtectionAutoConfiguration.RouteIsolationFilter filter =
                             context.getBean(ProtectionAutoConfiguration.RouteIsolationFilter.class);
@@ -106,12 +105,36 @@ class RouteIsolationFilterTest {
     }
 
     @Test
-    @DisplayName("路由模板取不到时**放行**（绝不静默关掉熔断保护，也不按原始 URI 退化隔离）")
-    void unresolvedTemplatePassesThrough() throws Exception {
+    @DisplayName("V05 修法：模板判不出来（UNKNOWN）⇒ 回落 raw URI 分桶，**熔断仍生效**")
+    void unknownTemplateFallsBackToRawUriAndBreakerStillApplies() {
         CircuitBreakerRegistry registry = CircuitBreakerRegistry.ofDefaults();
         runner
                 .withBean(CircuitBreakerRegistry.class, () -> registry)
-                .withBean(RequestMappingHandlerMapping.class, () -> mappingOf(null))
+                .withBean(RouteTemplateSource.class, () -> request -> RouteResolution.UNKNOWN)
+                .run(context -> {
+                    ProtectionAutoConfiguration.RouteIsolationFilter filter =
+                            context.getBean(ProtectionAutoConfiguration.RouteIsolationFilter.class);
+
+                    MockHttpServletRequest request = new MockHttpServletRequest("GET", "/nope");
+                    MockHttpServletResponse response = new MockHttpServletResponse();
+                    filter.doFilter(request, response, okChain());
+
+                    // ⚠️ **与修复前相反**：修复前「模板取不到 ⇒ 放行、不熔断」⇒ 熔断被静默关掉
+                    //    ⇒ 与 RAG 的 `GoStyleBreakerFilter#routeKey`（回落 raw URI）语义相反。
+                    //    现断言：仍然建 breaker（隔离单位退化成「每 URI 一个」），且请求已放行到业务链。
+                    assertThat(names(registry)).containsExactly("GET:///nope");
+                    CircuitBreaker breaker = registry.circuitBreaker("GET:///nope");
+                    assertThat(breaker.getMetrics().getNumberOfSuccessfulCalls()).isEqualTo(1);
+                });
+    }
+
+    @Test
+    @DisplayName("确定未命中（NOT_MATCHED）⇒ 本层完全不参与：不建 breaker、不计数（Go 的 404 链没有 breaker）")
+    void notMatchedSkipsBreakerEntirely() {
+        CircuitBreakerRegistry registry = CircuitBreakerRegistry.ofDefaults();
+        runner
+                .withBean(CircuitBreakerRegistry.class, () -> registry)
+                .withBean(RouteTemplateSource.class, () -> request -> RouteResolution.NOT_MATCHED)
                 .run(context -> {
                     ProtectionAutoConfiguration.RouteIsolationFilter filter =
                             context.getBean(ProtectionAutoConfiguration.RouteIsolationFilter.class);
@@ -119,12 +142,29 @@ class RouteIsolationFilterTest {
                     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/nope");
                     MockHttpServletResponse response = new MockHttpServletResponse();
                     boolean[] called = {false};
-                    filter.doFilter(request, response, (req, res) -> {
-                        called[0] = true;
-                    });
+                    filter.doFilter(request, response, (req, res) -> called[0] = true);
 
                     assertThat(called[0]).isTrue();
+                    // ⚠️ 与 UNKNOWN 的差别就在这里：NOT_MATCHED ⇒ **连 breaker 都不建**
                     assertThat(names(registry)).isEmpty();
+                });
+    }
+
+    @Test
+    @DisplayName("没有 RouteTemplateSource（判不出来）⇒ 回落 raw URI，熔断仍生效")
+    void absentTemplateSourceFallsBackToRawUri() {
+        CircuitBreakerRegistry registry = CircuitBreakerRegistry.ofDefaults();
+        runner
+                .withBean(CircuitBreakerRegistry.class, () -> registry)
+                .run(context -> {
+                    ProtectionAutoConfiguration.RouteIsolationFilter filter =
+                            context.getBean(ProtectionAutoConfiguration.RouteIsolationFilter.class);
+
+                    MockHttpServletRequest request = new MockHttpServletRequest("GET", "/article/7");
+                    MockHttpServletResponse response = new MockHttpServletResponse();
+                    filter.doFilter(request, response, okChain());
+
+                    assertThat(names(registry)).containsExactly("GET:///article/7");
                 });
     }
 
@@ -137,25 +177,9 @@ class RouteIsolationFilterTest {
 
     // ── 测试替身 ────────────────────────────────────────────────────────
 
-    /**
-     * 造一个 {@link RequestMappingHandlerMapping}：它的 {@code getHandler(...)}
-     * 会像 {@code AbstractHandlerMapping} 那样把模板写进<b>请求属性</b>。
-     */
-    private static RequestMappingHandlerMapping mappingOf(String template) {
-        RequestMappingHandlerMapping mapping = mock(RequestMappingHandlerMapping.class);
-        try {
-            when(mapping.getHandler(any())).thenAnswer(invocation -> {
-                jakarta.servlet.http.HttpServletRequest request = invocation.getArgument(0);
-                if (template != null) {
-                    request.setAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE, template);
-                }
-                return new HandlerExecutionChain(new Object());
-            });
-        } catch (Exception e) {
-            // ⚠️ `AbstractHandlerMapping#getHandler` 声明 throws Exception ⇒ 这里就地收掉
-            throw new IllegalStateException(e);
-        }
-        return mapping;
+    /** 恒定返回同一个模板的 {@link RouteTemplateSource}。 */
+    private static RouteTemplateSource templateSource(String template) {
+        return request -> RouteResolution.template(template);
     }
 
     private static FilterChain okChain() {

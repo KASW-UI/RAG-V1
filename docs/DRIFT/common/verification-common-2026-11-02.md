@@ -142,18 +142,18 @@
 |---|---|---|---|---|---|
 | `GoStyleProtectionProperties.java`（Go struct tag 默认值显式化，12 项） | 配置聚合点 | `protection/ProtectionProperties.java` | 1:1 | **PASS** | 源码级：prefix `rag.protection` + **12 项默认值逐条一致**（maxConns 10000 / maxBytes 1048576 / cpu 900‰ SYSTEM / breaker on / outbound on + cap 0 / redis-deadline on / stat on / prometheus on） |
 | `GoStyleProtectionConfiguration.java` | properties 注册 + client 配置 `@Import` | `autoconfigure/ProtectionAutoConfiguration.java`（`@EnableConfigurationProperties`） | N:1 | **PASS** | 源码级 |
-| `GoStyleBreakerRouteTemplateAutoConfiguration.java` | 注册路由模板解析器 | `protection/RouteTemplateSource.java` + `RouteResolution.java` | 1:N | **NOT_IMPLEMENTED** | 源码级：C 侧两个类**类体为空且全仓零引用**；🔴 批 3 的 `RouteIsolationFilter` **绕过**它们直接读 `RequestMappingHandlerMapping` ⇒ **职责断裂** ⇒ **DRIFT-COMMON-V06** |
+| `GoStyleBreakerRouteTemplateAutoConfiguration.java` | 注册路由模板解析器 | `autoconfigure/RouteTemplateAutoConfiguration.java`（独立 auto-config）| 1:1 | **PASS** | ✅ **V06 已修**（2026-11-02）：拆成**独立 auto-config**（类级 `@ConditionalOnClass(RequestMappingHandlerMapping.class)`）⇒ `ProtectionAutoConfiguration` 常量池里**不出现** Spring MVC 类型 ⇒ 10 个 rpc 进程加载它时不会 `NoClassDefFoundError`；对拍：`AutoConfigurationImportsTest` 断言它在 classpath 清单上（Boot 真实 import selector 选出）|
 | `GoStyleBreaker.java`（googlebreaker 逐行复刻：滚动窗口 + 概率 dropRatio + force-pass） | 熔断算法 | `autoconfigure/ProtectionAutoConfiguration.java` 内嵌 `RouteIsolationFilter`（resilience4j 承载） | N:1 | **INTENTIONALLY_CHANGED** | 源码级：D-02 已登记「阈值参数不等价」；🔴 **但实测差异比登记的更大** —— B 是**概率性拒绝 + 无三态**，C 是 resilience4j **计数窗口 + 打开/半开/关闭** ⇒ **拒绝语义类型都不同** ⇒ **DRIFT-COMMON-V09** |
-| `GoStyleBreakerFilter.java` | HTTP 按路由熔断 | 同上 | N:1 | **PASS**（判据）/ **FAIL**（回落语义） | 源码级：隔离 key `METHOD://<模板>` ⇒ `GET:///article/{id}`（**3 斜杠**）与 Go 逐字一致；成败判据 `<500` 成功、**下游 200+业务码不触发** 与 Go 逐字一致；🔴 **回落语义相反** ⇒ **DRIFT-COMMON-V05** |
+| `GoStyleBreakerFilter.java` | HTTP 按路由熔断 | 同上 | N:1 | **PASS** | 源码级：隔离 key `METHOD://<模板>` ⇒ `GET:///article/{id}`（**3 斜杠**）与 Go 逐字一致；成败判据 `<500` 成功、**下游 200+业务码不触发** 与 Go 逐字一致；✅ **V05 已修**（2026-11-02）：**回落语义已与 RAG 一致** —— `UNKNOWN`（模板判不出来）⇒ **回落 raw URI 分桶、熔断仍生效**（修正前是「放行、不熔断」⇒ **熔断被静默关掉**）；`NOT_MATCHED` ⇒ 本层完全不参与（Go 侧 404 链没有 breaker）；对拍：`RouteIsolationFilterTest`（6 例）含 `unknownTemplateFallsBackToRawUriAndBreakerStillApplies` / `notMatchedSkipsBreakerEntirely`；**变异实测**：把回落改回「放行」⇒ 2 例红 |
 | `GoStyleMaxConnsFilter.java`（全局信号量闸门） | 并发连接上限 | —（改为 Tomcat `server.tomcat.max-connections`） | N:1 | **NOT_IMPLEMENTED** | 源码级：yml 搬运已叫停 ⇒ **L-5 待办**；⚠️ B 侧全局闸门**本身已是签字偏离**（`SD-2026-10-25-01`，Go 是 per-route）⇒ C 若照抄需**重新登记** |
 | `GoStyleCpuSheddingFilter.java` | CPU 自适应降载 | `autoconfigure/ProtectionAutoConfiguration.java` 内嵌 `CpuSheddingFilter` + `protection/CpuThresholdHealthIndicator.java` | N:1 | **INTENTIONALLY_CHANGED** | 源码级：D-04 已登记「只有 CPU 一半判据」；⚠️ 另有一处**未登记**缺口：每分钟降载统计日志行 ⇒ **DRIFT-COMMON-V10** |
 | `GoStyleCpuReader.java`（CPU 千分比采样） | CPU 读数 | `protection/CpuThresholdHealthIndicator.java` | N:1 | **PASS**（fail-open） | 源码级：`UNAVAILABLE=-1` 哨兵 + fail-open 保留 |
 | `GoStyleMaxBytesFilter.java` | Content-Length 上限 | `protection/MaxBytesFilter.java` | 1:1 | **PASS** | 源码级：裸 **413** + 空 body + **无 Content-Type**；只判 `Content-Length`（chunked ⇒ 放行）；`n<=0` no-op；槽位 `+8` |
 | `GoStyleAdaptiveShedder.java`（降载双条件判据） | QPS×RT 动态上限 | —（只有 CPU 一半） | N:1 | **NOT_IMPLEMENTED** | D-04 已登记（L3） |
 | `GoStyleSheddingStat.java`（三计数 + 每分钟日志） | 降载统计 | — | — | **NOT_IMPLEMENTED** | **DRIFT-COMMON-V10** |
-| `GoStyleRouteTemplateSource.java` | 「能解析路由模板」窄接口 | `protection/RouteTemplateSource.java`（空类） | 1:1 | **NOT_IMPLEMENTED** | **DRIFT-COMMON-V06** |
-| `GoStyleRouteTemplateResolver.java`（三态解析 + 只认 `RequestMappingHandlerMapping`） | 模板解析 | —（`RouteIsolationFilter` 内联实现） | N:1 | **PASS**（行为）/ **FAIL**（职责断裂） | 源码级：三态语义在 C 侧被简化为「拿到 / 拿不到」⇒ **DRIFT-COMMON-V05 + V06** |
-| `GoStyleRouteResolution.java` | 三态值对象 | `protection/RouteResolution.java`（空类） | 1:1 | **NOT_IMPLEMENTED** | **DRIFT-COMMON-V06** |
+| `GoStyleRouteTemplateSource.java` | 「能解析路由模板」窄接口 | `protection/RouteTemplateSource.java`（`@FunctionalInterface`）| 1:1 | **PASS** | ✅ **V06 已修**（2026-11-02）：从空壳填成窄接口；**窄接口不引用任何 Spring MVC 类型** ⇒ 无 spring-webmvc 的进程能加载它；**消费方已改为认这个接口**（`RouteIsolationFilter` 不再直接读 `RequestMappingHandlerMapping`）|
+| `GoStyleRouteTemplateResolver.java`（三态解析 + 只认 `RequestMappingHandlerMapping`） | 模板解析 | `protection/RouteTemplateResolver.java`（实现 `RouteTemplateSource`）+ `autoconfigure/RouteTemplateAutoConfiguration.java` | 1:N | **PASS** | ✅ **V06 已修**（2026-11-02）：三态语义**完整落地**（不再是「拿到 / 拿不到」两态）；对拍：`RouteTemplateResolverTest`（5 例）覆盖 TEMPLATE / NOT_MATCHED / UNKNOWN（异常·非 HandlerMethod·无 mapping）三条路径 |
+| `GoStyleRouteResolution.java` | 三态值对象 | `protection/RouteResolution.java`（`record` + `Kind{TEMPLATE,NOT_MATCHED,UNKNOWN}`）| 1:1 | **PASS** | ✅ **V06 已修**（2026-11-02）：三态语义逐条保留；`NOT_MATCHED` 常量 ⇒ Go 侧 404 链里**没有 breaker**；`UNKNOWN` ⇒ 调用方**回落 raw URI**（不是「放行」）|
 | `GoStyleStatusCapturingResponse.java` | 只观测状态码的 wrapper | `autoconfigure/ObservabilityAutoConfiguration.java` 内 `ContentCachingResponseWrapper` | N:1 | **PASS** | 源码级：隐式 200 初值 + `<500` 判据等价 |
 | `GoStyleRpcSheddingInterceptor.java` | gRPC 服务端降载 | — | — | **NOT_IMPLEMENTED** | **DRIFT-COMMON-V03** |
 | `GoStyleRpcBreakerInterceptor.java` | gRPC 服务端熔断 | — | — | **NOT_IMPLEMENTED** | 同上 |
@@ -343,6 +343,7 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | **严重程度** | **🔴 严重**（保护能力的静默消失 + 注释与实现自相矛盾） |
 | **修复建议** | 恢复三态：`NOT_MATCHED` ⇒ 跳过 breaker；`UNKNOWN` ⇒ **回落 raw URI 分桶**（与 B 一致）。⚠️ 修正 javadoc 那句自相矛盾的表述 |
 | **验证方法** | 构造一个 `RequestMappingHandlerMapping.getHandler` 抛异常 ⇒ 断言请求仍被 breaker 计数（而非直接放行） |
+| **✅ 修复状态** | **2026-11-02 已修（批次 A）** —— `RouteIsolationFilter` 改经窄接口 `RouteTemplateSource` 取三态；`UNKNOWN` ⇒ **回落 raw URI 分桶**（熔断仍生效）、`NOT_MATCHED` ⇒ 本层完全不参与。对拍：`RouteIsolationFilterTest` 6 例；**变异实测**：把回落改回「放行」⇒ **2 例红**（`unknownTemplateFallsBackToRawUriAndBreakerStillApplies` / `absentTemplateSourceFallsBackToRawUri`）|
 
 ### 🔴 DRIFT-COMMON-V06｜三个「窄接口」是空类且零引用；模板解析职责断裂
 
@@ -357,6 +358,7 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | **严重程度** | **🔴 严重**（登记表与实现不符 + 职责断裂） |
 | **修复建议** | ① 修 **DRIFT-COMMON-V05** 时让 `RouteIsolationFilter` **经由** `RouteTemplateSource` 抽象取模板 ⇒ 一举恢复三态与窄接口的职责；② `RouteResolution` 落成三态值对象；③ `ClientDisconnectProbe` 要么实现（**注意 F-7：Tomcat 11→10.1 的反射链未验证**），要么**从 `common/` 移除并在映射表登记为「D4 生态吸收 / 暂不实现」** —— 现在这个「空类 + 映射表标 ✅ 已落地」的中间态最糟 |
 | **验证方法** | 修完后：断言 `RouteTemplateSource` 有 1 个实现 Bean；断言三态可区分 |
+| **✅ 修复状态** | **2026-11-02 部分修复（批次 A）** —— ① `RouteResolution` 落成三态 `record`（`Kind{TEMPLATE,NOT_MATCHED,UNKNOWN}`）；② `RouteTemplateSource` 落成 `@FunctionalInterface` 窄接口；③ **新增** `protection/RouteTemplateResolver.java`（实现类）+ `autoconfigure/RouteTemplateAutoConfiguration.java`（独立 auto-config，类级 `@ConditionalOnClass` ⇒ 不让 MVC 类型进 `ProtectionAutoConfiguration` 常量池）；④ `RouteIsolationFilter` **改为经窄接口取模板** ⇒ 职责断裂闭合。对拍：`RouteTemplateResolverTest` 5 例（三态全覆盖）+ `RouteIsolationFilterTest` 6 例。<br>⚠️ **仍未修**：`observability/ClientDisconnectProbe.java` 仍为空壳 ⇒ 归 **V04**（HTTP 断连 499）批次 C 处理，**Tomcat 10.1 反射链须重测（F-7）** |
 
 ### 🟠 DRIFT-COMMON-V07｜空壳类实际 6 类，文档口径 3 类；`common/security/` 3 类上收了未实现
 
@@ -441,20 +443,32 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 
 ### 按状态（88 个 B 源类的承接结果）
 
-> **计数口径（§「状态自报 ≠ 现状」纪律）**：本表数字**从 §11.2 承接表的「状态」列逐行重数**（89 行），
-> **复合状态两边都计**（例：`PASS（部分）/ FAIL（职责断裂）` ⇒ PASS +1 且 FAIL +1）
-> ⇒ **不是手填**、也不是文件数/行数。
+> **计数口径（§「状态自报 ≠ 现状」纪律）**：本表数字**从 §11.2 承接表的「状态」列逐行重数**
+> ⇒ ⇒ **不是手填**、也不是文件数/行数。
+>
+> ⚠️ **口径订正（2026-11-02 · 批次 A）**：用同一脚本重数 **HEAD 版本**的 §11.2，发现**旧表自报数与自己的表差 2**：
+> 旧报「89 行 / 91 标记 / NOT_IMPLEMENTED 30」，**实测为 91 行 / 93 标记 / NOT_IMPLEMENTED 32**（PASS / FAIL 等其余各档一致）。
+> ⇒ 根因：**3 个 `users-common` 跨域上收行被当 1 行合并算**（−2 行），**2 个复合状态行（`PASS/FAIL`）的重复计数没对上**（−2 标记）。
+> ⇒ ⇒ 现全部按**实测**写，并给出可复算脚本。
 
 | 状态 | 数量 | 说明 |
 |---|---|---|
-| **PASS** | **50** | 职责已完整承接 + 行为一致 + 有证据（源码级/对拍）。**含本轮修复**：V01 的 2 个 redis auto-config + V02 的 2 个 MyBatis 拦截器 |
-| **NOT_IMPLEMENTED** | **30** | C 尚未实现对应职责（gRPC 保护链 5 层 + HTTP 超时/断连 + stat/shedding 统计面 + prometheus sink + OTel agent + MQ trace + 客户端熔断/deadline + 3 个窄接口 + JWT 3 类 + MaxConns + 降载双条件；含「1:N 承接但该行内含未实现部分」的标记） |
+| **PASS** | **53** | 职责已完整承接 + 行为一致 + 有证据（源码级/对拍）。**含已修项**：V01 的 2 个 redis auto-config + V02 的 2 个 MyBatis 拦截器 + **V05**（熔断回落语义）+ **V06**（窄接口 2 类 + 模板解析实现 + 消费方改走窄接口） |
+| **NOT_IMPLEMENTED** | **29** | C 尚未实现对应职责（gRPC 保护链 5 层 + HTTP 超时/断连 + stat/shedding 统计面 + prometheus sink + OTel agent + MQ trace + 客户端熔断/deadline + `ClientDisconnectProbe` + JWT 3 类 + MaxConns + 降载双条件；含「1:N 承接但该行内含未实现部分」的标记） |
 | **INTENTIONALLY_CHANGED** | **4** | 有明确批准依据（D3 starter 化 / D4 生态吸收 / D1 合并 api-rpc / D2+L-13+L-15+L-16 落点决策） |
-| **FAIL** | **3** | gRPC 链缺 5 层（**V03**）+ 熔断回落语义相反（**V05**）+ `GoStyleRouteTemplateResolver` 的职责断裂（**V06**）。⚠️ **V01 / V02 已于 2026-11-02 修复** ⇒ 不再计入 |
+| **FAIL** | **1** | gRPC 链缺 5 层（**V03**）。⚠️ **V01 / V02 / V05 / V06 已于 2026-11-02 修复** ⇒ 不再计入 |
 | **FRAMEWORK_DIFFERENCE** | **2** | `TraceparentFilter`（Tomcat/OTel 链路）、`GoStyleOtelAutoConfiguration`（D-03 已登记） |
 | **NOT_VERIFIED** | **2** | `JsonbTypeHandler`/`JsonTextTypeHandler`（跨域上收，本次范围外）；gRPC 指标装配点为空 |
 | **BLOCKED** | **0** | 无（Tomcat 10.1 反射链一项因 C 侧未实现而**不适用**，实现时才会 BLOCKED） |
-| **合计标记数** | **91**（89 个承接行，复合状态重复计入） | 覆盖 B 侧 **88/88** 个主类（89 行含 1 行跨域上收的 `users-common` 三类合并行） |
+| **合计标记数** | **91**（**91 个承接行**，V05/V06 修复后**无复合状态行** ⇒ 行数 = 标记数） | 覆盖 B 侧 **88/88** 个主类（88 行 = 87 行 B 类（`SnowflakeBean`+`SnowflakeProperties` 合并 1 行）+ 1 行 C 侧新增 typeHandler）**＋ 3 行 `users-common` 跨域上收** |
+
+> **可复算脚本**（从 §11.2 的「状态」列逐行重数，**禁止手填**）：
+> ```python
+> # 逐行扫 §11.2 区间 → 每行取第 5 格（状态）→ 匹配 **STATE** 标记 → 计数
+> # 复合状态（**PASS**…/ **FAIL**…）两边都计
+> ```
+> 本轮实测输出：`承接行 = 91 · 标记数 = 91 · 复合状态行 = 0 · PASS 53 / NOT_IMPLEMENTED 29 /
+> INTENTIONALLY_CHANGED 4 / FAIL 1 / FRAMEWORK_DIFFERENCE 2 / NOT_VERIFIED 2 / BLOCKED 0`
 
 ### 按「能力面」看（更能反映真实完成度）
 
@@ -466,7 +480,8 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 | 保护层配置 + 默认值 | 🟢 **已承接** | `rag.protection` 12 项默认值逐条一致 |
 | Filter 槽位 | 🟢 **已承接** | +2/+3/+5/+6/+8 与 B 一致 |
 | 观测常量与判定顺序 | 🟢 **已承接** | 7 key / 3 kind / 500ms / 严格 `>` / 业务码优先 / `http.route`=原始 URI |
-| HTTP 熔断（key + 判据） | 🟡 **部分** | key 与判据一致；**回落语义相反**（V05）+ **机制类型不同**（V09） |
+| HTTP 熔断（key + 判据 + 回落语义） | 🟢 **已承接** | key 与判据一致；✅ **回落语义已与 B 一致**（V05 已修：`UNKNOWN` ⇒ 回落 raw URI、熔断仍生效；`NOT_MATCHED` ⇒ 不进 breaker）；⚠️ **机制类型不同**（V09，仍挂 D-02 的 L3 降级） |
+| 路由模板解析（三态 + 窄接口） | 🟢 **已承接** | ✅ **V06 已修**：`RouteResolution`（三态 record）+ `RouteTemplateSource`（窄接口）+ `RouteTemplateResolver`（实现）+ `RouteTemplateAutoConfiguration`（独立 auto-config）⇒ 消费方**经窄接口**取模板 |
 | HTTP 熔断（resilience4j 接线） | 🟢 **已承接** | `compose` 显式嵌套 + 单次 `server.intercept(...)` ⇒ 比 B 的 10 处分散更健壮 |
 | CPU 降载 | 🟡 **部分** | CPU 一半（D-04 已登记）；**统计日志缺席**（V10 未登记） |
 | MaxBytes | 🟢 **已承接** | 裸 413 + 空 body + 无 Content-Type + 只判 Content-Length |
@@ -488,12 +503,12 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 
 | 指标 | B（`service/common`） | C（`common/`） | 比率 |
 |---|---|---|---|
-| 测试类 | **93** | **16** | 17% |
-| 测试例 | **488**（离线实测全绿） | **104** | 21% |
+| 测试类 | **93** | **17** | 18% |
+| 测试例 | **488**（离线实测全绿） | **111** | 23% |
 | 有测试的 B 能力面 | 12 个包全覆盖 | **9 个能力面**（信封/雪花/日志/Jackson 5 类/观测/熔断/gRPC 适配器/**Redis 装配**/**SQL 超时装配**） | — |
 
-> ⚠️ **测试覆盖仍是本次最大的量化缺口**：B 侧 488 例里有 **384 例**在 C 侧**没有对应测试**（含 communityfact 41 例、protection 约 140 例、observability 约 130 例、redis 约 16 例、persistence 约 21 例、spring 34 例）。
-> ⇒ C 侧目前的 96 例**证明了「已实现的部分是对的」**，**不能证明「没实现的部分不需要」**。
+> ⚠️ **测试覆盖仍是本次最大的量化缺口**：B 侧 488 例里有 **377 例**在 C 侧**没有对应测试**（含 communityfact 41 例、protection 约 140 例、observability 约 130 例、redis 约 16 例、persistence 约 21 例、spring 34 例）。
+> ⇒ C 侧目前的 111 例**证明了「已实现的部分是对的」**，**不能证明「没实现的部分不需要」**。
 
 ---
 
@@ -501,18 +516,18 @@ Go = **status code 本身就是业务码** + description 业务文案；grpc-jav
 
 | # | 问题 | 结论 |
 |---|---|---|
-| 1 | **C 是否完整承接 B 的全部实际职责？** | ❌ **否**（**但比审核当日好一截**）。88 个 B 源类中 **30 个 NOT_IMPLEMENTED** + **3 个 FAIL**。缺的主要是：**gRPC 保护链 5 层**、**HTTP 超时/断连**、**Prometheus 写入面**、**每分钟统计面**、**OTel 全局装配**、**MQ trace**、**JWT/口令**、**MaxConns**、**降载双条件**。<br>✅ **已修**：**Redis 两项**（V01）与 **SQL 超时链**（V02）—— 审核当日这两项是「实现了但没接线」的静默失效，2026-11-02 已修并补了真触发测试 |
+| 1 | **C 是否完整承接 B 的全部实际职责？** | ❌ **否**（**但比审核当日好一截**）。88 个 B 源类中 **29 个 NOT_IMPLEMENTED** + **1 个 FAIL**（**V03** gRPC 保护链 5 层）。缺的主要是：**HTTP 超时/断连**、**Prometheus 写入面**、**每分钟统计面**、**OTel 全局装配**、**MQ trace**、**JWT/口令**、**MaxConns**、**降载双条件**、**`ClientDisconnectProbe`**。<br>✅ **已修**：**Redis 两项**（V01）、**SQL 超时链**（V02）、**熔断回落语义**（V05）、**窄接口职责断裂**（V06）—— 前两项是「实现了但没接线」的静默失效，后两项是「语义反向 / 载体空壳」，均已于 2026-11-02 修完并补了真触发测试 |
 | 2 | **Mapping_Table 的 RAG→RAG-V1 映射是否与当前真实代码一致？** | ⚠️ **部分不一致**。§7.4 #6 的 B 列实况**已过时**（B 现为 10/10 都有 `GrpcServerConfigurer`）⇒ **DRIFT-COMMON-V08**；§1.12 把 `ClientDisconnectProbe`/`RouteResolution`/`RouteTemplateSource` 标为「✅ 已落地」但**实际是空类** ⇒ **DRIFT-COMMON-V06**；§1.11 的 `web/` 落点数与 §2.3 的「68 已落地」口径需按 65/6 校正 ⇒ **DRIFT-COMMON-V07** |
 | 3 | **File_Tree 规定的目标结构是否正确落地？** | ✅ **基本落地**。`common/` 12 个包与 File_Tree 一致；`gen-file-tree.py` 幂等；守门 `check-docs-vs-tree.py` EXIT=0。⚠️ 唯一例外：**3 个空类占位**（窄接口）破坏了「结构已落地」的语义 |
-| 4 | **多文件合并是否造成职责、分支或异常路径遗漏？** | ⚠️ **是**。① gRPC 链合并 ⇒ **5 层全缺**（V03）；② HTTP 保护链合并 ⇒ MaxConns 层缺 + **模板解析三态压成两态且回落语义相反**（V05）+ **窄接口被绕过**（V06）。✅ 社区事实 1→13 拆分**无断裂**（调用链/数据/异常/事务/重复/遗漏/时机七项全过） |
+| 4 | **多文件合并是否造成职责、分支或异常路径遗漏？** | ⚠️ **是（但已从 3 处降到 1 处）**。① gRPC 链合并 ⇒ **5 层全缺**（**V03** · 仍 🔴）；② HTTP 保护链合并 ⇒ MaxConns 层缺（**L-5** · 叫停 yml）；③ ~~模板解析三态压成两态且回落语义相反~~ ⇒ ✅ **V05 已修**（三态恢复 + 回落 raw URI）；④ ~~窄接口被绕过~~ ⇒ ✅ **V06 已修**（窄接口填实 + 消费方改走窄接口）。✅ 社区事实 1→13 拆分**无断裂**（调用链/数据/异常/事务/重复/遗漏/时机七项全过） |
 | 5 | **文件拆分是否造成调用链、数据传递或事务边界断裂？** | ✅ **否**（就已拆分的部分）。`Wire`→13 类、`Logger`→4 类、`Snowflake`→3 类、`GoStyleOtelConfig`→`ObservabilityProperties` 均链路完整。⚠️ 唯一异常：`GoStyleOtelConfig` 的 `protocol`/`sampler`/`endpoint` **3 项丢失** |
 | 6 | **API + RPC 合并是否改变原有入口和执行行为？** | ⚠️ **本次范围外**（只审 `common/`）。但已取得一条相关证据：**gRPC 拦截链挂载点上收到共享层 1 份后，10 个域全覆盖**，而 B 侧是 10 处分散（且历史上曾有 3 域漏挂）⇒ **合并方向是改善，不是破坏**。⚠️ 但 **gRPC 链只挂 1 层** ⇒ 合并后的 gRPC 入口**保护能力比 B 弱**（V03） |
-| 7 | **Common Starter 上收是否遗漏原有消费方？** | ⚠️ **部分是**。① 11 个 Jackson/HTTP 工具类上收后**域内零副本** ⇒ ✅ 无覆盖遗漏；② JWT/口令 3 类上收到 `common/security/` 但**全空壳** ⇒ 消费方无载体（V07）；③ ✅ **`redis/` 2 个 auto-config 已修**（V01：登记进 imports ⇒ 上收不再是「搁浅」）；④ **SQL 超时链的注册义务已从「B 侧域内 5 份 `@Bean`」上收到共享层 1 份**（V02）；⑤ `commonfact` 的 **favorite 域**上收会改变其 wire 行为 ⇒ **待裁决**（V11，映射表 §7.4 #1） |
+| 7 | **Common Starter 上收是否遗漏原有消费方？** | ⚠️ **部分是**。① 11 个 Jackson/HTTP 工具类上收后**域内零副本** ⇒ ✅ 无覆盖遗漏；② JWT/口令 3 类上收到 `common/security/` 但**全空壳** ⇒ 消费方无载体（V07）；③ ✅ **`redis/` 2 个 auto-config 已修**（V01：登记进 imports ⇒ 上收不再是「搁浅」）；④ **SQL 超时链的注册义务已从「B 侧域内 5 份 `@Bean`」上收到共享层 1 份**（V02）；⑤ ✅ **路由模板解析的上收已闭环**（V06：窄接口 + 实现 + 独立 auto-config 三件套 ⇒ 消费方**真的经窄接口**取模板，不再绕过）；⑥ `commonfact` 的 **favorite 域**上收会改变其 wire 行为 ⇒ **待裁决**（V11，映射表 §7.4 #1） |
 | 8 | **Spring Boot 4 → 3.5 是否引入业务可观察行为变化？** | ⚠️ **是，且有 1 项曾未被察觉 —— 现已修复**。已适配 11 项（F-1~F-5、F-7~F-15）；**曾未被察觉的 1 项 = F-6**：imports 登记面从 8 行变 7 行 ⇒ **2 个已实现的能力静默失效**（V01）⇒ ✅ **2026-11-02 已修**（登记回 10 行）**且守门已扩**：新判据「每个 `@AutoConfiguration` 类都必须有激活路径」⇒ 覆盖**别的包**下的 auto-config ⇒ 同类缺口当场变红。其余：**Jackson 3→2** 经 52 例对拍覆盖；**Spring 7→6.2** 的 converter 覆写点漂移编译期即红（不会静默） |
 | 9 | **Tomcat / Jackson / Spring Framework 的底层版本变化是否产生实际漂移？** | ✅ **Jackson / Spring 已回改且有对拍**（F-1~F-3）。⚠️ **Tomcat 11→10.1 的实际漂移尚未验证** —— B 的 `GoStyleClientDisconnectProbe` 反射链取证全部基于 Tomcat 11 ⇒ C 侧实现该能力时**必须重测**（F-7，当前因未实现而不适用） |
-| 10 | **哪些差异已经通过证据证明安全？** | ① communityfact 的 23 个 L1 JSON tag + `omitempty` 语义 + `DeliveryStatus` 取值；② JCS 同库 ⇒ 幂等指纹不漂；③ 响应信封 `{code,msg,data}` 与 `data:null` 保留；④ 404/405/400/413/503 的状态码 + 头 + body 字节；⑤ 雪花位段与时钟回拨免疫；⑥ `rag.protection` 12 项默认值；⑦ Filter 槽位；⑧ 观测 7 个 span key + 3 个 kind + 500ms + 严格 `>` + 判定顺序 + `http.route` 语义；⑨ HTTP 熔断隔离 key 与成败判据；⑩ 三处 Boot 4→3.5 包名回改；⑪ A3 的 gRPC 挂载点（有真触发测试）；⑫ A5/A6/A12 三条守门 |
-| 11 | **哪些差异仍然无法确认？** | ① Redis 2 项的**运行期**行为（上游未加载 ⇒ 无法验证）；② SQL 超时链的运行期行为（同上）；③ OTel span 的**真实**落地（bridge 离线不可得）；④ `Traceparent` 响应头的**真实**取值（依赖 OTel）；⑤ Tomcat 10.1 下 `ClientDisconnectProbe` 反射链是否可用；⑥ 跨域上收的 `JsonbTypeHandler`/`JsonTextTypeHandler`（不在本次范围） |
-| 12 | **当前 C 是否具备可靠的行为对拍条件？** | 🟡 **部分具备**。✅ 具备：B 侧 488 例可离线跑通（已实测）；C 侧 **104 例**可离线跑通；两侧共用同一套 JCS 库 ⇒ 指纹可比；**Boot 真实的 `AutoConfigurationImportSelector` 可在 C 侧跑**（⇒ 装配面可对拍）。⚠️ **不具备**：① 两侧**同 JVM 同输入**的对拍（Boot 4 + Boot 3.5 不能共载）⇒ 只能「B 的断言值 → C 的期望值」逐条搬运；② C 侧域为空壳 ⇒ **跨域的端到端对拍**（HTTP/gRPC/DB/Kafka）无法做；③ 真 Tomcat 对拍需补（AGENTS.md §八「HTTP 断言走真 Tomcat」尚未满足） |
+| 10 | **哪些差异已经通过证据证明安全？** | ① communityfact 的 23 个 L1 JSON tag + `omitempty` 语义 + `DeliveryStatus` 取值；② JCS 同库 ⇒ 幂等指纹不漂；③ 响应信封 `{code,msg,data}` 与 `data:null` 保留；④ 404/405/400/413/503 的状态码 + 头 + body 字节；⑤ 雪花位段与时钟回拨免疫；⑥ `rag.protection` 12 项默认值；⑦ Filter 槽位；⑧ 观测 7 个 span key + 3 个 kind + 500ms + 严格 `>` + 判定顺序 + `http.route` 语义；⑨ HTTP 熔断隔离 key 与成败判据；⑩ 三处 Boot 4→3.5 包名回改；⑪ A3 的 gRPC 挂载点（有真触发测试）；⑫ A5/A6/A12 三条守门；⑬ ✅ **熔断回落语义**（`UNKNOWN` ⇒ 回落 raw URI、`NOT_MATCHED` ⇒ 不进 breaker）＋ **三态模板解析**（`RouteTemplateResolverTest` 5 例）；⑭ ✅ **V01/V02 的装配面**（Boot 真实 `AutoConfigurationImportSelector` 从 classpath 清单选出） |
+| 11 | **哪些差异仍然无法确认？** | ① ~~Redis 2 项的运行期行为~~ ⇒ ✅ **V01 已修并有真触发断言**；② ~~SQL 超时链的运行期行为~~ ⇒ ✅ **V02 已修并有真触发断言**；③ OTel span 的**真实**落地（bridge 离线不可得）；④ `Traceparent` 响应头的**真实**取值（依赖 OTel）；⑤ Tomcat 10.1 下 `ClientDisconnectProbe` 反射链是否可用（C 侧尚未实现 ⇒ 不适用）；⑥ 跨域上收的 `JsonbTypeHandler`/`JsonTextTypeHandler`（不在本次范围） |
+| 12 | **当前 C 是否具备可靠的行为对拍条件？** | 🟡 **部分具备**。✅ 具备：B 侧 488 例可离线跑通（已实测）；C 侧 **111 例**可离线跑通；两侧共用同一套 JCS 库 ⇒ 指纹可比；**Boot 真实的 `AutoConfigurationImportSelector` 可在 C 侧跑**（⇒ 装配面可对拍）。⚠️ **不具备**：① 两侧**同 JVM 同输入**的对拍（Boot 4 + Boot 3.5 不能共载）⇒ 只能「B 的断言值 → C 的期望值」逐条搬运；② C 侧域为空壳 ⇒ **跨域的端到端对拍**（HTTP/gRPC/DB/Kafka）无法做；③ 真 Tomcat 对拍需补（AGENTS.md §八「HTTP 断言走真 Tomcat」尚未满足） |
 
 ---
 

@@ -30,7 +30,7 @@ docs/DRIFT/
 | `like` | like-service | ⬜ 未建立 |
 | `message` | message-service | ⬜ 未建立 |
 | `task` | task-service | ⬜ 未建立 |
-| `common` | common | 🟡 **已建立** —— [`common/verification-common-2026-11-02.md`](common/verification-common-2026-11-02.md)（RAG → RAG-V1 迁移审核 · 八阶段全覆盖 · B 88 类逐类承接 · **PASS 50 / FAIL 3 / NOT_IMPLEMENTED 30 / NOT_VERIFIED 2 / FRAMEWORK_DIFFERENCE 2 / INTENTIONALLY_CHANGED 4**（按 §11.2 状态列**逐行重数**）；🔴 剩余 3 条 FAIL = **V03**（gRPC 保护链 5 层）/ **V05**（熔断回落语义相反）/ **V06**（窄接口职责断裂）见报告 §11.5；✅ **V01**（Redis 两项未登记）/ **V02**（SQL 超时链零注册）已于 2026-11-02 修复并补真触发测试） |
+| `common` | common | 🟡 **已建立** —— [`common/verification-common-2026-11-02.md`](common/verification-common-2026-11-02.md)（RAG → RAG-V1 迁移审核 · 八阶段全覆盖 · B 88 类逐类承接 · **PASS 53 / FAIL 1 / NOT_IMPLEMENTED 29 / NOT_VERIFIED 2 / FRAMEWORK_DIFFERENCE 2 / INTENTIONALLY_CHANGED 4**（按 §11.2 状态列**逐行重数** · **91 承接行 / 91 标记**；⚠️ **口径订正**：旧版自报数与自己的表差 2，已按实测重写，根因见报告 §11.6）；🔴 剩余 **1** 条 FAIL = **V03**（gRPC 保护链 5 层）见报告 §11.5；✅ **V01**（Redis 两项未登记）/ **V02**（SQL 超时链零注册）/ **V05**（熔断回落语义相反）/ **V06**（窄接口职责断裂）已于 2026-11-02 修复并补真触发测试 + 变异实测） |
 | `proto` | proto | ⬜ 未建立（根级 proto 契约模块，10 个 `.proto`） |
 
 ## 纪律
