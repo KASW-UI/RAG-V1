@@ -23,6 +23,7 @@
 | [`架构符合性断言.md`](架构符合性断言.md) | **A1–A12** + 契约绑定矩阵 + RAG 现状的 2 颗哑弹 | 写测试 / 接新框架 / 质疑"这个结构对不对"时 |
 | [`RAG-困境反哺.md`](RAG-困境反哺.md) | **RAG 已踩的坑 → RAG-V1 的处置**：12 条困境 + 4 条已避开 + 1 条 **Boot 4 专属**坑（Kafka 拆模块 ⇒ D14 后本仓不适用）+ RAG 自己的台账矛盾 | **填实现之前先读** —— RAG 花了 3 天 / 2109 条测试换来的结论 |
 | [`GORM-MP-语义对照.md`](GORM-MP-语义对照.md) | **GORM → MyBatis-Plus 语义不等价对照表**（8 条坑 + 速查表） | **写任何 Mapper / Entity / 事务代码时** |
+| [`Worktree.md`](Worktree.md) | **并发工作树方法论**（建树 / 分支命名 / 基线核对 / 收口合回 / 冲突处置）—— 坐标已改写为 RAG-V1（基线 `main` · 远端 `origin` · 目录 `../RAG-V1.worktrees/`）；**不含** RAG 的 G1~G4 波次与收官历史 | **并行开工多个域之前必读**；每域收口回主干时对照 |
 | [`SpringBoot4-Jackson3-Migration-Cost.md`](SpringBoot4-Jackson3-Migration-Cost.md) | ⛔ **已作废（D14）** —— 原为「Jackson 2 → 3 迁移成本评估」（206 个命中文件分类 ⇒ 真要动的是 **76 个**；增量 **13.5~27 人天**）—— **本仓已回退到 Jackson 2 + Boot 3.5 ⇒ 该评估不适用**（全文保留作历史存档） | **查历史决策过程时**；现行口径看 **D14** |
 | [`SpringBoot4-Jackson3-Jackson2-Inventory.md`](SpringBoot4-Jackson3-Jackson2-Inventory.md) | ⛔ **已作废（D14）** —— 原为「Jackson 2 使用全量清单」（全扫 RAG 仓 1,381 个 `.java` ⇒ 命中 208 个，**逐个列出** + 7 种迁移模式分类）—— **本仓保持 Jackson 2 ⇒ 不需迁移**（全文保留作历史存档） | **查 RAG 侧 Jackson 使用面**时（回改 26 个 Jackson 3 文件要参照） |
 | [`MinIO-Jackson2-Isolation-Experiment.md`](MinIO-Jackson2-Isolation-Experiment.md) | ⛔ **已作废（D14）** —— 原为「MinIO × Jackson 2 隔离实验」（排除 `jackson-databind` 后 MinIO SDK 7 个 API 仍可用）—— **D14 起 MinIO 的 Jackson 2 是同代原生依赖 ⇒ 不排除**（全文保留作历史存档） | **查「为什么当初要排除」时**；现行口径看 **D14** |
@@ -51,6 +52,7 @@
 | 你要做的事 | 读 |
 |---|---|
 | **新 session 开工** | `../AGENTS.md` → `决策记录.md` → 本域 DRIFT 台账 |
+| **并行开工多个域** | `Worktree.md`（建树 / 基线核对 / 分支命名）→ `../AGENTS.md` §五.1（域验收必过 `.agents/verification.md`） |
 | **实现某个组件** | `完全spring化的文件树.md` §4 映射表 + §5 树 → 本域 DRIFT 台账 → Go 源码逐字对照 |
 | **对拍出现差异** | `L3-降级清单.md`（先排除降级项）→ DRIFT 台账 |
 | **改结构** | `决策记录.md`（**D1–D14** + 依赖关系图）→ `完全spring化的文件树.md` §0.3 |
@@ -66,9 +68,9 @@
 
 | 项 | 状态 |
 |---|---|
-| 文件树 | ✅ 完整落地（**599** Java = 589 主代码 + 10 测试骨架 / **16** pom / **10** proto（根级 `proto/` 模块）/ 10 `application.yml`）—— **D7 打平后**（proto 集中 + 模块打平 + 包压平） |
+| 文件树 | ✅ 完整落地（**615** Java = 591 主代码 + 24 测试 / **16** pom / **10** proto（根级 `proto/` 模块）/ 10 `application.yml`）—— **D7 打平后**（proto 集中 + 模块打平 + 包压平） |
 | 三方对照 | ✅ **13 份域文档**（`docs/Mapping_Table/<域>/<域>.md`，**按域分文件夹**；users 域拆四份：`_shared.md` + `users-common.md` + `user/user.md` + `admin/admin.md`）—— C 列 **591/591**、A 列 **482/482** 覆盖 **100%**；每份含 **§0.5「B → C 结构映射速查表」**；另登记 **90 条落点缺口**（🔴11 / 🟠 / 🟡） |
-| 实现内容 | 🟡 **共享层已开工** —— `common/` **71 类**中 **65 类已落地**（2026-11-02 批 1 = 49 类 ＋ 批 2 = 5 类 ＋ **批 3 = D4 生态重写 11 类**）· 3 类 2026-11-01 已落地 · **3 类仍空壳**（`security/` 3 类待确认跨模块搬家）；**10 个业务域仍全为空壳**<br>✅ `common/` 已是**真 starter**（7 个 `@AutoConfiguration` 由 `AutoConfiguration.imports` 注册 · 消费方零 `@Import`）⇒ **断言 A3 由 PENDING 转 PASS**（gRPC 拦截链真挂 `server.intercept(...)`）· §3.3 真触发测试 **13 类 / 96 例** |
+| 实现内容 | 🟡 **共享层已开工** —— `common/` **71 类**中 **68 类已落地**（2026-11-02 批 1 = 49 类 ＋ 批 2 = 5 类 ＋ **批 3 = D4 生态重写 11 类** · 另 3 类 2026-11-01 已落地）· **3 类仍空壳**（`security/` 3 类待确认跨模块搬家）；**10 个业务域仍全为空壳**<br>✅ `common/` 已是**真 starter**（7 个 `@AutoConfiguration` 由 `AutoConfiguration.imports` 注册 · 消费方零 `@Import`）⇒ **断言 A3 由 PENDING 转 PASS**（gRPC 拦截链真挂 `server.intercept(...)`）· §3.3 真触发测试 **13 类 / 96 例** |
 | proto 契约 | ✅ 与 Go 逐字节一致（仅 `java_package` 属表达层）；**10 个 `.proto` 集中在根级 `proto/` 模块**，pb 包名 `com.rag.proto.<域>` |
 | 编译 | ✅ `mvn -o clean test-compile` 全仓 **16/16 BUILD SUCCESS**（protoc 离线可跑） |
 | Kafka 装配 | ✅ 已适配 Boot 3.5（`common` + 7 个域统一 `org.springframework.kafka:spring-kafka`；**Boot 3.5 的 `KafkaAutoConfiguration` 在 `spring-boot-autoconfigure` 里 ⇒ 无 Boot 4 的拆模块缺口**）—— 见 `RAG-困境反哺.md` §四 K-1 |
