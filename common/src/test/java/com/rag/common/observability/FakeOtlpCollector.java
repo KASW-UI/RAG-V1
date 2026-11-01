@@ -82,7 +82,7 @@ public final class FakeOtlpCollector implements AutoCloseable {
         server = NettyServerBuilder.forPort(0).addService(service).build().start();
     }
 
-    /** 端点（{@code http://127.0.0.1:<port>}）—— 与 Go 的 {@code WithEndpoint} + {@code WithInsecure()} 同义。 */
+    /** 端点（{@code http://127.0.0.1:<port>}）—— 与上游的 {@code WithEndpoint} + {@code WithInsecure()} 同义。 */
     public String endpoint() {
         return "http://127.0.0.1:" + server.getPort();
     }

@@ -4,12 +4,12 @@ import io.grpc.Status;
 import org.springframework.http.HttpStatus;
 
 /**
- * Go {@code rest/internal/errcode/grpc.go} 的两条函数的 Java 等价物 ——
+ * B 侧 {@code rest/internal/errcode/grpc.go} 的两条函数的 Java 等价物 ——
  * {@code CodeFromGrpcError}（{@code grpc.go:12-42}）与 {@code IsGrpcError}（{@code grpc.go:45-55}）。
  *
- * <h2>Go 出处与控制流（逐字读过消费点，非推断）</h2>
+ * <h2>B 出处与控制流（逐字读过消费点，非推断）</h2>
  * <pre>
- * // go-zero v1.10.2 · rest/httpx/responses.go:142-159
+ * // B 侧：service/article/article-api/src/main/java/com/rag/article/article/api/http/GoStyleGrpcStatusMapper.java:12:142-159
  * func doHandleError(w http.ResponseWriter, err error, handler func(error) (int, any), …) {
  *     if handler == nil {                       // ← article-api **没有**注册 error handler
  *         if len(fns) > 0 { … }
@@ -42,16 +42,16 @@ import org.springframework.http.HttpStatus;
  * </pre>
  *
  * <h2>⚠️ body 文案也要对齐（这是 wire 层可见的）</h2>
- * <p>Go 的 {@code http.Error(w, err.Error(), …)} 写的是 {@code err.Error()}，
+ * <p>B 的 {@code http.Error(w, err.Error(), …)} 写的是 {@code err.Error()}，
  * 而 grpc-go 的 {@code *status.Error.Error()}（{@code internal/status/status.go:211-212}）
  * 转发到 {@code Status.String()}（同文件 {@code :201-203}）：
  * <pre>
  *   fmt.Sprintf("rpc error: code = %s desc = %s", s.Code(), s.Message())
  * </pre>
- * <p>⇒ Go 的 body 形如 {@code rpc error: code = Unavailable desc = minio down}。
+ * <p>⇒ B 的 body 形如 {@code rpc error: code = Unavailable desc = minio down}。
  * ⚠️ Java 侧 {@code StatusRuntimeException.getMessage()} 给的是
  * {@code UNAVAILABLE: minio down}（{@code Status.toString()}）—— <b>字面不同</b>。
- * 本类的 {@link #goErrorMessage} 负责把它复刻成 Go 的形状。
+ * 本类的 {@link #goErrorMessage} 负责把它复刻成 B 的形状。
  */
 /**
  * <p><b>抄写基准</b>：RAG {@code service/article/article-api/src/main/java/com/rag/article/article/api/http/GoStyleGrpcStatusMapper.java}
@@ -71,13 +71,13 @@ public final class GrpcStatusMapper {
     }
 
     /**
-     * Go {@code errcode.CodeFromGrpcError}（{@code grpc.go:12-42}）的逐条等价物。
+     * B 侧 {@code errcode.CodeFromGrpcError}（{@code grpc.go:12-42}）的逐条等价物。
      *
-     * <p>⚠️ 注意 Go 的 {@code switch} <b>没有 default 分支</b>，
+     * <p>⚠️ 注意 B 的 {@code switch} <b>没有 default 分支</b>，
      * 落到 {@code return http.StatusInternalServerError}（{@code grpc.go:41}）。
      * ⇒ <b>未知码落 500，不是 400</b>。
      *
-     * @param code gRPC 状态码；{@code null} 视作 Go 的 {@code codes.Unknown}（⇒ 500）
+     * @param code gRPC 状态码；{@code null} 视作 B 的 {@code codes.Unknown}（⇒ 500）
      */
     public static HttpStatus httpStatusOf(Status.Code code) {
         if (code == null) {
@@ -100,9 +100,9 @@ public final class GrpcStatusMapper {
     }
 
     /**
-     * Go {@code codes.Code.String()}（grpc-go {@code codes/code_string.go:31+}）的规范名。
+     * B 侧 {@code codes.Code.String()}（grpc-go {@code codes/code_string.go:31+}）的规范名。
      *
-     * <p>⚠️ Go 用的是 <b>CamelCase</b>（{@code Canceled} / {@code DeadlineExceeded}），
+     * <p>⚠️ B 侧 用的是 <b>CamelCase</b>（{@code Canceled} / {@code DeadlineExceeded}），
      * 而 Java {@code Status.Code} 的枚举名是 <b>SCREAMING_SNAKE</b>
      * （{@code CANCELLED} / {@code DEADLINE_EXCEEDED}）——
      * 直接用 {@code code.name()} 会得到 <b>字面不同</b>的 body。
@@ -133,12 +133,12 @@ public final class GrpcStatusMapper {
     }
 
     /**
-     * Go {@code err.Error()} 在 gRPC 状态错误下的<b>逐字</b>形状。
+     * B 侧 {@code err.Error()} 在 gRPC 状态错误下的<b>逐字</b>形状。
      *
      * <p>grpc-go {@code internal/status/status.go:201-203}：
      * <pre>fmt.Sprintf("rpc error: code = %s desc = %s", s.Code(), s.Message())</pre>
      *
-     * @param description 状态描述（可为空 ⇒ Go 的 {@code desc = } 后面留空）
+     * @param description 状态描述（可为空 ⇒ B 的 {@code desc = } 后面留空）
      */
     public static String goErrorMessage(Status.Code code, String description) {
         return "rpc error: code = " + goCodeName(code) + " desc = "

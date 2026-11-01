@@ -16,9 +16,9 @@ import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactor
 
 /**
  * <b>L4 idiomatization</b>：把 Lettuce 客户端的「<b>断连行为</b>」收进共享层，
- * 对齐 Go 的 <b>Redis 失败 ⇒ 尽快失败 ⇒ 上层 fail-open</b> 语义。
+ * 对齐 B 的 <b>Redis 失败 ⇒ 尽快失败 ⇒ 上层 fail-open</b> 语义。
  *
- * <p><b>Go 出处（消费点，不是声明点）</b>：
+ * <p><b>B 出处（消费点，不是声明点）</b>：
  * <pre>
  *   service/user/user/api/internal/middleware/checkblacklistmiddleware.go:35
  *       exists, err := m.Redis.ExistsCtx(r.Context(), blackListKey)
@@ -38,22 +38,22 @@ import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactor
  *         ⇒ 整体<b>快速失败</b>（users 域实测 ~1.7s）。
  * </pre>
  *
- * <p><b>为什么 Lettuce 默认行为与 Go 不同（这是本类存在的唯一理由）</b>：
+ * <p><b>为什么 Lettuce 默认行为与 B 侧 不同（这是本类存在的唯一理由）</b>：
  * <ul>
  *   <li><b>Lettuce 默认</b>（{@link ClientOptions.DisconnectedBehavior#DEFAULT}）：
  *       断连期间到达的命令被<b>挂起排队</b>，等重连成功后补发
  *       ⇒ 一次黑名单查询要等到 {@code spring.data.redis.timeout}（users 域 3s）才失败
- *       ⇒ <b>请求超时预算先耗尽</b> ⇒ 对外 <b>503</b>（Go 是 <b>200</b>）。</li>
+ *       ⇒ <b>请求超时预算先耗尽</b> ⇒ 对外 <b>503</b>（B 侧 是 <b>200</b>）。</li>
  *   <li><b>{@link ClientOptions.DisconnectedBehavior#REJECT_COMMANDS}</b>：
  *       断连时<b>立即拒单</b>（命令直接失败，不排队）
- *       ⇒ Redis 挂掉时失败耗时 ≪ 请求预算 ⇒ 进业务层 ⇒ <b>fail-open 200</b>，与 Go 一致。</li>
+ *       ⇒ Redis 挂掉时失败耗时 ≪ 请求预算 ⇒ 进业务层 ⇒ <b>fail-open 200</b>，与 B 侧 一致。</li>
  * </ul>
  *
  * <p><b>语义等价论证</b>：
  * <ol>
- *   <li>两侧在「Redis 不可用」时都<b>尽快让命令失败</b>（Go：MaxRetries=3 + 立即失败的重试；
+ *   <li>两侧在「Redis 不可用」时都<b>尽快让命令失败</b>（B 侧：MaxRetries=3 + 立即失败的重试；
  *       RAG：断连即拒单）。</li>
- *   <li>失败都<b>被上层捕获并 fail-open</b>：Go 是 {@code if err == nil &amp;&amp; exists}；
+ *   <li>失败都<b>被上层捕获并 fail-open</b>：B 侧 是 {@code if err == nil &amp;&amp; exists}；
  *       RAG 侧各 api 的黑名单拦截器是 {@code try { exists = redis.hasKey(key); }
  *       catch (Throwable) { /* 放行 *\/ }}（例如 users 域
  *       {@code JwtAuthInterceptor.isBlacklisted}）。</li>
@@ -69,9 +69,9 @@ import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactor
  *       ⇒ Redis 断连时**同样**会撞超时预算 ⇒ <b>同样的漂移</b>；</li>
  *   <li><b>favorite-api</b>：{@code FavoriteJwtAuthInterceptor} 同款；</li>
  *   <li><b>各 rpc 组件</b>：comment / like / hot / task 的缓存读写在 Redis 断连时
- *       同样会<b>挂起</b>而不是快速失败 ⇒ 与 Go 的「快速失败」不一致。</li>
+ *       同样会<b>挂起</b>而不是快速失败 ⇒ 与 B 的「快速失败」不一致。</li>
  * </ul>
- * ⇒ 上移到共享层 ⇒ <b>零域侧改动</b>即让<b>没有域内副本</b>的用 Redis 组件获得 Go 的失败语义。
+ * ⇒ 上移到共享层 ⇒ <b>零域侧改动</b>即让<b>没有域内副本</b>的用 Redis 组件获得 B 的失败语义。
  *
  * <p><b>⚠️ 域内副本与本类并存时，是「遮蔽」不是「叠加」（2026-10-27 实测订正）</b>：
  * 本类的 {@code @Bean} 带 {@code @ConditionalOnMissingBean} ⇒

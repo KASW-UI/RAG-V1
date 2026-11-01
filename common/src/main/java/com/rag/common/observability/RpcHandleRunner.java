@@ -14,13 +14,13 @@ import java.util.concurrent.TimeoutException;
 /**
  * <b>非 gRPC Server 场景下的业务调用入口</b> —— 跑一次 handler，带超时控制与观测标记。
  *
- * <p><b>Go 出处</b>：Go 侧的等价物是 {@code context.WithTimeout(ctx, timeout)} 包裹 handler 调用：
+ * <p><b>B 出处</b>：B 侧的等价物是 {@code context.WithTimeout(ctx, timeout)} 包裹 handler 调用：
  * <pre>
- * Go: timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
+ * B 侧: timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
  *     defer cancel()
  *     resp, err := handler(timeoutCtx, req)
  * </pre>
- * ⇒ ⇒ Go 的语义 = <b>「独立执行 + 到点取消」</b>，本类照此实现。
+ * ⇒ ⇒ B 的语义 = <b>「独立执行 + 到点取消」</b>，本类照此实现。
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java}
  * 的 {@code public static <ReqT, RespT> RpcResult<RespT> handle(...)} 整段抄（L2 · D13）
@@ -43,18 +43,18 @@ import java.util.concurrent.TimeoutException;
  *
  * <p><b>⚠️ 超时分支返回的错误对象</b>：RAG 返回
  * {@code StatusRuntimeException(DEADLINE_EXCEEDED, desc="context deadline exceeded")}，
- * 而<b>写进遥测的</b>是另一个 {@code TimeoutException}（其 message 是 Go 的 status 文本）
+ * 而<b>写进遥测的</b>是另一个 {@code TimeoutException}（其 message 是 B 的 status 文本）
  * ⇒ ⇒ 本类保留这个「<b>返回值与遥测文案不是同一个对象</b>」的细节
  * （RAG 的 DRIFT-010 修复留下的口径）。
  */
 public final class RpcHandleRunner {
 
     /**
-     * Go 真源 {@code service/common/observability/rpc.go:69} 在超时时给客户端的
+     * B 侧 真源 {@code service/common/observability/rpc.go:69} 在超时时给客户端的
      * <b>status description</b>：
      *
      * <pre>
-     * Go: err := status.Error(codes.DeadlineExceeded, timeoutCtx.Err().Error())
+     * B 侧: err := status.Error(codes.DeadlineExceeded, timeoutCtx.Err().Error())
      *     // timeoutCtx.Err() == context.DeadlineExceeded ⇒ .Error() == "context deadline exceeded"
      * </pre>
      */
@@ -143,7 +143,7 @@ public final class RpcHandleRunner {
                 Duration duration = elapsed(startNanos);
                 Status st = Status.DEADLINE_EXCEEDED.withDescription(GO_DEADLINE_EXCEEDED_DESCRIPTION);
                 StatusRuntimeException dee = new StatusRuntimeException(st);
-                // 遥测文案按 Go 的 status error 格式拼
+                // 遥测文案按 B 的 status error 格式拼
                 markTimeout(ctx, method, st.getCode().name(),
                         new TimeoutException(ObservabilityCustomizer.goStyleStatusMessage(
                                 Status.Code.DEADLINE_EXCEEDED.name(), GO_DEADLINE_EXCEEDED_DESCRIPTION)),
@@ -219,7 +219,7 @@ public final class RpcHandleRunner {
     }
 
     /**
-     * 超时分支的写入（<b>不传原始异常</b> ⇒ 用 Go 的 status 文本构造的 {@link TimeoutException}）。
+     * 超时分支的写入（<b>不传原始异常</b> ⇒ 用 B 的 status 文本构造的 {@link TimeoutException}）。
      */
     private static void markTimeout(Observation.Context ctx, String method, String codeName,
                                     Throwable timeoutErr, Duration duration) {

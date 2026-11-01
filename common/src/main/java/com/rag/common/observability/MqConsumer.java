@@ -11,9 +11,9 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * <b>MQ 消费端 trace 包装</b> —— 对齐 Go 版的 {@code TraceConsumer}。
+ * <b>MQ 消费端 trace 包装</b> —— 对齐 B 侧版的 {@code TraceConsumer}。
  *
- * <p><b>Go 出处</b>：{@code service/common/observability/mq.go}
+ * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/observability/MqConsumer.java}
  * <pre>
  * func TraceConsumer(ctx, tracerName, spanName string, attrs []attribute.KeyValue, fn func(ctx) error) error {
  *     ctx, span := otel.Tracer(tracerName).Start(ctx, spanName,
@@ -42,7 +42,7 @@ import java.util.function.Function;
  * <ol>
  *   <li><b>「span kind = CONSUMER」在 Micrometer 里没有等价物</b>（Micrometer 的 Observation
  *       没有 span kind 概念）⇒ ⇒ 本类用<b>低基数键值 {@code mq.kind=consumer}</b> 承载该语义。
- *       <br>⚠️ <b>这是本仓<b>新增</b>的一个键</b>（Go / RAG 的属性集合里没有它）⇒
+ *       <br>⚠️ <b>这是本仓<b>新增</b>的一个键</b>（B 侧 / RAG 的属性集合里没有它）⇒
  *       属于 <b>已知差异</b>，登记在 {@code docs/L3-降级清单.md}（D-03 同族）。
  *       <br>取舍理由：<b>「丢掉 kind」与「多一个键」之间</b>，前者会让「这是一次消费」这个语义
  *       <b>彻底不可见</b>，后者只是让属性集合多一项。</li>
@@ -54,7 +54,7 @@ import java.util.function.Function;
  * </ol>
  *
  * <h2>⚠️ panic 语义（照抄 RAG 的 M8 修复，<b>不要</b>加 catch）</h2>
- * <p>Go 版 {@code mq.go:30} 是裸的 {@code err := fn(consumeCtx)}，<b>没有 recover</b>：
+ * <p>B 侧版 {@code mq.go:30} 是裸的 {@code err := fn(consumeCtx)}，<b>没有 recover</b>：
  * fn panic 时 panic 继续向上传播（span 仍由 {@code defer span.End()} 收尾，但不会被标成 system error），
  * 由调用方的 recovery 决定后果。
  * <p>⇒ 本类<b>刻意不 catch</b> {@link Throwable}：
@@ -62,7 +62,7 @@ import java.util.function.Function;
  *   <li>panic 被降级成普通 error 返回值 ⇒ 调用方无从区分「业务失败」与「进程级崩溃」；</li>
  *   <li>连 {@code OutOfMemoryError} / {@code StackOverflowError} 这类 {@code Error} 也会被吞掉。</li>
  * </ul>
- * ⇒ 语义等价论证：Go 侧这两类都不会被转成返回值，Java 侧同样不转，才是一致的。
+ * ⇒ 语义等价论证：B 侧这两类都不会被转成返回值，Java 侧同样不转，才是一致的。
  */
 public final class MqConsumer {
 
@@ -114,7 +114,7 @@ public final class MqConsumer {
         Observation.Context ctx = observation == null ? null : observation.getContext();
         long startNanos = System.nanoTime();
         try {
-            // ⚠️ 刻意**不** catch Throwable：panic 继续向上传播（照抄 Go / RAG 的 M8 修复）
+            // ⚠️ 刻意**不** catch Throwable：panic 继续向上传播（照抄 B 侧 / RAG 的 M8 修复）
             Throwable err = fn.apply(ctx);
             Duration duration = Duration.ofNanos(System.nanoTime() - startNanos);
             if (err != null) {
@@ -146,7 +146,6 @@ public final class MqConsumer {
      * 但<b>类型信息在 Micrometer 侧丢失</b> ⇒ OTel 侧仍由
      * {@link ObservabilityCustomizer} 的双载体写入路径保类型）。
      * <p>⚠️ <b>值为 {@code null} 的条目跳过</b>（照抄 RAG 的
-     * {@code if (e.getValue() == null) continue;}）。
      */
     private static List<KeyValue> toKeyValues(Map<String, Object> attrs) {
         List<KeyValue> result = new ArrayList<>();

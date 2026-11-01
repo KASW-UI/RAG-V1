@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * <b>HTTP 观测中间件</b> —— 观测标记 ＋ <b>超时 503</b> ＋ <b>客户端断连 499</b> ＋ <b>worker 池饱和 503</b>。
  *
- * <p><b>Go 出处</b>：{@code Sea-RideTheWind_golang/service/common/observability/http.go}
+ * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/observability/HttpMiddleware.java:1105}
  * <pre>
  * func TimeoutHandler(timeout time.Duration) func(http.HandlerFunc) http.HandlerFunc {
  *     return func(next http.HandlerFunc) http.HandlerFunc {
@@ -66,7 +66,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *   <tr><td>worker 池饱和</td><td>503</td><td><b>无</b></td><td><b>无</b></td></tr>
  * </table>
  * ⇒ ⚠️ **池饱和刻意与超时不同**：容量不足是「现在别来」，超时是「来不及了」⇒ 客户端策略不同。
- * ⇒ 池饱和的<b>裸 503</b>刻意对齐 Go 的 {@code rest/handler/maxconnshandler.go}（无 body、无 Content-Type）。
+ * ⇒ 池饱和的<b>裸 503</b>刻意对齐 B 的 {@code rest/handler/maxconnshandler.go}（无 body、无 Content-Type）。
  *
  * <h2>⚠️ worker 线程与容器线程的分工</h2>
  * <ul>
@@ -84,12 +84,12 @@ public class HttpMiddleware implements Filter {
     /**
      * 客户端断连的状态码（nginx 风格约定）。
      *
-     * <p>Go 出处：{@code httpClientClosedRequest = 499}。
+     * <p>B 出处：{@code httpClientClosedRequest = 499}。
      */
     public static final int HTTP_CLIENT_CLOSED_REQUEST = 499;
 
     /**
-     * HTTP 超时时 body 内容（Go 的 {@code httpTimeoutBody}）。
+     * HTTP 超时时 body 内容（B 的 {@code httpTimeoutBody}）。
      */
     public static final String HTTP_TIMEOUT_BODY = "Request Timeout";
 
@@ -277,7 +277,7 @@ public class HttpMiddleware implements Filter {
             });
         } catch (RejectedExecutionException saturated) {
             // ── worker 池饱和 ⇒ 容量拒绝 ──
-            // 形状刻意对齐 Go 的 rest/handler/maxconnshandler.go：裸 503，**无 body、无 Content-Type**。
+            // 形状刻意对齐 B 的 rest/handler/maxconnshandler.go：裸 503，**无 body、无 Content-Type**。
             log.warn("http worker pool saturated (max={}), shedding request {}",
                     MAX_HTTP_WORKERS, httpReq.getRequestURI());
             Duration duration = Duration.ofNanos(System.nanoTime() - startNanos);
@@ -288,7 +288,7 @@ public class HttpMiddleware implements Filter {
             return;
         }
 
-        // 容器线程等 latch 到点即返回：精度对齐 Go 的 select{<-ctx.Done()}
+        // 容器线程等 latch 到点即返回：精度对齐 B 的 select{<-ctx.Done()}
         boolean workerDone;
         boolean clientDisconnected = false;
         boolean probeBudgetLogged = false;
@@ -331,7 +331,7 @@ public class HttpMiddleware implements Filter {
                 // ALIVE / UNAVAILABLE ⇒ 什么都不做，继续等（fail-open）
             }
         } catch (InterruptedException ie) {
-            // 容器关闭 / 请求被容器取消：Go 侧对应 ctx.Err() == context.Canceled
+            // 容器关闭 / 请求被容器取消：B 侧对应 ctx.Err() == context.Canceled
             Thread.currentThread().interrupt();
             // 🔴 **先标记、后中断**（同超时分支的理由）：否则业务可能在标记落地前就 commit 了响应
             rec.markClientCancelled();
@@ -345,7 +345,7 @@ public class HttpMiddleware implements Filter {
         }
 
         if (clientDisconnected) {
-            // ===== 探针判定「客户端已断连」⇒ 对齐 Go 的 ctx.Err()==context.Canceled 分支 =====
+            // ===== 探针判定「客户端已断连」⇒ 对齐 B 的 ctx.Err()==context.Canceled 分支 =====
             // 🔴 **先标记、后中断** —— recordClientDisconnected 也会标记，但它在中断**之后**
             // ⇒ 业务可能在标记落地前就 commit 了响应 ⇒ 499 响应被抢走。
             rec.markClientCancelled();
@@ -367,20 +367,20 @@ public class HttpMiddleware implements Filter {
                 rec.markClientCancelled();
                 markTimeout(observation, new java.util.concurrent.TimeoutException(
                         "client cancelled: " + panic.getMessage()), duration);
-                // 499 **真的写进响应**（Go 的 `http.Error(w, body, 499)` ⇒ 客户端真的收到 499）
+                // 499 **真的写进响应**（B 的 `http.Error(w, body, 499)` ⇒ 客户端真的收到 499）
                 rec.writeTimeoutResponseQuietly(statusCode, httpReq);
                 stopObservation(observation);
                 return;
             }
             markSystemError(observation, new RuntimeException(panic.getMessage(), panic), duration);
             stopObservation(observation);
-            // M12 修复：Go 版 observability/http.go:75 是 `panic(p)` 原样重抛，
-            // 交给 go-zero 的 recovery 中间件渲染 500 ⇒ 这里按原类型重抛（不改异常类型）。
+            // M12 修复：B 侧版 observability/http.go:75 是 `panic(p)` 原样重抛，
+            // 交给 B 侧的 recovery 中间件渲染 500 ⇒ 这里按原类型重抛（不改异常类型）。
             rethrow(panic);
             return;
         }
         if (!workerDone) {
-            // 对齐 Go 版 ctx.Done() == DeadlineExceeded → 503
+            // 对齐 B 侧版 ctx.Done() == DeadlineExceeded → 503
             // 🔴 **先标记、后中断**（同 B 侧注释）：业务可能在标记落地前就把响应 commit 掉
             rec.markTimedOut();
             workerFuture.cancel(true);
@@ -438,7 +438,7 @@ public class HttpMiddleware implements Filter {
         observation.lowCardinalityKeyValue("http.status_code", String.valueOf(statusCode));
         Envelope envelope = parseEnvelope(body);
         if (failure != null) {
-            // ⚠️ 异常 ⇒ 容器会渲染成 5xx ⇒ 按 system error 记（Go 侧 panic 分支同理）
+            // ⚠️ 异常 ⇒ 容器会渲染成 5xx ⇒ 按 system error 记（B 侧 panic 分支同理）
             ObservabilityCustomizer.markSystemError(ctx, failure, duration);
         } else if (envelope != null
                 && envelope.code != 0
@@ -467,7 +467,7 @@ public class HttpMiddleware implements Filter {
     }
 
     /**
-     * 记录「客户端已断连」（<b>499</b>）—— 对齐 Go 的 {@code ctx.Err() == context.Canceled} 分支。
+     * 记录「客户端已断连」（<b>499</b>）—— 对齐 B 的 {@code ctx.Err() == context.Canceled} 分支。
      *
      * <p><b>唯一的 499 记录入口</b>：① {@link #flushCaptured} 写 socket 失败（老路径）；
      * ② {@code doFilter} 里「主动探测」判定断连 ⇒ 两处走同一套代码，
@@ -477,7 +477,7 @@ public class HttpMiddleware implements Filter {
                                           HttpServletRequest httpReq,
                                           Duration duration) {
         markTimeout(observation, new java.util.concurrent.TimeoutException("context canceled"), duration);
-        // ⚠️ 为什么还要打一条日志：Go 侧 499 之所以「可见」是因为 go-zero 的 access log 会打
+        // ⚠️ 为什么还要打一条日志：B 侧 499 之所以「可见」是因为 B 侧 的 access log 会打
         //   `[HTTP] 499 - GET /x - ip - duration`；本仓**没有 access log**
         // ⇒ 若只写 span，没接 trace 后端时这条事件依然不可见 ⇒ 必须留一条日志。
         log.warn("[HTTP] {} - {} {} - {} - duration {}ms",
@@ -488,7 +488,7 @@ public class HttpMiddleware implements Filter {
                 duration.toMillis());
     }
 
-    /** 慢阈值：配置优先 ⇒ 空则回退 env 口径（与 Go 的三级优先级一致）。 */
+    /** 慢阈值：配置优先 ⇒ 空则回退 env 口径（与 B 的三级优先级一致）。 */
     private Duration slowThreshold() {
         Duration configured = properties == null ? null : properties.getSlowThreshold();
         return configured != null ? configured : ObservabilityCustomizer.slowThreshold();
@@ -505,7 +505,7 @@ public class HttpMiddleware implements Filter {
                                Duration duration) throws IOException {
         try {
             // ⚠️⚠️ **保形**：必须先把 Content-Length 定下来，否则下面那次 flush 会让响应
-            //   退化成 `Transfer-Encoding: chunked` ⇒ 与 Go 的 net/http（算 Content-Length）不一致。
+            //   退化成 `Transfer-Encoding: chunked` ⇒ 与 B 的 net/http（算 Content-Length）不一致。
             byte[] captured = rec.bodyBytes();
             if (captured.length <= TOMCAT_RESPONSE_BUFFER_SIZE
                     && httpResp.getHeader("Content-Length") == null
@@ -523,18 +523,18 @@ public class HttpMiddleware implements Filter {
                 // 非「客户端断连」的 IO 失败（例如后端存储坏了）⇒ 原样上抛，保持原有行为。
                 throw io;
             }
-            // ===== 客户端已断连 ⇒ 记 499（对齐 Go 的 ctx.Canceled 分支）=====
+            // ===== 客户端已断连 ⇒ 记 499（对齐 B 的 ctx.Canceled 分支）=====
             rec.markClientCancelled();
         }
     }
 
     /**
-     * D-11 修复：对齐 Go 版 {@code http.Error(w, httpTimeoutBody, statusCode)}。
+     * D-11 修复：对齐 B 侧版 {@code http.Error(w, httpTimeoutBody, statusCode)}。
      *
-     * <p>Go 的 {@code http.Error} 做三件事：① {@code WriteHeader(status)}；
+     * <p>B 的 {@code http.Error} 做三件事：① {@code WriteHeader(status)}；
      * ② {@code Header().Set("Content-Type", "text/plain; charset=utf-8")}；
      * ③ 写 {@code body + "\n"}。
-     * <p>⚠️ 另加 {@code X-Content-Type-Options: nosniff}（Go 1.11 起的 {@code http.Error} 行为）。
+     * <p>⚠️ 另加 {@code X-Content-Type-Options: nosniff}（B 侧 1.11 起的 {@code http.Error} 行为）。
      * <p>⚠️ 已知<b>不可修</b>的残差：{@code Content-Type} 里分号后的<b>空格</b> ——
      * Tomcat 的 {@code setContentType} 会把 Content-Type 解析成 MediaType 再序列化，序列化时吃掉空格
      * ⇒ 发出 {@code text/plain;charset=utf-8} ⇒ 该空格在 Tomcat 上无任何写法能产出 ⇒ 归「框架限制」。
@@ -543,7 +543,7 @@ public class HttpMiddleware implements Filter {
         resp.setStatus(statusCode);
         resp.setContentType("text/plain; charset=utf-8");
         resp.setHeader("X-Content-Type-Options", "nosniff");
-        // 🔴 **显式定 Content-Length** —— Go 的 `http.Error` → `fmt.Fprintln(w, error)` 写进 net/http 的缓冲
+        // 🔴 **显式定 Content-Length** —— B 的 `http.Error` → `fmt.Fprintln(w, error)` 写进 net/http 的缓冲
         // ⇒ 收尾时 net/http 按缓冲内容算长度 ⇒ 线上是 `Content-Length: 15`。
         //   而这里用 `getWriter().write(...)` + `flush()` ⇒ flush 即提交 ⇒ Tomcat 已经没机会算长度
         // ⇒ ⇒ 显式写死长度（body 固定是 "Request Timeout\n" = **16** 字节）。
@@ -558,7 +558,7 @@ public class HttpMiddleware implements Filter {
     /**
      * 写超时 / 断连响应；<b>写失败（客户端已走）不向上抛</b>。
      *
-     * <p>Go 的 {@code fmt.Fprintln} <b>忽略写错误</b> ⇒ Go 在「客户端已断连」时只是「写不进去」，
+     * <p>B 的 {@code fmt.Fprintln} <b>忽略写错误</b> ⇒ B 侧 在「客户端已断连」时只是「写不进去」，
      * <b>不会</b>把异常抛给框架 ⇒ ⇒ 这里吞掉写异常（记一条日志）。
      */
     static void writeTimeoutResponseQuietly(HttpServletResponse resp, int statusCode,
@@ -581,7 +581,7 @@ public class HttpMiddleware implements Filter {
     // ── 工具 ────────────────────────────────────────────────────────────
 
     /**
-     * 对应 Go 版 {@code func shouldSkipHTTPTimeout(r *http.Request) bool}。
+     * 对应 B 侧版 {@code func shouldSkipHTTPTimeout(r *http.Request) bool}。
      */
     private static boolean shouldSkipHTTPTimeout(HttpServletRequest req) {
         if (req == null) {
@@ -596,7 +596,7 @@ public class HttpMiddleware implements Filter {
     }
 
     /**
-     * 判断异常是否是「客户端断开连接」语义（对齐 Go 版 {@code ctx.Err() == context.Canceled}）。
+     * 判断异常是否是「客户端断开连接」语义（对齐 B 侧版 {@code ctx.Err() == context.Canceled}）。
      */
     private static boolean isClientCancelledException(Throwable t) {
         Throwable cur = t;
@@ -631,7 +631,7 @@ public class HttpMiddleware implements Filter {
     }
 
     /**
-     * 按原类型重抛（保持容器看到的异常类型不变 —— Go 侧是原样 {@code panic(p)}）。
+     * 按原类型重抛（保持容器看到的异常类型不变 —— B 侧是原样 {@code panic(p)}）。
      */
     private static void rethrow(Throwable t) throws IOException, ServletException {
         if (t == null) {
@@ -653,7 +653,7 @@ public class HttpMiddleware implements Filter {
     }
 
     /**
-     * Go 的 HTTP 信封（只有 {@code code} / {@code msg} 两个字段被读取）。
+     * B 的 HTTP 信封（只有 {@code code} / {@code msg} 两个字段被读取）。
      *
      * <p>⚠️ <b>字段名大小写敏感</b>（{@code code} / {@code msg}）⇒ Jackson 默认敏感 ✔。
      */
@@ -667,7 +667,7 @@ public class HttpMiddleware implements Filter {
      *
      * <p>⚠️ <b>「不存在」的判定</b>：{@code code == 0 && msg 为空} ⇒ 视作<b>没有信封</b>
      * ⇒ ⇒ 走「status ≥ 400 ⇒ system」的分支。
-     * <p>⚠️ <b>解析失败一律当无信封</b>（Go 侧 {@code json.Unmarshal} 出错也是 nil）。
+     * <p>⚠️ <b>解析失败一律当无信封</b>（B 侧 {@code json.Unmarshal} 出错也是 nil）。
      */
     static Envelope parseEnvelope(byte[] body) {
         if (body == null || body.length == 0) {

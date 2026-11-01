@@ -50,7 +50,7 @@ class LoggerAutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("空 serviceName ⇒ 构造期直接抛 IllegalStateException（对齐 Go 的 Init 守卫）")
+    @DisplayName("空 serviceName ⇒ 构造期直接抛 IllegalStateException（对齐 B 侧 Logger 的 Init 守卫）")
     void emptyServiceNameIsRejected() {
         assertThat(org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
                 () -> new LoggerFactoryBean("")))

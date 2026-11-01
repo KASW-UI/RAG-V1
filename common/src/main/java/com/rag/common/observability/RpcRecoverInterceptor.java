@@ -15,11 +15,11 @@ import java.io.StringWriter;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * gRPC 服务端 <b>panic 恢复</b>拦截器 —— 对齐 go-zero 的 {@code UnaryRecoverInterceptor}。
+ * gRPC 服务端 <b>panic 恢复</b>拦截器 —— 对齐 B 侧 的 {@code UnaryRecoverInterceptor}。
  *
- * <h3>Go 出处（消费点，不是声明点）</h3>
+ * <h3>B 出处（消费点，不是声明点）</h3>
  * <pre>
- *   go-zero@v1.10.2/zrpc/server.go:148-150
+ *   B 出处：service/common/src/main/java/com/rag/common/observability/GoStyleRecoverInterceptor.java:21:148-150
  *       if c.Middlewares.Recover { svr.AddUnaryInterceptors(UnaryRecoverInterceptor) }
  *       └─ 默认值：zrpc/internal/config.go:22  Recover bool `json:",default=true"`
  *          ⇒ etc/message.yaml 未配 ⇒ 生效
@@ -44,32 +44,32 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <br>⇒ 本类三处都包：{@code startCall} / {@code onMessage} / {@code onHalfClose} / {@code onReady}。
  *
  * <h3>⚠️ {@code onComplete} / {@code onCancel} 刻意不兜</h3>
- * <p>那两个回调是<b>清理路径</b>（状态已经定了），Go 的 {@code defer recover} 也管不到它们；
+ * <p>那两个回调是<b>清理路径</b>（状态已经定了），B 的 {@code defer recover} 也管不到它们；
  * 更重要的是：此时 {@code ServerCall} 多半已经 close，再 {@code close} 一次会抛
  * {@code IllegalStateException}，把一个「已恢复的 panic」变成「第二个 panic」。
  *
  * <h3>装配顺序（由调用方保证，见各 rpc 模块的 {@code GrpcServerConfigurer}）</h3>
- * <p>grpc 拦截器<b>由外到内</b>执行。go-zero 的注册序（{@code zrpc/server.go:144-163} +
+ * <p>grpc 拦截器<b>由外到内</b>执行。B 侧的注册序（{@code service/common/src/main/java/com/rag/common/observability/GoStyleRecoverInterceptor.java:51:144-163} +
  * {@code zrpc/internal/server.go:58} 是 append 到尾部 ⇒ 先注册的最外层）是：
  * <pre>
  *   Trace → Recover → Stat → Prometheus → Breaker → Shedding → Timeout → observability
  * </pre>
  * ⇒ <b>Recover 必须在 Breaker / Shedding 的外层</b>，否则它们内部的 panic 会漏出去；
- * 且 Recover 在业务观测拦截器（超时/慢调用）之<b>外</b>，与 Go 一致。
+ * 且 Recover 在业务观测拦截器（超时/慢调用）之<b>外</b>，与 B 侧 一致。
  *
  * <h3>可观察契约（wire 可见）</h3>
  * <ul>
  *   <li>{@code Status.Code == INTERNAL}</li>
- *   <li>{@code description} 以 {@code "panic: "} 开头（Go 的 {@code %v} 语义）</li>
+ *   <li>{@code description} 以 {@code "panic: "} 开头（B 的 {@code %v} 语义）</li>
  *   <li><b>进程存活</b>，能继续服务下一个请求</li>
- *   <li>本地日志里有一条带<b>栈</b>的 ERROR（Go 侧 {@code debug.Stack()}）</li>
+ *   <li>本地日志里有一条带<b>栈</b>的 ERROR（B 侧 {@code debug.Stack()}）</li>
  * </ul>
  */
 public final class RpcRecoverInterceptor implements ServerInterceptor, RpcLayer {
 
     private static final Logger LOG = LoggerFactory.getLogger(RpcRecoverInterceptor.class);
 
-    /** Go 的 {@code status.Errorf(codes.Internal, "panic: %v", r)} 里的字面前缀（wire 可见）。 */
+    /** B 的 {@code status.Errorf(codes.Internal, "panic: %v", r)} 里的字面前缀（wire 可见）。 */
     public static final String PANIC_DESCRIPTION_PREFIX = "panic: ";
 
     /** 可实例化：它是一个无状态的拦截器，由各 rpc 模块的 {@code GrpcServerConfigurer} 直接 new。 */
@@ -133,7 +133,7 @@ public final class RpcRecoverInterceptor implements ServerInterceptor, RpcLayer 
     }
 
     /**
-     * 按 Go 的 {@code toPanicError} 处置：<b>先记带栈的日志</b>，再以
+     * 按 B 的 {@code toPanicError} 处置：<b>先记带栈的日志</b>，再以
      * {@code INTERNAL + "panic: …"} 关闭这次调用。
      *
      * <p>用 {@link AtomicBoolean} 保证<b>只 close 一次</b>。
@@ -149,11 +149,11 @@ public final class RpcRecoverInterceptor implements ServerInterceptor, RpcLayer 
     }
 
     /**
-     * 复刻 Go {@code %v} 对 panic 值的格式化：
+     * 复刻 B 侧 {@code %v} 对 panic 值的格式化：
      * <ul>
-     *   <li>Go 的 {@code panic("boom")} 打印 {@code boom}（不是类型名）</li>
+     *   <li>B 的 {@code panic("boom")} 打印 {@code boom}（不是类型名）</li>
      *   <li>Java 的 {@code throw new RuntimeException("boom")} 若直接 {@code toString()}
-     *       会变成 {@code java.lang.RuntimeException: boom} —— 多出类型名，与 Go 不一致</li>
+     *       会变成 {@code java.lang.RuntimeException: boom} —— 多出类型名，与 B 侧 不一致</li>
      * </ul>
      * ⇒ 有 message 就用 message，没有才回退 {@code toString()}。
      */

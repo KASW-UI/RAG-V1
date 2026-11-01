@@ -59,21 +59,21 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class WebAutoConfiguration {
 
     /**
-     * Go {@code rest/httpx/util.go} 的 form 值计数上限对应的 <b>Tomcat</b> 侧上限。
+     * B 侧 {@code rest/httpx/util.go} 的 form 值计数上限对应的 <b>Tomcat</b> 侧上限。
      *
      * <p>⚠️ <b>为什么是 10001 而不是 2048</b>（照抄 RAG 的结论）：
      * Tomcat 的 {@code maxParameterCount} 默认 10000，计的是<b>参数总个数</b>；
-     * 而 Go 的 {@code net/url} 上限是 <b>query 段数</b>（{@code strings.Count(query, "&") + 1}）
+     * 而 B 的 {@code net/url} 上限是 <b>query 段数</b>（{@code strings.Count(query, "&") + 1}）
      * ⇒ 两者口径差 1 ⇒ RAG 侧把 Tomcat 上限<b>抬到 10001</b> 让差值闭合
-     * ⇒ ⇒ <b>「拒绝形状」由应用层的 {@link ValueLimitInterceptor} 负责</b>（它按 Go 口径判定）
-     * ⇒ ⇒ 容器这一侧只负责「别比 Go 更早掐死」。
+     * ⇒ ⇒ <b>「拒绝形状」由应用层的 {@link ValueLimitInterceptor} 负责</b>（它按 B 侧 口径判定）
+     * ⇒ ⇒ 容器这一侧只负责「别比 B 侧 更早掐死」。
      */
     public static final int TOMCAT_MAX_PARAMETER_COUNT = 10001;
 
     // ── 三个 servlet filter ────────────────────────────────────────────────
 
     /**
-     * 路径规范化 filter（Go 的 {@code rest/httpx} 路径清洗）。
+     * 路径规范化 filter（B 的 {@code rest/httpx} 路径清洗）。
      *
      * <p>⚠️ 它必须<b>早于</b>路由匹配执行 ⇒ 注册为 Bean 即可（filter 的 order 由类上的
      * {@code @Order} 决定，本仓沿用批 1 落地时的取值）。
@@ -85,7 +85,7 @@ public class WebAutoConfiguration {
     }
 
     /**
-     * JSON body 8 MiB 上限 filter（Go {@code rest/httpx/requests.go:20-21} 的 {@code maxBodyLen}）。
+     * JSON body 8 MiB 上限 filter（B 侧 {@code rest/httpx/requests.go:20-21} 的 {@code maxBodyLen}）。
      */
     @Bean
     @ConditionalOnMissingBean
@@ -105,7 +105,7 @@ public class WebAutoConfiguration {
     // ── ResponseBodyAdvice：JSON 响应的 Content-Type ────────────────────────
 
     /**
-     * 让 JSON 响应的 {@code Content-Type} 与 Go 一致地带上 {@code charset=utf-8}。
+     * 让 JSON 响应的 {@code Content-Type} 与 B 侧 一致地带上 {@code charset=utf-8}。
      *
      * <p>⚠️ <b>它能被 Spring 认出来，靠的是类上的 {@code @RestControllerAdvice}</b>
      * ⇒ ⇒ {@code RequestMappingHandlerAdapter#initAdvice} 会把
@@ -136,7 +136,7 @@ public class WebAutoConfiguration {
     /**
      * 把闸门挂到 {@code HIGHEST_PRECEDENCE} ⇒ <b>先于域内鉴权</b>。
      *
-     * <p>⚠️ <b>这与 Go 的中间件顺序相反</b>（Go 侧 form 限额在 native middleware 内、
+     * <p>⚠️ <b>这与 B 的中间件顺序相反</b>（B 侧 form 限额在 native middleware 内、
      * 鉴权在其外）⇒ 已登记为<b>签字偏离</b>，不「顺手修回」。
      */
     @Bean
@@ -175,7 +175,7 @@ public class WebAutoConfiguration {
     // ── 内部事实查询端点的注册入口 ─────────────────────────────────────────
 
     /**
-     * 内部事实查询端点的路径（与 Go 版 {@code /internal/v1/community/facts} 1:1）。
+     * 内部事实查询端点的路径（与 B 侧版 {@code /internal/v1/community/facts} 1:1）。
      */
     public static final String AUTHORITY_PATH = "/internal/v1/community/facts";
 
@@ -210,14 +210,14 @@ public class WebAutoConfiguration {
     }
 
     /**
-     * Go 的 form / query 段数上限常量（供域侧守门引用，避免各域各抄一份）。
+     * B 的 form / query 段数上限常量（供域侧守门引用，避免各域各抄一份）。
      */
     public static int maxFormParamCount() {
         return GetFormValuesFilter.MAX_FORM_PARAM_COUNT;
     }
 
     /**
-     * Go {@code net/url} 的 query 段数上限常量。
+     * B 侧 {@code net/url} 的 query 段数上限常量。
      */
     public static int maxUrlQueryParams() {
         return GetFormValuesFilter.MAX_URL_QUERY_PARAMS;

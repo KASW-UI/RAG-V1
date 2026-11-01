@@ -3,8 +3,8 @@ package com.rag.common.communityfact;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * <p><b>⚠️ L1 wire 契约（D13「L1 以 Go 为准」）</b> ——
- * Go 出处：{@code service/common/communityfact/wire.go:53-61}
+ * <p><b>⚠️ L1 wire 契约（D13「L1 以 B 侧 为准」）</b> ——
+ * B 出处：{@code service/common/communityfact/wire.go:53-61}
  * （{@code type TechnicalReceipt struct { EventID string `json:"event_id"`; ... }}）。
  *
  * <p><b>7 个字段的 JSON tag 与顺序逐条一致</b>：

@@ -1,17 +1,19 @@
 # RAG 困境反哺 —— 把 RAG 仓库踩过的坑映射进 RAG-V1
 
-> **来源**：`/Users/pr/Documents/java&golang/RAG/docs/`（2026-10-25 全档读取）
-> **目的**：RAG 是 RAG-V1 的**前车之鉴**。RAG 已花 3 天、2109 条测试、38 组件台账换来的结论，
+> **来源**：**B 侧（RAG 仓）**的 `docs/`（2026-10-25 全档读取）
+> **目的**：RAG（B 侧）是 RAG-V1 的**前车之鉴**。B 侧已花 3 天、2109 条测试、38 组件台账换来的结论，
 > 应当**在 RAG-V1 开始填实现之前就消化掉** —— 否则同样的坑要再踩一遍。
-> **口径**：本文只写 **RAG 已实测坐实** 的结论，每条带出处（`文件:行`）或可复现命令。
+> **口径**：本文只写 **B 侧已实测坐实** 的结论，每条带出处（`文件:行`）或可复现命令。
+> **判定基准**：**B 侧（RAG 仓）是本仓行为的唯一真理** —— 下文的「B 侧」即基准本身；
+> B 侧自身台账里记录的「更早基线」只作**差异说明**用，不作判定依据。
 > **核对日期**：2026-10-25
 
 ---
 
 ## 〇、RAG 现状快照（一句话）
 
-> **RAG 把「Go → Spring」做成了「Go 的行为用 Spring 的壳重新实现一遍」，
-> 于是所有 go-zero 白送的能力都要自己补、补完还要自己证明补对了。**
+> **B 侧把「原架构 → Spring」做成了「原架构的行为用 Spring 的壳重新实现一遍」，
+> 于是所有原框架白送的能力都要自己补、补完还要自己证明补对了。**
 
 | 维度 | RAG 实测 |
 |---|---|
@@ -44,7 +46,7 @@
 |---|---|---|
 | **静默全跳** | `@EnabledIfDockerAvailable` 把 **15 条真 PG 用例**全部 skip（`skipped message="Docker is not available"`），而 Docker **明明可用** —— 根因是 Ryuk 镜像拉不下来，`DockerAvailableDetector` 是 `catch (Throwable) → false`，把「拉不到镜像」和「Docker 不可用」压成同一个 `false` | `DRIFT/_cross/component-coverage-matrix.md:174-251` |
 | **计数虚高** | `target/surefire-reports/` 的**陈旧 XML**（测试类改名后旧报告成孤儿）使 XML 求和 = 129，真实执行 = 125，**差 4** | `Pitfalls/_cross/testing-pitfalls.md:55-104` |
-| **绿测试锁死错误答案** | `MessageApiMvcPipelineTest#int64AsJsonNumberIsRejected` 把 **RAG 的实际输出**断言成「与 Go 一致」⇒ 修复时**先撞上这条红测试**，且测试名让人误判修复方向 | `Pitfalls/_cross/testing-pitfalls.md:33-52` |
+| **绿测试锁死错误答案** | `MessageApiMvcPipelineTest#int64AsJsonNumberIsRejected` 把 **B 侧的实际输出**断言成「与更早基线一致」⇒ 修复时**先撞上这条红测试**，且测试名让人误判修复方向 | `Pitfalls/_cross/testing-pitfalls.md:33-52` |
 | **变异无效 ⇒ 守门假绿** | 变异打在 `target/classes` 会被 `mvn test` 的资源拷贝**覆盖** ⇒ 必须打在 `src/main/resources` | `Pitfalls/_INDEX.md:12` |
 
 | **含义** | RAG-V1 的守门脚本若不内建这四道防线，**同样会拿到「2109 全绿」的假结论** |
@@ -63,27 +65,30 @@
 
 | **RAG-V1 处置** | ✅ AGENTS.md §1.3 已覆盖前四类。<br>⇒ **补第五类**：RAG-V1 的 `common/` 用 `AutoConfiguration.imports`，**启动期必须有一条断言「拦截器真的进了 server 的 intercept 链」**的测试（不是「Bean 存在」）。<br>⇒ **D3 的连带风险**：`@AutoConfiguration` 与 `@Import` 不能并存（AGENTS.md §二 已记）—— RAG 的教训是**两者都存在时，`@Import` 那份按 user config 更早求值**，会改掉 `@ConditionalOnMissingBean` 语义。 |
 
-### F-04 ✅ Flyway 账本撞号 —— **RAG-V1 已天然避开**
+### F-04 🔴 Flyway 账本撞号 —— **当前态（2026-11-02 核对）：本仓已改用 Flyway ⇒ 该坑重新生效**
 
 | 项 | 内容 |
 |---|---|
-| **RAG 实测** | `flyway_schema_history` 是 **schema 级**账本，一个 schema 只能有一本账。三个模块同库同 schema ⇒ `message-rpc` 与 `like-rpc` 的 **V1–V3 版本号完全撞车且内容互不相同** ⇒ 任一方先迁移，另一方的表**永远建不出来**，**不报错**。已被实测证伪的绕法：`--spring.flyway.validate-on-migrate=false --spring.flyway.out-of-order=true`（让账本**永久钉在错误版本**上）。<br>出处：`Pitfalls/_cross/flyway-ledger-collision.md` |
-| **RAG-V1 现状** | ✅ **RAG-V1 不用 Flyway**（全仓 22 个 pom 零 `flyway` 命中）⇒ 走 `SchemaInitializer` 幂等重放，与 Go `AutoMigrate` 同构 ⇒ **这个坑 RAG-V1 不会有** |
-| **但** | ⚠️ RAG-V1 继承的是 `SchemaInitializer` 的**另一颗雷**：Spring `ScriptUtils` 按 `;` 切分，**不支持 PG 美元引号 `$$`** ⇒ **DDL 只能单条语句**；且 `timestamp → timestamptz` 的 `USING` **会重新解释取值** ⇒ 幂等重放时**每启动一次偏移一次，永不收敛**（RAG 实测炸过启动，34 个测试红在启动阶段）。<br>出处：`Pitfalls/_cross/fix-round-lessons.md:71-106`（元教训 9/10） |
+| **B 侧实测** | `flyway_schema_history` 是 **schema 级**账本，一个 schema 只能有一本账。多个模块同库同 schema ⇒ 各自的 **V1–V3 版本号完全撞车且内容互不相同** ⇒ 任一方先迁移，另一方的表**永远建不出来**，**不报错**。已被实测证伪的绕法：`--spring.flyway.validate-on-migrate=false --spring.flyway.out-of-order=true`（让账本**永久钉在错误版本**上）。<br>出处：`Pitfalls/_cross/flyway-ledger-collision.md` |
+| **⚠️ 本条的前提已变（2026-11-02 核对）** | **原先登记的「RAG-V1 不用 Flyway ⇒ 该坑天然避开」这个前提，今天已经过期** —— 本仓**已经改用 Flyway**：<br>· 根 pom 统一管 `flyway.version` **11.14.1**；<br>· **9 个有 DB 的域 pom** 已引 `flyway-core` + `flyway-database-postgresql`（article / comment / favorite / follow / like / message / task / users-user / users-admin）；<br>· **10 个域各建 `db/migration/`** —— ⚠️ **但目前全是空目录，全仓 0 个 `.sql`**（骨架就位，迁移未写）；<br>· 原先的 `SchemaInitializer` **已删除**（全仓零命中）。<br>⇒ ⇒ **该坑重新生效** ⇒ 下面 §三 的「已避开」结论**作废**。 |
+| **⚠️ 本仓当前的缓解缺口（2026-11-02 实测）** | 本仓 **10 个域的 `application.yml` 里 0 个 `flyway:` 段** ⇒ **既没有独立账本表名，也没有 `baseline-version: 0`** ⇒ ⇒ **撞号风险当前无任何缓解**（一旦各域开始写 `V1__*.sql`，同库同 schema 下就会撞车）。 |
+| **B 侧的两种解法（事实，非本仓决策）** | ① **各域独立账本表名** —— B 侧 **6 个域**（like / comment / follow / message / favorite / task）的 `application.yml` 逐个写死 `spring.flyway.table: flyway_schema_history_<域>`（如 `flyway_schema_history_like` / `_comment` / `_follow` / `_message` / `_favorite` / `_task`）⇒ 各域各一本账，**互不撞号**。<br>⚠️ **B 侧的 `article` 域没有写 `table:`** ⇒ 仍用默认表名 `flyway_schema_history` ⇒ **B 侧自身就存在一处不一致**（本仓若照抄需明确是否沿用）。<br>② **`baseline-version: 0` 必须显式钉 0** —— B 侧 **7 个域**（上述 6 个 **+ `article`**）的 yml 都显式写 `baseline-version: 0`（默认是 **1**）⇒ 基线落在 0 ⇒ V1 与 V2 都会执行；不钉 0 ⇒ 因 `baseline-on-migrate=true` ⇒ 会在 **V1 处打 baseline 标记** ⇒ V1 永远不跑（**B 侧实测踩过**）。<br>③ **users 域是特例 ⇒ 改用 `SchemaInitializer` 幂等重放** —— `user-rpc` 与 `admin-rpc` **必须连同一个库**（admin-rpc 也要读写 `users_user`），而两边的迁移 **V1/V2 版本号相同、内容不同** ⇒ 后启动的那个要么报 `version (3) is newer than the latest available migration (2)` 并静默跳过自己的迁移，要么 checksum mismatch 直接启动失败；B 侧实测「加 `validate-on-migrate=false` + `out-of-order=true` 糊过去」也会**静默跳过 admin 自己的 V1/V2** ⇒ `admin_admin` / `admin_invite` 永远建不出来 ⇒ ⇒ B 侧 users 域改用 `SchemaInitializer`（`CREATE ... IF NOT EXISTS` 每次启动原样重放，**无版本号、无账本、无跨进程状态**）。 |
+| **⚠️ 待拍板（本仓不做最终决策）** | **本仓最终走哪条路，是待拍板项**（§六 待办）。本表只把事实与 B 侧的两种做法写清楚：<br>① **各域独立账本表名 + `baseline-version: 0`**（B 侧 6~7 个域的做法）—— 可解撞号，但 **users 域的双进程共库共表问题**未解（两进程各建一本账 ⇒ 同一张表被两本账各管一次 ⇒ 迁移内容必须严格不重叠）；<br>② **`SchemaInitializer` 幂等重放**（B 侧 users 域的做法）—— 可解 users 域，但把「建表」与「升级」两件事压在同一批脚本里（到处加 `ADD COLUMN IF NOT EXISTS`），**升级路径要等第一次 ALTER 才兑现**。<br>⇒ **本仓的实现与测试均以 B 侧为准**（B 侧在哪个域用哪种，本仓默认同款）；**两方案之间的取舍留给拍板**。 |
+| **但** | ⚠️ 若最终选了 `SchemaInitializer`，本仓继承的是它的**另一颗雷**：Spring `ScriptUtils` 按 `;` 切分，**不支持 PG 美元引号 `$$`** ⇒ **DDL 只能单条语句**；且 `timestamp → timestamptz` 的 `USING` **会重新解释取值** ⇒ 幂等重放时**每启动一次偏移一次，永不收敛**（B 侧实测炸过启动，34 个测试红在启动阶段）。<br>出处：`Pitfalls/_cross/fix-round-lessons.md:71-106`（元教训 9/10） |
 
-### F-05 🔴 GORM → MyBatis-Plus 的语义**不等价**（RAG-V1 同一套 ORM）
+### F-05 🔴 B 侧的 MyBatis-Plus 语义**坑**（本仓同一套 ORM）
 
-> **这是 RAG-V1 最高价值的继承项** —— RAG-V1 用的就是 MyBatis-Plus，下列每条都会原样复现。
+> **这是 RAG-V1 最高价值的继承项** —— B 侧用的就是 MyBatis-Plus，本仓照抄 ⇒ 下列每条都会原样复现。
 
-| # | Go (GORM) | Java (MP) | 出处 |
+| # | B 侧写法 | 坑 | 出处 |
 |---|---|---|---|
-| 1 | `Save`/`Updates` 问「**本次调用有没有赋值**」 | `strictUpdateFill` 问「**字段现在是不是空**」⇒ 读-改-写路径上**永远不生效** | `fix-round-lessons.md:14-17` |
-| 2 | 同一个 GORM 语义**需要两种 Java 修法** | `updateById(entity)` → `MetaObjectHandler`；`update(null, wrapper)` → `setSql`（实体为 null，**handler 根本不被调用**）⇒ 判据是**写路径的实体形态**，不是「哪个更地道」 | `fix-round-lessons.md:18-20` |
-| 3 | — | 字段初始化值（`= 0L`）+ `callSettersOnNulls` 默认 false ⇒ **NULL 读出来是 `0` 而不是 `null`** ⇒ `if (x != null)` 这类防御写法**永远不触发** | `fix-round-lessons.md:36-45` |
-| 4 | — | **MP lambda 与手写 OGNL 是两套解析规则**：`E::isRead` 按字段名，`#{isRead}` 按 JavaBeans 属性名 ⇒ 改字段名会**同时打挂 5 条既有测试** | `fix-round-lessons.md:30-36` |
-| 5 | — | `<where>` 在已有 `WHERE` 的基础 SQL 上会生成**两个 `WHERE`** ⇒ PG 语法错；且被更早的 typo 挡在后面 ⇒ **修掉外层才露出内层，一轮只能走一层** | `fix-round-lessons.md:11-13` |
+| 1 | `updateById(entity)` 的自动填 | `strictUpdateFill` 问「**字段现在是不是空**」⇒ 读-改-写路径上**永远不生效**（实体从库里读出来，非 null ⇒ 跳过）⇒ B 侧最终改用**无条件覆盖** | `fix-round-lessons.md:14-17` |
+| 2 | `updateById(entity)` vs `update(null, wrapper)` | **同一个语义需要两种 Java 修法** —— `updateById(entity)` → `MetaObjectHandler`；`update(null, wrapper)` → `setSql`（实体为 null，**handler 根本不被调用**）⇒ 判据是**写路径的实体形态**，不是「哪个更地道」 | `fix-round-lessons.md:18-20` |
+| 3 | 可空数值字段写 `= 0L` 初始化值 | MyBatis `callSettersOnNulls` 默认 false ⇒ **NULL 读出来是 `0` 而不是 `null`** ⇒ `if (x != null)` 这类防御写法**永远不触发** | `fix-round-lessons.md:36-45` |
+| 4 | 布尔字段叫 `isRead` | **MP lambda 与手写 OGNL 是两套解析规则**：`E::isRead` 按字段名，`#{isRead}` 按 JavaBeans 属性名 ⇒ 改字段名会**同时打挂 5 条既有测试** | `fix-round-lessons.md:30-36` |
+| 5 | （**B 侧已无 mapper XML** ⇒ 0 个 `.xml`） | `<where>` 在已有 `WHERE` 的基础 SQL 上会生成**两个 `WHERE`** ⇒ PG 语法错；且被更早的 typo 挡在后面 ⇒ **修掉外层才露出内层，一轮只能走一层** ⇒ **B 侧亦无此写法 ⇒ 本仓不实现** | `fix-round-lessons.md:11-13` |
 
-| **RAG-V1 处置** | ⇒ **新增一张「GORM 语义 → MP 语义」对照表**（§二·R3），**作为填实现的强制参考**，而不是让 10 个域各自踩一遍。<br>⇒ §六 检查清单加一条：「**写路径用哪种形态？判据是实体形态，不是习惯**」 |
+| **RAG-V1 处置** | ⇒ **新增一张「B 侧 MP 写法 → 本仓 MP 写法」对照表**（§二·R3），**作为填实现的强制参考**，而不是让 10 个域各自踩一遍。<br>⇒ §六 检查清单加一条：「**写路径用哪种形态？判据是实体形态，不是习惯**」 |
 
 ### F-06 🔴 守门脚本的**排除清单是架构假设** ⇒ 假阳性（与假绿互为镜像）
 
@@ -98,30 +103,34 @@
 | 项 | 内容 |
 |---|---|
 | **RAG 实测** | 400 响应丢 `Content-Type` ⇒ **4 轮对拍全绿仍漏**。根因：响应已 committed 时 `setHeader` **静默忽略** ⇒ MockMvc **测不到**，必须**真 Tomcat**。<br>出处：`Pitfalls/_INDEX.md`（message 域 36 条）；`tools/difftest/check-plaintext400-headers.sh` 就是为此存在 |
-| **RAG-V1 含义** | RAG-V1 的 `common/web/PlainTextErrors` + `RouterErrorResponses` 复刻了 Go 的 400 形状（`text/plain; charset=utf-8` + 裸文本 + 尾换行 + `nosniff`）⇒ **同一层风险** |
+| **RAG-V1 含义** | RAG-V1 的 `common/web/PlainTextErrors` + `RouterErrorResponses` 复刻了 B 侧的 400 形状（`text/plain; charset=utf-8` + 裸文本 + 尾换行 + `nosniff`）⇒ **同一层风险** |
 | **RAG-V1 处置** | ⇒ HTTP 层的形状断言**必须是真 Tomcat**（`@SpringBootTest(webEnvironment = RANDOM_PORT)`），**MockMvc 不算**。⇒ 列入 §六 检查清单 |
 
-### F-08 🔴 Go 的容器上限**不是常量**
+### F-08 🔴 容器上限**不是常量**
 
 | 项 | 内容 |
 |---|---|
-| **RAG 实测** | Go `net/http` 的真实上限 = `DefaultMaxHeaderBytes(1<<20)` **+ 4096 bufio slop** ⇒ 配 1MB 会比 Go **严 4096 字节**。双侧活体复测：请求行首个翻转长度 **两侧都是 1052536 字节（差 0）**。<br>出处：`Pitfalls/_INDEX.md:13`、`DRIFT/hot/api.md` 第十三轮 |
-| **另一层** | Tomcat `maxParameterCount` 数**总参数个数**（`parameterCount >= limit`），go-zero `httpx/util.go:44-53` 数**非空值个数**（`if len(v)==0 { continue }`）⇒ **2049~10000 段且非空值 ≤2048 时 Go 200 / RAG 5001** ⇒ 跨域待拍板 |
-| **RAG-V1 处置** | ⇒ 三个旋钮（`relaxed-query-chars` / `max-parameter-count` / `max-http-request-header-size`）必须**与 Go 逐字对齐**，且**header 上限写 1028KB 不是 1MB**。<br>⇒ RAG-V1 是一域一进程（10 个 api → 10 个 app），**每个 app 都要配** ⇒ 这正是「逐个域抄 3 行 yaml」的重复成本，属 starter 该收的部分 |
+| **B 侧实测** | B 侧对容器上限做过实测：真实上限 = `DefaultMaxHeaderBytes(1<<20)` **+ 4096 bufio slop** ⇒ 配 1MB 会比该基线 **严 4096 字节**。活体复测：请求行首个翻转长度 **两侧都是 1052536 字节（差 0）**。<br>出处：`Pitfalls/_INDEX.md:13`、`DRIFT/hot/api.md` 第十三轮 |
+| **另一层** | Tomcat `maxParameterCount` 数**总参数个数**（`parameterCount >= limit`），而**更早基线**数**非空值个数**（`if len(v)==0 { continue }`）⇒ **2049~10000 段且非空值 ≤2048 时基线 200 / B 侧 5001** ⇒ 跨域待拍板 |
+| **RAG-V1 处置** | ⇒ 三个旋钮（`relaxed-query-chars` / `max-parameter-count` / `max-http-request-header-size`）必须**与 B 侧逐字对齐**，且**header 上限写 1028KB 不是 1MB**。<br>⇒ RAG-V1 是一域一进程（10 个 api → 10 个 app），**每个 app 都要配** ⇒ 这正是「逐个域抄 3 行 yaml」的重复成本，属 starter 该收的部分 |
 
 ### F-09 🔴 proto `package` 归一 ⇒ **gRPC 方法路径变了**
 
 | 项 | 内容 |
 |---|---|
-| **RAG 实测** | Go 侧遗留名 `pb`；RAG 归一为域名 ⇒ gRPC 方法路径 `/comment.CommentService/*` vs Go 的 `/pb.CommentService/*` ⇒ **wire 层可见**。`like` 域已实现且做过双侧对拍，改包名后 108 例全绿 ⇒ **仓内自产自销时影响为零**，但**跨栈互调会 `UNIMPLEMENTED`**。<br>出处：`Intentional_Deviations/_INDEX.md:118-152` |
-| **RAG-V1 现状** | ✅ **RAG-V1 的 10 个 proto 与 Go 侧逐字节一致**（`java_package` 属表达层，Go 专用项 Java 不消费）⇒ **天然避开这个坑** |
+| **B 侧实测** | B 侧台账记录：更早基线用遗留名 `pb`；**B 侧已把 10 个 proto 的 `package` 全部归一为域名** ⇒ gRPC 方法路径 `/comment.CommentService/*` vs 更早基线的 `/pb.CommentService/*` ⇒ **wire 层可见**。`like` 域已实现且做过双侧对拍，改包名后 108 例全绿 ⇒ **仓内自产自销时影响为零**，但**跨栈互调会 `UNIMPLEMENTED`**。<br>出处：`Intentional_Deviations/_INDEX.md:118-152` |
+| **RAG-V1 现状** | ✅ **RAG-V1 的 10 个 proto 与 B 侧逐字节一致**（除 `java_package` 属表达层外，逐条 diff 无差异）⇒ **与 B 侧同构 ⇒ 不存在归一差异** ⇒ **天然避开这个坑** |
 | **但** | ⚠️ RAG-V1 的 D2（域内直连，不自我 gRPC 往返）意味着**跨域调用才走 gRPC** ⇒ **跨域 proto 的 `package` 就是 wire 契约** ⇒ **不得归一**。需在实现时把这条钉进**根级 `proto/` 模块**（D7 后 proto 已集中于此）的说明 |
 
 ### F-10 🔴 HTTP 契约层的可观察差异（L1 逐字）
 
 RAG 已签字的偏离（RAG-V1 需**逐条独立裁决**，不能照抄）：
 
-| 项 | Go | RAG | 类别 |
+> ⚠️ **读法**：本表的「**历史基线值**」是 B 侧落地**之前**的旧值，只作**差异说明**用；
+> **判定基准一律取「B 侧现状」**（B 侧即真理）⇒ 本仓默认照抄 B 侧现状；
+> 只有当 B 侧的差异本身是**未修的缺陷**（🔴 / 🟡 行）时，本仓才需要独立裁决。
+
+| 项 | 历史基线值 | B 侧（RAG）现状 | 类别 |
 |---|---|---|---|
 | HTTP path | `/usercenter/v1/user/*` · `/admincenter/v1/admin/*` | `/user/v1/*` · `/admin/v1/*` | **有意偏离**（HUMAN_ONLY 决策） |
 | HTTP method | users 域 Get/Post/Put/Delete 混合 | **统一 POST** | **有意偏离** |
@@ -138,11 +147,11 @@ RAG 已签字的偏离（RAG-V1 需**逐条独立裁决**，不能照抄）：
 
 ### F-11 🔴 DDL 层的三颗雷
 
-| # | 雷 | RAG 实测 |
+| # | 雷 | B 侧实测 |
 |---|---|---|
-| 1 | **`DEFAULT CURRENT_TIMESTAMP` 残留 14 处** | Go 侧 `column_default = <NULL>`。message 域 6 处**刻意保留并签字**（`SD-2026-10-24-04`：两侧 INSERT 都显式绑定该列 ⇒ 默认永不触发）；**users 域 8 处无签字** ⇒ 属**未签字的已知差异** |
-| 2 | **时间列类型** | Go 可空 / RAG `NOT NULL`；`timestamp` vs `timestamptz`（4 张 users 表已修；message 域 6 处 DEFAULT 保留） |
-| 3 | **索引** | users 域缺 Go 的 3 条**非唯一**索引（**性能非行为**）；DDL 类型/长度**0 差异** |
+| 1 | **`DEFAULT CURRENT_TIMESTAMP` 残留 14 处** | 历史基线是 `column_default = <NULL>`。message 域 6 处**刻意保留并签字**（`SD-2026-10-24-04`：两侧 INSERT 都显式绑定该列 ⇒ 默认永不触发）；**users 域 8 处无签字** ⇒ 属**未签字的已知差异** |
+| 2 | **时间列类型** | 历史基线可空 / B 侧 `NOT NULL`；`timestamp` vs `timestamptz`（4 张 users 表已修；message 域 6 处 DEFAULT 保留） |
+| 3 | **索引** | users 域缺历史基线的 3 条**非唯一**索引（**性能非行为**）；DDL 类型/长度**0 差异** |
 
 ### F-12 🔴 台账自身的三个缺陷（**元问题**，RAG-V1 必须一开始就避开）
 
@@ -172,17 +181,18 @@ RAG 已签字的偏离（RAG-V1 需**逐条独立裁决**，不能照抄）：
 3. **禁止 `@EnabledIfDockerAvailable`**（RAG 实测：它把「拉不到镜像」压成「Docker 不可用」⇒ 静默全跳）。若用 Testcontainers ⇒ **必须配 `RYUK_DISABLED` surefire 注入**。
 4. **排除项用前缀 / 类别匹配**，不逐个枚举；**每次架构变更后重跑并确认输出形态没变**。
 
-### R3 · 「GORM 语义 → MyBatis-Plus 语义」对照表（对应 F-05）
+### R3 · 「B 侧 MP 写法 → 本仓 MP 写法」对照表（对应 F-05）
 
 > **填实现时强制参考**，不是可选参考。落在 [`docs/L3-降级清单.md`](L3-降级清单.md) 旁边。
+> **B 侧已经在用 MyBatis-Plus** ⇒ 这张表的左边不是「另一个 ORM」，而是**本仓该抄的东西**。
 
-| Go (GORM) 写法 | MP 等价写法 | 坑 |
+| B 侧写法（RAG 仓现状） | 本仓写法 | 坑 |
 |---|---|---|
-| `Save` / `Updates` 显式赋值 | `updateById(entity)` → `MetaObjectHandler` | 读-改-写路径上 `strictUpdateFill` **永不生效**（实体从库里读出来，非 null ⇒ 跳过） |
-| `Updates(map)` / 无实体 | `update(null, wrapper)` → `setSql` | 实体为 null ⇒ **`MetaObjectHandler` 根本不会被调用** |
-| `Where("x = ?", v)` + 已有 `WHERE` | `LambdaQueryWrapper` | `<where>` 在已有 `WHERE` 上**生成两个 `WHERE`** |
-| 字段名 `isRead` | `E::isRead`（MP lambda） | MP lambda 按**字段名**；`#{isRead}`（手写 `@Insert`）按 **JavaBeans 属性名** ⇒ **两套解析规则** |
-| 指针字段 `*int64`（可为 nil） | `Long x = 0L` + `callSettersOnNulls=false` | **NULL 读出来是 `0` 不是 `null`** ⇒ `if (x != null)` 永不触发 |
+| `updateById(entity)` + `MetaObjectHandler`（article 域 8 处写路径） | 同款：实体非 null ⇒ `MetaObjectHandler` 生效 | 读-改-写路径上 `strictUpdateFill` **永不生效**（实体从库里读出来，非 null ⇒ 跳过）⇒ B 侧改用**无条件覆盖** |
+| `update(null, wrapper)` + `setSql`（admin / message / user 域写路径） | 同款：实体为 null ⇒ 只能用 `setSql` / `set` | 实体为 null ⇒ **`MetaObjectHandler` 根本不会被调用** |
+| MP lambda（`E::isRead`） | 同款 | MP lambda 按**字段名**；`#{isRead}`（手写 `@Insert`）按 **JavaBeans 属性名** ⇒ **两套解析规则** |
+| 可空数值字段 `Long x = 0L` + `callSettersOnNulls=false` | 同款 | **NULL 读出来是 `0` 不是 `null`** ⇒ `if (x != null)` 永不触发 |
+| **B 侧 0 个 mapper `.xml`** | **本仓同样 0 个** ⇒ 全部走 Wrapper / 注解 | `<where>` 在已有 `WHERE` 上会**生成两个 `WHERE`** ⇒ **B 侧亦无此写法 ⇒ 本仓不实现** |
 
 ### R4 · 事务边界的三条判据（对应 F-05 / F-03）
 
@@ -196,18 +206,22 @@ MockMvc **测不到**「响应已 committed 后 `setHeader` 被静默忽略」�
 
 ### R6 · DDL 三约束（对应 F-04 / F-11）
 
+> ⚠️ **前两条是「走 `SchemaInitializer` 路线」时才生效的约束** —— 若最终拍板走 **Flyway 路线**（见 F-04），
+> 则 `db/migration/*.sql` 由 Flyway 自己按 `;` 与版本切分，**PG 美元引号可用** ⇒ 约束 1 不再适用；
+> 约束 2 仍适用（`USING` 的取值重解释是 PG 侧行为，与执行器无关）。
+
 1. **`db/*.sql` 只能放单条语句** —— `ScriptUtils` 按 `;` 切分，**不支持 PG 美元引号 `$$`** ⇒ 无块、无 dollar quoting、无存储过程定义。
 2. **`timestamptz` 转换必须用 `SET TIME ZONE 'UTC'; … RESET TIME ZONE;` 包裹**（`USING` 会重新解释取值 ⇒ 幂等重放下**永不收敛**）。
 3. **`DEFAULT CURRENT_TIMESTAMP` 的取舍按 message 域口径**：两侧 INSERT 都显式绑定该列 ⇒ 默认永不触发 ⇒ **删它是为不可观测的维度冒险** ⇒ 保留并签字，不改。
 
 ---
 
-## 三、RAG-V1 **已经做对、因而避开**的坑（4 条）
+## 三、RAG-V1 **已经做对、因而避开**的坑（3 条）+ **1 条重新生效**（F-04）
 
-| # | RAG 的坑 | RAG-V1 的做法 | 状态 |
+| # | B 侧的坑 | RAG-V1 的做法 | 状态 |
 |---|---|---|---|
-| 1 | **Flyway 账本撞号**（schema 级账本，同库同 schema 撞版本号） | **不用 Flyway** ⇒ `SchemaInitializer` 幂等重放（与 Go `AutoMigrate` 同构）⇒ **根因不存在** | ✅ 已避开 |
-| 2 | **proto `package` 归一 ⇒ gRPC 方法路径变** | **10 个 proto 与 Go 逐字节一致** ⇒ wire 契约零漂移 | ✅ 已避开 |
+| 1 | **Flyway 账本撞号**（schema 级账本，同库同 schema 撞版本号） | 🔴 **不再「已避开」** —— 本仓已于 2026-11-02 改用 Flyway ⇒ **该坑重新生效**；B 侧的两种解法（各域独立账本表名 + `baseline-version: 0` ／ users 域 `SchemaInitializer` 幂等重放）见 **F-04** ⇒ **待拍板** | ⚠️ **重新生效 · 待拍板** |
+| 2 | **proto `package` 归一 ⇒ gRPC 方法路径变** | **10 个 proto 与 B 侧逐字节一致**（除 `java_package` 属表达层）⇒ 与基准同构 ⇒ wire 契约零漂移 | ✅ 已避开 |
 | 3 | **手写必填校验器 ⇒ 放弃 Bean Validation 生态** | **D5**：DTO 全 `record` + Bean Validation（`@NotNull`/`@NotBlank`）⇒ 生态可用（代价：错误文案降级，已登记 `D-01`） | ✅ 已避开 |
 | 4 | **9 份 `MybatisPlusOrderingBridgeAutoConfiguration` 复制** + **每模块手写 `@Import` 清单** | **D3**：starter 化 + `AutoConfiguration.imports`（7 个 auto-config）⇒ **零 `@Import` 清单** | ✅ 已避开 |
 
@@ -324,7 +338,7 @@ mvn -o -T1C compile
 | # | 事项 | 类型 | 状态 |
 |---|---|---|---|
 | 1 | **`common/` 加 `spring-boot-kafka`；7 个 service 模块改依赖** | 代码 | ✅ **已实施 + 已验证**（§四 K-1） |
-| 2 | **「GORM 语义 → MP 语义」对照表**（R3） | 文档 | ✅ **已写** → [`GORM-MP-语义对照.md`](GORM-MP-语义对照.md) |
+| 2 | **「B 侧 MP 写法 → 本仓 MP 写法」对照表**（R3） | 文档 | ✅ **已写** → `docs/*MP-语义对照.md`（文件名见根 `README.md` 索引） |
 | 3 | **`common/` 准入与归属规则**（R1） | 文档 + AGENTS.md | ✅ **已写**（AGENTS.md §1.4 R1） |
 | 4 | **`check-arch-invariants.py` 内建 4 条硬规则**（R2）+ Kafka 依赖断言 | 代码 | ⬜ **待实现**（脚本本身也未实现） |
 | 5 | **HTTP 层真 Tomcat 守门**（R5） | 代码 | ⬜ 待实现 |
@@ -347,6 +361,6 @@ mvn -o -T1C compile
 | `docs/Pitfalls/_cross/testing-pitfalls.md` | 假绿 / 假阳性 / 计数口径 | 写守门脚本前必读 |
 | `docs/Pitfalls/_cross/flyway-ledger-collision.md` | Flyway 账本撞号完整坑档 | 选建表机制时 |
 | `docs/Worktree.md` | 并发工作流操作手册 | 开并发对齐前 |
-| `docs/FileTree/` | 23 份 Go 派生文件树（只读） | 查 Go 侧职责 |
-| `docs/MappingTable/` | A/B/C 三列映射（Go / Java 镜像 / Spring 目标） | 查某个 Go 文件对应哪个 Java |
-| `docs/HUMAN_ONLY/` | 包级阅读指南（api / rpc 两份） | 第一次进 RAG 的包 |
+| `docs/FileTree/` | 23 份派生文件树（只读） | 查职责清单 |
+| `docs/MappingTable/` | A/B/C 三列映射（原始实现 / B 侧 Java 镜像 / 本仓 Spring 目标） | 查某个源文件对应哪个 Java |
+| `docs/HUMAN_ONLY/` | 包级阅读指南（api / rpc 两份） | 第一次进 B 侧的包 |

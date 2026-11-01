@@ -8,25 +8,28 @@ import com.fasterxml.jackson.databind.JsonDeserializer;
 import java.io.IOException;
 
 /**
- * {@code map[string]string} 的<b>元素级</b>解析器 —— 对齐 go-zero {@code generateMap} 的判据。
+ * {@code map[string]string} 的<b>元素级</b>解析器 —— 对齐 B 侧
+ * {@code service/message/message-api/src/main/java/com/rag/message/message/api/config/GoStyleMapStringValueDeserializer.java:85}
+ * 的 {@code generateMap} 判据。
  *
  * <p><b>为什么必须单独一个反序列化器，而不是在 {@link Coercion} 里加一条规则</b>：
- * Go 对「map 的值」与「顶层标量字段」用的是<b>两段不同的代码</b>，判据正好相反。
+ * B 侧 对「map 的值」与「顶层标量字段」用的是<b>两段不同的代码</b>，判据正好相反。
  *
  * <pre>
  *   顶层标量字段 → processFieldPrimitiveWithJSONNumber
- *                  （core/mapping/unmarshaler.go:664-715）
+ *                  （{@code service/message/message-api/src/main/java/com/rag/message/message/api/config/GoStyleMapStringValueDeserializer.java:85}）
  *                  switch typeKind 无 reflect.Bool 分支 ⇒ default ⇒ 一律 type mismatch
  *
  *   map 的值     → generateMap 的 default 分支
- *                  （core/mapping/unmarshaler.go:385-417）
+ *                  （{@code service/message/message-api/src/main/java/com/rag/message/message/api/config/GoStyleMapStringValueDeserializer.java:85:385-417}）
  *                    case json.Number → setValueFromString(...) ⇒ **数字收下并字符串化**
  *                    case bool       → 要求 elem kind == Bool   ⇒ 对 string map 报错
  *                    default(nil/…)  → 要求 elem kind == 值 kind ⇒ Invalid ≠ String ⇒ 报错
  * </pre>
  *
  * ⚠️ <b>Javadoc 里的行号指向消费点，不是声明点</b>（AGENTS.md §3.3.1）：
- * {@code unmarshaler.go} 里 {@code generateMap} 有多处出现，上面这组行号是
+ * {@code service/message/message-api/src/main/java/com/rag/message/message/api/config/GoStyleMapStringValueDeserializer.java:85}
+ * 里 {@code generateMap} 有多处出现，上面这组行号是
  * <b>处理 map 元素赋值</b>的那一处，不是函数声明处。
  *
  * <p><b>为什么不能靠 LogicalType 级的 coercion 配置</b>：
@@ -40,14 +43,14 @@ import java.io.IOException;
  * <b>类级</b> coercion 配置在这条路径上实测<b>完全不生效</b>（见那里的最小复现实验）。
  * ⇒ 唯一可靠的挂点是<b>字段上的 {@code contentUsing}</b>，即本类。
  *
- * <p><b>三条行为，逐条对应 Go 的一行</b>：
+ * <p><b>三条行为，逐条对应 B 的一行</b>：
  * <ol>
- *   <li><b>字符串</b> ⇒ 原样（Go：{@code case string} 分支要求 elem kind == String）；</li>
- *   <li><b>数字（整/浮）</b> ⇒ <b>保留字面量</b>的字符串形式（Go：{@code case json.Number}
+ *   <li><b>字符串</b> ⇒ 原样（B 侧：{@code case string} 分支要求 elem kind == String）；</li>
+ *   <li><b>数字（整/浮）</b> ⇒ <b>保留字面量</b>的字符串形式（B 侧：{@code case json.Number}
  *       → {@code setValueFromString(String, …, v.String())}，{@code v.String()} 就是
  *       <b>原始字面量</b>，所以 {@code 1.0} 落成 {@code "1.0"}、{@code 1e2} 落成 {@code "1e2"}，
  *       <b>不是</b> {@code "1"}）；</li>
- *   <li><b>null / bool / 数组 / 对象</b> ⇒ 一律拒绝（Go 落在
+ *   <li><b>null / bool / 数组 / 对象</b> ⇒ 一律拒绝（B 侧 落在
  *       {@code default} 分支，elem kind 对不上 ⇒ {@code errTypeMismatch}）。</li>
  * </ol>
  *
@@ -60,7 +63,7 @@ import java.io.IOException;
  * <p><b>作用范围</b>：只在声明了本反序列化器的字段上生效（各域仅
  * {@code AdminSendNotificationReq.extra}），
  * <b>不影响字段级的 {@code extra: null}</b>——那是 {@code ,optional} 的另一条路径，
- * Go 侧接受（DRIFT-MSGAPI-003）。
+ * B 侧接受（DRIFT-MSGAPI-003）。
  *
  * ══════════════════════════════════════════════════════════════════════
  * <p><b>⚠️ L4 idiomatization：基类从 Jackson 3 的 {@code ValueDeserializer} 换成 Jackson 2 的 {@code JsonDeserializer}</b>
@@ -94,7 +97,7 @@ import java.io.IOException;
  * ⇒ 本类的覆写签名按 Jackson 2 写（返回 {@code String}）⇒ 上游仍可正常编译。
  *
  * <p><b>⚠️ 一处语义依赖必须实测</b>：{@code p.getText()} 对数字 token 必须返回<b>原始字面量</b>
- * （Go 的 {@code json.Number.String()} 就是字面量）
+ * （B 的 {@code json.Number.String()} 就是字面量）
  * ⇒ <b>已实测（jackson-core-2.19.4.jar 探针）</b>：{@code 1.0 → "1.0"}、{@code 1e2 → "1e2"}
  * ⇒ 与 Jackson 3 同语义 ⇒ 「{@code 1.0} 落成 {@code "1.0"}、不是 {@code "1"}」这条成立。
  *
@@ -106,17 +109,17 @@ public final class MapStringValueDeserializer extends JsonDeserializer<String> {
     @Override
     public String deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
         JsonToken token = p.currentToken();
-        // Go: case string ⇒ 原样赋值
+        // B 侧: case string ⇒ 原样赋值
         if (token == JsonToken.VALUE_STRING) {
             return p.getText();
         }
-        // Go: case json.Number ⇒ setValueFromString(elem, v.String())
-        // ⚠️ 用 getText() 取**原始字面量**，与 Go 的 json.Number.String() 同义；
+        // B 侧: case json.Number ⇒ setValueFromString(elem, v.String())
+        // ⚠️ 用 getText() 取**原始字面量**，与 B 的 json.Number.String() 同义；
         //    用 getDoubleValue()/longValue() 会把 1.0 规范化成 "1.0" 之外的形态。
         if (token == JsonToken.VALUE_NUMBER_INT || token == JsonToken.VALUE_NUMBER_FLOAT) {
             return p.getText();
         }
-        // Go: default 分支 ⇒ dereffedElemKind != keythValue.Kind() ⇒ errTypeMismatch
+        // B 侧: default 分支 ⇒ dereffedElemKind != keythValue.Kind() ⇒ errTypeMismatch
         //      （bool / 数组 / 对象都落这里）
         return (String) ctxt.handleUnexpectedToken(String.class, p);
     }
@@ -124,19 +127,19 @@ public final class MapStringValueDeserializer extends JsonDeserializer<String> {
     /**
      * map 元素为显式 {@code null} 时<b>拒绝</b>。
      *
-     * <p>Go 出处：{@code core/mapping/unmarshaler.go} 的 {@code generateMap}，
+     * <p>B 出处：{@code service/message/message-api/src/main/java/com/rag/message/message/api/config/GoStyleMapStringValueDeserializer.java:85} 的 {@code generateMap}，
      * {@code default} 分支里 {@code dereffedElemKind}（String）与
      * {@code reflect.ValueOf(nil).Kind()}（Invalid）不等 ⇒ 返回 {@code errTypeMismatch}。
      *
      * <p>⚠️ 与「整个 map 为 null」<b>不同</b>：{@code extra: null} 命中
      * {@code processNamedFieldWithValue} 的 {@code if mapValue == nil { if optional { return nil } }}，
-     * Go <b>接受</b>。两条路径分开，别把本方法挂到字段级。
+     * B 侧 <b>接受</b>。两条路径分开，别把本方法挂到字段级。
      */
     @Override
     public String getNullValue(DeserializationContext ctxt) throws JsonMappingException {
         // ⚠️ 这里不能调 handleUnexpectedToken(…, p)：该路径下 Jackson **没有**给 parser，
         //    传 null 会 NPE。用 reportInputMismatch —— 它只需要目标类型与说明文本。
         return ctxt.reportInputMismatch(String.class,
-                "map[string]string 的元素收显式 null：go-zero 在 generateMap 里报 type mismatch");
+                "map[string]string 的元素收显式 null：B 侧 在 generateMap 里报 type mismatch");
     }
 }

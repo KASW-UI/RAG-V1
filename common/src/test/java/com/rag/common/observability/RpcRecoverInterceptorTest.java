@@ -22,10 +22,10 @@ import static org.mockito.Mockito.when;
 /**
  * §3.3「机制可证」守门：<b>gRPC handler panic ⇒ {@code INTERNAL + "panic: "}</b>。
  *
- * <p>⚠️ <b>这是 L1 wire 契约</b>（Go {@code status.Errorf(codes.Internal, "panic: %v", r)}）
- * ⇒ ⇒ <b>客户端看得见这个字符串</b> ⇒ ⇒ 改了它就与 Go 分叉 ⇒ ⇒ 必须有守门。
+ * <p>⚠️ <b>这是 L1 wire 契约</b>（B 侧 {@code status.Errorf(codes.Internal, "panic: %v", r)}）
+ * ⇒ ⇒ <b>客户端看得见这个字符串</b> ⇒ ⇒ 改了它就与 B 侧 分叉 ⇒ ⇒ 必须有守门。
  *
- * <p><b>Go 出处</b>：
+ * <p><b>B 出处</b>：
  * <pre>
  *   zrpc/internal/serverinterceptors/recoverinterceptor.go:24-42
  *       func UnaryRecoverInterceptor(ctx, req, _, handler) (resp any, err error) {
@@ -60,7 +60,7 @@ class RpcRecoverInterceptorTest {
 
         assertThat(closed.get()).isNotNull();
         assertThat(closed.get().getCode()).isEqualTo(Status.Code.INTERNAL);
-        // ⚠️ **wire 可见的前缀**：Go 是 "panic: %v" ⇒ 逐字对齐
+        // ⚠️ **wire 可见的前缀**：B 侧 是 "panic: %v" ⇒ 逐字对齐
         assertThat(closed.get().getDescription()).isEqualTo("panic: boom");
     }
 

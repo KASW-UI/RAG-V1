@@ -9,13 +9,13 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.type.LogicalType;
 
 /**
- * E-3 根因 **R1** 的修复规则：关掉 Jackson 的标量强转与浮点截断，对齐 go-zero 的解析层。
+ * E-3 根因 **R1** 的修复规则：关掉 Jackson 的标量强转与浮点截断，对齐 B 侧的解析层。
  *
  * <p><b>2026-10-22</b>。此前 22 个 api 端点的请求 DTO 全部走 Jackson 默认的宽松解析，
- * 而 Go 侧是 go-zero 的 {@code core/mapping} —— 两者对「JSON 标量塞进非标量字段」的
+ * 而 B 侧的解析层（承载者 = {@code service/users/users-common/src/main/java/com/rag/users/common/http/GoStyleCoercion.java:18-32}）—— 两者对「JSON 标量塞进非标量字段」的
  * 判定完全相反。
  *
- * <p><b>Go 的真实判定（逐条实测，真进程 18889，不是推断）</b>：
+ * <p><b>B 的真实判定（逐条实测，真进程 18889，不是推断）</b>：
  * <pre>
  *   String 字段：{"username":1}    → 400  type mismatch for field "username", expect "string", actual "number"
  *                {"username":1.5}  → 400  type mismatch for field "username", expect "string", actual "number"
@@ -38,14 +38,14 @@ import com.fasterxml.jackson.databind.type.LogicalType;
  *       {@link LogicalType#Textual} 一律 {@link CoercionAction#Fail}。</li>
  *   <li><b>浮点不能进整数字段，哪怕整数部分完整</b> ⇒ 关掉
  *       {@link DeserializationFeature#ACCEPT_FLOAT_AS_INT}。
- *       注意 {@code 1.0} 也必须拒：Go 侧字符串化后是 {@code "1.0"}，
+ *       注意 {@code 1.0} 也必须拒：B 侧字符串化后是 {@code "1.0"}，
  *       {@code strconv.ParseInt("1.0")} 直接失败 —— 所以这条<b>不是</b>
  *       「小数部分非零才拒」。</li>
  * </ol>
  *
  * <p><b>刻意不动的两条</b>：
  * <ul>
- *   <li><b>String → 整数字段保持接受</b>（{@code {"uid":"1"}}）。Go 侧
+ *   <li><b>String → 整数字段保持接受</b>（{@code {"uid":"1"}}）。B 侧
  *       {@code processNamedFieldWithValueFromString} 是「先 {@code convertToString}
  *       再 {@code strconv.ParseInt}」，字符串反而是它的正规入口。
  *       关掉它会把「两边都接受」的输入改成「只有一边接受」，是把 R1 修成新漂移。</li>
@@ -55,7 +55,7 @@ import com.fasterxml.jackson.databind.type.LogicalType;
  * <p><b>失败后的响应形状</b>：Jackson 抛 {@code MismatchedInputException} →
  * Spring 包成 {@code HttpMessageNotReadableException} → api 层的
  * {@code handleUnreadableBody} → <b>HTTP 400 + text/plain</b>，
- * 与 Go 的 {@code http.Error(..., 400)} 同形状。
+ * 与 B 的 {@code http.Error(..., 400)} 同形状。
  * 文案不同属 §3.4.4 DRIFT-006 / §3.4.3 N-6 已确立的「形状对齐、文本不对齐」边界。
  *
  * ══════════════════════════════════════════════════════════════════════
@@ -98,7 +98,7 @@ import com.fasterxml.jackson.databind.type.LogicalType;
  * {@code MapperBuilder} <b>也有</b> {@code withCoercionConfig(Class&lt;?&gt;, Consumer&lt;MutableCoercionConfig&gt;)}
  * （Jackson 3 也有，但 RAG 实测「类级配置在 LogicalType 级配置存在时**完全不生效**」）。
  * <br>⇒ 本类<b>刻意只用 LogicalType 级</b>、<b>不</b>用类级豁免 ⇒ 规则保持<b>全局生效</b>
- * ⇒ 与 RAG 侧（以及 Go 侧的 go-zero 解析层）<b>同形</b>。
+ * ⇒ 与 RAG 侧（以及 B 侧的解析层）<b>同形</b>。
  * ⇒ 若日后有人加类级豁免 ⇒ 会把「两边都拒」的输入改成「一边收」⇒ 是新漂移，不是修好。
  *
  * <p><b>⚠️ 为什么这里是纯静态工具、不是 {@code @Configuration}</b>：
@@ -121,15 +121,15 @@ public final class Coercion {
      *
      * <p>调用方约定：只在 <b>api 层</b>（各域的 MVC mapper）上调用。
      * gRPC 用 protobuf marshaller、MyBatis 与 {@code JsonTextTypeHandler} 各持自己的
-     * Jackson 2 mapper 实例，都与 go-zero 的 http 解析层无关，不该被这两条规则波及。
+     * Jackson 2 mapper 实例，都与 B 侧的 http 解析层无关，不该被这两条规则波及。
      *
      * @param builder Spring MVC 使用的 {@link JsonMapper.Builder}
      */
     public static void applyTo(JsonMapper.Builder builder) {
-        // 规则 2：1.0 / 1.5 进 Long / int 一律拒（Go：strconv.ParseInt("1.0") 失败）
+        // 规则 2：1.0 / 1.5 进 Long / int 一律拒（B 侧：strconv.ParseInt("1.0") 失败）
         builder.disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT);
 
-        // 规则 1：number / boolean 进 String 一律拒（Go：type mismatch）
+        // 规则 1：number / boolean 进 String 一律拒（B 侧：type mismatch）
         builder.withCoercionConfig(LogicalType.Textual, Coercion::applyTextualCoercions);
     }
 

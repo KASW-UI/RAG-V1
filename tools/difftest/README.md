@@ -9,7 +9,7 @@
 | `check-arch-invariants.py` | **架构符合性 A1–A12** —— 校验包结构、starter 化、生态优先、immutable DTO 等约定 | ✅ **2026-10-25 已实现**（`--self-test` 自证 12/12 条判据能红） |
 | `check-proto-static.sh` | proto 契约对照（字段号 / message 名 / RPC 签名） | ⬜ 待实现 |
 | `check-ddl-static.py` | DDL 列级对照（类型 / 长度 / 可空性 / DEFAULT / 索引） | ⬜ 待实现 |
-| `run-parity.sh` | 双侧语义探针（Go ↔ RAG-V1 同请求矩阵） | ⬜ 待实现 |
+| `run-parity.sh` | 双侧语义探针（B 侧 ↔ RAG-V1 同请求矩阵） | ⬜ 待实现 |
 
 ### `check-arch-invariants.py` 用法
 

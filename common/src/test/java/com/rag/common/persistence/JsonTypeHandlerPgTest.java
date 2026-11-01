@@ -56,16 +56,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * ⇒ 二者都<b>把要验的东西换没了</b>（同款理由见 RAG 侧
  * {@code service/article/article-rpc/src/test/.../ArticleJsonbResultMapWiringTest} 的 javadoc）。
  *
- * <h2>与 Go 的对照（为什么「两个 handler」不是重复劳动）</h2>
+ * <h2>与 B 的对照（为什么「两个 handler」不是重复劳动）</h2>
  *
- * <p>Go 侧 {@code encoding/json} 把 U+0000 转义成 <b>6 个 ASCII 字符</b> {@code \u0000}
- *（<b>不是</b>裸 NUL 字节）⇒ Go 的 {@code text} 列必须收下它；
+ * <p>B 侧 {@code encoding/json} 把 U+0000 转义成 <b>6 个 ASCII 字符</b> {@code \u0000}
+ *（<b>不是</b>裸 NUL 字节）⇒ B 的 {@code text} 列必须收下它；
  * 而 jsonb 列的 unicode escape 校验会拒收（22P05）
- * ⇒ ⇒ <b>Go 侧同一个 handler 若同时服务 jsonb 与 text，text 那条路径就会 500</b>。
+ * ⇒ ⇒ <b>B 侧同一个 handler 若同时服务 jsonb 与 text，text 那条路径就会 500</b>。
  * <p>活体对拍证据（RAG 侧 <b>DRIFT-ARPC-004①</b>，2026-10-23）：
  * <pre>
  *   同一份请求体（extra_info 含 U+0000）：
- *     Go  → HTTP 200 {code:200}，行已落库
+ *     B 侧  → HTTP 200 {code:200}，行已落库
  *     RAG → HTTP 200 {code:5001}，无行，PG 报 22P05
  * </pre>
  *
@@ -169,7 +169,7 @@ class JsonTypeHandlerPgTest {
     @Test
     @DisplayName("🔴 JsonbTypeHandler：写入前不校验 JSON ⇒ 非法 JSON 由 PG 报错（22P02）")
     void jsonbHandlerLeavesJsonValidationToPg() throws Exception {
-        // Go 侧也不校验（payload 由 json.Marshal 产生，一定合法）⇒
+        // B 侧也不校验（payload 由 json.Marshal 产生，一定合法）⇒
         // 上层传了非法 JSON 就让 PG 插入时报错，而不是在 handler 里静默吞掉。
         SQLException e = assertThrowsSql(() -> withMapper(m -> m.insertJsonb("jb-bad", "{invalid")));
 
@@ -180,7 +180,7 @@ class JsonTypeHandlerPgTest {
     @Test
     @DisplayName("🔴 JsonbTypeHandler：jsonb 列拒收 \\u0000 转义（22P05）⇒ 两个 handler 必须分开的判据之一")
     void jsonbHandlerIsRejectedByPgForNulEscape() throws Exception {
-        // 这里传的是 **6 个 ASCII 字符** `\u0000`（不是裸 NUL 字节）—— 与 Go 侧
+        // 这里传的是 **6 个 ASCII 字符** `\u0000`（不是裸 NUL 字节）—— 与 B 侧
         // encoding/json 的产出形态一致 ⇒ 于是撞上 jsonb 的 unicode escape 校验。
         SQLException e = assertThrowsSql(() -> withMapper(m -> m.insertJsonb("jb-nul", "{\"k\":\"\\u0000\"}")));
 
@@ -207,10 +207,10 @@ class JsonTypeHandlerPgTest {
     }
 
     @Test
-    @DisplayName("🔴 JsonTextTypeHandler：text 列照单全收 \\u0000（jsonb 会拒）⇒ Go 对拍证据")
+    @DisplayName("🔴 JsonTextTypeHandler：text 列照单全收 \\u0000（jsonb 会拒）⇒ B 侧 对拍证据")
     void jsonTextHandlerAcceptsWhatJsonbRejects() throws Exception {
-        // Go 侧 encoding/json 把 U+0000 转义成 6 个 ASCII 字符 `\u0000`
-        // ⇒ Go 的 text 列必须收下 ⇒ Java 侧也必须收下 ⇒ 这是 DRIFT-ARPC-004① 的根因所在。
+        // B 侧 encoding/json 把 U+0000 转义成 6 个 ASCII 字符 `\u0000`
+        // ⇒ B 的 text 列必须收下 ⇒ Java 侧也必须收下 ⇒ 这是 DRIFT-ARPC-004① 的根因所在。
         Map<String, String> payload = new LinkedHashMap<>();
         payload.put("k", "\u0000");
 

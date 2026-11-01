@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.TimeUnit;
 
 /**
- * <p><b>L4 idiomatization：gRPC client 侧</b>按方法的熔断，对齐 Go
+ * <p><b>L4 idiomatization：gRPC client 侧</b>按方法的熔断，对齐 B 侧
  * {@code zrpc/internal/clientinterceptors.BreakerInterceptor}。
  *
  * <p>RAG 出处：{@code service/common/protection/GoStyleGrpcClientBreakerInterceptor.java}
@@ -39,7 +39,7 @@ import java.util.concurrent.TimeUnit;
  *       ⇒ channel 工厂不会把它装进 channel ⇒ <b>熔断代码一次都不会执行</b>。</li>
  * </ul>
  *
- * <p><b>Go 出处（三段，缺一不可）</b>：
+ * <p><b>B 出处（三段，缺一不可）</b>：
  * <pre>
  * // ① zrpc/internal/config.go:14     —— 默认开启
  * ClientMiddlewaresConf struct { ... Breaker bool `json:",default=true"` }
@@ -60,7 +60,7 @@ import java.util.concurrent.TimeUnit;
  * </pre>
  *
  * <p><b>⚠️ 本层最关键的一行是「acceptable 判据」；写成「非 OK 即失败」会引入比现状更糟的缺陷</b>。
- * Go 的 {@code zrpc/internal/codes/accept.go:9-17}：
+ * B 的 {@code zrpc/internal/codes/accept.go:9-17}：
  * <pre>
  * func Acceptable(err error) bool {
  *     switch status.Code(err) {
@@ -76,13 +76,13 @@ import java.util.concurrent.TimeUnit;
  * ⚠️ 若把判据写成「非 OK 即失败」，{@code NOT_FOUND} / {@code PERMISSION_DENIED} 这类
  * <b>正常运营中天天发生</b>的业务错误会被大量计成失败 ⇒ 熔断误开 ⇒ 打掉正常流量。
  *
- * <p><b>隔离单位 = (下游服务, RPC 方法)</b>：Go 用 {@code path.Join(cc.Target(), method)}。
+ * <p><b>隔离单位 = (下游服务, RPC 方法)</b>：B 侧 用 {@code path.Join(cc.Target(), method)}。
  * 本类用 gRPC 的 {@code method.getFullMethodName()} ＋ {@code channel.authority()}。
- * ⚠️ 与 Go 唯一的差别是 authority 串的<b>形态</b>不同（Go 是 {@code etcd:///etcd:2379?key=...}，
+ * ⚠️ 与 B 侧 唯一的差别是 authority 串的<b>形态</b>不同（B 侧 是 {@code etcd:///etcd:2379?key=...}，
  * 本仓是服务名）⇒ <b>可观察语义完全一致</b>（按「哪个下游服务 + 哪个方法」分组）⇒ 属**表达层差异**。
  *
  * <p><b>⚠️ 拒绝时抛 {@link ServiceBusyException}（普通异常，<b>不是</b> {@code StatusRuntimeException}）</b>
- * Go 侧熔断打开时 {@code breaker.DoWithAcceptableCtx} 返回的是
+ * B 侧熔断打开时 {@code breaker.DoWithAcceptableCtx} 返回的是
  * {@code breaker.ErrServiceUnavailable = errors.New("circuit breaker is open")}
  * —— 一个<b>普通 error</b>，不是 gRPC status。
  * 随后 {@code shared.RPCError} 走 {@code BizCodeFromError}：
@@ -93,10 +93,10 @@ import java.util.concurrent.TimeUnit;
  * ⇒ 客户端拿到的是 <b>code=1015、msg="service busy"（查表）</b>，
  * <b>而不是</b> "circuit breaker is open"。
  * ⇒ ⇒ 若图省事改成抛 {@code StatusRuntimeException(Status.UNKNOWN)}，
- * description 会变成 "circuit breaker is open" ⇒ <b>msg 与 Go 不同</b>。
+ * description 会变成 "circuit breaker is open" ⇒ <b>msg 与 B 侧 不同</b>。
  *
  * <p><b>⚠️ D4 / D-02：熔断器本体由 resilience4j 承载</b>（与 REST 侧、gRPC 服务端侧同一份机制）
- * ⇒ ⇒ <b>机制类型</b>与 Go 的 googlebreaker 不同（已登记 **D-02** 的 L3 降级）
+ * ⇒ ⇒ <b>机制类型</b>与 B 的 googlebreaker 不同（已登记 **D-02** 的 L3 降级）
  * ⇒ ⇒ 本类只负责「<b>隔离 key + 成败判据 + 拒绝形状</b>」这三件<b>行为契约</b>。
  */
 @GrpcGlobalClientInterceptor
@@ -122,7 +122,7 @@ public class ClientCircuitGateInterceptor implements ClientInterceptor {
 
         String fullMethodName = method.getFullMethodName();
         // ⚠️ 2026-10-25（T-9 修复）：breaker 的键必须**带 channel 身份**。
-        //   Go: breakerName := path.Join(cc.Target(), method)
+        //   B 侧: breakerName := path.Join(cc.Target(), method)
         //       `cc.Target()` = gRPC **dial 时传入的 target 字符串**（不是解析后的 IP:Port）
         //       ⇒ 键里**含服务标识** ⇒ **每个下游服务一份独立熔断器**。
         //   修复前若只用 `method.getFullMethodName()`（**无 target 前缀**）
@@ -173,7 +173,7 @@ public class ClientCircuitGateInterceptor implements ClientInterceptor {
     }
 
     /**
-     * Go 侧的「channel 身份」= {@code cc.Target()}。
+     * B 侧的「channel 身份」= {@code cc.Target()}。
      *
      * <p>⚠️ 取不到时返回空串 ⇒ breaker 退化为「仅按方法名」⇒ 至少不会崩。
      */
@@ -186,10 +186,10 @@ public class ClientCircuitGateInterceptor implements ClientInterceptor {
     }
 
     /**
-     * Go: {@code path.Join(cc.Target(), method)}。
+     * B 侧: {@code path.Join(cc.Target(), method)}。
      *
-     * <p>⚠️ <b>字符串形式与 Go 不会逐字节相同</b>（表达层差异，不影响行为）：
-     * Go 的 {@code path.Join} 会把 {@code ///} 折叠成 {@code /}
+     * <p>⚠️ <b>字符串形式与 B 侧 不会逐字节相同</b>（表达层差异，不影响行为）：
+     * B 的 {@code path.Join} 会把 {@code ///} 折叠成 {@code /}
      * ⇒ 本实现做<b>同样的最小折叠</b>（连续斜杠合并）。
      * ⇒ <b>可观察的语义完全一致</b>：breaker 按「<b>哪个下游服务</b> + 哪个方法」分组。
      */
@@ -216,13 +216,13 @@ public class ClientCircuitGateInterceptor implements ClientInterceptor {
     }
 
     /**
-     * 逐条对齐 Go {@code zrpc/internal/codes/accept.go:9-17} 的 {@code codes.Acceptable}。
+     * 逐条对齐 B 侧 {@code zrpc/internal/codes/accept.go:9-17} 的 {@code codes.Acceptable}。
      *
-     * <p>⚠️ <b>这是本类唯一真正的语义判据</b>，改动前必须回 Go 侧确认。
+     * <p>⚠️ <b>这是本类唯一真正的语义判据</b>，改动前必须回 B 侧确认。
      * 六个失败 code 一个都不能少，也<b>不能改成「非 OK 即失败」</b>。
      *
-     * <p>{@code UNKNOWN} 归为成功，与 Go 一致：Go 的 {@code status.Code(err)} 对
-     * 非 status 错误返回 {@code codes.Unknown}，而 Unknown 不在 Go 的失败名单里。
+     * <p>{@code UNKNOWN} 归为成功，与 B 侧 一致：B 的 {@code status.Code(err)} 对
+     * 非 status 错误返回 {@code codes.Unknown}，而 Unknown 不在 B 的失败名单里。
      */
     static boolean isAcceptable(Status status) {
         if (status == null) {

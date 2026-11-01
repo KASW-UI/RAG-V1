@@ -26,16 +26,16 @@ import static org.mockito.Mockito.when;
  *
  * <p>⚠️ <b>这三条都是行为契约</b>：
  * <ul>
- *   <li>降载拒绝 = {@code RESOURCE_EXHAUSTED + "service overloaded"}（Go {@code core/load/adaptiveshedder.go:34}）；</li>
- *   <li>熔断失败判据 = <b>6 码白名单</b>（Go {@code zrpc/internal/codes/accept.go:9-17}）
+ *   <li>降载拒绝 = {@code RESOURCE_EXHAUSTED + "service overloaded"}（B 侧 {@code service/common/src/main/java/com/rag/common/protection/GoStyleRpcSheddingInterceptor.java:80}）；</li>
+ *   <li>熔断失败判据 = <b>6 码白名单</b>（B 侧 {@code service/common/src/main/java/com/rag/common/protection/GoStyleRpcFailurePolicy.java:86}）
  *       ⇒ <b>业务错误（NOT_FOUND / PERMISSION_DENIED …）不算失败</b>；</li>
- *   <li>客户端熔断隔离 key = <b>(下游服务, 方法)</b>（Go {@code path.Join(cc.Target(), method)}）。</li>
+ *   <li>客户端熔断隔离 key = <b>(下游服务, 方法)</b>（B 侧 {@code service/common/src/main/java/com/rag/common/protection/GoStyleGrpcClientBreakerInterceptor.java:91}）。</li>
  * </ul>
  */
 class RpcProtectionLayerTest {
 
     @Test
-    @DisplayName("降载拒绝 = RESOURCE_EXHAUSTED + \"service overloaded\"（Go 的 ErrServiceOverloaded 文案）")
+    @DisplayName("降载拒绝 = RESOURCE_EXHAUSTED + \"service overloaded\"（B 侧 ErrServiceOverloaded 文案）")
     void sheddingRejectionShape() {
         AtomicReference<Status> closed = new AtomicReference<>();
         ServerCall<String, String> call = mockCall(closed);
@@ -61,7 +61,7 @@ class RpcProtectionLayerTest {
         AtomicInteger cpu = new AtomicInteger(100);
         shedder.setCpuPermilleReader(cpu::get);
 
-        // ⚠️ 只有 CPU 过载、**没有在途** ⇒ Go 的 highThru() 为假 ⇒ **不降载**
+        // ⚠️ 只有 CPU 过载、**没有在途** ⇒ 上游的 highThru() 为假 ⇒ **不降载**
         cpu.set(1000);
         assertThat(shedder.allow()).isTrue();
 
@@ -73,7 +73,7 @@ class RpcProtectionLayerTest {
     /**
      * 构造一个<b>双条件齐备</b>的 shedder：CPU 打满 ＋ 在途远超上限。
      *
-     * <p>⚠️ <b>为什么要这样构造</b>：Go 的 {@code shouldDrop()} =
+     * <p>⚠️ <b>为什么要这样构造</b>：上游的 {@code shouldDrop()} =
      * {@code (systemOverloaded() || stillHot()) && highThru()} ⇒
      * <b>CPU 过载本身不够</b>，还要「在途数 > maxFlight × overloadFactor」。
      * <br>⇒ 在途靠 {@code allow()} 累积、靠 {@code pass()} 递减；
@@ -103,7 +103,7 @@ class RpcProtectionLayerTest {
     @Test
     @DisplayName("失败判据 = 6 码白名单；业务错误（NOT_FOUND / PERMISSION_DENIED）不算失败")
     void failurePolicyWhitelist() {
-        // ⚠️ Go 的 6 码失败名单：一个都不能多、也不能少
+        // ⚠️ 上游的 6 码失败名单：一个都不能多、也不能少
         assertThat(RpcFailurePolicy.isFailure(Status.Code.DEADLINE_EXCEEDED)).isTrue();
         assertThat(RpcFailurePolicy.isFailure(Status.Code.INTERNAL)).isTrue();
         assertThat(RpcFailurePolicy.isFailure(Status.Code.UNAVAILABLE)).isTrue();
@@ -116,7 +116,7 @@ class RpcProtectionLayerTest {
         assertThat(RpcFailurePolicy.isFailure(Status.Code.PERMISSION_DENIED)).isFalse();
         assertThat(RpcFailurePolicy.isFailure(Status.Code.INVALID_ARGUMENT)).isFalse();
         assertThat(RpcFailurePolicy.isFailure(Status.Code.OK)).isFalse();
-        // ⚠️ UNKNOWN 归为**可接受**（Go 的 status.Code 对非 status 错误返回 Unknown）
+        // ⚠️ UNKNOWN 归为**可接受**（上游的 status.Code 对非 status 错误返回 Unknown）
         assertThat(RpcFailurePolicy.isFailure(Status.Code.UNKNOWN)).isFalse();
     }
 
@@ -135,12 +135,12 @@ class RpcProtectionLayerTest {
     @Test
     @DisplayName("客户端熔断隔离 key = (下游服务, 方法) ⇒ 同名方法在不同服务下**不共用**熔断器")
     void clientIsolationKeyCarriesChannelIdentity() {
-        // ⚠️ Go: path.Join(cc.Target(), method) ⇒ 键里**含服务标识**
+        // ⚠️ 上游：path.Join(cc.Target(), method) ⇒ 键里**含服务标识**
         String a = ClientCircuitGateInterceptor.goBreakerName("message-rpc", "/message.v1.S/Send");
         String b = ClientCircuitGateInterceptor.goBreakerName("article-rpc", "/message.v1.S/Send");
         assertThat(a).isNotEqualTo(b);
 
-        // ⚠️ Go 的 path.Join 会把连续斜杠折叠 ⇒ 本实现做同样的最小折叠
+        // ⚠️ 上游的 path.Join 会把连续斜杠折叠 ⇒ 本实现做同样的最小折叠
         assertThat(ClientCircuitGateInterceptor.goBreakerName("a//b", "/x.Y/Z"))
                 .isEqualTo("a/b/x.Y/Z");
 

@@ -1,13 +1,16 @@
-# Mapping_Table 索引 —— Go ↔ RAG ↔ RAG-V1 三方文件名对照
+# Mapping_Table 索引 —— RAG（B 侧）↔ RAG-V1 两方文件名对照
 
-> **本目录目的**：把三棵树的文件名与职责**逐条对应**起来 ——
-> **A 列 Go 真理之源** → **B 列 RAG（Go 部署形态版）** → **C 列 RAG-V1（Spring 惯用目标）**。
-> 填 RAG-V1 实现时，从 C 列反查 A 列 ⇒ **去 Go 源码逐字对照**。
+> **本目录目的**：把两棵树的文件名与职责**逐条对应**起来 ——
+> **B 列 RAG（真理之源 · api/rpc 分离）** → **C 列 RAG-V1（Spring 惯用目标）**。
+> 填 RAG-V1 实现时，从 C 列反查 B 列 ⇒ **去 B 侧源码逐字对照**。
 >
 > 📌 **格式契约见 [`README.MD`](README.MD)** —— 章节骨架、表头、映射类型词表、覆盖度自查方法。
 > 📌 **格式样例**：[`/Users/pr/Documents/java&golang/RAG/docs/MappingTable/users.md`](file:///Users/pr/Documents/java&golang/RAG/docs/MappingTable/users.md)（RAG 那份的同域前身）。
 >
-> **核对日期 2026-10-26** · 守门脚本 `tools/check-mapping-coverage.py`
+> **核对日期 2026-11-02** · 守门脚本 `tools/check-mapping-coverage.py`
+>
+> 📌 **D16 · 2026-11-02**：判定基准改为「**B 侧（RAG 仓）是唯一真理**」⇒
+> **原第三列已物理删除**（D16 落地时）⇒ 本表由**三方**改为**两方**（B/C）。
 
 ---
 
@@ -15,11 +18,10 @@
 
 | 列 | 仓库 | 角色 | 主代码文件数 |
 |---|---|---|---|
-| **A** | `Sea-RideTheWind_golang` | **真理之源**（冻结，只读） | **482** 个 `.go` |
-| **B** | `RAG` | Go 部署形态版（api/rpc 分离） | **752** 个 `.java` |
+| **B** | `RAG` | **真理之源**（只读）· api/rpc 分离 | **752** 个 `.java` |
 | **C** | `RAG-V1` | **Spring 惯用目标形态**（api/rpc 合并 + **D7 包压平**） | **624** 个 `.java` |
 
-> ⚠️ **三列数量不成 1:1** —— C 比 B 少 **128** 个文件，来自 ① api/rpc 合并（D1）② `service/common` → `common` starter（D3）③ 生态替代（D4）。
+> ⚠️ **两列数量不成 1:1** —— C 比 B 少 **128** 个文件，来自 ① api/rpc 合并（D1）② `service/common` → `common` starter（D3）③ 生态替代（D4）。
 > ⇒ **大量 `N:1` 与 `C 新增` 是正常的，不是缺陷。**
 
 ---
@@ -63,19 +65,19 @@ Mapping_Table/
 python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 ```
 
-| 域 | 文档 | 行数 | C 列覆盖 | A 列覆盖 | 映射行 |
+| 域 | 文档 | 行数 | C 列覆盖 | B 列覆盖 | 映射行 |
 |---|---|---:|---|---|---:|
-| **users** | [_shared.md](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 410 + 200 + 259 + 284 = **1,153** | **104 / 104 = 100%** | **114 / 114 = 100%** | 129 |
-| **common** | [common.md](common.md) | 911 | **104 / 104 = 100%** | **11 / 11 = 100%** | 135 |
-| **article** | [article.md](article/article.md) | 488 | **58 / 58 = 100%** | **45 / 45 = 100%** | 72 |
-| **comment** | [comment.md](comment/comment.md) | 484 | **69 / 69 = 100%** | **58 / 58 = 100%** | 84 |
-| **favorite** | [favorite.md](favorite/favorite.md) | 520 | **61 / 61 = 100%** | **50 / 50 = 100%** | 87 |
-| **follow** | [follow.md](follow/follow.md) | 558 | **37 / 37 = 100%** | **46 / 46 = 100%** | 115 |
-| **hot** | [hot.md](hot/hot.md) | 533 | **31 / 31 = 100%** | **26 / 26 = 100%** | 56 |
-| **like** | [like.md](like/like.md) | 512 | **69 / 69 = 100%** | **51 / 51 = 100%** | 81 |
-| **message** | [message.md](message/message.md) | 575 | **52 / 52 = 100%** | **55 / 55 = 100%** | 69 |
-| **task** | [task.md](task/task.md) | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
-| **合计** | **13 份**（10 域，users 域拆 4 份） | **6,142** | **624 / 624 = 100%** | **482 / 482 = 100%** | **881** |
+| **users** | [`_shared.md`](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 1,127 | **104 / 104 = 100%** | **145 / 145 = 100%** | 129 |
+| **common** | [common.md](common.md) | 918 | **104 / 104 = 100%** | **88 / 88 = 100%** | 135 |
+| **article** | [article/article.md](article/article.md) | 474 | **58 / 58 = 100%** | **83 / 83 = 100%** | 72 |
+| **comment** | [comment/comment.md](comment/comment.md) | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
+| **favorite** | [favorite/favorite.md](favorite/favorite.md) | 519 | **61 / 61 = 100%** | **75 / 75 = 100%** | 88 |
+| **follow** | [follow/follow.md](follow/follow.md) | 517 | **37 / 37 = 100%** | **51 / 51 = 100%** | 116 |
+| **hot** | [hot/hot.md](hot/hot.md) | 519 | **31 / 31 = 100%** | **34 / 34 = 100%** | 56 |
+| **like** | [like/like.md](like/like.md) | 451 | **69 / 69 = 100%** | **83 / 83 = 100%** | 81 |
+| **message** | [message/message.md](message/message.md) | 525 | **52 / 52 = 100%** | **71 / 71 = 100%** | 69 |
+| **task** | [task/task.md](task/task.md) | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
+| **合计** |  | **5,925** | **624 / 624 = 100%** | **752 / 752 = 100%** | 886 |
 
 > 📌 **users 域拆分的守恒性**（2026-10-25 拆分后实测）：
 > 拆分前单文件 515 行 / 127 映射行 ⇒ 拆分后四份合计 **1,011 行 / 127 映射行**（行数增加是**导航与分节标题**带来的，非内容膨胀）。
@@ -128,10 +130,10 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 
 ---
 
-## 三、🔴 三方对照暴露的**落点缺口**（90 条 · 2026-11-01 机器复算）
+## 三、🔴 两方对照暴露的**落点缺口**（90 条 · 2026-11-01 机器复算）
 
-> **这是本目录最有价值的产出。** 三份文档逐条对照后发现的「**Go 有职责、C 侧无落点**」或「**C 侧 javadoc 与 A/B 事实冲突**」。
-> ⚠️ **这些不是行为对齐结论** —— 只是「文件名 / 职责落点」层面的问题，需由各域接手者回 A 列逐条确认后再动代码。
+> **这是本目录最有价值的产出。** 两份文档逐条对照后发现的「**B 有职责、C 侧无落点**」或「**C 侧 javadoc 与 B 事实冲突**」。
+> ⚠️ **这些不是行为对齐结论** —— 只是「文件名 / 职责落点」层面的问题，需由各域接手者回 B 列逐条确认后再动代码。
 > 逐条见各域文档的 §缺口 小节。
 > ⚠️ **本节总数的计数口径** = 各域文档「§缺口 / §「职责对不上」」小节的**表格数据行总数**
 > （与 `tools/check-mapping-coverage.py` 第 ④ 重校验**同一取数规则**）⇒ **2026-11-01 复算 = 90**。
@@ -140,49 +142,50 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 
 ### 🔴 高优先级（11 条）
 
-| 域 | 缺口 |
-|---|---|
-| **users** | **幂等 DDL 重放机制在 C 侧无执行器、无脚本**（B 侧有 `SchemaInitializer` + `db/01..04_*.sql`） | 410 + 200 + 259 + 284 = **1,153** | **104 / 104 = 100%** | **114 / 114 = 100%** | 129 |
-| **task** | **`goka.Persist`（RocksDB 本地表）无生态等价物** ⇒ 存储后端需拍板（PG 表 / Redis `HINCRBY` / 专用 KV） | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
-| **task** | **`WebMvcConfig` 的 javadoc 与本域事实冲突** —— javadoc 写「注册 JwtAuthInterceptor」，但 Go 侧 `routes.go:16-25` **无 `rest.WithJwt`** ⇒ 本域**零鉴权** | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
-| **task** | **`TaskApiResponseAdvice` 的职责未定** —— Go 侧 `api/task.go` **无 `httpx.SetOkHandler`** ⇒ 成功响应**无信封** | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
-| **common** | **`communityfact` 的「三域共享」在 Go 侧只有两域**（favorite 自己写了一套 `rpc/internal/authority/http.go` + `model.NewFavoriteDCEventSender`） | 911 | **104 / 104 = 100%** | **11 / 11 = 100%** | 135 |
-| **favorite** | **错误文案串味** —— `ErrorNotFound(5002)` 变成了英文 `not found`，且 `Success="OK"` / `Error="FAIL"` | 520 | **61 / 61 = 100%** | **50 / 50 = 100%** | 87 |
-| **comment** | `CommentController` javadoc 与 Go `.api` 端点清单不一致（2 处） | 484 | **69 / 69 = 100%** | **58 / 58 = 100%** | 84 |
-| **comment** | `CommentKafkaMsg` 与 `service/comment/src/main/java/com/rag/comment/messaging/CommentAuditMessage.java` 的载荷字段归属未锁定 | 484 | **69 / 69 = 100%** | **58 / 58 = 100%** | 84 |
-| **comment** | `wiring/` 下的**装配落点已齐**（2026-10-25 补齐 `CommentFactProcessLogging`）但类内容仍为空壳；`db/migration/` 目录内容仍为空 | 484 | **69 / 69 = 100%** | **58 / 58 = 100%** | 84 |
-| **article** | C 列整体职责缺口（详见 §1.5） | 488 | **58 / 58 = 100%** | **45 / 45 = 100%** | 72 |
-| **follow** | 原 `api/` vs `rpc/` 职责边界（D7 已压平，边界问题转为「单层包内的归属」）、`FollowApiSupport` 归属、`WebMvcConfig`/`FollowController` javadoc 与事实冲突 | 558 | **37 / 37 = 100%** | **46 / 46 = 100%** | 115 |
+| 域 | 缺口 | 行数 | C 列覆盖 | B 列覆盖 | 映射行 |
+|---|---|---:|---|---|---:|
+| **users** | [`_shared.md`](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 1,127 | **104 / 104 = 100%** | **145 / 145 = 100%** | 129 |
+| **task** | [task/task.md](task/task.md) | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
+| **task** | [task/task.md](task/task.md) | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
+| **task** | [task/task.md](task/task.md) | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
+| **common** | [common.md](common.md) | 918 | **104 / 104 = 100%** | **88 / 88 = 100%** | 135 |
+| **favorite** | [favorite/favorite.md](favorite/favorite.md) | 519 | **61 / 61 = 100%** | **75 / 75 = 100%** | 88 |
+| **comment** | [comment/comment.md](comment/comment.md) | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
+| **comment** | [comment/comment.md](comment/comment.md) | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
+| **comment** | [comment/comment.md](comment/comment.md) | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
+| **article** | [article/article.md](article/article.md) | 474 | **58 / 58 = 100%** | **83 / 83 = 100%** | 72 |
+| **follow** | [follow/follow.md](follow/follow.md) | 517 | **37 / 37 = 100%** | **51 / 51 = 100%** | 116 |
 
-> ✅ **2026-11-01 销账 2 条**（本轮补空壳 + 修 C 列）：① **users · Go 的身份解析器在 C 侧无承载** ⇒ 已落 `service/users/common/src/main/java/com/rag/users/common/IdentityResolver.java`（**只 1 份**，上收到域级共享层）；② **task · Kafka 消费侧整体缺失** ⇒ 已落 `service/task/src/main/java/com/rag/task/messaging/`（10 类：2 个 sink + 3 个 consumer + router + store + 2 个事件 DTO + `TaskGoCompatibleJson`）。
+> ✅ **2026-11-01 销账 2 条**（本轮补空壳 + 修 C 列）：① **users · B 侧的身份解析器在 C 侧无承载** ⇒ 已落 `service/users/common/src/main/java/com/rag/users/common/IdentityResolver.java`（**只 1 份**，上收到域级共享层）；② **task · Kafka 消费侧整体缺失** ⇒ 已落 `service/task/src/main/java/com/rag/task/messaging/`（10 类：2 个 sink + 3 个 consumer + router + store + 2 个事件 DTO + `TaskGoCompatibleJson`）。
 > ⇒ 两行**从本表删除**，但**仍留在各域 §「职责对不上」小节**里并标 ✅ ⇒ §三 总数（90）不变。
 
 ### 🟠 中优先级（要点）
 
 | 域 | 缺口 |
 |---|---|
-| **users** | **错误契约在两个子域间不对称**（**F-2 · 2026-10-26 D7 后由 🔴 降级为 🟠**）—— C 的 `service/users/user/src/main/java/com/rag/user/contract/` 有 `ErrCodes`+`ErrMsg`，但 **admin 侧无 `contract/` 包**（`admin-contract` 模块已随 D7 删除）；公共库 `service/users/common/src/main/java/com/rag/users/common/` 那份 admin 尚未引用（但 pom 依赖已接上） | 410 + 200 + 259 + 284 = **1,153** | **104 / 104 = 100%** | **114 / 114 = 100%** | 129 |
-| **task** | 持久层空位（`db/migration/` 只有 `.gitkeep`、yml 无 `flyway`/`hikari`/`id-type`）· RAG-V1 `common/` 无 `RpcServerInterceptorFactory`（Go 的 unary interceptor 无落点）· MQ 载荷契约 C 侧只剩 like 域那一份 · `grpc-client-spring-boot-starter` 本域无使用方 · **Kafka 消费侧仍整体缺失**（`messaging/` 只有 `TaskKafkaTopics` + `TaskRewardPublisher`，B 侧 11 个 `mq/*.java` 里的 9 个消费者无落点，全仓 `@KafkaListener` **零命中**） | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
-| **like** | Kafka 消费入口（listener / ack 契约 / 失败即丢弃不重投）无落点 · `like_outbox_event → article-hot-events` 发件箱中继无落点 · Jackson 2 `ObjectMapper` Bean 无落点 · `like` / `like-api` 配置段整个缺失 · DDL 迁移脚本为空 | 512 | **69 / 69 = 100%** | **51 / 51 = 100%** | 81 |
-| **message** | `controller/`（两个 Controller）· `interceptor/`（两组 JWT）· `metrics/` · `wiring/` · `service/` · `service/message/src/main/java/com/rag/message/contract/` 均有职责缺口 | 575 | **52 / 52 = 100%** | **55 / 55 = 100%** | 69 |
-| **favorite** | `POST /favorite/v1/folder/create` 端点缺失 · public 路径集 · preflight 触发入口 · DDL 迁移脚本 · `JsonbTypeHandler` / MP 排序桥的归属 · `GetFavoritesByFolderReq.FolderId` 的取参位置 · 域内 gRPC client · 端口号 | 520 | **61 / 61 = 100%** | **50 / 50 = 100%** | 87 |
-| **common** | `GrpcStatusMapper` 与 `GrpcExceptionMapperAutoConfiguration` **职责重叠** · 设计文档 §5.1 列了 `contract/ErrorCode.java` 但**实际树里没有** · 雪花 ID 有**两个落点** · `JsonBodyConverterConfig` 是「注册点」还是「配置类」 · **gRPC 拦截链挂载点缺位**（D9 ⇒ 落 `common/autoconfigure/ProtectionAutoConfiguration`，共享层 1 份） | 911 | **104 / 104 = 100%** | **11 / 11 = 100%** | 135 |
-| **follow** | `db/migration/` 为空 · `application.yml` 缺段 · `*Properties` 聚合边界 · `FollowBlacklistInterceptor` + `FollowJwtAuthInterceptor` · `GoStyleLimitOffset` | 558 | **37 / 37 = 100%** | **46 / 46 = 100%** | 115 |
+| **users** | [`_shared.md`](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 1,127 | **104 / 104 = 100%** | **145 / 145 = 100%** | 129 |
+| **task** | [task/task.md](task/task.md) | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
+| **like** | [like/like.md](like/like.md) | 451 | **69 / 69 = 100%** | **83 / 83 = 100%** | 81 |
+| **message** | [message/message.md](message/message.md) | 525 | **52 / 52 = 100%** | **71 / 71 = 100%** | 69 |
+| **favorite** | [favorite/favorite.md](favorite/favorite.md) | 519 | **61 / 61 = 100%** | **75 / 75 = 100%** | 88 |
+| **common** | [common.md](common.md) | 918 | **104 / 104 = 100%** | **88 / 88 = 100%** | 135 |
+| **follow** | [follow/follow.md](follow/follow.md) | 517 | **37 / 37 = 100%** | **51 / 51 = 100%** | 116 |
 
 ### 🟡 低优先级（要点）
 
 | 域 | 缺口 |
 |---|---|
-| **users** | 表名 A 与 B/C 不同（Go `users`/`admins`/`admin_invites` vs B/C `users_user`/`admin_admin`/`admin_invite`）· HTTP DTO 命名 1 处不一致 · `UserController`/`AdminController` javadoc 的 method 分布与 A/B 都不一致 · `AdminController` javadoc 少列 1 个端点（12 vs 13）· HTTP 超时机制在 C 侧未落点（Go `default=3000`） | 410 + 200 + 259 + 284 = **1,153** | **104 / 104 = 100%** | **114 / 114 = 100%** | 129 |
-| **task** | `TaskApiProperties` 的聚合边界未定 | 408 | **39 / 39 = 100%** | **26 / 26 = 100%** | 53 |
-| **like** | `target_ids` 的 null 元素语义无独立文件 · 2 条 Jackson 强转补强是否还在未核对 · `like_api_reject_total` 的「Go 侧未注册」与 C 侧自动注册差异未声明 | 512 | **69 / 69 = 100%** | **51 / 51 = 100%** | 81 |
+| **users** | [`_shared.md`](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 1,127 | **104 / 104 = 100%** | **145 / 145 = 100%** | 129 |
+| **task** | [task/task.md](task/task.md) | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
+| **like** | [like/like.md](like/like.md) | 451 | **69 / 69 = 100%** | **83 / 83 = 100%** | 81 |
 
 ---
 
 ## 四、三条读表纪律（每份域文档开头都重复了这条）
 
-1. ⚠️ **B 列不是 Go 的替身** —— RAG 在 users/like/message/common/article 五域已被判定 `NOT EQUIVALENT`。
-   **拿 B 列当 Go 的替身 = 把漂移固化进 RAG-V1。** 一切行为判断以 **A 列 Go 源码**为准。
+1. ⚠️ **B 侧是唯一真理，但它自身有已登记的差异** —— B 侧在 users/like/message/common/article 五域已被判定 `NOT EQUIVALENT`
+   （组件级清单见 B 仓 `docs/DRIFT/_cross/component-coverage-matrix.md`）。
+   **一切行为判断以 B 侧代码为准**；B 侧与第三方的既有差异 ⇒ **继承并登记为签字偏离**（`docs/Intentional_Deviations/`），**不回溯**。
 2. ⚠️ **「有对应」≠「行为等价」** —— 本表只回答「**文件名 / 职责的对应关系**」，
    **不回答「行为是否一致」**。行为对齐状态看 `docs/DRIFT/<域>/<组件>.md` 的**证据强度列**。
 3. ⚠️ **C 列的空壳 ≠ 缺职责** —— RAG-V1 的每个 Java 文件目前都只有 package + 空类型 + TODO javadoc。
@@ -195,13 +198,13 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | 节 | 记什么 | 为什么 |
 |---|---|---|
 | 0.5. **B → C 结构映射速查表** | RAG 的哪个包 → RAG-V1 的哪个包（**实测**） | 一眼看出打平/合并/改名后的落点 |
-| 1. 包结构对照 | A / B / C 三列 + 映射类型 + 备注 | 翻某个文件时一眼找到三方对应 |
+| 1. 包结构对照 | B / C 两列 + 映射类型 + 备注 | 翻某个文件时一眼找到两方对应 |
 | 2. 持久层差异 | ORM / Mapper / Schema 演进 / 事务 / 雪花 ID | RAG-V1 与 RAG 的持久层差异 |
 | 3. HTTP / DI 差异 | 路由 / Controller / Service 分层 / 错误表达 / 配置 / 进程拓扑 | RAG-V1 与 RAG 的装配差异 |
 | 4. 公共模块对照 | 共享件归属与边界 | 跨域共享的代码在哪 |
 | 5. 决策锁 | 「**N 处同时改**」+「**为什么换**」 | 复刻到下一个域时按清单改，不漏 |
 | 6. 跨模块全局约定 | proto 字段号 / 错误码 / JWT claims / 表名 / HTTP path / Kafka topic / 指标名 | 这几项所有域共享，不会因改某域而漂 |
-| 7. 覆盖度自查 | C / A 列逐文件覆盖 + 映射类型分布 + 缺口清单 | 本表的可信度自证 |
+| 7. 覆盖度自查 | C / B 列逐文件覆盖 + 映射类型分布 + 缺口清单 | 本表的可信度自证 |
 
 ---
 
@@ -209,12 +212,12 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 
 | 脚本 | 作用 | 何时跑 |
 |---|---|---|
-| `tools/check-mapping-coverage.py` | **八重校验**：① **从文件系统反查**每份文档的 C / A 列覆盖率（**不采信文档自报数字**）② **`_INDEX.md` 自报数字对账**（本表的行数 / 覆盖 / 映射行 vs 实测值）③ 映射行计数（扫全行找类型词）④ 小节标题自报条数 == 表内实际行数 ⑤ **B 列双向对账**（B1 正向 + B2 反向）⑥ **B↔C 指代消解后可判定性**（「同上」消解后每行都要读得出）⑦ **主表行形状**（列数必须为 5）⑧ **合计行对账** | 改完任何一份域文档后；**提交前必跑**（EXIT=0 才算通过） |
+| `tools/check-mapping-coverage.py` | **八重校验**：① **从文件系统反查**每份文档的 **B / C 列覆盖率**（**不采信文档自报数字**）② **`_INDEX.md` 自报数字对账**（本表的行数 / 覆盖 / 映射行 vs 实测值）③ 映射行计数（扫全行找类型词）④ 小节标题自报条数 == 表内实际行数 ⑤ **B 列双向对账**（B1 正向 + B2 反向）⑥ **B↔C 指代消解后可判定性**（「同上」消解后每行都要读得出）⑦ **主表行形状**（列数必须为 4）⑧ **合计行对账** | 改完任何一份域文档后；**提交前必跑**（EXIT=0 才算通过） |
 
 > ⚠️ **脚本按文件计数，不按文件名去重** —— users 域的 `user/` 与 `admin/` 两个子域下存在同名文件
 > （如各自的 `UserController.java`）⇒ 去重会漏计 18 个。
-> ⚠️ A 列的「无对应物」豁免靠免责措辞匹配（`无对应物` / `刻意为空` / `不迁` / …）⇒
-> **文档里若写了理由，就不算缺失**；没写理由 ⇒ 报缺口。
+> ⚠️ **D16 后豁免口径变了**：A 列判据（`go_files` / A 列覆盖率 / A 列免责措辞）**已全部移除** ⇒
+> 现在只守 **B / C 两列**；B 列的「无对应物」豁免同样靠免责措辞匹配（`无对应物` / `刻意为空` / `不迁` / …）。
 >
 > 📌 **自报数字为什么会漂**（2026-10-25 实测）：`favorite` 域文档被 worker 改完后行数从 447 变 473，
 > 而本表仍写 447 ⇒ **索引里的数字是「写完那一刻的快照」，不是事实**。
@@ -255,16 +258,16 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 |---|---:|---|
 | 明确「无」 | 9 | B/C 侧明写「无独立文件」/「无此 DTO」/「D5 已删」等 ⇒ **机器读得出否定** |
 | 模块 / 包级 | 6 | `like-api/` · `service/common/` · 进程拓扑等 ⇒ 对照的是**模块**不是文件 |
-| 成员 / 方法级 | 5 | Go 侧内部 struct / 包级函数 / 静态 map / enum ⇒ 对照的是**成员**不是文件 |
+| 成员 / 方法级 | 5 | B 侧内部 struct / 包级函数 / 静态 map / enum ⇒ 对照的是**成员**不是文件 |
 | proto / 生成物级 | 2 | `*.pb.go` / `*-proto/` ⇒ 由 `.proto` 生成，**不逐个手写类** |
 | 进程级 | 1 | `2 个进程 → 1 个进程` |
 | 配置级 | 1 | etcd → Nacos 服务发现 |
 | 清单级 | 1 | B 侧各 rpc 模块 `@Import` 清单（10 份）→ C 侧 0 份 |
-| 集合级 | 1 | Go 侧 8 个 logic 合计 → C 侧 2 个 Service |
+| 集合级 | 1 | B 侧 8 个 logic 合计 → C 侧 2 个 Service |
 
 > ⚠️ **登记制**：新出现的不可判定行**必须**登记进 `NON_FILE_LEVEL`，否则第 ⑥ 重校验报红；
 > 已登记但后来变得可判定的行 ⇒ 报「登记已失效」⇒ **防登记腐化**。
-> 📌 **键 = `(文档相对路径, A 列归一化文本[:60])`** —— 用 A 列（Go 侧，已冻结）做键，因为 B / C 列会随实现推进变化，A 列不会。
+> 📌 **键 = `(文档相对路径, B 列归一化文本[:60])`** —— **D16 后用 B 列（RAG 侧）做键**（A 列已物理删除）⇒ ⚠️ B 列会随实现推进变化 ⇒ 键**不再稳定** ⇒ 登记条目须定期复核。
 
 
 

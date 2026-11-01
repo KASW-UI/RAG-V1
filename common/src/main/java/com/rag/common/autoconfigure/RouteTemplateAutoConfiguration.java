@@ -12,7 +12,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 
 /**
  * <p><b>注册「注册期路由模板」解析器</b> —— 让共享层的 HTTP 熔断器
- * 能按 <b>Go 的隔离单位（每条路由一个 breaker）</b>分桶。
+ * 能按 <b>B 的隔离单位（每条路由一个 breaker）</b>分桶。
  *
  * <p>RAG 出处：{@code service/common/protection/GoStyleBreakerRouteTemplateAutoConfiguration.java}
  * （抄写基准 = RAG，L2 业务语义层整段抄 · D13）。
@@ -31,7 +31,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
  * ⇒ ⇒ <b>rpc 进程加载 {@code ProtectionAutoConfiguration} 时就会 {@code NoClassDefFoundError}</b>
  * ⇒ ⇒ 独立成类 + 类级 {@code @ConditionalOnClass} ⇒ 不满足时<b>整个类都不加载</b>。
  *
- * <p><b>Go 出处</b>：{@code rest/engine.go:148-149}（每路由建一个 breaker）·
+ * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/protection/GoStyleBreakerRouteTemplateAutoConfiguration.java:27:148-149}（每路由建一个 breaker）·
  * {@code rest/handler/breakerhandler.go:15,19}（键 = {@code METHOD://route.Path} 注册期模板）·
  * {@code rest/engine.go:244-268}（404 链里<b>没有</b> breaker）。
  */

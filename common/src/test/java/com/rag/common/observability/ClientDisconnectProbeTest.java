@@ -8,7 +8,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * §3.3「机制可证」守门：<b>断连探针的四态语义真的按 Go / RAG 的口径走</b>。
+ * §3.3「机制可证」守门：<b>断连探针的四态语义真的按 B 侧口径走</b>。
  *
  * <p>⚠️ <b>抄写基准 = RAG</b>：{@code GoStyleClientDisconnectProbe} 整段抄（L2 · D13）。
  *

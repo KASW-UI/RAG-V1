@@ -7,10 +7,10 @@ import org.springframework.http.ResponseEntity;
 import java.nio.charset.StandardCharsets;
 
 /**
- * go-zero router 两种<b>框架级</b>错误响应的字节级复刻：<b>404</b> 与 <b>405</b>。
+ * B 侧 路由层两种<b>框架级</b>错误响应的字节级复刻：<b>404</b> 与 <b>405</b>。
  *
  * <p>放在 {@code service/common} 是因为它们<b>不是任何业务域的行为</b>：
- * 二者都由 go-zero 的路由层产出，形状只取决于「路由有没有匹配上」，
+ * 二者都由 B 侧的路由层产出，形状只取决于「路由有没有匹配上」，
  * 与该服务注册了哪些业务端点无关。复制到每个 api 模块，
  * 早晚会出现「message 的 404 有 body、like 的没有」这类静默分叉。
  *
@@ -26,18 +26,18 @@ import java.nio.charset.StandardCharsets;
  *          （无 body、无 Content-Type）          ← 裸状态码
  * </pre>
  *
- * <p>⚠️ 上面是 <b>Go 侧</b>的形态。真 Tomcat 会把 Content-Type <b>归一化</b>
+ * <p>⚠️ 上面是 <b>B 侧</b>的形态。真 Tomcat 会把 Content-Type <b>归一化</b>
  * ⇒ RAG 侧线上实际是 {@code text/plain;charset=utf-8}（<b>分号后无空格</b>）
  * ⇒ 按 RFC 9110 两者<b>语义相同</b> ⇒ 详见 {@link #TEXT_PLAIN_UTF8} 的注释。
  *
- * <p>两条路径在 Go 侧<b>根本不进任何路由的 chain</b>：
- * {@code engine.go:104-118} 的 {@code bindRoute} 只把 chain（native middlewares + auth + 用户中间件）
+ * <p>两条路径在 B 侧<b>根本不进任何路由的 chain</b>：
+ * {@code service/common/src/main/java/com/rag/common/http/GoStyleRouterErrorResponses.java:33:104-118} 的 {@code bindRoute} 只把 chain（native middlewares + auth + 用户中间件）
  * 挂到 {@code router.Handle(method, path, handle)} 上，即<b>只对匹配上的路由生效</b>；
  * 而 {@code router/patrouter.go:59-83} 的 {@code ServeHTTP} 在「路径无匹配」与「方法不匹配」时
  * 直接走 404 / 405 分支，<b>不经过 auth、也不经过 MaxBytes / Breaker / Shedding</b>。
- * ⇒ 「404 不需要鉴权」「405 不需要鉴权」是 Go 的结构性事实，不是漏配。
+ * ⇒ 「404 不需要鉴权」「405 不需要鉴权」是 B 的结构性事实，不是漏配。
  *
- * <h2>Evidence（Go 侧）</h2>
+ * <h2>Evidence（B 侧）</h2>
  *
  * <p><b>404</b> —— {@code router/patrouter.go:73,93-97}：
  * <pre>
@@ -60,13 +60,12 @@ import java.nio.charset.StandardCharsets;
  * ⇒ <b>裸状态码</b>：既无 body 也无 {@code Content-Type}。
  * 与本项目「业务错误恒 200 + envelope」「保护层裸状态码」是<b>第三种</b>形状，不要混。
  *
- * <h2>⚠️ {@code Allow} 头的<b>取值顺序在 Go 侧不确定</b>（本类不修，也不该修）</h2>
+ * <h2>⚠️ {@code Allow} 头的<b>取值顺序在 B 侧不确定</b>（本类不修，也不该修）</h2>
  *
  * <p>{@code patrouter.go:101-117} 的 {@code methodsAllowed} 是
- * {@code for treeMethod, tree := range pr.trees} —— <b>遍历 Go map</b>，顺序随机。
- * ⇒ 当同一路径注册了 ≥2 个方法时，Go 发出的 {@code Allow} 顺序是<b>不确定</b>的。
+ * ⇒ 当同一路径注册了 ≥2 个方法时，B 侧 发出的 {@code Allow} 顺序是<b>不确定</b>的。
  * <p>本类<b>原样透传</b>调用方给的顺序，<b>刻意不排序</b>：排序＝新增行为＝漂移
- * （它会让两侧在「Go 随机、RAG 确定」时出现稳定可测的差异，而 Go 自己不稳定）。
+ * （它会让两侧在「B 侧 随机、RAG 确定」时出现稳定可测的差异，而 B 侧 自己不稳定）。
  * <p>⚠️ 当前 like-api / message-api 的路由<b>全是 POST</b> ⇒ {@code Allow} 只有一个值，
  * 顺序问题不可观测。**一旦有模块给同一路径注册第二个方法，就必须先决定这件事怎么对齐。**
  */
@@ -103,7 +102,7 @@ public final class RouterErrorResponses {
      *
      * <h3>🔴 订正（2026-10-25 · 第二十五轮 · global T-6）：「直接写原始字符串就逐字节对上」是<b>错的</b></h3>
      * <p>本方法<b>一直</b>写的是原始字符串，但真 Tomcat 会把它<b>归一化</b> ⇒ 线上其实是
-     * {@code text/plain;charset=utf-8}（<b>无空格</b>）⇒ <b>并没有</b>逐字节对上 Go。
+     * {@code text/plain;charset=utf-8}（<b>无空格</b>）⇒ <b>并没有</b>逐字节对上 B 侧。
      * <pre>
      * org/apache/catalina/connector/Response.java（11.0.24）setContentType(String)
      *     String[] parsedType = MediaTypeCache.parse(type);
@@ -127,9 +126,9 @@ public final class RouterErrorResponses {
     private static final String TEXT_PLAIN_UTF8 = "text/plain; charset=utf-8";
 
     /**
-     * 404 —— 对应 Go {@code http.NotFound(w, r)}。
+     * 404 —— 对应 B 侧 {@code http.NotFound(w, r)}。
      *
-     * @param resourcePath 仅用于日志；<b>不进入响应</b>（Go 的 404 body 是固定的，不含路径）
+     * @param resourcePath 仅用于日志；<b>不进入响应</b>（B 的 404 body 是固定的，不含路径）
      */
     public static ResponseEntity<byte[]> notFound(String resourcePath) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -139,7 +138,7 @@ public final class RouterErrorResponses {
     }
 
     /**
-     * 405 —— 对应 Go {@code router/patrouter.go:79-82}。
+     * 405 —— 对应 B 侧 {@code router/patrouter.go:79-82}。
      *
      * @param supportedMethods 该路径已注册的方法；<b>顺序原样透传</b>（见类 javadoc 的顺序警告）
      */
@@ -147,8 +146,8 @@ public final class RouterErrorResponses {
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.ALLOW, String.join(", ", supportedMethods));
         // ⚠️ 刻意返回 ResponseEntity<Void>（body == null）：容器不会补 Content-Type，
-        // 与 Go「只 WriteHeader、不写 body」的形状一致。
-        // 若改成 body 非空，Spring 会先选出一个 MediaType，响应头就会比 Go 多一项（DRIFT-024 同款教训）。
+        // 与 B 侧「只 WriteHeader、不写 body」的形状一致。
+        // 若改成 body 非空，Spring 会先选出一个 MediaType，响应头就会比 B 侧 多一项（DRIFT-024 同款教训）。
         return new ResponseEntity<>(null, headers, HttpStatus.METHOD_NOT_ALLOWED);
     }
 }

@@ -9,9 +9,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * <b>观测层的进程级线程池持有者</b>（本仓对 RAG {@code RpcInterceptor} 里那两个
  * {@code static} 池的<b>表达层收口</b>）。
  *
- * <p><b>Go 出处</b>：Go 侧<b>没有</b>对应物 —— Go 的观测层不跑线程池
- * （goroutine 由 go-zero 的 zrpc 拦截器直接起）⇒ ⇒ 本类是 <b>纯表达层补齐</b>
- * ⇒ ⇒ <b>无 Go 对应物</b>，登记在 {@code docs/L3-降级清单.md} 的 D-03 同族。
+ * <p><b>B 出处</b>：B 侧<b>没有</b>对应物 —— B 的观测层不跑线程池
+ * （goroutine 由 B 侧的 zrpc 拦截器直接起）⇒ ⇒ 本类是 <b>纯表达层补齐</b>
+ * ⇒ ⇒ <b>无 B 侧 对应物</b>，登记在 {@code docs/L3-降级清单.md} 的 D-03 同族。
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java}
  * 的 {@code TIMEOUT_SCHEDULER} / {@code HANDLE_EXECUTOR} 两段（含「池被终止后按需重建」

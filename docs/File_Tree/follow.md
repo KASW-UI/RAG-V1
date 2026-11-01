@@ -10,8 +10,8 @@
 | 模块路径 | `service/follow` |
 | artifactId | `follow-service` |
 | 根包 | `com.rag.follow` |
-| Go 出处 | `service/follow/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = Go logic 用例的 `types.Xxx` 引用图 + 类型所在聚合） |
+| B 侧出处 | `service/follow/` |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = B 侧 rpc 用例的 DTO 引用图 + 类型所在聚合） |
 
 ## 二、依赖
 
@@ -55,14 +55,14 @@
 │   │   │               ├── config/
 │   │   │               │   ├── FollowApiProperties.java    # @ConfigurationProperties —— 聚合本域 HTTP 层配置。
 │   │   │               │   ├── FollowRpcProperties.java
-│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 替代 Go 的 rest.WithMiddlewares 绑定。
+│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 对齐 B 侧同名配置类的注册形态。
 │   │   │               ├── contract/
 │   │   │               │   ├── CodeError.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               │   ├── ErrCodes.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               │   ├── ErrMsg.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               │   └── GrpcErrorMapper.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               ├── controller/
-│   │   │               │   └── FollowController.java    # ⚠️ L1 路由契约（Go 正推，勿凭直觉改）
+│   │   │               │   └── FollowController.java    # ⚠️ L1 路由契约（B 侧 正推，勿凭直觉改）
 │   │   │               ├── domain/
 │   │   │               │   ├── entity/
 │   │   │               │   │   ├── BlockRelationEntity.java
@@ -71,14 +71,14 @@
 │   │   │               │       └── FollowDomainService.java
 │   │   │               ├── dto/
 │   │   │               │   ├── list/
-│   │   │               │   │   ├── FollowListReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── FollowUserListResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── FollowListReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── FollowUserListResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               │   ├── recommend/
-│   │   │               │   │   ├── RecommendListResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── RecommendUser.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── RecommendListResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── RecommendUser.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               │   └── relation/
-│   │   │               │       ├── RelationActionReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       └── RelationActionResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── RelationActionReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       └── RelationActionResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               ├── grpc/
 │   │   │               │   └── FollowGrpcService.java
 │   │   │               ├── interceptor/
@@ -127,4 +127,4 @@
 |---|---|
 | 目录结构 | ✅ 已落地 |
 | 文件内容 | ⬜ **全部待填**（每个 Java 文件只有 package + 空类型 + TODO javadoc） |
-| Go ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |
+| B 侧 ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |

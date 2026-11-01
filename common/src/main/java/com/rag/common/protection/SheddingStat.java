@@ -9,10 +9,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Go {@code core/load/sheddingstat.go} 的 Java 复刻 —— <b>降载的三个计数</b> +
+ * B 侧 {@code core/load/sheddingstat.go} 的 Java 复刻 —— <b>降载的三个计数</b> +
  * <b>每分钟一行的统计日志</b>。
  *
- * <h3>Go 出处（消费点，不是声明点）</h3>
+ * <h3>B 出处（消费点，不是声明点）</h3>
  * <pre>
  *   core/load/sheddingstat.go:37-49
  *       func (s *SheddingStat) IncrementTotal() { atomic.AddInt64(&s.total, 1) }
@@ -41,9 +41,9 @@ import java.util.concurrent.atomic.AtomicLong;
  *       sheddingStat.IncrementPass()                  // 正常通过时 +1
  * </pre>
  *
- * <h3>⚠️ 一条必须先纠正的认知：Go 侧这些计数<b>不在 Prometheus 里</b></h3>
- * <p>本类落地前，台账 {@code DRIFT-MSG-V-025} 写的是「Go 侧可以在 {@code /metrics} 里看到
- * 「这个 rpc 降载丢了多少」「熔断拒了多少」」—— <b>这句是错的</b>，实测 Go 源码：
+ * <h3>⚠️ 一条必须先纠正的认知：B 侧这些计数<b>不在 Prometheus 里</b></h3>
+ * <p>本类落地前，台账 {@code DRIFT-MSG-V-025} 写的是「B 侧可以在 {@code /metrics} 里看到
+ * 「这个 rpc 降载丢了多少」「熔断拒了多少」」—— <b>这句是错的</b>，实测 B 侧 源码：
  * <ul>
  *   <li><b>降载的三个计数</b>：只在 <b>每分钟一行的日志</b>里出现
  *       （{@code logx.Statf("(%s) shedding_stat [1m], …")}），
@@ -52,27 +52,27 @@ import java.util.concurrent.atomic.AtomicLong;
  *       写进 {@code b.stat}（{@code collection.RollingWindow}）——
  *       那是<b>熔断算法自己的状态</b>（算 dropRatio 用），<b>根本没有对外暴露</b>。</li>
  * </ul>
- * ⇒ 所以本类的做法是 <b>1:1 照 Go</b>：
+ * ⇒ 所以本类的做法是 <b>1:1 照 B 侧</b>：
  * <b>三个计数 + 每分钟一行同名同格式的日志</b>。
- * ⇒ <b>刻意不引入 Micrometer</b>：Go 侧没有 Prometheus 指标，
- * 本仓若凭空加一个 {@code rag_protection_shedding_total} 那是<b>发明</b>一个 Go 没有的能力，
- * 与「Go 是唯一基准」相悖（§3.2）。
+ * ⇒ <b>刻意不引入 Micrometer</b>：B 侧没有 Prometheus 指标，
+ * 本仓若凭空加一个 {@code rag_protection_shedding_total} 那是<b>发明</b>一个 B 侧 没有的能力，
+ * 与「B 侧 是唯一基准」相悖（§3.2）。
  * ⇒ 也因此<b>不需要给 {@code service/common} 加 micrometer 依赖</b>
  * （那是 20 个组件共享的依赖树，改它属于跨域影响面）。
  *
  * <h3>⚠️ 为什么日志里没有「熔断拒了多少」</h3>
- * <p>因为 Go 侧也没有。熔断的拒绝数只在 {@code b.stat} 这个滚动窗口里，
+ * <p>因为 B 侧也没有。熔断的拒绝数只在 {@code b.stat} 这个滚动窗口里，
  * 用于下一轮算 {@code dropRatio}；<b>没有任何一行日志或指标把它暴露出来</b>。
  * ⇒ 本仓也<b>不暴露</b>。想看熔断是否在工作，只能看它**开路后请求开始失败**这个可观察结果。
  */
 public final class SheddingStat {
 
-    /** Go {@code zrpc/internal/serverinterceptors/sheddinginterceptor.go:15} {@code const serviceType = "rpc"}。 */
+    /** B 侧 {@code zrpc/internal/serverinterceptors/sheddinginterceptor.go:15} {@code const serviceType = "rpc"}。 */
     public static final String SERVICE_TYPE = "rpc";
 
     private static final Logger LOG = LoggerFactory.getLogger(SheddingStat.class);
 
-    /** 统计周期：Go {@code core/stat/metrics.go:14} {@code logInterval = time.Minute}。 */
+    /** 统计周期：B 侧 {@code core/stat/metrics.go:14} {@code logInterval = time.Minute}。 */
     private static final long REPORT_INTERVAL_MINUTES = 1L;
 
     private final String name;
@@ -85,17 +85,17 @@ public final class SheddingStat {
         this.name = name;
     }
 
-    /** Go {@code IncrementTotal()}：每个进入降载拦截器的请求都 +1。 */
+    /** B 侧 {@code IncrementTotal()}：每个进入降载拦截器的请求都 +1。 */
     public void incrementTotal() {
         total.incrementAndGet();
     }
 
-    /** Go {@code IncrementPass()}：正常通过（<b>不含</b> ctx 超时那一支）。 */
+    /** B 侧 {@code IncrementPass()}：正常通过（<b>不含</b> ctx 超时那一支）。 */
     public void incrementPass() {
         pass.incrementAndGet();
     }
 
-    /** Go {@code IncrementDrop()}：被降载丢弃。 */
+    /** B 侧 {@code IncrementDrop()}：被降载丢弃。 */
     public void incrementDrop() {
         drop.incrementAndGet();
     }
@@ -106,9 +106,9 @@ public final class SheddingStat {
     }
 
     /**
-     * Go {@code loop()} 的那段 {@code logx.Statf} —— <b>逐字照抄</b>。
+     * B 侧 {@code loop()} 的那段 {@code logx.Statf} —— <b>逐字照抄</b>。
      *
-     * <p>⚠️ Go 用 {@code %d} 打的是<b>整数千分比</b>（{@code stat.CpuUsage()} 返回 0..1000）。
+     * <p>⚠️ B 侧 用 {@code %d} 打的是<b>整数千分比</b>（{@code stat.CpuUsage()} 返回 0..1000）。
      */
     String formatLine(int cpuPermille) {
         Snapshot s = snapshot();
@@ -117,7 +117,7 @@ public final class SheddingStat {
                 name, tag, cpuPermille, s.total(), s.pass(), s.drop());
     }
 
-    /** Go {@code reset()}：取当前值并清零。 */
+    /** B 侧 {@code reset()}：取当前值并清零。 */
     private Snapshot reset() {
         Snapshot s = snapshot();
         total.set(0L);
@@ -130,22 +130,22 @@ public final class SheddingStat {
      * 不可变快照。
      *
      * @param total 进入降载判据的请求总数
-     * @param pass  通过的请求数（ctx 超时那一支<b>不</b>计入，与 Go 的 defer 一致）
+     * @param pass  通过的请求数（ctx 超时那一支<b>不</b>计入，与 B 的 defer 一致）
      * @param drop  被降载丢弃的请求数
      */
     public record Snapshot(long total, long pass, long drop) {
     }
 
-    // ── 进程级单例 + 每分钟上报（Go: sheddinginterceptor.go:17-20 + sheddingstat.go:30-35）────────
+    // ── 进程级单例 + 每分钟上报（B 侧: sheddinginterceptor.go:17-20 + sheddingstat.go:30-35）────────
 
     private static volatile SheddingStat instance;
 
     private ScheduledExecutorService scheduler;
 
     /**
-     * 进程级单例（Go 的 {@code var sheddingStat *load.SheddingStat} + {@code ensureSheddingStat()}）。
+     * 进程级单例（B 的 {@code var sheddingStat *load.SheddingStat} + {@code ensureSheddingStat()}）。
      *
-     * <p>⚠️ Go 用包级变量 + {@code sync.Mutex} 懒初始化；本类用 {@code volatile} + 双重检查，
+     * <p>⚠️ B 侧 用包级变量 + {@code sync.Mutex} 懒初始化；本类用 {@code volatile} + 双重检查，
      * 语义等价（幂等，且并发下只会有一个实例被发布）。
      */
     public static SheddingStat getInstance() {
@@ -163,10 +163,10 @@ public final class SheddingStat {
     }
 
     /**
-     * 启动每分钟的上报任务（Go {@code NewSheddingStat} 里的 {@code go st.run()}）。
+     * 启动每分钟的上报任务（B 侧 {@code NewSheddingStat} 里的 {@code go st.run()}）。
      *
      * <p>⚠️ <b>幂等</b>：重复调用不会起第二个线程。
-     * ⚠️ <b>守护线程</b>：不阻止 JVM 退出（Go 那边是 goroutine，进程退出即消失）。
+     * ⚠️ <b>守护线程</b>：不阻止 JVM 退出（B 侧 那边是 goroutine，进程退出即消失）。
      */
     public synchronized void startReporter() {
         if (scheduler != null) {
@@ -182,9 +182,9 @@ public final class SheddingStat {
     }
 
     /**
-     * 跑一次上报：打一行日志并清零（Go {@code loop()} 的 {@code st := s.reset()} 语义）。
+     * 跑一次上报：打一行日志并清零（B 侧 {@code loop()} 的 {@code st := s.reset()} 语义）。
      *
-     * <p>⚠️ Go 的顺序是「<b>先 reset 再打</b>」—— 它拿的是 reset 返回的快照，
+     * <p>⚠️ B 的顺序是「<b>先 reset 再打</b>」—— 它拿的是 reset 返回的快照，
      * 而 reset 本身把计数清零 ⇒ 日志里的数是<b>刚过去这一分钟</b>的数。
      * 本类照抄：**先取快照并清零，再打那一行**。
      */
@@ -196,7 +196,7 @@ public final class SheddingStat {
             LOG.info("({}) {} [1m], cpu: {}, total: {}, pass: {}, drop: {}",
                     name, tag, cpu, s.total(), s.pass(), s.drop());
         } catch (RuntimeException e) {
-            // ⚠️ 统计线程绝不能因为一次异常而死掉（Go 那边是 goroutine，panic 会直接崩进程 ——
+            // ⚠️ 统计线程绝不能因为一次异常而死掉（B 侧 那边是 goroutine，panic 会直接崩进程 ——
             //    这里刻意选择「吞掉异常继续跑」，因为统计失败**不应该**影响业务流量）。
             LOG.warn("shedding stat 上报失败（已忽略）", e);
         }

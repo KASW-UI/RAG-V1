@@ -4,7 +4,7 @@ package com.rag.common.logger;
  * H3 修复：致命错误的专用异常类型。
  *
  * <p><b>为什么需要这个类型</b>
- * <p>Go 版 {@code logger.go:293-296} 在打出 {@code fatal_error} 之后无条件
+ * <p>上游版在打出 {@code fatal_error} 之后无条件
  * {@code os.Exit(1)} —— 方法不返回，进程立即停止接流量：
  * <pre>
  *   logx.WithContext(ctx).Errorw("fatal_error", fields...)
@@ -21,16 +21,16 @@ package com.rag.common.logger;
  * <p>不恢复 {@code System.exit(1)}，因为它会绕过 Spring 的 graceful shutdown、
  * {@code @PreDestroy} 与 Bean 生命周期回调。改为：
  * <ol>
- *   <li>打出与 Go 完全一致的 {@code fatal_error} 日志（含 event_id / trace_id / file_line /
+ *   <li>打出与上游完全一致的 {@code fatal_error} 日志（含 event_id / trace_id / file_line /
  *       call_path / call_chain / error_reason）</li>
  *   <li>抛本类型异常，由调用方决定终止方式；Spring Boot 的 {@code main} 未捕获时
- *       JVM 以非零退出码结束，等价于 Go 的 {@code os.Exit(1)}</li>
+ *       JVM 以非零退出码结束，等价于上游的 {@code os.Exit(1)}</li>
  *   <li>注册了 {@code GlobalExceptionHandler} 的模块必须<b>显式 rethrow</b> 本类型，
  *       不允许转成业务 envelope</li>
  * </ol>
  *
  * <p><b>等价域收窄（必须如实记录）</b>
- * <p>与 Go 的等价域是「<b>永远</b>终止」；本实现是「<b>仅在无人 catch 时</b>终止」。
+ * <p>与上游的等价域是「<b>永远</b>终止」；本实现是「<b>仅在无人 catch 时</b>终止」。
  * 这是有意保留的残留差异，理由见上。若后续业务里出现
  * {@code catch (FatalError)} 后继续运行的写法，等价性即被打破 —— 该用例会由
  * {@code FatalErrorNotSwallowedTest} 锁住注册路径。

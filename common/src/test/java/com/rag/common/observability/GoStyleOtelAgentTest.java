@@ -25,12 +25,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 🔴🔴 **全局 OpenTelemetry 装配守门**（对应 Go {@code core/trace/agent.go} 的 {@code startAgent}）。
+ * 🔴🔴 **全局 OpenTelemetry 装配守门**（对应 B 侧 {@code core/trace/agent.go} 的 {@code startAgent}）。
  *
- * <h2>本轮要证的<b>四件事</b>（每件都对应 Go 的一行）</h2>
+ * <h2>本轮要证的<b>四件事</b>（每件都对应 B 的一行）</h2>
  * <table border="1">
- *   <caption>四条守门 ↔ Go 出处</caption>
- *   <tr><th>守门</th><th>断言</th><th>Go 出处</th></tr>
+ *   <caption>四条守门 ↔ B 出处</caption>
+ *   <tr><th>守门</th><th>断言</th><th>B 出处</th></tr>
  *   <tr>
  *     <td>① <b>全局 provider 是真的</b></td>
  *     <td>真 Spring Boot 上下文启动后，{@code GlobalOpenTelemetry.get()} 建出的 span
@@ -100,7 +100,7 @@ class GoStyleOtelAgentTest {
                 .web(org.springframework.boot.WebApplicationType.NONE)
                 .properties(
                         "otel.service.name=common-otel-gate",
-                        // 空端点 ⇒ 照 Go 的 `len(c.Endpoint) > 0` ⇒ 不装 exporter（免得连不上 jaeger 刷日志）
+                        // 空端点 ⇒ 照 B 的 `len(c.Endpoint) > 0` ⇒ 不装 exporter（免得连不上 jaeger 刷日志）
                         "otel.exporter.otlp.endpoint=")
                 .run()) {
 
@@ -108,19 +108,19 @@ class GoStyleOtelAgentTest {
             //     修前：GlobalOpenTelemetry 是 no-op ⇒ SpanContext 恒 INVALID ⇒ 这里必红
             Span span = GlobalOpenTelemetry.get().getTracer("gate").spanBuilder("gate-span").startSpan();
             assertThat(span.getSpanContext().isValid())
-                    .as("全局 provider 必须是真 SDK（Go: otel.SetTracerProvider(tp)）")
+                    .as("全局 provider 必须是真 SDK（B 侧: otel.SetTracerProvider(tp)）")
                     .isTrue();
             span.end();
 
             // --- ①b：全局 propagator 必须能 inject 出 traceparent ---
-            //     Go: core/trace/propagation.go:8-11（init() 里装 composite propagator）
+            //     B 侧: core/trace/propagation.go:8-11（init() 里装 composite propagator）
             Map<String, String> carrier = new HashMap<>();
             try (Scope scope = span.makeCurrent()) {
                 GlobalOpenTelemetry.getPropagators().getTextMapPropagator()
                         .inject(Context.current(), carrier, Map::put);
             }
             assertThat(carrier)
-                    .as("全局 propagator 必须能 inject traceparent（Go 的 init() 是**无条件**装的）")
+                    .as("全局 propagator 必须能 inject traceparent（B 的 init() 是**无条件**装的）")
                     .containsKey("traceparent");
             assertThat(carrier.get("traceparent"))
                     .as("traceparent 必须是 W3C 形态：00-<32 hex>-<16 hex>-<2 hex>")
@@ -172,7 +172,7 @@ class GoStyleOtelAgentTest {
             Tracer tracer = GlobalOpenTelemetry.get().getTracer("gate");
             tracer.spanBuilder("pending-span").startSpan().end();
 
-            // 关停 ⇒ Go: core/trace/agent.go:30-34（tp.Shutdown ⇒ flush 未导出的 span）
+            // 关停 ⇒ B 侧: core/trace/agent.go:30-34（tp.Shutdown ⇒ flush 未导出的 span）
             GoStyleOtelAgent.shutdown();
 
             // ⚠️ 3s 的判定窗口 < BatchSpanProcessor 的 5s 批量周期
@@ -180,7 +180,7 @@ class GoStyleOtelAgentTest {
             //    ⇒ 若实现退化成「不 flush」，这里会因超时而红。
             awaitTrue(() -> collector.requestCount() > 0, 3_000L);
             assertThat(collector.requestCount())
-                    .as("关停必须 flush 未导出的 span（Go: trace.StopAgent → tp.Shutdown）")
+                    .as("关停必须 flush 未导出的 span（B 侧: trace.StopAgent → tp.Shutdown）")
                     .isGreaterThanOrEqualTo(1);
         }
     }
@@ -190,7 +190,7 @@ class GoStyleOtelAgentTest {
     // ====================================================================================
 
     @Test
-    @DisplayName("🔴 装不上**不阻断启动**：install 返回 null + 全局仍是 no-op（Go: logx.Error 后继续启动）")
+    @DisplayName("🔴 装不上**不阻断启动**：install 返回 null + 全局仍是 no-op（B 侧: logx.Error 后继续启动）")
     void installFailureDoesNotBreakStartup() throws Exception {
         try (FakeOtlpCollector collector = new FakeOtlpCollector()) {
             OpenTelemetry installed;
@@ -198,11 +198,11 @@ class GoStyleOtelAgentTest {
                 installed = GoStyleOtelAgent.install(
                         new GoStyleOtelConfig("common-otel-gate", collector.endpoint(), "not-a-batcher", 1.0d));
             } catch (RuntimeException e) {
-                // Go: StartAgent 的 once.Do 里只 logx.Error ⇒ 异常**不许**逃出来
-                throw new AssertionError("install 不许抛异常阻断启动（Go: core/trace/agent.go:43-52）", e);
+                // B 侧: StartAgent 的 once.Do 里只 logx.Error ⇒ 异常**不许**逃出来
+                throw new AssertionError("install 不许抛异常阻断启动（B 侧: core/trace/agent.go:43-52）", e);
             }
             assertThat(installed)
-                    .as("装不上时 install 必须返回 null（照 Go：全局仍是 no-op）")
+                    .as("装不上时 install 必须返回 null（照 B 侧：全局仍是 no-op）")
                     .isNull();
             assertThat(GoStyleOtelAgent.isInstalled())
                     .as("装不上时「已装配」标志必须保持 false ⇒ 不会误报成已装")
@@ -211,18 +211,18 @@ class GoStyleOtelAgentTest {
             // 全局仍是 no-op ⇒ 建出的 span 无效
             Span span = GlobalOpenTelemetry.get().getTracer("gate").spanBuilder("x").startSpan();
             assertThat(span.getSpanContext().isValid())
-                    .as("装不上时全局仍是 no-op ⇒ span 无效（与 Go 失败路径同构）")
+                    .as("装不上时全局仍是 no-op ⇒ span 无效（与 B 侧 失败路径同构）")
                     .isFalse();
             span.end();
         }
     }
 
     // ====================================================================================
-    // 幂等（Go: sync.Once）
+    // 幂等（B 侧: sync.Once）
     // ====================================================================================
 
     @Test
-    @DisplayName("🔴 幂等：同 JVM 内第二次 install 不重装（Go: core/trace/agent.go:48 once.Do）")
+    @DisplayName("🔴 幂等：同 JVM 内第二次 install 不重装（B 侧: core/trace/agent.go:48 once.Do）")
     void installIsIdempotent() {
         OpenTelemetry first = GoStyleOtelAgent.install(
                 new GoStyleOtelConfig("common-otel-gate", null, "grpc", 1.0d));
@@ -232,23 +232,23 @@ class GoStyleOtelAgentTest {
         OpenTelemetry second = GoStyleOtelAgent.install(
                 new GoStyleOtelConfig("common-otel-gate", null, "grpc", 1.0d));
         assertThat(second).isNotNull();
-        // ⚠️ 第二次 install 返回的是**全局**（Go: once.Do ⇒ 第二次什么都不做 ⇒ 返回已装的全局）
+        // ⚠️ 第二次 install 返回的是**全局**（B 侧: once.Do ⇒ 第二次什么都不做 ⇒ 返回已装的全局）
         //    ⚠️ 它**不是**第一次那个 SDK 实例本身（全局是 OTel 的 ObfuscatedOpenTelemetry 包装）
         //    ⇒ ⇒ 判据落在「全局仍是同一个 SDK 装出来的、span 依然有效」。
         Span span = GlobalOpenTelemetry.get().getTracer("gate").spanBuilder("x").startSpan();
         assertThat(span.getSpanContext().isValid())
-                .as("第二次 install 不得把全局换成 no-op（Go: once.Do ⇒ 只装一次）")
+                .as("第二次 install 不得把全局换成 no-op（B 侧: once.Do ⇒ 只装一次）")
                 .isTrue();
         span.end();
         assertThat(GoStyleOtelAgent.isInstalled()).isTrue();
     }
 
     // ====================================================================================
-    // 采样比例 + ParentBased（Go: core/trace/agent.go:110-111）
+    // 采样比例 + ParentBased（B 侧: core/trace/agent.go:110-111）
     // ====================================================================================
 
     @Test
-    @DisplayName("🔴 Sampler=0.0 ⇒ **根 span 不采样 ⇒ 一个 span 都不导出**（Go: TraceIDRatioBased(0.0)）")
+    @DisplayName("🔴 Sampler=0.0 ⇒ **根 span 不采样 ⇒ 一个 span 都不导出**（B 侧: TraceIDRatioBased(0.0)）")
     void ratioZeroMeansNothingIsExported() throws Exception {
         try (FakeOtlpCollector collector = new FakeOtlpCollector()) {
             SdkTracerProvider provider = GoStyleOtelAgent.buildProvider(
@@ -259,12 +259,12 @@ class GoStyleOtelAgentTest {
 
                 assertThat(span.isRecording())
                         .as("Sampler=0.0 ⇒ 根 span 必须**不 recording**"
-                                + "（Go: sdktrace.TraceIDRatioBased(0.0) ⇒ DROP）")
+                                + "（B 侧: sdktrace.TraceIDRatioBased(0.0) ⇒ DROP）")
                         .isFalse();
                 assertThat(span.getSpanContext().isSampled())
                         .as("被 DROP 的 span：**SpanContext 仍有效**（有 trace-id/span-id），"
                                 + "但 sampled 标志为 false（trace flags = 00）"
-                                + " —— Go 的 OTel SDK 同款 ⇒ 响应头里**仍会有** traceparent，只是 flags=00")
+                                + " —— B 的 OTel SDK 同款 ⇒ 响应头里**仍会有** traceparent，只是 flags=00")
                         .isFalse();
                 span.end();
             } finally {
@@ -272,14 +272,14 @@ class GoStyleOtelAgentTest {
                 provider.close();
             }
             assertThat(collector.requestCount())
-                    .as("Sampler=0.0 ⇒ **一个 span 都不该出机器**（Go: 采样器把根 span 丢了）")
+                    .as("Sampler=0.0 ⇒ **一个 span 都不该出机器**（B 侧: 采样器把根 span 丢了）")
                     .isEqualTo(0);
         }
     }
 
     @Test
     @DisplayName("🔴 ParentBased：入向 parent 已采样 ⇒ **即使 Sampler=0.0，子 span 仍被采样并导出**"
-            + "（Go: ParentBased(TraceIDRatioBased(0.0))）")
+            + "（B 侧: ParentBased(TraceIDRatioBased(0.0))）")
     void parentBasedKeepsSampledParentEvenWhenRatioIsZero() throws Exception {
         try (FakeOtlpCollector collector = new FakeOtlpCollector()) {
             SdkTracerProvider provider = GoStyleOtelAgent.buildProvider(
@@ -298,7 +298,7 @@ class GoStyleOtelAgentTest {
 
                 assertThat(span.getSpanContext().isSampled())
                         .as("ParentBased ⇒ 入向 parent 已采样 ⇒ 子 span **必须被采样**"
-                                + "（Go: sdktrace.ParentBased ⇒ remoteParentSampled ⇒ AlwaysOn）")
+                                + "（B 侧: sdktrace.ParentBased ⇒ remoteParentSampled ⇒ AlwaysOn）")
                         .isTrue();
                 span.end();
             } finally {

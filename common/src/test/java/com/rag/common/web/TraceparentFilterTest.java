@@ -15,7 +15,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 🔴🔴 **`traceparent` 响应头守门** —— 对应 Go 的
+ * 🔴🔴 **`traceparent` 响应头守门** —— 对应 B 侧 {@code service/common/src/main/java/com/rag/common/http/GoStyleTraceparentFilter.java} 的
  * {@code rest/handler/tracehandler.go}（{@code propagator.Inject(spanCtx, HeaderCarrier(w.Header()))}）。
  *
  * <h2>🔴 为什么这条守门是「全局 OTel 装配」这件事的<b>可观察后果</b></h2>
@@ -27,10 +27,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>⇒ 所以：<b>装了全局 SDK ⇒ 头出现；没装 ⇒ 头不出现</b>
  * ⇒ ⇒ 这条守门同时钉住两件事：① 装配真的生效；② 装配的**可观察后果**真的到位。
  *
- * <h2>三条语义（Go 逐条）</h2>
+ * <h2>三条语义（逐条对齐 B 侧）</h2>
  * <ol>
  *   <li><b>注入的是 server span 自己</b>，不是回显入向 parent（最常见的「看起来对」的错误实现）；</li>
- *   <li><b>头名 canonical 化</b>（{@code Traceparent}）⇒ 与 Go 的
+ *   <li><b>头名 canonical 化</b>（{@code Traceparent}）⇒ 与 B 侧的
  *       {@code textproto.CanonicalMIMEHeaderKey} 字节级一致；</li>
  *   <li><b>trace-id 沿用入向</b>（server span 是入向 context 的子 span）⇒ 客户端能把两侧串起来。</li>
  * </ol>
@@ -62,7 +62,7 @@ class TraceparentFilterTest {
         });
 
         assertThat(response.getHeader("Traceparent"))
-                .as("全局没装时不得凭空造头（Go: span 无效 ⇒ propagator 不 inject）")
+                .as("全局没装时不得凭空造头（B 侧：span 无效 ⇒ propagator 不 inject）")
                 .isNull();
     }
 
@@ -80,7 +80,7 @@ class TraceparentFilterTest {
 
         String traceparent = response.getHeader("Traceparent");
         assertThat(traceparent)
-                .as("装了全局 SDK ⇒ 响应必须带 traceparent（Go: tracehandler.go 的 Inject）")
+                .as("装了全局 SDK ⇒ 响应必须带 traceparent（B 侧 `GoStyleTraceparentFilter` 的 Inject）")
                 .isNotNull();
         assertThat(traceparent)
                 .as("traceparent 必须是 W3C 形态：00-<32 hex>-<16 hex>-<2 hex>")
@@ -88,7 +88,7 @@ class TraceparentFilterTest {
     }
 
     @Test
-    @DisplayName("🔴 头名是 canonical 的 Traceparent（Go 的 textproto.CanonicalMIMEHeaderKey）")
+    @DisplayName("🔴 头名是 canonical 的 Traceparent（对齐上游的 textproto.CanonicalMIMEHeaderKey）")
     void headerNameIsCanonicalised() throws Exception {
         installGlobalSdk();
 
@@ -103,7 +103,7 @@ class TraceparentFilterTest {
         // ⚠️ servlet 规范的 `getHeader(name)` 是**大小写不敏感**的 ⇒ 查不出「键名到底写成什么」
         //    ⇒ 必须查「实际存了哪些头名」。
         assertThat(response.getHeaderNames())
-                .as("Tomcat 会原样发出头名 ⇒ 必须由本类自己 canonical 化（小写头名与 Go 字节级不一致）")
+                .as("Tomcat 会原样发出头名 ⇒ 必须由本类自己 canonical 化（小写头名与上游字节级不一致）")
                 .contains("Traceparent")
                 .doesNotContain("traceparent");
     }

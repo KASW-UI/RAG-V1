@@ -8,11 +8,11 @@ import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import java.io.IOException;
 
 /**
- * {@code float64} 字段的「Go 风格」反序列化 —— 修 <b>DRIFT-LIKEAPI-016</b>。
+ * {@code float64} 字段的「B 侧 风格」反序列化 —— 修 <b>DRIFT-LIKEAPI-016</b>。
  *
- * <h2>Go 侧的判据（已读到消费点）</h2>
+ * <h2>B 侧的判据（已读到消费点）</h2>
  * <pre>
- * // go-zero@v1.10.2/core/mapping/unmarshaler.go:684-687
+ * // B 出处：service/like/like-api/src/main/java/com/rag/like/like/api/dto/GoStyleFloat64Deserializer.java:14:684-687
  * case reflect.Float32:
  *     fValue, err := v.Float64()      // v 是 json.Number
  *     if err != nil { return err }    // ← 1e400 在这里被拒
@@ -34,7 +34,7 @@ import java.io.IOException;
  *
  * <h2>逐条对齐</h2>
  * <table border="1">
- *   <tr><th>输入</th><th>Go</th><th>本类</th></tr>
+ *   <tr><th>输入</th><th>B 侧</th><th>本类</th></tr>
  *   <tr><td>{@code 1.5}</td><td>{@code 1.5}</td><td>✅ {@code 1.5}</td></tr>
  *   <tr><td>{@code 1e39}</td><td>✅ 接受（f64 合法；weight 是 float64，<b>不</b>触发 f32 的 OverflowFloat）</td>
  *       <td>✅ 接受（{@code Double.parseDouble("1e39")} = 1e39，finite）</td></tr>
@@ -89,7 +89,7 @@ public class Float64Deserializer extends StdDeserializer<Double> {
             return null;
         }
         if (token != JsonToken.VALUE_NUMBER_INT && token != JsonToken.VALUE_NUMBER_FLOAT) {
-            // bool / 字符串 / object / array —— Go 侧一律 type mismatch
+            // bool / 字符串 / object / array —— B 侧一律 type mismatch
             throw MismatchedInputException.from(p, Double.class,
                     "浮点字段只接受 JSON 数字，收到 " + token);
         }
@@ -104,7 +104,7 @@ public class Float64Deserializer extends StdDeserializer<Double> {
                     "无法解析为 float64: " + literal);
         }
         if (!Double.isFinite(parsed)) {
-            // 对齐 Go: json.Number("1e400").Float64() ⇒ (+Inf, ErrRange) ⇒ return err
+            // 对齐 B 侧: json.Number("1e400").Float64() ⇒ (+Inf, ErrRange) ⇒ return err
             throw MismatchedInputException.from(p, Double.class,
                     "parsing " + literal + " as float64: value out of range");
         }

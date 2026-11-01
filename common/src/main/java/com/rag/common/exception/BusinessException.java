@@ -1,15 +1,15 @@
 package com.rag.common.exception;
 
 /**
- * <p><b>Go 出处</b>：{@code service/common/response/response.go:3-7}（信封三字段 code/msg/data）
+ * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/exception/BusinessException.java:4:3-7}（信封三字段 code/msg/data）
  * ＋ {@code service/message/common/errmsg.go:99}（{@code func BizCodeFromError(err error) int} ⇒ 业务码取值口径）。
- * <p><b>表达层说明（AGENTS.md §3.2）</b>：Go 侧用<b>双返回</b>（{@code return nil, errmsg.XXX}）表达失败，
+ * <p><b>表达层说明（AGENTS.md §3.2）</b>：B 侧用<b>双返回</b>（{@code return nil, errmsg.XXX}）表达失败，
  * Java 侧用<b>异常</b>表达 ⇒ 这是<b>表达层 idiomatization</b>，<b>可观察形状等价</b>（都最终变成 code/msg/data 三字段信封）。
  * RAG 通用业务异常 —— Service 层显式抛，Controller 层 GlobalExceptionHandler 统一捕获并包成 envelope。
  *
- * <p>对应 Go 端 logic 的 {@code return LogicResult.fail(errmsg.XXX)} 双返回模型：
+ * <p>对应 B 侧 端 logic 的 {@code return LogicResult.fail(errmsg.XXX)} 双返回模型：
  * <pre>
- *   Go: return nil, errmsg.ERROR_USER_EXIST
+ *   B 侧: return nil, errmsg.ERROR_USER_EXIST
  *   Java: throw new BusinessException(1001, "用户名已存在")
  * </pre>
  *

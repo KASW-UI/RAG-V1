@@ -3,7 +3,7 @@ package com.rag.common.communityfact;
 import java.util.regex.Pattern;
 
 /**
- * <p><b>Go 出处</b>：{@code service/common/communityfact/logging.go} 的
+ * <p><b>B 出处</b>：{@code service/common/communityfact/logging.go} 的
  * {@code ProcessMetadata struct} ＋ {@code func (m ProcessMetadata) Validate() error}。
  *
  * <p><b>⚠️ 两条校验规则（行为契约）</b>：
@@ -47,7 +47,7 @@ public final class ProcessMetadata {
     }
 
     /**
-     * 对应 Go 版 {@code func (m ProcessMetadata) Validate() error}。
+     * 对应 B 侧版 {@code func (m ProcessMetadata) Validate() error}。
      */
     public void validate() {
         if (service == null || service.isEmpty()

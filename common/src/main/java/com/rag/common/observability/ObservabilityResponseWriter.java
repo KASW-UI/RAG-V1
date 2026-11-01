@@ -19,7 +19,7 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * <b>观测用的响应记录器</b> —— 捕获响应体，并允许在超时 / 断连之后<b>掐掉</b>底层的提交。
  *
- * <p><b>Go 出处</b>：{@code Sea-RideTheWind_golang/service/common/observability/http.go}
+ * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/observability/HttpMiddleware.java:1105}
  * <pre>
  * type observabilityResponseWriter struct {
  *     header http.Header
@@ -47,12 +47,11 @@ import java.util.concurrent.locks.ReentrantLock;
  * ① 状态码被抢（客户端收到 200 而不是 503）
  * ② Tomcat 的 {@code MimeHeaders} 被写坏 ⇒ NPE ⇒ 客户端只看到 EOF。
  * <p>⇒ ⇒ 本类覆写 {@link #flushBuffer()}：<b>超时 / 断连之后一律 no-op</b>
- * （Go 侧 {@code Write} 在 {@code timedOut} 时返回 {@code http.ErrHandlerTimeout} ⇒ 同款语义）。
+ * （B 侧 {@code Write} 在 {@code timedOut} 时返回 {@code http.ErrHandlerTimeout} ⇒ 同款语义）。
  *
  * <h2>🔴 为什么要有 {@code underlyingLock}（底层响应的写锁）</h2>
  * <p>worker 线程（业务）与容器线程（超时 / 断连分支）<b>都可能碰底层响应</b>。
  * Tomcat 的 {@code MimeHeaders.createHeader()} 是
- * {@code if ((mh = headers[count]) == null) { headers[count] = mh = new MimeHeaderField(); } count++}
  * ⇒ 两个线程同时加头时，各自 {@code count++} 却只填了一个槽位 ⇒ <b>数组里留 null 洞</b>
  * ⇒ 随后任何线程读头 ⇒ <b>NPE</b> ⇒ 响应一个字都发不出去（客户端只看到 EOF）。
  * <p>⇒ ⇒ 这把锁把「对底层响应的所有修改」串行化 ⇒ 洞不可能出现。
@@ -143,7 +142,7 @@ public class ObservabilityResponseWriter extends HttpServletResponseWrapper {
     public PrintWriter getWriter() throws IOException {
         // 不走 OutputStreamWriter 的 char/byte 缓冲：每次 write 直接转 UTF-8 字节写入 captured body。
         // 这样 handler 写完 body 后无需 flush 也能在 bodyBytes() 读到
-        // （对齐 Go 版 observabilityResponseWriter.Write 直接写 buffer 的语义）。
+        // （对齐 B 侧版 observabilityResponseWriter.Write 直接写 buffer 的语义）。
         Writer unbuffered = new Writer() {
             @Override
             public void write(char[] cbuf, int off, int len) {
@@ -266,7 +265,7 @@ public class ObservabilityResponseWriter extends HttpServletResponseWrapper {
         underlyingLock.lock();
         try {
             if (timedOut || clientCancelled) {
-                // Go: 超时后业务写被丢弃（ErrHandlerTimeout）⇒ worker 不许再提交响应
+                // B 侧: 超时后业务写被丢弃（ErrHandlerTimeout）⇒ worker 不许再提交响应
                 return;
             }
             this.original.flushBuffer();
@@ -323,7 +322,7 @@ public class ObservabilityResponseWriter extends HttpServletResponseWrapper {
     }
 
     /**
-     * 对齐 Go 版 {@code func (w *observabilityResponseWriter) flushTo(dst http.ResponseWriter)}。
+     * 对齐 B 侧版 {@code func (w *observabilityResponseWriter) flushTo(dst http.ResponseWriter)}。
      */
     public void flushTo(HttpServletResponse dst) throws IOException {
         if (timedOut || clientCancelled) {

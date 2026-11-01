@@ -4,8 +4,8 @@ import io.opentelemetry.context.Context;
 import org.slf4j.Logger;
 
 /**
- * <p>对应 Go 版 {@code service/common/communityfact/process.go} 的
- * {@code type Dispatcher interface}（{@code DispatchFactOnce}）。
+ * <p>对应 B 侧 {@code service/common/src/main/java/com/rag/common/communityfact/Dispatcher.java} 的
+ * {@code Dispatcher} 接口（{@code dispatchFactOnce}）。
  *
  * <p><b>⚠️ 这是域侧 store SPI —— 由 comment / favorite / like 各域实现</b>
  * （映射表 §1.2 第 144 行：「<b>域侧 store SPI</b> —— 由 comment / favorite / like 各域实现」）。

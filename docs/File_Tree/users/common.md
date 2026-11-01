@@ -10,7 +10,7 @@
 | 模块路径 | `service/users/common` |
 | artifactId | `users-common` |
 | 根包 | `com.rag.users.common` |
-| Go 出处 | `service/user/common/errmsg/errmsg.go` |
+| B 侧出处 | `service/users/users-common/` |
 | 说明 | **公共库**：users 域（user + admin）共享的错误契约 —— 不是第三个域 |
 
 ## 二、依赖
@@ -43,7 +43,7 @@
 
 ## 四、特殊约定（L1 契约 · 勿凭直觉改）
 
-- **为什么存在**：Go 的 `service/user/common/errmsg/errmsg.go` 被 `user/api`·`user/rpc`·`admin/api`·`admin/rpc` **四方共用** ⇒ 抽为独立共享模块，避免错误码段复制两份。
+- **为什么存在**：B 侧 `service/users/users-common/` 的错误契约（`errmsg/`）被 `user/api`·`user/rpc`·`admin/api`·`admin/rpc` **四方共用** ⇒ 抽为独立共享模块，避免错误码段复制两份。
 - **文案是中文**（`"服务繁忙"`）—— 与 follow/hot/message 的英文文案不同。
 - ⚠️ **不含 proto** —— proto 已集中到根级 `proto/` 模块 ⇒ 本模块只留错误契约。
 
@@ -53,4 +53,4 @@
 |---|---|
 | 目录结构 | ✅ 已落地 |
 | 文件内容 | ⬜ **全部待填**（每个 Java 文件只有 package + 空类型 + TODO javadoc） |
-| Go ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |
+| B 侧 ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |

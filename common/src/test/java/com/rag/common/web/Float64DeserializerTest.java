@@ -9,9 +9,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * §3.3 真触发测试 —— {@link Float64Deserializer} 的逐条 Go 判据。
+ * §3.3 真触发测试 —— {@link Float64Deserializer} 的逐条 B 侧 判据。
  *
- * <p><b>Go 出处</b>：go-zero {@code core/mapping/unmarshaler.go:684-687}
+ * <p><b>B 出处</b>：B 侧 {@code service/like/like-api/src/main/java/com/rag/like/like/api/dto/GoStyleFloat64Deserializer.java:14:684-687}（RAG 仓）
  * （{@code case reflect.Float32: fValue, err := v.Float64()} ⇒ {@code 1e400} 返
  * {@code (+Inf, ErrRange)} ⇒ 整个请求 5001）。
  *
@@ -29,7 +29,7 @@ class Float64DeserializerTest {
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
     @Test
-    @DisplayName("普通小数照常接受（Go: 1.5）")
+    @DisplayName("普通小数照常接受（B 侧: 1.5）")
     void plainFloatIsAccepted() throws Exception {
         assertThat(MAPPER.readValue("{\"weight\":1.5}", Req.class).weight).isEqualTo(1.5d);
     }
@@ -41,7 +41,7 @@ class Float64DeserializerTest {
     }
 
     @Test
-    @DisplayName("1e400 被拒（Go: json.Number(\"1e400\").Float64() ⇒ (+Inf, ErrRange)）")
+    @DisplayName("1e400 被拒（B 侧: json.Number(\"1e400\").Float64() ⇒ (+Inf, ErrRange)）")
     void overflowIsRejected() {
         assertThatThrownBy(() -> MAPPER.readValue("{\"weight\":1e400}", Req.class))
                 .isInstanceOf(com.fasterxml.jackson.databind.exc.MismatchedInputException.class);
@@ -55,21 +55,21 @@ class Float64DeserializerTest {
     }
 
     @Test
-    @DisplayName("字符串被拒（Go: type mismatch）")
+    @DisplayName("字符串被拒（B 侧: type mismatch）")
     void stringIsRejected() {
         assertThatThrownBy(() -> MAPPER.readValue("{\"weight\":\"1.5\"}", Req.class))
                 .isInstanceOf(com.fasterxml.jackson.databind.exc.MismatchedInputException.class);
     }
 
     @Test
-    @DisplayName("布尔被拒（Go: type mismatch）")
+    @DisplayName("布尔被拒（B 侧: type mismatch）")
     void booleanIsRejected() {
         assertThatThrownBy(() -> MAPPER.readValue("{\"weight\":true}", Req.class))
                 .isInstanceOf(com.fasterxml.jackson.databind.exc.MismatchedInputException.class);
     }
 
     @Test
-    @DisplayName("显式 null 合法（Go: ,optional）")
+    @DisplayName("显式 null 合法（B 侧: ,optional）")
     void explicitNullIsAllowed() throws Exception {
         assertThat(MAPPER.readValue("{\"weight\":null}", Req.class).weight).isNull();
     }
@@ -84,12 +84,12 @@ class Float64DeserializerTest {
     @DisplayName("⚠️ 关键机制断言：Jackson 2 的 getText() 对数字返回**原始字面量**（1e400 不是 Infinity）")
     void rawLiteralIsPreservedForNumbers() throws Exception {
         // 若 getText() 返回的是规范化后的值（如 1e400 → "Infinity"），
-        // 则本类会走进「无法解析为 float64」而不是「value out of range」分支 ⇒ 行为与 Go 不同。
+        // 则本类会走进「无法解析为 float64」而不是「value out of range」分支 ⇒ 行为与 B 侧 不同。
         assertThatThrownBy(() -> MAPPER.readValue("{\"weight\":1e400}", Req.class))
                 .isInstanceOf(com.fasterxml.jackson.databind.exc.MismatchedInputException.class)
                 .hasMessageContaining("value out of range");
 
-        // 尾零也要保住：1.50 必须落成 1.5（Go: json.Number 的字面量规范化后再转 float64）
+        // 尾零也要保住：1.50 必须落成 1.5（B 侧: json.Number 的字面量规范化后再转 float64）
         assertThat(MAPPER.readValue("{\"weight\":1.50}", Req.class).weight).isEqualTo(1.5d);
     }
 }

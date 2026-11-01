@@ -10,14 +10,14 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <pre>
  *     like_mq_consume_total
  * </pre>
- * <p>指标名与标签是<b>业务定义</b>，不是实现细节 ⇒ 逐字照抄 Go 侧 <code>internal/metrics/metrics.go</code>。
+ * <p>指标名与标签是<b>业务定义</b>，不是实现细节 ⇒ 逐字照抄 B 侧 <code>service/like/like-rpc/src/main/java/com/rag/like/like/rpc/metrics/LikeMqMetrics.java</code>。
  *
  * <p>Micrometer 承担注册与暴露；<b>指标名、标签、helper 的调用点与触发条件</b>保留为业务代码。
  *
  * <h2>⚠️ 已知缺陷必须照抄，不得「顺手修正」</h2>
  * <p>like 域另有一个指标 <code>like-rpc_action_total</code> 用<b>连字符</b> ⇒ Prometheus 正则不允许
- * ⇒ 该指标<b>不会出现在 <code>/metrics</code></b>。这是 Go 侧的真实行为 ⇒ 照抄，不修正
- * （改了 = 引入 Go 没有的可观察差异）。
+ * ⇒ 该指标<b>不会出现在 <code>/metrics</code></b>。这是 B 侧的真实行为 ⇒ 照抄，不修正
+ * （改了 = 引入 B 侧 没有的可观察差异）。
  *
  * @see com.rag.like.metrics.LikeRpcMetrics
  */

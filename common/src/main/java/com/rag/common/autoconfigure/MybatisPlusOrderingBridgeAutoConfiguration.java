@@ -3,7 +3,7 @@ package com.rag.common.autoconfigure;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 
 /**
- * <p><b>Go 出处</b>：<b>无</b> —— Go 侧用 GORM，<b>没有</b>「MyBatis-Plus 自动配置排序」这个概念
+ * <p><b>B 出处</b>：<b>无</b> —— B 侧用 GORM，<b>没有</b>「MyBatis-Plus 自动配置排序」这个概念
  * ⇒ ⇒ 本类是 <b>Spring Boot 自动配置的排序 workaround</b>
  * ⇒ ⇒ <b>纯表达层</b>：它只保证 MP 的自动配置被求值 ⇒ <b>不改变任何业务语义</b> ⇒ <b>无行为面</b>。
  *

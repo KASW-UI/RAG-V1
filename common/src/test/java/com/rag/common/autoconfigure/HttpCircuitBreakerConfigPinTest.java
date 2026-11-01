@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <b>全部由框架默认值决定</b> ⇒ 本仓的 {@code application.yml} 里**一个字都没写**
  * （且 10 个域的 yml 搬运已被叫停 ⇒ **永远写不了**）。
  * <p>⇒ 而这些数字**正是 V09 这条 L3 降级的「形状」**：
- * Go / B 侧是「<b>概率性拒绝 + force-pass 保底 + 无三态</b>」，
+ * B 侧是「<b>概率性拒绝 + force-pass 保底 + 无三态</b>」，
  * 本仓是「<b>计数窗口 + 打开/半开/关闭三态</b>」⇒ ⇒ **两者差多远，全看这几个数字**。
  * <p>⇒ ⇒ **不钉住 = 降级形状不可测量** ⇒ ⇒ 降级项一旦随框架升级悄悄变形，**没有人会发现**。
  * <br>⚠️ **本类第一版就抓到了「凭记忆写默认值」的错误**：{@code isWritableStackTraceEnabled()}
@@ -89,7 +89,7 @@ class HttpCircuitBreakerConfigPinTest {
                     .as("写栈开关 —— resilience4j 2.2.0 实测默认**开**（⚠️ 写这行断言时我按 1.x 的记忆写了 false ⇒ 被实测打脸 ⇒ 这就是「参数藏在框架里」的坑）")
                     .isTrue();
             assertThat(cfg.getSlidingWindowType())
-                    .as("窗口类型 —— resilience4j 默认 COUNT_BASED（**计数窗口**）⇒ 这正是 V09 说的「计数窗口 vs Go 的概率性拒绝」")
+                    .as("窗口类型 —— resilience4j 默认 COUNT_BASED（**计数窗口**）⇒ 这正是 V09 说的「计数窗口 vs 上游的概率性拒绝」")
                     .isEqualTo(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED);
             assertThat(cfg.getSlowCallRateThreshold())
                     .as("慢调用率阈值 —— resilience4j 默认 100%（⇒ 慢调用不单独触发开路）")

@@ -9,9 +9,7 @@ import java.util.HexFormat;
 import java.util.regex.Pattern;
 
 /**
- * <p><b>Go 出处</b>：{@code service/common/communityfact/wire.go} 的
- * {@code func CanonicalHash(raw []byte) (string, error)} ＋
- * {@code func ValidHash(value string) bool}
+ * <p><b>B 出处</b>：{@code service/common/communityfact/wire.go} 的
  * ＋ {@code var receiptHash = regexp.MustCompile(`^[a-f0-9]{64}$`)}。
  *
  * <p><b>⚠️ 规范化顺序不可颠倒（G-2 · 幂等性前提）</b>：
@@ -21,10 +19,10 @@ import java.util.regex.Pattern;
  *
  * <p><b>实现对照</b>：
  * <ul>
- *   <li>Go 侧：{@code github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer}；</li>
+ *   <li>B 侧：{@code github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer}；</li>
  *   <li>Java 侧：{@code org.erdtman.jcs.JsonCanonicalizer}（同为 RFC 8785 JCS 实现）
  *       ⇒ {@code new JsonCanonicalizer(raw).getEncodedString()}；</li>
- *   <li>哈希：{@code SHA-256} → {@code HexFormat.of().formatHex(sum)}（小写 hex，对齐 Go 的
+ *   <li>哈希：{@code SHA-256} → {@code HexFormat.of().formatHex(sum)}（小写 hex，对齐 B 的
  *       {@code hex.EncodeToString}）。</li>
  * </ul>
  *
@@ -38,11 +36,11 @@ public final class CanonicalHash {
     private static final Pattern RECEIPT_HASH = Pattern.compile("^[a-f0-9]{64}$");
 
     /**
-     * 对应 Go 版 {@code func CanonicalHash(raw []byte) (string, error)}：
+     * 对应 B 侧版 {@code func CanonicalHash(raw []byte) (string, error)}：
      * JCS 规范化 → SHA-256 → hex（RFC 8785）。
      */
     public static String canonicalHash(byte[] raw) throws Exception {
-        // 对应 Go 版 github.com/cyberphone/json-canonicalization 的 JsonCanonicalizer.Transform
+        // 对应 B 侧版 github.com/cyberphone/json-canonicalization 的 JsonCanonicalizer.Transform
         // Java 等价物 org.erdtman.jcs.JsonCanonicalizer（JCS，RFC 8785）
         // 用法：new JsonCanonicalizer(byte[]) → getEncodedString() / getEncodedUTF8()
         String canonical = new JsonCanonicalizer(raw).getEncodedString();
@@ -57,7 +55,7 @@ public final class CanonicalHash {
     }
 
     /**
-     * 对应 Go 版 {@code func ValidHash(value string) bool}：sha256 hex 校验。
+     * 对应 B 侧版 {@code func ValidHash(value string) bool}：sha256 hex 校验。
      */
     public static boolean validHash(String value) {
         return value != null && RECEIPT_HASH.matcher(value).matches();

@@ -10,8 +10,8 @@
 | 模块路径 | `service/hot` |
 | artifactId | `hot-service` |
 | 根包 | `com.rag.hot` |
-| Go 出处 | `service/hot/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = Go logic 用例的 `types.Xxx` 引用图 + 类型所在聚合） |
+| B 侧出处 | `service/hot/` |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = B 侧 rpc 用例的 DTO 引用图 + 类型所在聚合） |
 
 ## 二、依赖
 
@@ -55,7 +55,7 @@
 │   │   │               │   ├── HotHydrationExecutorConfiguration.java
 │   │   │               │   ├── HotKafkaConfig.java
 │   │   │               │   ├── HotRpcProperties.java
-│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 替代 Go 的 rest.WithMiddlewares 绑定。
+│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 对齐 B 侧同名配置类的注册形态。
 │   │   │               ├── contract/
 │   │   │               │   ├── ArticleHotEvent.java    # 热点域消费的文章事件载荷（article_id + type 两字段）。
 │   │   │               │   ├── CodeError.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
@@ -63,15 +63,15 @@
 │   │   │               │   ├── ErrMsg.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               │   └── GrpcErrorMapper.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               ├── controller/
-│   │   │               │   └── HotArticleController.java    # ⚠️ L1 路由契约（Go 正推，勿凭直觉改）
+│   │   │               │   └── HotArticleController.java    # ⚠️ L1 路由契约（B 侧 正推，勿凭直觉改）
 │   │   │               ├── domain/
 │   │   │               │   └── model/
 │   │   │               │       └── HeavyKeeper.java
 │   │   │               ├── dto/
 │   │   │               │   └── article/
-│   │   │               │       ├── HotArticleItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── HotArticlesReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       └── HotArticlesResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── HotArticleItem.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── HotArticlesReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       └── HotArticlesResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               ├── grpc/
 │   │   │               │   └── HotGrpcService.java
 │   │   │               ├── messaging/
@@ -106,7 +106,7 @@
 
 ## 四、特殊约定（L1 契约 · 勿凭直觉改）
 
-- **⚠️ 全部端点免鉴权**（Go 无 `WithJwt` 组）⇒ 本域**不该有** `*JwtAuthInterceptor`。
+- **⚠️ 全部端点免鉴权**（B 侧 `HotArticleController` 明确不引入 `JwtAuthInterceptor`）⇒ 本域**不该有** `*JwtAuthInterceptor`。
 - **唯一端点是 GET**：`GET /hot/v1/articles`。
 - **`heavykeeper` 是 hot 域私有算法包**（仅被 hot/rpc 的 config + mqs import）⇒ 非跨域共享。
 
@@ -116,4 +116,4 @@
 |---|---|
 | 目录结构 | ✅ 已落地 |
 | 文件内容 | ⬜ **全部待填**（每个 Java 文件只有 package + 空类型 + TODO javadoc） |
-| Go ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |
+| B 侧 ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |

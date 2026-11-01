@@ -17,7 +17,7 @@ import java.util.List;
  * <p><b>⚠️ L4 idiomatization：链序由「{@code @Order} + 显式嵌套」表达，不靠「多次
  * {@code server.intercept(...)} 的隐式嵌套方向」。</b>
  *
- * <p><b>Go 出处（消费点，不是声明点）</b>：
+ * <p><b>B 出处（消费点，不是声明点）</b>：
  * <pre>
  *   zrpc/server.go:144-163 setupUnaryInterceptors —— 按顺序 AddUnaryInterceptors：
  *       Trace → Recover → Stat → Prometheus → Breaker → Shedding → Timeout
@@ -30,13 +30,13 @@ import java.util.List;
  * <p><b>⚠️ 链序是行为语义，不是排版</b>：
  * <ul>
  *   <li><b>recover 必须在最外层</b> —— 否则内层的 panic 兜不住；</li>
- *   <li><b>breaker 必须在 shedding 的外层</b> —— Go 侧 shedding 的
+ *   <li><b>breaker 必须在 shedding 的外层</b> —— B 侧 shedding 的
  *       {@code RESOURCE_EXHAUSTED} 会冒泡上来被 breaker 记成失败
  *       ⇒ <b>持续降载最终会把熔断器打开</b>；</li>
  *   <li><b>prometheus 必须在 breaker / shedding 的外层</b> —— 否则被拒绝的请求在指标里
- *       <b>整个消失</b>（Go 侧这两类请求照样被记一笔）；</li>
+ *       <b>整个消失</b>（B 侧这两类请求照样被记一笔）；</li>
  *   <li><b>stat 在 prometheus 的外层</b> —— 量到的耗时<b>含</b>降载 / 熔断开销
- *       （Go 的 Stat 层同样在外面）。</li>
+ *       （B 的 Stat 层同样在外面）。</li>
  * </ul>
  *
  * <p><b>⚠️ 与 B 侧的一处形态差（L4）</b>：B 侧由 {@code GoStyleRpcProtectionChain.build(business, props)}

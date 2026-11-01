@@ -21,7 +21,7 @@
 
 | 契约 | 形态 | 适用断言 |
 |---|---|---|
-| **A** | Go 部署等价（api / rpc 分离） | A1 · A2 · A3 · A4–A12 |
+| **A** | B 侧部署等价（api / rpc 分离） | A1 · A2 · A3 · A4–A12 |
 | **B** | Spring 惯用（api + rpc 合并）★ RAG-V1 | A4–A12 |
 
 ⚠️ **A1 / A2 / A3 是 api/rpc 分离的派生物**，合并形态下它们**自动消失**。
@@ -92,15 +92,15 @@ PASS, FAIL, NA, PENDING = "PASS", "FAIL", "N/A", "PENDING"
 # ---------------------------------------------------------------------------
 EXCEPTIONS = {
     "A8": {
-        # Go 侧 communityfact.NewProcessLogger 是一个**工厂**（返回 *slog.Logger），
+        # B 侧 communityfact.NewProcessLogger 是一个**工厂**（返回 *slog.Logger），
         # 对应的 Java 侧 ProcessLogger 同样是「产出 Logger 的工厂」⇒ 工厂本身不必 implements 接口。
         # 若后续把它改成直接实现 Logger，则本例外自动不再需要（可删）。
-        "ProcessLogger": "Go communityfact.NewProcessLogger 是工厂（返回 *slog.Logger）"
+        "ProcessLogger": "B 侧 communityfact.ProcessLogger#newProcessLogger 是工厂（返回 Logger）"
                          "⇒ Java 侧同类亦为工厂，无需 implements slf4j.Logger",
     },
 }
 
-# A11：三域各自必须有的 fact-* 装配落点（Go 侧 cmd/fact-* 独立进程 ⇒ 域内组件）
+# A11：三域各自必须有的 fact-* 装配落点（B 侧 cmd/fact-* 独立进程 ⇒ 域内组件）
 A11_DOMAINS = {
     "comment": "Comment",
     "favorite": "Favorite",
@@ -112,7 +112,7 @@ A11_REQUIRED = [
     "{d}FactProcessLogging.java",
 ]
 
-# A10：Go 风格「手写必填校验器」的特征类名（RAG 侧 `GoStyleRequired*` / `GoStyleRequest` 同款）
+# A10：手写必填校验器的特征类名（RAG 侧 `GoStyleRequired*` / `GoStyleRequest` 同款）
 # ⚠️ **必须精确匹配** —— 用 `GoStyleRequest\w*` 会把 `GoStyleRequestDeadline`（请求超时传递）
 # 一并误判成必填校验器 ⇒ 断言误报 ⇒ 会被当成噪声忽略 ⇒ 真违规时反而没人看。
 A10_HANDWRITTEN_VALIDATOR = re.compile(
@@ -355,7 +355,7 @@ def check_a3(root: pathlib.Path, contract: str) -> Result:
     """A3 · gRPC 拦截链必须**真挂到 server 上**。
 
     ⚠️ **这条断言在合并形态下依然成立** —— 它不是「api/rpc 分离」的派生物：
-    Go 侧范围内 **10 个服务逐条显式**调 `AddUnaryInterceptors(...)`（`service/*/rpc/*.go`），
+    B 侧范围内 **10 个服务逐条显式**调 `AddUnaryInterceptors(...)`（`service/*/rpc/*.java`），
     合并成「一域一进程」后仍要挂，只是**挂载点从「每 rpc 模块」变成「共享层 1 份」**。
 
     ┌─ 契约 A（api/rpc 分离，RAG 形态）────────────────────────────┐
@@ -428,7 +428,7 @@ def check_a3(root: pathlib.Path, contract: str) -> Result:
 
 
 # ---------------------------------------------------------------------------
-# A4 · 双向交叉引用（devh 默认 TLS，Go zrpc 是明文 gRPC）
+# A4 · 双向交叉引用（devh 默认 TLS，B 侧 zrpc 侧是明文 gRPC）
 # ---------------------------------------------------------------------------
 def check_a4(root: pathlib.Path, contract: str) -> Result:
     """A4 · `@GrpcClient("X")` ⟷ 同模块 yml 的 `grpc.client.X.negotiation-type: plaintext`。
@@ -546,7 +546,7 @@ def check_a7(root: pathlib.Path, contract: str) -> Result:
 def check_a8(root: pathlib.Path, contract: str) -> Result:
     """A8 · 自定义日志载体必须接入 `org.slf4j.Logger`。
 
-    判据对象 = 简单名以 `Logger` 结尾，或以 `ProcessLogging` 结尾的类（Go 的 `logx` call_chain
+    判据对象 = 简单名以 `Logger` 结尾，或以 `ProcessLogging` 结尾的类（B 侧 `logx` call_chain
     需要自研载体承载 —— G-4）。
 
     ⚠️ **空壳 ⇒ PENDING，不算 PASS**：还没写实现的类既不是「过了」也不是「违规」。
@@ -608,7 +608,7 @@ def check_a9(root: pathlib.Path, contract: str) -> Result:
 # A10 · 有手写必填校验器 ⇒ 必须引入 Bean Validation
 # ---------------------------------------------------------------------------
 def check_a10(root: pathlib.Path, contract: str) -> Result:
-    """A10 · ① 不得存在 Go 风格手写必填校验器 ② 含 DTO 的模块必须引入 Bean Validation。
+    """A10 · ① 不得存在手写必填校验器 ② 含 DTO 的模块必须引入 Bean Validation。
 
     手写校验器 = 放弃整个 Bean Validation 生态（消息插值、分组、自定义约束）。
     """
@@ -632,7 +632,7 @@ def check_a10(root: pathlib.Path, contract: str) -> Result:
 
 
 # ---------------------------------------------------------------------------
-# A11 · Go 侧 cmd/fact-* 独立进程 ⇒ 域内必须有对应装配落点
+# A11 · B 侧 cmd/fact-* 独立进程 ⇒ 域内必须有对应装配落点
 # ---------------------------------------------------------------------------
 def check_a11(root: pathlib.Path, contract: str) -> Result:
     """A11 · comment / favorite / like 三域各须有 `wiring/<域>FactDispatchScheduler`、
@@ -969,7 +969,7 @@ def self_test() -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="架构符合性守门（A1–A12）")
     ap.add_argument("--contract", choices=["A", "B"], default="B",
-                    help="断言绑定契约：A=api/rpc 分离（Go 部署等价）· B=api+rpc 合并（RAG-V1，默认）")
+                    help="断言绑定契约：A=api/rpc 分离（B 侧部署等价）· B=api+rpc 合并（RAG-V1，默认）")
     ap.add_argument("--only", nargs="+", metavar="A#", help="只跑指定断言，如 --only A4 A11")
     ap.add_argument("--self-test", action="store_true", help="红灯自检：造违规假树，验证判据会红")
     ap.add_argument("--root", default=str(ROOT), help="仓库根目录（自检用）")

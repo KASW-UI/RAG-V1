@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 
 /**
- * <p><b>Go 出处</b>：{@code service/common/snowflake/snowflake.go:22-38}
+ * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/spring/SnowflakeBean.java:7:22-38}
  * （{@code func Init()} ⇒ {@code sync.Once} 懒加载、进程内<b>唯一</b>一份 {@code snowflake.Node}）
  * ＋ {@code service/common/snowflake/snowflake.go:53-59}（{@code generateNodeId()} 的 {@code SNOWFLAKE_NODE_ID} 档）。
  *
@@ -78,7 +78,7 @@ public class SnowflakeAutoConfiguration {
     }
 
     /**
-     * 生成下一个 64 位 ID；算法与 Go 版 bwmarrin/snowflake v0.3.0 同位宽。
+     * 生成下一个 64 位 ID；算法与 B 侧版 bwmarrin/snowflake v0.3.0 同位宽。
      */
     public long nextId() {
         return Snowflake.nextId();
@@ -111,7 +111,7 @@ public class SnowflakeAutoConfiguration {
     /**
      * Snowflake 配置绑定（{@code snowflake.worker-id}）。
      *
-     * <p>⚠️ <b>Go 侧<b>没有</b>「yaml 配置 workerId」这一档</b> ⇒ ⇒ 本项是 <b>RAG 多出的一档</b>
+     * <p>⚠️ <b>B 侧<b>没有</b>「yaml 配置 workerId」这一档</b> ⇒ ⇒ 本项是 <b>RAG 多出的一档</b>
      * ⇒ ⇒ 属<b>表达层扩展</b>（已登记为 {@code DRIFT-SF-002} · C 类 · 不计入 R3 ⑥）。
      */
     @ConfigurationProperties("snowflake")

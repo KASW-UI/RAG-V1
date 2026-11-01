@@ -7,7 +7,7 @@ import org.springframework.http.ResponseEntity;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Go {@code http.Error} 的形状 —— 本模块「解析层失败」与「上传失败」两条路径的
+ * B 侧 {@code http.Error} 的形状 —— 本模块「解析层失败」与「上传失败」两条路径的
  * <b>唯一</b>响应形态。
  *
  * <h2>为什么需要它：article-api <b>没有</b>注册 error handler</h2>
@@ -26,7 +26,7 @@ import java.nio.charset.StandardCharsets;
  * <pre>
  *   handler == nil  ⇒  http.Error(w, err.Error(), http.StatusBadRequest)
  * </pre>
- * 而 Go 的 {@code http.Error}（net/http/server.go）做四件事：
+ * 而 B 的 {@code http.Error}（net/http/server.go）做四件事：
  * <pre>
  *   h.Del("Content-Length")
  *   h.Set("Content-Type", "text/plain; charset=utf-8")
@@ -42,7 +42,7 @@ import java.nio.charset.StandardCharsets;
  * AGENTS.md §3.1「不要拿另一个域的实测结论当对照基准」的又一个实例。
  *
  * <p>⚠️ 与 {@code com.rag.common.http.RouterErrorResponses} 的关系：后者给的是
- * <b>404 / 405</b>（go-zero router 自己写的，跟 error handler 无关），本类给的是
+ * <b>404 / 405</b>（B 侧 路由层自己写的，跟 error handler 无关），本类给的是
  * <b>handler 内部</b>抛出来的错误。两者形状相同（都是裸 text/plain）但来源不同，
  * 且 404/405 是<b>所有</b> api 模块共享的，所以留在共享实现里；
  * 本类是 article-api 私有的（因为只有本模块缺 error handler）。
@@ -57,16 +57,16 @@ import java.nio.charset.StandardCharsets;
  */
 public final class PlainTextErrors {
 
-    /** Go {@code http.Error} 的 Content-Type。 */
+    /** B 侧 {@code http.Error} 的 Content-Type。 */
     private static final String TEXT_PLAIN_UTF8 = "text/plain; charset=utf-8";
 
     private PlainTextErrors() {
     }
 
     /**
-     * Go {@code http.Error(w, err.Error(), 400)} 的逐字等价物。
+     * B 侧 {@code http.Error(w, err.Error(), 400)} 的逐字等价物。
      *
-     * @param message {@code err.Error()}。末尾的 {@code "\n"} 由本方法补（Go 用 {@code Fprintln}），
+     * @param message {@code err.Error()}。末尾的 {@code "\n"} 由本方法补（B 侧 用 {@code Fprintln}），
      *                调用方<b>不要</b>自己加。
      */
     public static ResponseEntity<byte[]> badRequest(String message) {
@@ -76,7 +76,7 @@ public final class PlainTextErrors {
     /**
      * 任意状态的 {@code http.Error} 形状。
      *
-     * <p>⚠️ <b>不止 400 在用</b>：Go {@code rest/httpx/responses.go:150-153} 的
+     * <p>⚠️ <b>不止 400 在用</b>：B 侧 {@code rest/httpx/responses.go:150-153} 的
      * {@code IsGrpcError} 分支会按 gRPC 码映射出 500 / 503 / 504 / 429 / 404 等，
      * 由 {@link HttpErrorException} 携带状态码进来。
      */

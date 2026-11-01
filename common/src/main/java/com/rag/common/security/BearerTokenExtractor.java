@@ -3,27 +3,27 @@ package com.rag.common.security;
 import java.util.Locale;
 
 /**
- * Authorization 头的 token 提取 —— Go 侧<b>两套互不相同</b>的取法的逐字等价实现。
+ * Authorization 头的 token 提取 —— B 侧<b>两套互不相同</b>的取法的逐字等价实现。
  *
  * <p><b>为什么必须把两套都留成两个方法，而不是「顺手统一成一套」</b>：
- * Go 的鉴权链由两个中间件组成，它们对同一个 header 用了<b>不同</b>的取法，
+ * B 的鉴权链由两个中间件组成，它们对同一个 header 用了<b>不同</b>的取法，
  * 且这个差异在畸形输入下会真实分叉。两套都必须各自逐字对齐，
- * 合并即等于擅自修好 Go 的 bug —— 那会制造一处新的语义漂移。
+ * 合并即等于擅自修好 B 的 bug —— 那会制造一处新的语义漂移。
  *
  * <p>抽到 users-common 而不是两个模块各写一份的原因很直接：
  * DRIFT-010 就是「admin 侧一份实现、user 侧另一份实现」各自演化出来的。
  * 鉴权是安全边界，同一个规则的第二份实现本身就是缺陷来源。
  *
- * <h3>用法约定（与 Go 调用点一一对应）</h3>
+ * <h3>用法约定（与 B 侧 调用点一一对应）</h3>
  * <ul>
  *   <li>{@link #tokenForSignatureVerification} —— 只用于 <b>验签</b>，
- *       对应 Go {@code rest.WithJwt → handler.Authorize →
+ *       对应 B 侧 {@code rest.WithJwt → handler.Authorize →
  *       rest/token/tokenparser.go doParseToken → request.ParseFromRequest}</li>
  *   <li>{@link #trimBearerPrefix} —— 只用于 <b>黑名单 key</b>，
- *       对应 Go {@code CheckBlacklistMiddleware.Handle}</li>
+ *       对应 B 侧 {@code CheckBlacklistMiddleware.Handle}</li>
  * </ul>
  *
- * <p><b>调用顺序同样是对齐的一部分</b>：Go 是「先验签、后黑名单」
+ * <p><b>调用顺序同样是对齐的一部分</b>：B 侧 是「先验签、后黑名单」
  * （{@code rest/engine.go:101-113} bindRoute 先 appendAuthHandler 再 ThenFunc(route.Handler)，
  * 而 {@code rest/chain/chain.go} 的 Then = {@code m0(m1(...mN(h))} 使索引 0 最外层先执行；
  * 黑名单被 {@code rest/server.go:222-233} WithMiddleware 包进 route.Handler，
@@ -35,9 +35,9 @@ public final class BearerTokenExtractor {
     public static final String BEARER_PREFIX = "Bearer ";
 
     /**
-     * Go 的比较字面量<b>是大写</b>形式。
+     * B 的比较字面量<b>是大写</b>形式。
      *
-     * <p>Go 原文是 {@code strings.ToUpper(tok[0:7]) == "BEARER "} —— 被比较的一侧做了 ToUpper，
+     * <p>B 侧 原文是 {@code strings.ToUpper(tok[0:7]) == "BEARER "} —— 被比较的一侧做了 ToUpper，
      * 字面量一侧本来就是大写。若这里直接拿 {@link #BEARER_PREFIX}（{@code "Bearer "}）去比，
      * {@code "Bearer ".equals("BEARER ")} 恒为 false ⇒ 会把所有规范请求全部误拒为 401。
      * 该bug 由 {@code AdminApiMvcPipelineTest.validTokenReachesController} 当场抓出。
@@ -47,9 +47,9 @@ public final class BearerTokenExtractor {
     private BearerTokenExtractor() {}
 
     /**
-     * 验签用 token —— 对应 Go {@code golang-jwt/jwt/v4@v4.5.2/request/oauth2.go:7-12}。
+     * 验签用 token —— 对应 B 侧 {@code golang-jwt/jwt/v4@v4.5.2/request/oauth2.go:7-12}。
      *
-     * <p>Go 原文：
+     * <p>B 侧 原文：
      * <pre>
      * func stripBearerPrefixFromTokenString(tok string) (string, error) {
      *     if len(tok) &gt; 6 &amp;&amp; strings.ToUpper(tok[0:7]) == "BEARER " {
@@ -68,15 +68,15 @@ public final class BearerTokenExtractor {
      *   <li>不匹配时<b>原样返回整串</b>，不抛错、不置空。
      *       这一条是 DRIFT-010 的根：若改用 {@code split(" ", 2).parts[1]}，
      *       {@code "XXBearer eyJ..."} 会变成用 {@code "eyJ..."} 验签而通过，
-     *       Go 则用整串验签必然失败 ⇒ 构成注销绕过</li>
+     *       B 侧 则用整串验签必然失败 ⇒ 构成注销绕过</li>
      * </ol>
      */
     public static String tokenForSignatureVerification(String authHeader) {
-        // ⚠️⚠️ **2026-11-02：判定条件按 Go 修正（RAG 侧是 `> 7`，Go 是 `> 6`）**
-        //   Go: len(tok) > 6 && strings.ToUpper(tok[0:7]) == "BEARER "
-        //   ⇒ 「Bearer 」正好 7 字符 ⇒ Go **剥成空串**；RAG 的 `length() > 7` ⇒ 7 > 7 为假 ⇒ **不剥**。
-        //   ⇒ 二者在「恰好 7 字符的头」上分叉（RAG 自己的 javadoc 描述的也是 Go 的 `> 6` ⇒ 属 RAG 侧移植偏差）。
-        //   ⇒ 本仓按 **Go**（AGENTS.md §五.5：L1 契约层以 Go 为准；JWT 提取明确属 L1）。
+        // ⚠️⚠️ **2026-11-02：判定条件按 B 侧 修正（RAG 侧是 `> 7`，B 侧 是 `> 6`）**
+        //   B 侧: len(tok) > 6 && strings.ToUpper(tok[0:7]) == "BEARER "
+        //   ⇒ 「Bearer 」正好 7 字符 ⇒ B 侧 **剥成空串**；RAG 的 `length() > 7` ⇒ 7 > 7 为假 ⇒ **不剥**。
+        //   ⇒ 二者在「恰好 7 字符的头」上分叉（RAG 自己的 javadoc 描述的也是 B 的 `> 6` ⇒ 属 RAG 侧移植偏差）。
+        //   ⇒ 本仓按 **B 侧**（AGENTS.md §五.5：L1 契约层以 B 侧 为准；JWT 提取明确属 L1）。
         //   ⇒ 实践影响：两种写法都让这种畸形头**验签失败** ⇒ 无安全洞；差别只在「传给验签器的是哪个串」。
         if (authHeader.length() > BEARER_PREFIX.length() - 1
                 && BEARER_PREFIX_UPPERCASE.equals(
@@ -87,14 +87,14 @@ public final class BearerTokenExtractor {
     }
 
     /**
-     * 黑名单 key 用 token —— 对应 Go
+     * 黑名单 key 用 token —— 对应 B 侧
      * {@code service/user/{user,admin}/api/internal/middleware/checkblacklistmiddleware.go} 的
      * {@code token := strings.TrimPrefix(authHeader, "Bearer ")}。
      *
-     * <p><b>与 {@link #tokenForSignatureVerification} 的差异是 Go 自身的不一致，不是笔误</b>：
+     * <p><b>与 {@link #tokenForSignatureVerification} 的差异是 B 侧 自身的不一致，不是笔误</b>：
      * 这里是大小写<b>敏感</b>的精确前缀 {@code TrimPrefix}，同样在不匹配时原样返回整串。
      *
-     * <p>后果举例（Go 的真实行为，勿"修正"）：
+     * <p>后果举例（B 的真实行为，勿"修正"）：
      * header 为 {@code "bearer eyJ..."} 时，验签用 {@code "eyJ..."}，
      * 黑名单查的却是整串 {@code "bearer eyJ..."} —— 两者本就查不到同一个 key。
      */

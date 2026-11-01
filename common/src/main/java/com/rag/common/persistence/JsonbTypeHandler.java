@@ -11,12 +11,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 /**
- * jsonb 列 ↔ String 的 TypeHandler —— 对应 Go 端 PG 的 {@code jsonb} 列。
+ * jsonb 列 ↔ String 的 TypeHandler —— 对应 B 侧 端 PG 的 {@code jsonb} 列。
  *
  * <p><b>为什么用 {@link String} 而不是 POJO</b>：本域有两个 jsonb 用途都要求
  * 「以字符串原样存取」——
  * <ul>
- *   <li>{@code comment_content.meta}：Go 的 {@code normalizeCommentMeta}（comment.go:222-240）
+ *   <li>{@code comment_content.meta}：B 的 {@code normalizeCommentMeta}（comment.go:222-240）
  *       契约是「输入已是合法 JSON 就<b>原样保留</b>」，再被 GetComment 直接塞进 wire 上
  *       {@code CommentItem.meta} 这个 string 字段；</li>
  *   <li>{@code comment_domain_fact_outbox.payload / delivery_envelope}：
@@ -28,7 +28,7 @@ import java.sql.SQLException;
  * 会把 {@code json} 与 {@code jsonb} 混为一谈。本域三处都是 jsonb，显式指定才不会被
  * 灰度期的类型推断坑到。
  *
- * <p><b>写入前不校验 JSON 合法性</b>：Go 侧也不校验（payload 由 {@code json.Marshal} 产生，一定合法）。
+ * <p><b>写入前不校验 JSON 合法性</b>：B 侧也不校验（payload 由 {@code json.Marshal} 产生，一定合法）。
  * 若上层传了非法 JSON，让 PG 在插入时报错，而不是在这里静默吞掉。
  *
  * <p><b>读回用 {@code getString}</b>：PG 对 jsonb 返回 {@code PGobject}，直接取出文本形式。

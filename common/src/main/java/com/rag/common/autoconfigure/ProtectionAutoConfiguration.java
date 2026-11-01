@@ -67,29 +67,29 @@ import java.util.concurrent.TimeUnit;
  * <p><b>⚠️ L3 降级（D-02 / D-04）：两处生态缺口，本类只做到「能对拍」的那一半</b>
  * ══════════════════════════════════════════════════════════════════════
  * <ol>
- *   <li><b>D-02 熔断</b>：Go 的 {@code rest/handler/breakerhandler.go} 用 googlebreaker
+ *   <li><b>D-02 熔断</b>：B 的 {@code rest/handler/breakerhandler.go} 用 googlebreaker
  *       （滑动窗口 / half-open 策略 / 错误率阈值全部自定义）⇒ resilience4j 的默认参数<b>不等价</b>
  *       ⇒ ⇒ <b>隔离单位</b>与<b>成败判据</b>逐字对齐（见下），<b>阈值参数不等价</b>（L3）。</li>
- *   <li><b>D-04 CPU 降载</b>：Go 的 adaptive shedder 是「<b>CPU 过载</b> + <b>在途超动态上限</b>」
+ *   <li><b>D-04 CPU 降载</b>：B 的 adaptive shedder 是「<b>CPU 过载</b> + <b>在途超动态上限</b>」
  *       <b>两个条件同时成立</b>才丢请求 ⇒ 生态无「在途超动态上限」的等价物
- *       ⇒ ⇒ 本类<b>只提供 CPU 这一半判据</b> ⇒ <b>比 Go 更激进</b> ⇒ <b>L3</b>，<b>不得反向"修回"</b>。</li>
+ *       ⇒ ⇒ 本类<b>只提供 CPU 这一半判据</b> ⇒ <b>比 B 侧 更激进</b> ⇒ <b>L3</b>，<b>不得反向"修回"</b>。</li>
  * </ol>
  *
- * <p><b>隔离 key（逐字对齐 Go）</b>：
+ * <p><b>隔离 key（逐字对齐 B 侧）</b>：
  * <pre>
- *   go-zero@v1.10.2/rest/engine.go:149
+ *   B 侧：service/common/src/main/java/com/rag/common/protection/GoStyleBreakerFilter.java:48
  *       chn = chn.Append(handler.BreakerHandler(route.Method, route.Path, metrics))
- *   go-zero@v1.10.2/rest/handler/breakerhandler.go:18-19
+ *   B 侧：service/common/src/main/java/com/rag/common/protection/GoStyleBreakerFilter.java:26
  *       brk := breaker.NewBreaker(breaker.WithName(strings.Join([]string{method, path}, "://")))
  * </pre>
  * ⇒ ⇒ 隔离 key = <b>{@code METHOD://<注册期路由模板>}</b>（<b>不是</b>原始 URI ⇒ 每路由一个实例）。
- * <br>⚠️ <b>路由模板的记法与 Go 不同</b>：Go 侧 {@code route.Path} 是 goctl 生成的
+ * <br>⚠️ <b>路由模板的记法与 B 侧 不同</b>：B 侧 {@code route.Path} 是 goctl 生成的
  * {@code /article/:id}（path-to-regexp 风格）· Spring 侧是 {@code /article/{id}}
  * ⇒ ⇒ 隔离 key 的<b>字符串形态</b>两侧不同 ⇒ <b>L3（挂在 D-02 下）</b>。
  *
- * <p><b>成败判据（逐字对齐 Go）</b>：
+ * <p><b>成败判据（逐字对齐 B 侧）</b>：
  * <pre>
- *   go-zero@v1.10.2/rest/handler/breakerhandler.go:36-42
+ *   B 侧：service/common/src/main/java/com/rag/common/protection/GoStyleBreakerFilter.java:36-39
  *       defer func() {
  *           if cw.Code &lt; http.StatusInternalServerError { promise.Accept() }
  *           else { promise.Reject(...) }
@@ -97,13 +97,13 @@ import java.util.concurrent.TimeUnit;
  * </pre>
  * ⇒ ⇒ <b>失败 = HTTP 状态码 ≥ 500</b>；<b>下游 RPC 失败（HTTP 200 + 信封）不触发熔断</b>。
  *
- * <p><b>拒绝形状（逐字对齐 Go）</b>：
+ * <p><b>拒绝形状（逐字对齐 B 侧）</b>：
  * <pre>
- *   go-zero@v1.10.2/rest/handler/breakerhandler.go:27-31
+ *   B 侧：service/common/src/main/java/com/rag/common/protection/GoStyleBreakerFilter.java:32
  *       w.WriteHeader(http.StatusServiceUnavailable)     // ← 503，**无 body**
  * </pre>
  * ⇒ ⇒ <b>裸 503</b>：只 {@code setStatus}，<b>不</b> {@code sendError}
- * （后者会让容器补 {@code text/html} ⇒ 响应头比 Go 多一项）。
+ * （后者会让容器补 {@code text/html} ⇒ 响应头比 B 侧 多一项）。
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/protection/}
  * 下的 {@code GoStyleBreakerFilter} / {@code GoStyleCpuSheddingFilter} / {@code GoStyleMaxBytesFilter}
@@ -117,7 +117,7 @@ public class ProtectionAutoConfiguration {
     // ── 体积上限 ──────────────────────────────────────────────────────────
 
     /**
-     * 请求体大小上限 filter（Go {@code rest/handler/maxbyteshandler.go}）。
+     * 请求体大小上限 filter（B 侧 {@code rest/handler/maxbyteshandler.go}）。
      *
      * <p>⚠️ <b>条件注解必须写在 {@code @Bean} 方法上</b>：本类的
      * {@link MaxBytesFilter} 上的 {@code @ConditionalOnWebApplication} 只有在它被
@@ -134,10 +134,10 @@ public class ProtectionAutoConfiguration {
     // ── 并发连接上限 ──────────────────────────────────────────────────────
 
     /**
-     * 并发连接数上限 filter（Go {@code rest/handler/maxconnshandler.go}）。
+     * 并发连接数上限 filter（B 侧 {@code rest/handler/maxconnshandler.go}）。
      *
      * <p>⚠️ <b>为什么不能只靠 Tomcat 的 {@code max-connections} / {@code max-threads}</b>：
-     * Tomcat 在超限时<b>排队</b>（连接排队 / 等线程空闲），Go 是<b>立刻 503</b>
+     * Tomcat 在超限时<b>排队</b>（连接排队 / 等线程空闲），B 侧 是<b>立刻 503</b>
      * ⇒ ⇒ 「变慢」与「被拒」是两种不同的可观察行为 ⇒ ⇒ 必须自己实现闸门
      * （详见 {@link MaxConnsFilter} 的类注释）。
      *
@@ -173,11 +173,11 @@ public class ProtectionAutoConfiguration {
      * ⇒ 现改为<b>自建一个 {@link AdaptiveShedder}</b> ⇒ 双条件判据回到 B 侧形态。
      *
      * <p>⚠️ <b>刻意自建独立实例</b>（不与 gRPC 侧那个共用）：
-     * B 侧每个 filter <b>自建</b> {@code GoStyleAdaptiveShedder}；Go 侧 api / rpc 是<b>两个进程</b>
+     * B 侧每个 filter <b>自建</b> {@code GoStyleAdaptiveShedder}；B 侧 api / rpc 是<b>两个进程</b>
      * ⇒ 各有一份 shedder ⇒ ⇒ 本仓合并成单进程后<b>仍要两份</b>
      * ⇒ 否则 HTTP 在途数与 gRPC 在途数会<b>混在一个窗口里</b>（B 侧不会）⇒ 那才是新漂移。
      *
-     * <p><b>拒绝形状</b>：Go {@code rest/handler/sheddinghandler.go:33-35} ⇒ {@code w.WriteHeader(503)}
+     * <p><b>拒绝形状</b>：B 侧 {@code rest/handler/sheddinghandler.go:33-35} ⇒ {@code w.WriteHeader(503)}
      * ⇒ 裸状态码、<b>空 body</b>、<b>无 Content-Type</b>（D-04 的硬要求）。
      */
     @Bean
@@ -225,7 +225,7 @@ public class ProtectionAutoConfiguration {
      *
      * <p><b>链的构成</b>：容器里<b>全部</b> {@link ServerInterceptor} Bean
      * ⇒ 按 {@code @Order} / {@link Ordered} 排序 ⇒ <b>序号小的在最外层</b>
-     * ⇒ ⇒ 与 Go 的注册序语义一致（Go：<b>先注册的最外层</b>）。
+     * ⇒ ⇒ 与 B 的注册序语义一致（B 侧：<b>先注册的最外层</b>）。
      */
     @Bean
     @ConditionalOnClass(name = "net.devh.boot.grpc.server.serverfactory.GrpcServerConfigurer")
@@ -242,19 +242,19 @@ public class ProtectionAutoConfiguration {
         };
     }
 
-    // ── gRPC 服务端保护链的 5 层（Go: recover → stat → prometheus → breaker → shedding） ──
+    // ── gRPC 服务端保护链的 5 层（B 侧: recover → stat → prometheus → breaker → shedding） ──
 
     /**
      * 链序常量：<b>数值越小越靠外层</b>（Spring 的 {@code orderedStream()} 升序 ⇒ 第 0 个最外层）。
      *
-     * <p>⚠️ <b>这组数值是「行为契约」，不是排版</b>（Go 出处见 {@link RpcProtectionChain}）：
+     * <p>⚠️ <b>这组数值是「行为契约」，不是排版</b>（B 出处见 {@link RpcProtectionChain}）：
      * <ul>
      *   <li>{@code recover} 最外层 —— 否则内层的 panic 兜不住；</li>
      *   <li>{@code stat} 在 {@code prometheus} 外层 —— 量到的耗时含降载 / 熔断开销；</li>
      *   <li>{@code prometheus} 在 {@code breaker} / {@code shedding} 外层
      *       —— 否则被拒绝的请求在指标里<b>整个消失</b>；</li>
      *   <li>{@code breaker} 在 {@code shedding} 外层
-     *       —— Go 侧 shedding 的 {@code RESOURCE_EXHAUSTED} 冒泡上来被它记成失败。</li>
+     *       —— B 侧 shedding 的 {@code RESOURCE_EXHAUSTED} 冒泡上来被它记成失败。</li>
      * </ul>
      * ⇒ <b>业务观测层</b>（{@code ObservabilityAutoConfiguration.GrpcObservationInterceptor}）
      * 不带 {@code @Order} ⇒ 落在 {@code Ordered.LOWEST_PRECEDENCE} ⇒ <b>最内层</b> ✓
@@ -269,8 +269,8 @@ public class ProtectionAutoConfiguration {
     /**
      * ① recover 层：gRPC handler panic ⇒ {@code INTERNAL + "panic: "}。
      *
-     * <p>⚠️ <b>{@code "panic: "} 是 L1 wire 契约</b>（Go {@code status.Errorf(codes.Internal, "panic: %v", r)}）
-     * ⇒ ⇒ <b>不得改写</b>（改了就与 Go 的客户端分叉）。
+     * <p>⚠️ <b>{@code "panic: "} 是 L1 wire 契约</b>（B 侧 {@code status.Errorf(codes.Internal, "panic: %v", r)}）
+     * ⇒ ⇒ <b>不得改写</b>（改了就与 B 的客户端分叉）。
      */
     @Bean
     @ConditionalOnMissingBean
@@ -294,7 +294,7 @@ public class ProtectionAutoConfiguration {
     /**
      * ③ prometheus 层：耗时分布 + 状态码计数。
      *
-     * <p>⚠️ <b>没有 registry ⇒ 本层整段跳过</b>（Go：{@code prometheus.Enabled()==false}）。
+     * <p>⚠️ <b>没有 registry ⇒ 本层整段跳过</b>（B 侧：{@code prometheus.Enabled()==false}）。
      */
     @Bean
     @ConditionalOnMissingBean
@@ -325,7 +325,7 @@ public class ProtectionAutoConfiguration {
      * ⑤ shedding 层：gRPC 服务端 CPU 自适应降载（拒绝 = {@code RESOURCE_EXHAUSTED + "service overloaded"}）。
      *
      * <p>⚠️ <b>拒绝必须走 {@code call.close(...)}</b> ⇒ 让错误冒泡到外层的 breaker 层
-     * ⇒ ⇒ <b>持续降载最终会把熔断器打开</b>（Go 侧同形）。
+     * ⇒ ⇒ <b>持续降载最终会把熔断器打开</b>（B 侧同形）。
      */
     @Bean
     @ConditionalOnMissingBean
@@ -343,10 +343,10 @@ public class ProtectionAutoConfiguration {
     /**
      * CPU 自适应降载 filter（裸 503）。
      *
-     * <p>⚠️ 拒绝形状与 Go 一致：<b>只 setStatus</b>（不 {@code sendError}、不写 body）
+     * <p>⚠️ 拒绝形状与 B 侧 一致：<b>只 setStatus</b>（不 {@code sendError}、不写 body）
      * ⇒ ⇒ 无 body、无 Content-Type。
      *
-     * <p><b>Go 出处（声明点 + 消费点）</b>：go-zero {@code rest/handler/sheddinghandler.go:22-56}
+     * <p><b>B 出处（声明点 + 消费点）</b>：B 侧 {@code service/common/src/main/java/com/rag/common/protection/GoStyleCpuSheddingFilter.java:20-34}
      * <pre>
      *   promise, err := shedder.Allow()
      *   if err != nil {
@@ -368,8 +368,8 @@ public class ProtectionAutoConfiguration {
      * <p><b>⚠️ 2026-11-02 批次 H：本类此前<b>只判 CPU</b>，那是真实漂移，现已按 B 侧修回</b>：
      * <ul>
      *   <li><b>漂移本体</b>：C 侧此前判据是 {@code indicator.isOverloaded()}（<b>只有 CPU 一个条件</b>）
-     *       ⇒ ⇒ <b>比 B 更早丢请求</b>（Go / B 是「CPU 过载 <b>且</b> 在途超动态上限」<b>两个条件同时成立</b>才丢）
-     *       ⇒ ⇒ 台账此前把这条记成「D-04 已登记的 L3 降级」⇒ <b>但那是拿 Go 比 C，不是拿 B 比 C</b>
+     *       ⇒ ⇒ <b>比 B 更早丢请求</b>（B 侧 / B 是「CPU 过载 <b>且</b> 在途超动态上限」<b>两个条件同时成立</b>才丢）
+     *       ⇒ ⇒ 台账此前把这条记成「D-04 已登记的 L3 降级」⇒ <b>但那是拿 B 侧 比 C，不是拿 B 比 C</b>
      *       ⇒ ⇒ B 侧 REST filter 本来就有完整自适应 shedder（{@code GoStyleAdaptiveShedder}）
      *       ⇒ ⇒ <b>C 丢了 B 已有的能力</b> ⇒ 按 verification.md §十 属 <b>FAIL</b>，不是已批准的降级。</li>
      *   <li><b>修法</b>：改用 {@link AdaptiveShedder}（本仓已有，是 B 侧 {@code GoStyleAdaptiveShedder} 的逐字抄）
@@ -380,8 +380,8 @@ public class ProtectionAutoConfiguration {
      *       ⇒ <b>等价论证</b>：servlet 规范下应用未显式设码时 {@code getStatus()} 返回 200（= B 侧 wrapper 的
      *       {@code IMPLICIT_OK} 初值）；{@code sendError(sc)} 同样会反映到 {@code getStatus()}
      *       ⇒ ⇒ 两侧判据同值；③ B 侧 filter <b>自建</b> {@code GoStyleAdaptiveShedder}
-     *       ⇒ C 侧也<b>自建独立实例</b>（不与 gRPC 侧共用）⇒ 对齐 Go 的「每进程一份」
-     *       （Go 的 api / rpc 是两个进程 ⇒ 两份 shedder）。</li>
+     *       ⇒ C 侧也<b>自建独立实例</b>（不与 gRPC 侧共用）⇒ 对齐 B 的「每进程一份」
+     *       （B 的 api / rpc 是两个进程 ⇒ 两份 shedder）。</li>
      *   <li><b>刻意保留</b>：B 侧 REST filter <b>没有</b>「cpuThreshold &gt; 0 才启用」的守卫
      *       （gRPC 侧 bean 有）⇒ 本类<b>逐字跟随 B</b> ⇒ 默认 {@code cpuThreshold = 900} ⇒ 该分支实际不可达。</li>
      * </ul>
@@ -426,7 +426,7 @@ public class ProtectionAutoConfiguration {
         }
 
         /**
-         * <b>RT 的计算口径</b> —— Go {@code adaptiveshedder.go:285}：
+         * <b>RT 的计算口径</b> —— B 侧 {@code adaptiveshedder.go:285}：
          * <pre>
          * rt := float64(timex.Since(p.start)) / float64(time.Millisecond)
          * </pre>
@@ -436,7 +436,7 @@ public class ProtectionAutoConfiguration {
          * <p>⚠️ <b>必须是浮点除法</b>：若写成整型（{@code / 1_000_000L}）就是<b>截断</b>，
          * RT 会系统性少记最多 1ms ⇒ {@code minRt()} 偏小 ⇒
          * {@code maxFlight = maxPass * minRt * 0.01} 偏小 ⇒
-         * <b>在途上限系统性偏低 ⇒ 本仓比 Go 更早降载</b>。
+         * <b>在途上限系统性偏低 ⇒ 本仓比 B 侧 更早降载</b>。
          *
          * <p>把口径提成<b>纯函数</b>后，「截断 vs 浮点」这一位差别就可以被<b>确定性</b>断言。
          */
@@ -484,7 +484,7 @@ public class ProtectionAutoConfiguration {
             // ⚠️ 三态解析（V06 的职责断裂已修）：只有「确定未命中」才让本层完全不参与。
             RouteResolution resolution = resolveRoute(request);
             if (resolution.kind() == RouteResolution.Kind.NOT_MATCHED) {
-                // Go 出处：rest/engine.go:244-268 —— 404 的链只有 Trace + Log，**没有 breaker**
+                // B 出处：service/common/src/main/java/com/rag/common/protection/GoStyleBreakerFilter.java:177:244-268 —— 404 的链只有 Trace + Log，**没有 breaker**
                 //          （patrouter.go:73 没匹配上 ⇒ handleNotFound ⇒ notFoundHandler）
                 // ⇒ 判定「确定未命中」时，本层**完全不参与**（既不建 breaker，也不计数）
                 chain.doFilter(request, response);
@@ -507,7 +507,7 @@ public class ProtectionAutoConfiguration {
 
             CircuitBreaker breaker = registry.circuitBreaker(isolationKey);
             if (!breaker.tryAcquirePermission()) {
-                // ⚠️ 裸 503：只 setStatus（不 sendError、不写 body）⇒ 与 Go 的 w.WriteHeader(503) 等价
+                // ⚠️ 裸 503：只 setStatus（不 sendError、不写 body）⇒ 与 B 的 w.WriteHeader(503) 等价
                 response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
                 return;
             }
@@ -584,8 +584,8 @@ public class ProtectionAutoConfiguration {
      * 「状态码 ≥ 500 但没有异常」的失败信号。
      *
      * <p>⚠️ resilience4j 的 {@code recordException} 谓词默认为「全记」⇒ 本信号会被计入失败
-     * ⇒ ⇒ 熔断器能感知「业务返回了 5xx」这件事（Go 侧靠 {@code cw.Code >= 500} 判定，
-     * <b>没有任何异常</b>）⇒ ⇒ 必须显式补一个信号，否则 Go 侧的 5xx 失败在 Java 侧<b>永不计入</b>。
+     * ⇒ ⇒ 熔断器能感知「业务返回了 5xx」这件事（B 侧靠 {@code cw.Code >= 500} 判定，
+     * <b>没有任何异常</b>）⇒ ⇒ 必须显式补一个信号，否则 B 侧的 5xx 失败在 Java 侧<b>永不计入</b>。
      */
     private static final RuntimeException ROUTE_FAILURE = new RouteFailure();
 

@@ -9,7 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
  * <p>RAG 出处：{@code service/common/spring/LoggerFactoryBean.java}
  * （抄写基准 = RAG，L2 业务语义层整段抄 · D13）。
  *
- * <p><b>Go 出处</b>：{@code service/common/logger/logger.go:63-70}
+ * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/spring/LoggerFactoryBean.java:9:63-70}
  * （{@code func Init(svcName string)} ⇒ 服务名的<b>唯一</b>来源，且<b>空名 panic</b>）
  * ＋ {@code service/common/logger/logger.go:98}（{@code func (l *Logger) logBusinessErr(...)}）。
  *
@@ -30,7 +30,7 @@ import org.springframework.beans.factory.annotation.Value;
  * Bean 的 serviceName 由 Spring 构造注入；{@code GoStyleLogger.init(...)} 设置的
  * 全局 serviceName 与它互不干扰 —— 委托只复用<b>算法</b>，不共享 serviceName 状态。
  *
- * <p><b>字段语义</b>与 Go 版 {@code logger.LogBusinessErr} 1:1 对齐：
+ * <p><b>字段语义</b>与 B 侧版 {@code logger.LogBusinessErr} 1:1 对齐：
  * service / event_id / trace_id / error_code / file_line / call_path / call_chain /
  * error_reason；可选 user_id / article_id（空字符串字段消失而非空串）。
  */

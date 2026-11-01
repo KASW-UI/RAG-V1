@@ -13,8 +13,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * §3.3 真触发测试 —— {@link MapStringValueDeserializer} 的 map 元素级判据。
  *
- * <p><b>Go 出处</b>：go-zero {@code core/mapping/unmarshaler.go:385-417}
- * （{@code generateMap} 的 default 分支）：{@code case json.Number → setValueFromString(...)}
+ * <p><b>B 出处</b>：B 侧 {@code service/message/message-api/src/main/java/com/rag/message/message/api/config/GoStyleMapStringValueDeserializer.java:85:385-417}
+ * （RAG 仓，{@code generateMap} 的 default 分支）：{@code case json.Number → setValueFromString(...)}
  * ⇒ 数字收下并字符串化；{@code case bool} 与 {@code default(nil)} 一律 type mismatch。
  *
  * <p><b>⚠️ 本测试钉住两件最容易漏的事</b>：
@@ -63,7 +63,7 @@ class MapStringValueDeserializerTest {
     }
 
     @Test
-    @DisplayName("⚠️ map 元素为显式 null ⇒ 拒绝（Go: generateMap 的 default 分支 ⇒ errTypeMismatch）")
+    @DisplayName("⚠️ map 元素为显式 null ⇒ 拒绝（B 侧: generateMap 的 default 分支 ⇒ errTypeMismatch）")
     void nullMapValueIsRejected() {
         assertThatThrownBy(() -> MAPPER.readValue("{\"extra\":{\"k\":null}}", Req.class))
                 .isInstanceOf(com.fasterxml.jackson.databind.JsonMappingException.class);
@@ -77,7 +77,7 @@ class MapStringValueDeserializerTest {
     }
 
     @Test
-    @DisplayName("⚠️ 整个字段为 null 不受影响（Go: ,optional ⇒ 接受）—— 别把元素级规则误挂到字段级")
+    @DisplayName("⚠️ 整个字段为 null 不受影响（B 侧: ,optional ⇒ 接受）—— 别把元素级规则误挂到字段级")
     void wholeFieldNullIsAccepted() throws Exception {
         assertThat(MAPPER.readValue("{\"extra\":null}", Req.class).extra).isNull();
     }

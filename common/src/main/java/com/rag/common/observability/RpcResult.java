@@ -1,9 +1,9 @@
 package com.rag.common.observability;
 
 /**
- * gRPC 调用结果（resp + 错误），对应 Go 版 {@code (any, error)}。
+ * gRPC 调用结果（resp + 错误），对应 B 侧版 {@code (any, error)}。
  *
- * <p><b>Go 出处</b>：{@code service/common/observability/rpc.go} 的 {@code (any, error)} 返回对。
+ * <p><b>B 出处</b>：{@code service/common/observability/rpc.go} 的 {@code (any, error)} 返回对。
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java}
  * 的嵌套类 {@code RpcResult}（L2 · D13）＋ <b>从嵌套类提到顶层 + 改写成 record</b>（L4 · D11 / 生态优先）。

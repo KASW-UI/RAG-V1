@@ -17,8 +17,7 @@
 
 | 项目 | 角色 | 本次实验中的用法 |
 |---|---|---|
-| `Sea-RideTheWind_golang` | 原始项目（行为基准） | **不参与**：本次不构建、不修改 Go |
-| `RAG`（Java 半成品） | 基于 Go 的翻译实现，**不完整** | **仅作参考**：取其 MinIO 调用面（`service/article/article-rpc/.../client/ArticleObjectStorageClient.java`）作为「实际使用场景」的推导依据 |
+| `RAG`（B 侧 · Java 半成品） | **唯一真理**（本仓一切行为判定的基准） | **仅作参考**：取其 MinIO 调用面（`service/article/article-rpc/.../client/ArticleObjectStorageClient.java`）作为「实际使用场景」的推导依据 |
 | **RAG-V1** | 完整 Spring 化目标项目 | **实验对象**：其依赖基线 = Spring Boot **4.0.8**；其树内已有空壳落点 `service/article/src/main/java/com/rag/article/wiring/MinioBucketBootstrap.java`（**尚未引入 MinIO 依赖**） |
 
 **实验环境**：隔离目录 `/tmp/minio-jackson-isolation`（**不在任何 git 工作区内**）；真实 MinIO 服务端 = 本地 docker 镜像 `minio/minio:latest`，容器 `minio-iso`，端口 `127.0.0.1:19000`，账号 `minioadmin/minioadmin`。
@@ -92,7 +91,7 @@ io.minio:minio:8.5.17
 RAG-V1 尚未写 MinIO 代码 ⇒ 场景集合由两处推导：
 1. **RAG 参考实现** `service/article/article-rpc/.../client/ArticleObjectStorageClient.java`：`MinioClient.builder()`（`:68`）· `makeBucket`（`:146`）· `bucketExists`（`:150`）· `setBucketPolicy`（`:163`）· `putObject`（`:207`）· `statObject`（`:228`）· `getObject`（`:232`）。
 2. **RAG-V1 预留落点** `service/article/.../wiring/MinioBucketBootstrap.java`（空壳）⇒ 建桶 / 桶策略（对应上面的 makeBucket + setBucketPolicy）。
-3. 补充：`removeObject`（删除）—— Go 侧有对象删除语义，纳入验证。
+3. 补充：`removeObject`（删除）—— **B 侧**有对象删除语义，纳入验证。
 
 ⇒ **实验覆盖场景 = 上述 7 个 API + 1 条错误路径（对象不存在）**。
 

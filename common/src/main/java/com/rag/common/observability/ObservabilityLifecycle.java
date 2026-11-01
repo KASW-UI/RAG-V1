@@ -5,8 +5,8 @@ import jakarta.annotation.PreDestroy;
 /**
  * Spring 容器关闭时回收<b>RPC 侧</b>的观测层线程池。
  *
- * <p><b>Go 出处</b>：Go 侧<b>没有</b>对应物 —— Go 的观测层不跑线程池
- * ⇒ ⇒ 本类是 <b>纯表达层补齐</b> ⇒ ⇒ <b>无 Go 对应物</b>（D-03 同族）。
+ * <p><b>B 出处</b>：B 侧<b>没有</b>对应物 —— B 的观测层不跑线程池
+ * ⇒ ⇒ 本类是 <b>纯表达层补齐</b> ⇒ ⇒ <b>无 B 侧 对应物</b>（D-03 同族）。
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/spring/ObservabilityLifecycle.java}
  * 整段抄（L2 · D13）＋ <b>包名 / 装配形态回改</b>（L4 · D3）。

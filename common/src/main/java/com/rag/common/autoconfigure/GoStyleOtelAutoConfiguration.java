@@ -10,8 +10,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
 
 /**
- * 🔴 **全局 OpenTelemetry 的装配点** —— 对应 Go 侧
- * {@code rest/server.go:49}（{@code c.SetUp()}）→
+ * 🔴 **全局 OpenTelemetry 的装配点** —— 对应 B 侧
+ * {@code service/common/src/main/java/com/rag/common/observability/GoStyleOtelAutoConfiguration.java:11:49}（{@code c.SetUp()}）→
  * {@code core/service/serviceconf.go:67}（{@code trace.StartAgent(sc.Telemetry)}）。
  *
  * <h2>🔴🔴 为什么装配点必须是 <b>BeanFactoryPostProcessor</b>，而不是普通 Bean</h2>
@@ -35,7 +35,7 @@ import org.springframework.core.env.Environment;
  * ⇒ ⇒ <b>零域模块改动</b>。
  *
  * <h2>装配失败<b>不阻断启动</b></h2>
- * <p>照 Go 的 {@code core/trace/agent.go:49-51}（{@code startAgent} 失败只 {@code logx.Error}）
+ * <p>照 B 的 {@code core/trace/agent.go:49-51}（{@code startAgent} 失败只 {@code logx.Error}）
  * ⇒ 见 {@link GoStyleOtelAgent#install}。
  *
  * <h2>抄写基准</h2>

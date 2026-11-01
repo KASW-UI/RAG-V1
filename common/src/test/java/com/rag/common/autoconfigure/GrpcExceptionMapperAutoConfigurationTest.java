@@ -17,9 +17,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * §3.3「机制可证」守门：<b>业务异常在 gRPC 边界被映射成 Go 形状的 status</b>。
+ * §3.3「机制可证」守门：<b>业务异常在 gRPC 边界被映射成 B 侧 形状的 status</b>。
  *
- * <p>⚠️ <b>Go 出处</b>：
+ * <p>⚠️ <b>B 出处</b>：
  * <pre>
  *   Sea service/&lt;域&gt;/common/errmsg/errmsg.go:33-35
  *       func NewGrpcErr(code int, msg string) error {
@@ -28,12 +28,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   Sea service/&lt;域&gt;/api/internal/logic/*.go
  *       return nil, errmsg.NewErrCodeMsg(int(st.Code()), st.Message())
  * </pre>
- * ⇒ ⇒ Go 侧的 gRPC 边界形状 = <b>status code = 业务码</b> + <b>description = 业务文案</b>。
+ * ⇒ ⇒ B 侧的 gRPC 边界形状 = <b>status code = 业务码</b> + <b>description = 业务文案</b>。
  *
  * <p>⚠️ <b>grpc-java 承载不了任意数值 status code</b>（javap 实测：
  * {@code Status#fromCodeValue(int)} 对未知码回落 {@code UNKNOWN}）
  * ⇒ ⇒ 业务码改由 <b>trailer</b> 承载 ⇒ <b>L3 降级</b>（本仓新增一个 trailer）。
- * ⇒ ⇒ description 与 Go <b>逐字一致</b>（那一条不是降级）。
+ * ⇒ ⇒ description 与 B 侧 <b>逐字一致</b>（那一条不是降级）。
  */
 class GrpcExceptionMapperAutoConfigurationTest {
 

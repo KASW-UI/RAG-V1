@@ -25,7 +25,7 @@ import org.springframework.context.annotation.Bean;
  * {@link BusinessException}（业务码 + 业务文案）与 gRPC status 之间的<b>双向</b>转换。
  *
  * ══════════════════════════════════════════════════════════════════════
- * <p><b>⚠️ Go 出处（这是 wire 可见的 L1 契约，必须逐条对齐）</b>
+ * <p><b>⚠️ B 出处（这是 wire 可见的 L1 契约，必须逐条对齐）</b>
  * ══════════════════════════════════════════════════════════════════════
  * <pre>
  *   Sea service/&lt;域&gt;/common/errmsg/errmsg.go:30-35
@@ -40,7 +40,7 @@ import org.springframework.context.annotation.Bean;
  *       return nil, errmsg.NewErrCodeMsg(int(st.Code()), st.Message())
  *          //                        ↑ gRPC status code = 业务码    ↑ description = 业务文案
  * </pre>
- * ⇒ ⇒ <b>Go 侧 gRPC 边界的完整形状</b>：
+ * ⇒ ⇒ <b>B 侧 gRPC 边界的完整形状</b>：
  * <ul>
  *   <li><b>status code（数值）</b> = <b>SEA 业务码</b>（如 1001 / 5001 / 1004）；</li>
  *   <li><b>description</b> = <b>业务文案</b>（原样，无任何包装）。</li>
@@ -52,21 +52,21 @@ import org.springframework.context.annotation.Bean;
  * <p><b>实测依据</b>（javap 反编译 {@code io.grpc.Status#fromCodeValue(int)}，
  * grpc-api 1.63.0）：未知数值码 ⇒ <b>回落 {@code UNKNOWN}</b>（并挂一个
  * {@code "Unknown code"} cause）⇒ ⇒ <b>只有 17 个标准码</b>能原样过线。
- * <br>⇒ Go 的 {@code codes.Code(1001)} ⇒ Java 侧只能落到 {@code UNKNOWN}（数值 2）。
+ * <br>⇒ B 的 {@code codes.Code(1001)} ⇒ Java 侧只能落到 {@code UNKNOWN}（数值 2）。
  * <br>⇒ ⇒ <b>业务码必须另找载体</b> ⇒ 本类用 <b>trailer 元数据</b>承载：
  * <pre>
  *   trailer key = "sea-biz-code"   value = 十进制业务码
  * </pre>
  * ⇒ ⇒ <b>可观察差异（两条，都要登记）</b>：
  * <ol>
- *   <li><b>status code 数值</b>：Go = 业务码（如 1001）· 本仓 = {@code UNKNOWN}(2) ⇒ <b>L3</b>；</li>
- *   <li><b>多一个 trailer</b>（{@code sea-biz-code}）⇒ Go 侧没有 ⇒ <b>L3</b>。</li>
+ *   <li><b>status code 数值</b>：B 侧 = 业务码（如 1001）· 本仓 = {@code UNKNOWN}(2) ⇒ <b>L3</b>；</li>
+ *   <li><b>多一个 trailer</b>（{@code sea-biz-code}）⇒ B 侧没有 ⇒ <b>L3</b>。</li>
  * </ol>
  * ⇒ ⇒ <b>description 逐字一致</b>（都只是业务文案，无包装）⇒ 那一半<b>不是</b>降级。
  *
- * <p><b>⚠️ 为什么不用「把业务码塞进 description」</b>：Go 侧 rpc 层的 description
+ * <p><b>⚠️ 为什么不用「把业务码塞进 description」</b>：B 侧 rpc 层的 description
  * 就是<b>纯业务文案</b>（{@code status.Error(codes.Code(code), msg)}）⇒
- * 若塞进 {@code "ErrCode:%d, Errmsg:%s"} ⇒ description 与 Go <b>不同</b> ⇒
+ * 若塞进 {@code "ErrCode:%d, Errmsg:%s"} ⇒ description 与 B 侧 <b>不同</b> ⇒
  * 反而多出一处 wire 差异 ⇒ ⇒ 业务码走 trailer、description 保持原样。
  *
  * ══════════════════════════════════════════════════════════════════════
@@ -78,8 +78,8 @@ import org.springframework.context.annotation.Bean;
  * ⇒ ⇒ 共享层只提供<b>信封形状</b>（{@code common/contract/ApiResponse}，L1 · K-06）。
  * <br>⇒ ⚠️ 抽取共享基座会踩 AGENTS.md §八「未统一化 —— 错误码值 / 文案 / 前缀<b>逐域隔离</b>」。
  *
- * <p><b>抄写基准</b>：Go {@code service/&lt;域&gt;/common/errmsg/errmsg.go} 的
- * {@code NewGrpcErr} / {@code NewErrCodeMsg}（<b>L1 契约层以 Go 为准</b> · D13）
+ * <p><b>抄写基准</b>：B 侧 {@code service/&lt;域&gt;/common/errmsg/errmsg.go} 的
+ * {@code NewGrpcErr} / {@code NewErrCodeMsg}（<b>L1 契约层以 B 侧 为准</b> · D13）
  * ＋ Java 侧的载体改造（<b>L4 · D4</b>）⇒ 登记为 L3 降级。
  */
 @AutoConfiguration
@@ -89,7 +89,7 @@ public class GrpcExceptionMapperAutoConfiguration {
     /**
      * 承载业务码的 trailer 键（gRPC 元数据键必须是<b>小写</b> ASCII）。
      *
-     * <p>⚠️ 这是<b>本仓新增</b>的元数据（Go 侧无）⇒ 属 L3 降级的载体（见类注释）。
+     * <p>⚠️ 这是<b>本仓新增</b>的元数据（B 侧无）⇒ 属 L3 降级的载体（见类注释）。
      */
     public static final String BIZ_CODE_TRAILER_KEY = "sea-biz-code";
 
@@ -97,17 +97,17 @@ public class GrpcExceptionMapperAutoConfiguration {
             Metadata.Key.of(BIZ_CODE_TRAILER_KEY, Metadata.ASCII_STRING_MARSHALLER);
 
     /**
-     * <b>服务端</b>边界：把 handler 抛出的 {@link BusinessException} 映射成 Go 形状的 gRPC status。
+     * <b>服务端</b>边界：把 handler 抛出的 {@link BusinessException} 映射成 B 侧 形状的 gRPC status。
      *
-     * <p><b>⚠️ 为什么需要它（grpc-java 与 Go 的真实差异）</b>：
+     * <p><b>⚠️ 为什么需要它（grpc-java 与 B 的真实差异）</b>：
      * <ol>
      *   <li>grpc-java 的 {@code ServerCallStreamObserverImpl#onError(Throwable)}
      *       ⇒ {@code Status.fromThrowable(t)} ⇒ 对<b>非</b> {@code StatusException} 的异常
      *       ⇒ {@code UNKNOWN.withCause(t)} ⇒ <b>description 为 null</b>、cause 挂在 status 上；</li>
-     *   <li>Go 侧 {@code status.Error(codes.Code(code), msg)} ⇒ <b>description = msg</b>。</li>
+     *   <li>B 侧 {@code status.Error(codes.Code(code), msg)} ⇒ <b>description = msg</b>。</li>
      * </ol>
      * ⇒ ⇒ 差异 = <b>description 丢失</b> + <b>status code 不可承载</b>（见类注释的 L3）。
-     * <br>⇒ ⇒ 本拦截器把 close 时的 status <b>改写</b>回 Go 的形状。
+     * <br>⇒ ⇒ 本拦截器把 close 时的 status <b>改写</b>回 B 的形状。
      *
      * <p><b>⚠️ 改写的判据是「status 的 cause 是 BusinessException」</b>，
      * <b>不是</b>「code == INTERNAL」之类的猜测 ⇒ ⇒ 其它异常路径<b>一字不动</b>。
@@ -132,7 +132,7 @@ public class GrpcExceptionMapperAutoConfiguration {
                                 }
                                 Metadata out = trailers == null ? new Metadata() : trailers;
                                 out.put(BIZ_CODE_TRAILER, String.valueOf(business.getCode()));
-                                // ⚠️ description = **业务文案原样**（与 Go 的 status.Error(codes.Code(code), msg) 一致）
+                                // ⚠️ description = **业务文案原样**（与 B 的 status.Error(codes.Code(code), msg) 一致）
                                 super.close(Status.UNKNOWN.withDescription(messageOf(business)).withCause(business), out);
                             }
                         };
@@ -146,7 +146,7 @@ public class GrpcExceptionMapperAutoConfiguration {
      *
      * <p>⚠️ <b>为什么客户端也需要它</b>：跨域调用（D6）时，调用方拿到的 status code 恒为
      * {@code UNKNOWN}（grpc-java 承载不了业务码）⇒ 若不还原，调用方<b>永远拿不到业务码</b>
-     * ⇒ ⇒ 跨域的错误处理就退化成「只有文案」⇒ 与 Go 的
+     * ⇒ ⇒ 跨域的错误处理就退化成「只有文案」⇒ 与 B 的
      * {@code NewErrCodeMsg(int(st.Code()), st.Message())} 不等价。
      *
      * <p><b>还原方式</b>：把业务码包成一个 {@link BusinessException} 挂到 status 的 <b>cause</b> 上
@@ -201,7 +201,7 @@ public class GrpcExceptionMapperAutoConfiguration {
      * 把客户端拿到的 gRPC 异常还原成 {@link BusinessException}（业务码 + 文案）。
      *
      * <p><b>优先级</b>：cause 里的 {@link BusinessException}（本仓的客户端拦截器挂的）
-     * ⇒ 优先；否则按 Go 的 {@code NewErrCodeMsg(int(st.Code()), st.Message())} 口径
+     * ⇒ 优先；否则按 B 的 {@code NewErrCodeMsg(int(st.Code()), st.Message())} 口径
      * 用 status 的 code + description 兜底。
      *
      * @param e 客户端收到的异常
@@ -239,7 +239,7 @@ public class GrpcExceptionMapperAutoConfiguration {
         return null;
     }
 
-    /** Go 侧 {@code err.Error()} 的取值口径：{@code getMessage()} 原样，{@code null} 归一为 {@code ""}。 */
+    /** B 侧 {@code err.Error()} 的取值口径：{@code getMessage()} 原样，{@code null} 归一为 {@code ""}。 */
     private static String messageOf(BusinessException business) {
         String msg = business.getMessage();
         return msg != null ? msg : "";

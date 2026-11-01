@@ -18,12 +18,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * <p><b>客户端断连的主动探测 —— 往 socket 写 1xx 探针，把断连提前暴露出来</b>。
  *
- * <p><b>Go 出处</b>：{@code Sea-RideTheWind_golang/service/common/observability/http.go:80-88}
+ * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/observability/GoStyleClientDisconnectProbe.java:21}（RAG 仓）
  * <pre>
  * case &lt;-ctx.Done():
  *     if errors.Is(ctx.Err(), context.Canceled) { statusCode = httpClientClosedRequest }  // 499
  * </pre>
- * ⇒ ⇒ Go 侧 ctx 一取消（= 客户端断开，{@code net/http} 会取消 {@code r.Context()}）⇒ **立刻 499**。
+ * ⇒ ⇒ B 侧 ctx 一取消（= 客户端断开，{@code net/http} 会取消 {@code r.Context()}）⇒ **立刻 499**。
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/observability/GoStyleClientDisconnectProbe.java}
  * 整段抄（L2 业务语义层逐条保留 · D13）＋ <b>改名</b>（本仓不用 {@code GoStyle} 前缀 · D11）

@@ -5,30 +5,30 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 🔴 本域的 <b>form 值上限闸门</b>用哪种拒绝形状 —— 对齐 Go 侧「该 api 有没有注册
+ * 🔴 本域的 <b>form 值上限闸门</b>用哪种拒绝形状 —— 对齐 B 侧「该 api 有没有注册
  * {@code httpx.SetErrorHandler}」这一事实。
  *
  * <h2>🟢 闸门「开 / 关」的<b>唯一判据</b>：<b>语义可达性</b>（G2 反馈单 FB-02）</h2>
- * <p><b>Go 侧该域的 handler 是否真的解析 form / query</b>：
+ * <p><b>B 侧该域的 handler 是否真的解析 form / query</b>：
  * <ul>
  *   <li><b>解析了</b>（handler 调 {@code httpx.Parse}）
  *       ⇒ ⇒ {@code httpx.Parse} → {@code ParseForm} → {@code GetFormValues}（{@code httpx/util.go:15-48}）
- *       ⇒ ⇒ {@code r.ParseForm()} 会触发 Go 的 {@code net/url} <b>10000 段</b>上限
+ *       ⇒ ⇒ {@code r.ParseForm()} 会触发 B 的 {@code net/url} <b>10000 段</b>上限
  *       ⇒ ⇒ {@code GetFormValues} 会数<b>非空值</b>，超过 {@code maxFormParamCount = 2048} 即报错
  *       ⇒ ⇒ <b>两道上限都可达</b> ⇒ 闸门<b>必须开</b>；</li>
  *   <li><b>没解析</b>（handler 直接 {@code json.NewDecoder(r.Body)}）
  *       ⇒ ⇒ {@code r.Form} <b>从不被求值</b> ⇒ 两道上限<b>都不可达</b>
- *       ⇒ ⇒ <b>闸门必须关</b>（{@link Mode#OFF}）⇒ RAG 与 Go 同为「不因 query 而拒」。</li>
+ *       ⇒ ⇒ <b>闸门必须关</b>（{@link Mode#OFF}）⇒ RAG 与 B 侧 同为「不因 query 而拒」。</li>
  * </ul>
  *
  * <h3>🔴 为什么这条判据必须是「语义可达性」，而<b>不能</b>是「写权范围」</h3>
  * <p>旧版本类的 javadoc 把「{@code off} 的依据」写成「<b>favorite 域不在 global 的写权范围内</b>」
- * ⇒ ⇒ 那是一条<b>与 Go 行为无关</b>的理由 ⇒ ⇒ 后果：
+ * ⇒ ⇒ 那是一条<b>与 B 侧 行为无关</b>的理由 ⇒ ⇒ 后果：
  * <ul>
  *   <li>① 判据无法回答「下一个域该开还是该关」⇒ ⇒ 下一个<b>裸 decoder</b> 域会照抄别人的声明；</li>
  *   <li>② 漏声明的域会<b>静默落到缺省 {@code off}</b>
- *       ⇒ ⇒ 而缺省 {@code off} 只对「Go 侧不解析」的域才是对的
- *       ⇒ ⇒ 对「Go 侧解析」的域，缺省 {@code off} <b>就是一条漂移</b>。</li>
+ *       ⇒ ⇒ 而缺省 {@code off} 只对「B 侧不解析」的域才是对的
+ *       ⇒ ⇒ 对「B 侧解析」的域，缺省 {@code off} <b>就是一条漂移</b>。</li>
  * </ul>
  * ⇒ ⇒ 现把判据改成「语义可达性」，并把 <b>10 个域的逐域取证落成代码</b>
  * （{@link #SEMANTIC_REACHABILITY}）⇒ ⇒ 判据<b>只有一份</b>，且<b>可被机器核对</b>。
@@ -38,24 +38,24 @@ import java.util.Map;
  *   <caption>「开不开」与「拒成什么样」是<b>两条独立的轴</b></caption>
  *   <tr><th>轴</th><th>判据</th><th>取值</th></tr>
  *   <tr><td><b>① 开 / 关</b></td>
- *       <td><b>第一判据</b>：Go 侧 handler 是否<b>自己捕获</b> {@code httpx.Parse} 的错<br>
+ *       <td><b>第一判据</b>：B 侧 handler 是否<b>自己捕获</b> {@code httpx.Parse} 的错<br>
  *           ⇒ <b>捕获 ⇒ 拒绝形状由域自己定 ⇒ 共享层不装闸门 ⇒ {@link Mode#OFF}</b>；<br>
- *           <b>第二判据</b>（只在没捕获时）：Go 侧该域是否真的解析 form/query（<b>语义可达性</b>）</td>
+ *           <b>第二判据</b>（只在没捕获时）：B 侧该域是否真的解析 form/query（<b>语义可达性</b>）</td>
  *       <td>{@link Mode#OFF} ⇔ 域自捕获（形状由域定）<b>或</b> 上限不可达；<br>
  *           {@link Mode#RAW} / {@link Mode#ENVELOPE} ⇔ 没捕获<b>且</b>可达</td></tr>
  *   <tr><td><b>② 拒成什么形状</b></td>
- *       <td><b>第一判据</b>：Go 侧 handler 是否<b>自己捕获</b> {@code httpx.Parse} 的错<br>
- *           <b>第二判据</b>（只在没捕获时）：Go 侧该 api 有没有注册 {@code httpx.SetErrorHandler}</td>
+ *       <td><b>第一判据</b>：B 侧 handler 是否<b>自己捕获</b> {@code httpx.Parse} 的错<br>
+ *           <b>第二判据</b>（只在没捕获时）：B 侧该 api 有没有注册 {@code httpx.SetErrorHandler}</td>
  *       <td>自捕获 ⇒ <b>域自定义信封</b>（favorite = 200 + {code:5003,…}）；<br>
- *           没捕获 + 没注册 ⇒ {@link Mode#RAW}（400 + text/plain + Go 原文）；<br>
+ *           没捕获 + 没注册 ⇒ {@link Mode#RAW}（400 + text/plain + B 侧 原文）；<br>
  *           没捕获 + 注册了 ⇒ {@link Mode#ENVELOPE}（200 + {code:5001,…}）</td></tr>
  * </table>
- * <p>⚠️ <b>轴 ② 的逐域事实（Go 侧 {@code service/…/api/…center.go} / {@code commentservice.go}）</b>：
+ * <p>⚠️ <b>轴 ② 的逐域事实（B 侧 {@code service/…/api/…service/common/src/main/java/com/rag/common/http/GoStyleFormLimitMode.java:53} / {@code commentservice.go}）</b>：
  * <table border="1">
  *   <tr><th>模式</th><th>域</th><th>wire 形状</th></tr>
  *   <tr><td>{@link #RAW}</td><td>article / user / admin<br>（<b>没注册</b>）</td>
  *       <td><b>HTTP 400</b> + {@code text/plain; charset=utf-8} + {@code nosniff}<br>
- *           + body = Go 原文 + {@code "\n"}</td></tr>
+ *           + body = B 侧 原文 + {@code "\n"}</td></tr>
  *   <tr><td>{@link #ENVELOPE}</td><td>hot / follow / like / message / comment<br>（<b>注册了</b>）</td>
  *       <td><b>HTTP 200</b> + {@code {"code":5001,"msg":"&lt;该域文案&gt;","data":null}}</td></tr>
  *   <tr><td><b>域自定义</b><br>⇒ 共享层不装 ⇒ {@link #OFF}</td>
@@ -69,7 +69,7 @@ import java.util.Map;
  * <b>各自捕获</b> {@code httpx.Parse} 的错 ⇒ ⇒ 形状是 <b>200 + 5003</b>（既不是 RAW 也不是 ENVELOPE）。
  *
  * <h2>⚠️ 为什么 5001 的文案<b>不能</b>写在共享层</h2>
- * <p>各域 5001 的文案<b>不一样</b>（Go 侧逐域取证）：
+ * <p>各域 5001 的文案<b>不一样</b>（B 侧逐域取证）：
  * <ul>
  *   <li>hot / follow / message = {@code "internal server error"}；</li>
  *   <li>like / comment = {@code "系统内部错误"}。</li>
@@ -81,11 +81,11 @@ import java.util.Map;
  *
  * <h2>🔴 「缺省」为什么是 {@link #OFF}</h2>
  * <p>{@link #OFF} 是<b>缺省值</b> ⇒ 域没声明时<b>不装闸门</b>。
- * <p>⚠️ 但缺省只对「Go 侧<b>不</b>解析」的域才是<b>正确</b>的 ⇒ ⇒ 对「Go 侧解析」的域，
+ * <p>⚠️ 但缺省只对「B 侧<b>不</b>解析」的域才是<b>正确</b>的 ⇒ ⇒ 对「B 侧解析」的域，
  * 缺省 {@code off} <b>就是漂移</b> ⇒ ⇒ 这正是本类要有一张<b>逐域表</b>的原因
  * （漏声明 ⇒ 没人提醒 ⇒ 静默漂移）。
  * <p>⇒ 缺省值本身仍取 {@link #OFF}：它是「<b>未取证</b>」时的<b>安全侧</b>（不装闸门 ⇒ 不误拒）
- * ⇒ ⇒ 而「误拒」比「漏拒」更危险（会挡掉 Go 能受理的请求）⇒ ⇒ 这个取舍是有意的。
+ * ⇒ ⇒ 而「误拒」比「漏拒」更危险（会挡掉 B 侧 能受理的请求）⇒ ⇒ 这个取舍是有意的。
  */
 /**
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/http/GoStyleFormLimitMode.java}
@@ -128,48 +128,48 @@ public final class LimitMode {
          *   <li><b>轴 ①（拒绝形状）</b>⇒ 由本枚举管 ⇒ {@code OFF} = <b>共享层不装</b>闸门；</li>
          *   <li><b>轴 ②（判定权归谁）</b>⇒ <b>与本枚举无关</b> ⇒ 容器上限
          *       <b>一律</b>由 {@link GoStyleTomcatParameterLimitCustomizer} 抬到 10001
-         *       （= Go {@code net/url} 段数上限 10000 + 1）。</li>
+         *       （= B 侧 {@code net/url} 段数上限 10000 + 1）。</li>
          * </ul>
          * ⇒ ⇒ <b>旧版「{@code OFF} ⇒ 不改容器上限」是错的</b>：它把两件独立的事耦合在了同一个
          * {@code mode} 上 ⇒ ⇒ 造成「OFF 域停在 yaml 的 2048、其余域 10001」的<b>运行期分叉</b>
-         * ⇒ ⇒ 而 Go 的段数上限是 <b>10000</b> ⇒ Tomcat 停在 2048 会比 Go <b>更早</b>地拒
+         * ⇒ ⇒ 而 B 的段数上限是 <b>10000</b> ⇒ Tomcat 停在 2048 会比 B 侧 <b>更早</b>地拒
          * ⇒ ⇒ 两种 OFF 情形都被误伤：
          * <ul>
-         *   <li><b>上限不可达</b>（Go 侧 {@code r.Form} 从不求值）⇒ 容器不该比 Go 更早拒；</li>
-         *   <li><b>域自捕获</b>（favorite）⇒ 域内已有 Go 口径的应用层判据（数非空值）
+         *   <li><b>上限不可达</b>（B 侧 {@code r.Form} 从不求值）⇒ 容器不该比 B 侧 更早拒；</li>
+         *   <li><b>域自捕获</b>（favorite）⇒ 域内已有 B 侧 口径的应用层判据（数非空值）
          *       ⇒ 判定权<b>应该</b>交还应用层 ⇒ 容器上限<b>应该</b>抬到 10001
-         *       ⇒ 否则「Tomcat 总参数值数 vs Go 非空值数」的<b>差 1</b>闭不上。</li>
+         *       ⇒ 否则「Tomcat 总参数值数 vs B 侧 非空值数」的<b>差 1</b>闭不上。</li>
          * </ul>
          *
          * <p>🔴 <b>两种语义完全不同的情形都归它</b>（用 {@code goSideHandlesParseError} 分流）：
          * <ul>
-         *   <li><b>上限不可达</b>（Go 侧 handler <b>不</b>解析 form/query）
-         *       ⇒ ⇒ RAG 与 Go 同为「不因 query 而拒」；</li>
-         *   <li><b>域自捕获</b>（Go 侧 handler <b>自己捕获</b> {@code httpx.Parse} 的错）
+         *   <li><b>上限不可达</b>（B 侧 handler <b>不</b>解析 form/query）
+         *       ⇒ ⇒ RAG 与 B 侧 同为「不因 query 而拒」；</li>
+         *   <li><b>域自捕获</b>（B 侧 handler <b>自己捕获</b> {@code httpx.Parse} 的错）
          *       ⇒ ⇒ 拒绝形状由<b>域自己</b>定（favorite = 200 + {code:5003,…}）
          *       ⇒ ⇒ <b>共享层绝不能装闸门</b>：装了就会<b>抢先</b>于域自己的捕获
-         *       ⇒ ⇒ 形状会变成 400 + text/plain 或 200 + {code:5001} ⇒ ⇒ <b>与 Go 不符</b>。</li>
+         *       ⇒ ⇒ 形状会变成 400 + text/plain 或 200 + {code:5001} ⇒ ⇒ <b>与 B 侧 不符</b>。</li>
          * </ul>
          * ⚠️ 两种情形虽然都落在 {@code OFF}，但<b>原因不同</b> ⇒ ⇒ 这正是
          * {@link DomainReachability#goSideHandlesParseError()} 这个字段存在的原因
          * （只有它能把两者分开）。
          */
         OFF,
-        /** 拒绝成 Go 的 {@code http.Error} 形状：<b>400 + text/plain + Go 原文</b>。 */
+        /** 拒绝成 B 的 {@code http.Error} 形状：<b>400 + text/plain + B 侧 原文</b>。 */
         RAW,
         /** 拒绝成业务信封：<b>抛异常</b> ⇒ 由各域自己的兜底 handler 渲染 200 + {code:5001,…}。 */
         ENVELOPE
     }
 
     /**
-     * 某个 api 域在 Go 侧的 <b>form/query 语义可达性</b> —— 闸门「开不开」的<b>唯一判据</b>。
+     * 某个 api 域在 B 侧的 <b>form/query 语义可达性</b> —— 闸门「开不开」的<b>唯一判据</b>。
      *
      * @param module            该域的模块路径（相对仓库根，{@code service/…}）
-     * @param goSideParsesForm  Go 侧该域的 handler 是否<b>真的</b>调 {@code httpx.Parse}（⇒ 解析 form/query）
-     * @param goSideHandlesParseError  Go 侧该域的 handler 是否<b>自己捕获</b> {@code httpx.Parse} 的错
+     * @param goSideParsesForm  B 侧该域的 handler 是否<b>真的</b>调 {@code httpx.Parse}（⇒ 解析 form/query）
+     * @param goSideHandlesParseError  B 侧该域的 handler 是否<b>自己捕获</b> {@code httpx.Parse} 的错
      *                                  （⇒ 自己捕获 ⇒ 拒绝形状由<b>域自己</b>定 ⇒ 共享层<b>不装</b>闸门）
      * @param semanticMode      由上一行推出的<b>语义</b>模式（<b>共享层该装成什么</b> ⇒ 不是「该域实际该拒成什么形状」）
-     * @param goEvidence        Go 侧证据（文件:行号 / 命中数）
+     * @param goEvidence        B 侧证据（文件:行号 / 命中数）
      */
     public record DomainReachability(
             String module,
@@ -186,10 +186,10 @@ public final class LimitMode {
          *   <li><b>域自己捕获</b>（{@code goSideHandlesParseError == true}）
          *       ⇒ ⇒ 拒绝形状由<b>域自己</b>定（favorite = {@code 200 + {code:5003, msg:"参数错误"}}）
          *       ⇒ ⇒ <b>共享层不装闸门</b> ⇒ 语义模式必须是 {@link Mode#OFF}
-         *       ⇒ ⇒ ⚠️ 与「Go 侧不解析」的域<b>同样是 OFF，但原因不同</b>
+         *       ⇒ ⇒ ⚠️ 与「B 侧不解析」的域<b>同样是 OFF，但原因不同</b>
          *       （前者「上限不可达」· 后者「形状由域自定」⇒ 这正是本字段存在的原因）；</li>
          *   <li><b>域不自己捕获</b> ⇒ ⇒ 拒绝形状由<b>共享层</b>决定
-         *       ⇒ ⇒ <b>Go 侧解析 ⇒ 闸门必须开</b>（{@code OFF} ⇔ 不解析）。</li>
+         *       ⇒ ⇒ <b>B 侧解析 ⇒ 闸门必须开</b>（{@code OFF} ⇔ 不解析）。</li>
          * </ul>
          */
         public boolean selfConsistent() {
@@ -207,7 +207,7 @@ public final class LimitMode {
      * <p>⚠️ <b>这张表是「目标态」，不是「现状快照」</b>：
      * <ul>
      *   <li>域自己的 yaml 里声明的 {@code mode} 是<b>现状</b>；</li>
-     *   <li>本表的 {@code semanticMode} 是<b>应当</b>（由 Go 侧事实推出）；</li>
+     *   <li>本表的 {@code semanticMode} 是<b>应当</b>（由 B 侧事实推出）；</li>
      *   <li>两者不一致 ⇒ <b>就是一条待修的漂移</b>（由各域自己改 yaml 修，共享层只记账）。</li>
      * </ul>
      * ⇒ ⇒ 这就是「下一个裸 decoder 域不会重复踩」的机制：
@@ -216,7 +216,7 @@ public final class LimitMode {
     public static final List<DomainReachability> SEMANTIC_REACHABILITY = List.of(
             new DomainReachability("service/article/article-api", true, false, Mode.RAW,
                     "article/api/internal/handler/**：httpx.Parse 命中 6 处；"
-                            + "未注册 httpx.SetErrorHandler ⇒ 400 + text/plain + Go 原文"),
+                            + "未注册 httpx.SetErrorHandler ⇒ 400 + text/plain + B 侧 原文"),
             new DomainReachability("service/comment/comment-api", true, false, Mode.ENVELOPE,
                     "comment/api/internal/handler/**：调 httpx.Parse；"
                             + "comment/api/commentservice.go:47 注册了 httpx.SetErrorHandler ⇒ 业务信封"),
@@ -228,8 +228,8 @@ public final class LimitMode {
                             + " ⇒ **HTTP 200 + 域自定义业务码信封**（既不是 RAW 的 400+text/plain，"
                             + "也不是 ENVELOPE 的 5001）⇒ 拒绝形状由**域自己**定 ⇒ **共享层不装闸门**"
                             + "（RAG 侧域内**也已自装**：favorite-api 的 FavoriteApiSupport#goFormFirstValue"
-                            + " 逐字复刻 Go 的 2048「非空值」判据 + #parameterMap 把容器层超限也映射到"
-                            + " 同一出口 ⇒ 已与 Go **逐字同形**，见 tools/api-envelope-probe/favorite）"),
+                            + " 逐字复刻 B 的 2048「非空值」判据 + #parameterMap 把容器层超限也映射到"
+                            + " 同一出口 ⇒ 已与 B 侧 **逐字同形**，见 tools/api-envelope-probe/favorite）"),
             new DomainReachability("service/follow/follow-api", true, false, Mode.ENVELOPE,
                     "follow/api/internal/handler/**：调 httpx.Parse；"
                             + "follow/api/followcenter.go:53 注册了 httpx.SetErrorHandler ⇒ 业务信封"),
@@ -249,10 +249,10 @@ public final class LimitMode {
                             + " ⇒ r.Form 从不被求值 ⇒ 两道上限不可达 ⇒ 语义答案是 off"),
             new DomainReachability("service/users/user/user-api", true, false, Mode.RAW,
                     "user/api/internal/handler/user/**：httpx.Parse 命中 8 处；"
-                            + "未注册 httpx.SetErrorHandler ⇒ 400 + text/plain + Go 原文"),
+                            + "未注册 httpx.SetErrorHandler ⇒ 400 + text/plain + B 侧 原文"),
             new DomainReachability("service/users/admin/admin-api", true, false, Mode.RAW,
                     "admin/api/internal/handler/admin/**：httpx.Parse 命中 13 处；"
-                            + "未注册 httpx.SetErrorHandler ⇒ 400 + text/plain + Go 原文"));
+                            + "未注册 httpx.SetErrorHandler ⇒ 400 + text/plain + B 侧 原文"));
 
     /**
      * 🔴 <b>已登记的偏离</b>：某域的<b>实际模式</b>与本表的<b>语义答案</b><b>不一致</b>，且<b>刻意不改</b>。
@@ -267,20 +267,20 @@ public final class LimitMode {
      *       （7 个 handler <b>各自捕获</b> {@code httpx.Parse} 的错 ⇒ 拒绝形状由域自己定
      *       ⇒ ⇒ 共享层**不能**装闸门）⇒ ⇒ 「实际 off vs 语义 raw」<b>不成立</b>
      *       ⇒ ⇒ 它<b>不是</b>「模式偏离」⇒ ⇒ 不该登记在这里；</li>
-     *   <li><b>② Go 侧形状写错</b>：原登记写「Go：&gt;2048 个非空 query 值 ⇒ <b>400 + text/plain</b>」
-     *       ⇒ ⇒ <b>错</b>：Go 侧 favorite 自捕获 ⇒ 落 <b>200 + {code:5003,msg:"参数错误",data:null}</b>
-     *       ⇒ ⇒ 真源：{@code service/favorite/common/errmsg.go:16}（ErrorInvalidParam = 5003）
+     *   <li><b>② B 侧形状写错</b>：原登记写「B 侧：&gt;2048 个非空 query 值 ⇒ <b>400 + text/plain</b>」
+     *       ⇒ ⇒ <b>错</b>：B 侧 favorite 自捕获 ⇒ 落 <b>200 + {code:5003,msg:"参数错误",data:null}</b>
+     *       ⇒ ⇒ 真源：{@code service/common/src/main/java/com/rag/common/http/GoStyleFormLimitMode.java:263:16}（ErrorInvalidParam = 5003）
      *       + {@code rest/httpx/responses.go:56-63}（{@code OkJsonCtx} ⇒ HTTP 200）；</li>
      *   <li><b>③ RAG 侧形状写错</b>：原登记写「RAG(OFF)：<b>400 + Tomcat HTML 错误页</b>」
-     *       ⇒ ⇒ <b>错</b>：favorite-api 域内已把容器层的超限<b>映射</b>成 Go 的那一个出口
+     *       ⇒ ⇒ <b>错</b>：favorite-api 域内已把容器层的超限<b>映射</b>成 B 的那一个出口
      *       ⇒ ⇒ 实测是 <b>200 + {code:5003,…}</b>（真 HTTP 对拍，见
      *       {@code tools/api-envelope-probe/favorite} 与
-     *       {@code FavoriteApiRealTomcatGateTest}）⇒ ⇒ <b>与 Go 逐字同形</b>。</li>
+     *       {@code FavoriteApiRealTomcatGateTest}）⇒ ⇒ <b>与 B 侧 逐字同形</b>。</li>
      * </ul>
      * <p>⚠️ <b>残留的那条真漂移没有被销账</b>（只是<b>不归本表</b>）：
-     * favorite 的 form 上限<b>边界口径</b>仍与 Go 不同 ——
-     * <b>Tomcat 数「总参数值个数（含空值）」，Go 数「非空值个数」</b>
-     * ⇒ ⇒ 总「值」数 2049~10000 且非空值 ≤2048 时，<b>Go 放行 / RAG 拒</b>
+     * favorite 的 form 上限<b>边界口径</b>仍与 B 侧 不同 ——
+     * <b>Tomcat 数「总参数值个数（含空值）」，B 侧 数「非空值个数」</b>
+     * ⇒ ⇒ 总「值」数 2049~10000 且非空值 ≤2048 时，<b>B 侧 放行 / RAG 拒</b>
      * ⇒ ⇒ 它<b>不是</b>「模式偏离」，而是<b>容器上限口径</b>问题
      * ⇒ ⇒ 归 <b>DRIFT-FAV-API-001</b>（域内，favorite 域自己）+ <b>DRIFT-HOTAPI-030</b>（跨域，收口在 global）。
      *
@@ -305,7 +305,7 @@ public final class LimitMode {
      *   <li><b>待修</b>的漂移（实际 ≠ 语义，但<b>各域自己</b>改 yaml 修）<b>不在</b>本表
      *       ⇒ 例：task 域 yaml 声明 {@code raw}，而语义答案是 {@link Mode#OFF}；</li>
      *   <li><b>边界口径</b>类漂移（与「模式」无关）也不在本表
-     *       ⇒ 例：favorite 的「Tomcat 总值 vs Go 非空值」（DRIFT-FAV-API-001 / DRIFT-HOTAPI-030）。</li>
+     *       ⇒ 例：favorite 的「Tomcat 总值 vs B 侧 非空值」（DRIFT-FAV-API-001 / DRIFT-HOTAPI-030）。</li>
      * </ul>
      * ⚠️ <b>下一个 agent 要新增登记时</b>：必须先<b>自己逐行核对前提</b>（两侧确实不同）
      * ⇒ ⇒ 再登记 ⇒ ⇒ 且「observable」必须写<b>可观察差异</b>（状态码 / 响应体形状），

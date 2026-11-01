@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * §3.3「机制可证」守门：<b>观测的判定顺序真的按 Go 的口径</b>。
+ * §3.3「机制可证」守门：<b>观测的判定顺序真的按 B 侧口径</b>。
  *
  * <p>⚠️ <b>判定顺序本身就是行为</b>（把 ① 和 ② 调换 ⇒ {@code sea.error.kind} 变）：
  * <pre>

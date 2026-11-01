@@ -10,7 +10,7 @@
 | 模块路径 | `proto` |
 | artifactId | `proto` |
 | 根包 | `com.rag.proto` |
-| Go 出处 | `proto/` |
+| B 侧出处 | `proto/` |
 | 说明 | **10 个域的 `.proto` 契约集中于此**（pb 类包名 `com.rag.proto.<域>`）；域模块只依赖它，不再自带 proto |
 
 ## 二、依赖
@@ -45,8 +45,8 @@
 
 - **`.proto` 契约集中到根级 `proto/` 模块** —— 10 个域各一份（`admin.proto` / `article.proto` / `comment.proto` / `favorite.proto` / `follow.proto` / `hot.proto` / `like.proto` / `message.proto` / `task.proto` / `users.proto`（user 域））⇒ 域模块**不再自带 proto**。
 - **pb 类包名 `com.rag.proto.<域>`**（例 `com.rag.proto.like.LikeActionReq`）—— 不是 `com.rag.<域>.contract.proto.*` ⇒ 域代码 import 时用新包名。
-- **文件内容与 Go 侧 `proto/*.proto` 逐字节一致** —— 只有 option 块与空白层面是表达层差异（`java_package` / `java_multiple_files`）。
-- **Go 侧 `proto/` 多 2 份**（`points.proto` / `security.proto`）—— 那两个域**不在迁移范围**内 ⇒ 不是待办。
+- **文件内容与 B 侧 `proto/*.proto` 逐字节一致** —— 只有 option 块与空白层面是表达层差异（`java_package` / `java_multiple_files`）。
+- **B 侧 `proto/` 多 2 份**（`points.proto` / `security.proto`）—— 那两个域**不在迁移范围**内 ⇒ 不是待办。
 
 ## 五、状态
 
@@ -54,4 +54,4 @@
 |---|---|
 | 目录结构 | ✅ 已落地 |
 | 文件内容 | ⬜ **全部待填**（每个 Java 文件只有 package + 空类型 + TODO javadoc） |
-| Go ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |
+| B 侧 ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |

@@ -4,21 +4,21 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 
 /**
- * Go {@code json:",string"} int64 请求字段的<b>逐条等价</b>解析器。
+ * B 侧 {@code json:",string"} int64 请求字段的<b>逐条等价</b>解析器。
  *
- * <h3>为什么需要它：Go 的 {@code ,string} 是「入参宽松、出参严格」</h3>
+ * <h3>为什么需要它：B 的 {@code ,string} 是「入参宽松、出参严格」</h3>
  *
  * <p>最容易踩的坑是：看到 {@code ,string} 就以为「必须是 JSON 字符串」。
- * <b>Go 不是这样。</b>根因是一个反射事实：
+ * <b>B 侧 不是这样。</b>根因是一个反射事实：
  * <pre>
  *   encoding/json:  type Number string     ← json.Number 是【string 的命名类型】
  *   ⇒ reflect.TypeOf(json.Number("123")).Kind() == reflect.String
  * </pre>
  * （实测：`reflect.TypeOf(json.Number("123")).Kind() = string`）
  *
- * <p>而 go-zero 的解析层用 {@code UseNumber()} 读 body（`core/jsonx/json.go:74-77`），
+ * <p>而 B 侧 的解析层用 {@code UseNumber()} 读 body（`service/message/message-api/src/main/java/com/rag/message/message/api/dto/GoStyleStringInt64.java:19:74-77`），
  * 于是 JSON 数字进了 map 之后是 {@code json.Number} —— 它的 Kind 是 {@code String}，
- * 于是 {@code core/mapping/unmarshaler.go:889-894} 的这行判定<b>放行</b>：
+ * 于是 {@code service/message/message-api/src/main/java/com/rag/message/message/api/dto/GoStyleStringInt64.java:21:889-894} 的这行判定<b>放行</b>：
  * <pre>
  *   valueKind := reflect.TypeOf(mapValue).Kind()
  *   if valueKind != reflect.String { return fmt.Errorf("the value in map is not string, but %s", valueKind) }
@@ -27,10 +27,10 @@ import java.math.BigInteger;
  * {@code case string} 与 {@code case json.Number} 两条分支，都会走
  * {@code setValueFromString → strconv.ParseInt}。
  *
- * <p><b>⇒ Go 的实测行为（v1.10.2 真源探针）</b>：
+ * <p><b>⇒ B 的实测行为（v1.10.2 真源探针）</b>：
  * <table border="1">
- *   <caption>Go vs RAG（修复前）</caption>
- *   <tr><th>输入</th><th>Go</th><th>RAG（修复前）</th></tr>
+ *   <caption>B 侧 vs RAG（修复前）</caption>
+ *   <tr><th>输入</th><th>B 侧</th><th>RAG（修复前）</th></tr>
  *   <tr><td>{@code "123"}（JSON 字符串）</td><td>接受 → 123</td><td>接受 → 123</td></tr>
  *   <tr><td>{@code 123}（JSON 数字）</td><td><b>接受 → 123</b></td><td><b>拒绝 5001</b> ← DRIFT-001</td></tr>
  *   <tr><td>{@code 1.5}</td><td>拒绝（ParseInt 失败）</td><td>拒绝</td></tr>
@@ -48,7 +48,7 @@ import java.math.BigInteger;
  * 因为声明类型是 {@code Object}、没有目标 LogicalType。
  *
  * <h3>拒绝浮点的依据</h3>
- * <p>Go 侧浮点 JSON 字面量会被 {@code UseNumber} 保留成原样字符串
+ * <p>B 侧浮点 JSON 字面量会被 {@code UseNumber} 保留成原样字符串
  * （{@code 1.0} → {@code "1.0"}、{@code 1e2} → {@code "1e2"}），
  * {@code strconv.ParseInt} 对它们一律失败 —— <b>哪怕数值上是整数（1.0）也拒</b>。
  * 所以这里拒绝所有 {@link Double}/{@link Float}/{@link BigDecimal}，
@@ -77,14 +77,14 @@ public final class StringInt64 {
      * @param raw      Jackson 交过来的原始值（{@code String} / 数值类型 / {@code Boolean} / {@code null}）
      * @param fieldName JSON tag 名，仅用于异常消息，便于排查
      * @return 解析结果；{@code raw == null} 时返回 {@code null}（由必填校验决定后续）
-     * @throws IllegalArgumentException 输入不是 Go 侧会接受的 {@code ,string} int64 形态
+     * @throws IllegalArgumentException 输入不是 B 侧会接受的 {@code ,string} int64 形态
      */
     public static Long parse(Object raw, String fieldName) {
         if (raw == null) {
             return null;
         }
         if (raw instanceof String s) {
-            // Go: strconv.ParseInt(s, 10, 64)
+            // B 侧: strconv.ParseInt(s, 10, 64)
             //   - 拒绝 "" / " 12" / "1.5" / "1e2" / 超 long 范围
             //   - 接受 "+123"（Java 的 parseLong 同样接受，两侧一致）
             try {
@@ -97,17 +97,17 @@ public final class StringInt64 {
             return ((Number) raw).longValue();
         }
         if (raw instanceof BigInteger bi) {
-            // Go: ParseInt 对超出 int64 的字面量报 range error
+            // B 侧: ParseInt 对超出 int64 的字面量报 range error
             if (bi.bitLength() >= 64) {
                 throw invalid(fieldName, bi.toString());
             }
             return bi.longValue();
         }
         if (raw instanceof BigDecimal || raw instanceof Double || raw instanceof Float) {
-            // Go: 字面量是 "1.0" / "1.5" / "1e2"，ParseInt 全部失败（1.0 也不例外）
+            // B 侧: 字面量是 "1.0" / "1.5" / "1e2"，ParseInt 全部失败（1.0 也不例外）
             throw invalid(fieldName, String.valueOf(raw));
         }
-        // Boolean / 数组 / 对象：Go 报 "the value in map is not string, but <kind>"
+        // Boolean / 数组 / 对象：B 侧 报 "the value in map is not string, but <kind>"
         throw invalid(fieldName, String.valueOf(raw));
     }
 

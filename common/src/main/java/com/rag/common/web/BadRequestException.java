@@ -1,7 +1,7 @@
 package com.rag.common.web;
 
 /**
- * 承载「Go {@code httpx.ErrorCtx} 会写出的那种错误」—— 即<b>裸状态码 + text/plain</b>，
+ * 承载「B 侧 {@code httpx.ErrorCtx} 会写出的那种错误」—— 即<b>裸状态码 + text/plain</b>，
  * 而不是本模块惯用的 {@code 200 + 信封}。
  *
  * <h2>为什么要单独一个类型（而不是复用 {@code BusinessException}）</h2>
@@ -9,7 +9,7 @@ package com.rag.common.web;
  * <p>本模块的失败分两类，<b>形状互不相同</b>，靠类型区分比靠 code 区分可靠：
  * <table border="1">
  *   <caption>两类失败的 wire 形状</caption>
- *   <tr><th>来源</th><th>Go 出处</th><th>Java 侧</th><th>HTTP</th><th>body</th></tr>
+ *   <tr><th>来源</th><th>B 出处</th><th>Java 侧</th><th>HTTP</th><th>body</th></tr>
  *   <tr>
  *     <td>业务判定失败（gRPC code → 业务码）</td>
  *     <td>{@code httpx.OkJson(w, &response.Response{Code: code, ...})}（各 handler 显式构造）</td>
@@ -37,9 +37,9 @@ package com.rag.common.web;
  * <h2>调用点（两个，不要更多）</h2>
  * <ol>
  *   <li>{@code GlobalExceptionHandler} —— 把 Spring 的解析异常转成本类型；</li>
- *   <li>{@code ArticleUploadService} —— Go {@code UploadImageHandler} 把
+ *   <li>{@code ArticleUploadService} —— B 侧 {@code UploadImageHandler} 把
  *       {@code r.FormFile} 错误与 {@code UploadFile} RPC 错误<b>都</b>交给
- *       {@code httpx.ErrorCtx}，所以这两条在 Go 里是<b>同一个</b> 400。</li>
+ *       {@code httpx.ErrorCtx}，所以这两条在 B 侧 里是<b>同一个</b> 400。</li>
  * </ol>
  */
 /**

@@ -11,11 +11,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 🔴 <b>Go 风格的 query 解析与 form 值上限判据</b> —— 对应 go-zero {@code rest/httpx} 的
- * {@code GetFormValues} ＋ Go 标准库 {@code net/url} 的 {@code parseQuery}。
+ * 🔴 <b>B 侧 风格的 query 解析与 form 值上限判据</b> —— 对应 B 侧
+ * {@code service/common/src/main/java/com/rag/common/http/GoStyleFormValues.java:91-98} 的
+ * {@code GetFormValues} ＋ 其转述的标准库 {@code net/url} 的 {@code parseQuery}。
  *
  * <p><b>本类是「判据」，不是「闸门」</b>：它只回答一个问题 ——
- * 「这个 query 按 Go 的语义<b>该不该被拒</b>、被拒时的 Go 原文是什么」，
+ * 「这个 query 按 B 的语义<b>该不该被拒</b>、被拒时的 B 侧 原文是什么」，
  * <b>由谁把这个结论变成 wire 上的响应，由各域自己决定</b>（见下方「🔴 两种拒绝形状」）。
  *
  * <h2>🆕 为什么它住在 {@code service/common}（2026-10-25 第十四轮，从 article-api 迁上来）</h2>
@@ -28,21 +29,21 @@ import java.util.Map;
  * ⇒ 同一个请求在 10 个域里 10 种行为）。
  *
  * <h2>🔴🔴 两种拒绝形状 —— <b>按域而异</b>，不是按实现随意选（2026-10-25 取证结论）</h2>
- * <p>Go 的 {@code httpx.Parse} 失败后经 {@code httpx.ErrorCtx} → {@code httpx.SetErrorHandler} 出口，
+ * <p>B 的 {@code httpx.Parse} 失败后经 {@code httpx.ErrorCtx} → {@code httpx.SetErrorHandler} 出口，
  * 而<b>「该 api 有没有注册 {@code SetErrorHandler}」决定了 wire 形状</b>：
  * <table border="1">
- *   <caption>Go 侧逐域取证（{@code service/…/api/…center.go} / {@code commentservice.go}）</caption>
- *   <tr><th>域</th><th>Go 侧</th><th>wire 形状</th></tr>
+ *   <caption>B 侧逐域取证（{@code service/…/api/…service/common/src/main/java/com/rag/common/http/GoStyleFormValues.java:34} / {@code commentservice.go}）</caption>
+ *   <tr><th>域</th><th>B 侧</th><th>wire 形状</th></tr>
  *   <tr><td>hot / follow / like / message / comment</td><td><b>注册了</b> {@code SetErrorHandler}</td>
  *       <td><b>HTTP 200</b> + {@code {"code":5001,"msg":"&lt;该域文案&gt;","data":null}}</td></tr>
  *   <tr><td>article / user / admin</td><td><b>没注册</b></td>
- *       <td><b>HTTP 400</b> + {@code text/plain} + {@code nosniff} + Go 的原文 body</td></tr>
+ *       <td><b>HTTP 400</b> + {@code text/plain} + {@code nosniff} + B 的原文 body</td></tr>
  *   <tr><td>favorite</td><td><b>没注册</b>，但 <b>7 个 handler 各自捕获</b> {@code httpx.Parse} 的错<br>
  *       ⇒ <b>拒绝形状由域自己定</b>（<b>不</b>走共享层的闸门）</td>
  *       <td><b>HTTP 200</b> + {@code {"code":5003,"msg":"参数错误","data":null}}<br>
  *           （= {@code httpx.OkJsonCtx} + {@code favoritecommon.ErrorInvalidParam}）</td></tr>
  * </table>
- * <br>⚠️ <b>task 域不在上表的任何一行里</b>：它 Go 侧<b>不解析</b> form/query ⇒
+ * <br>⚠️ <b>task 域不在上表的任何一行里</b>：它 B 侧<b>不解析</b> form/query ⇒
  * {@code r.Form} 从不被求值 ⇒ 两道上限<b>都不可达</b> ⇒ <b>闸门根本不开</b>
  * ⇒ ⇒ 它<b>既不会</b>收到 400 + text/plain，<b>也不会</b>收到 5001
  * ⇒ ⇒ 「没注册 {@code SetErrorHandler}」<b>推不出</b>「它走 400 形状」——
@@ -50,15 +51,15 @@ import java.util.Map;
  * ⇒ ⇒ 见 {@link LimitMode} 的逐轴判据与 {@link LimitMode#SEMANTIC_REACHABILITY}。
  * <br>⚠️ <b>各域 5001 的文案还不一样</b>：hot / follow / message = {@code "internal server error"}；
  * like / comment = {@code "系统内部错误"} ⇒ <b>共享层不得硬编码这条文案</b>
- * ⇒ ⇒ <b>本类只产出「Go 的原文」（{@link #goParseViolation}），
+ * ⇒ ⇒ <b>本类只产出「B 的原文」（{@link #goParseViolation}），
  * 拒绝成什么形状由各域自己的错误出口决定</b>。
  *
  * <h3>🔴 本表管的是「拒成什么形状」，不是「开不开」</h3>
- * <p>闸门的「<b>开不开</b>」由<b>语义可达性</b>决定（Go 侧该域是否真的解析 form/query）
+ * <p>闸门的「<b>开不开</b>」由<b>语义可达性</b>决定（B 侧该域是否真的解析 form/query）
  * ⇒ 见 {@link LimitMode#SEMANTIC_REACHABILITY} 的逐域取证表。
  * <p>⇒ 两条轴<b>必须分开看</b>：本表里的「task」说的是
- * 「若它拒绝，Go 的形状是 raw」（task 确实没注册 SetErrorHandler）
- * ⇒ 但 task 的闸门<b>根本不开</b>（Go 侧不解析 form/query ⇒ 两道上限不可达）
+ * 「若它拒绝，B 的形状是 raw」（task 确实没注册 SetErrorHandler）
+ * ⇒ 但 task 的闸门<b>根本不开</b>（B 侧不解析 form/query ⇒ 两道上限不可达）
  * ⇒ ⇒ 两者不矛盾。
  *
  * <h3>🔴 它与 Tomcat 容器上限的关系（本条最容易被忽略的一层）</h3>
@@ -69,33 +70,33 @@ import java.util.Map;
  * <b>没读参数的端点，Tomcat 的上限根本不会触发</b> ⇒ 这就是「同一个请求在不同域表现不同」的第二层原因。
  * <br>⚠️ <b>两条上限的语义不同</b>：
  * <table>
- *   <tr><td></td><td>Go（{@code httpx/util.go}）</td><td>Tomcat（{@code Parameters.addParameter}）</td></tr>
+ *   <tr><td></td><td>B 侧（{@code httpx/util.go}）</td><td>Tomcat（{@code Parameters.addParameter}）</td></tr>
  *   <tr><td>数什么</td><td><b>非空值</b>（{@code util.go:44-45} 空值 {@code continue}）</td><td><b>参数总数</b>（含空值）</td></tr>
  *   <tr><td>上限</td><td>2048</td><td>容器配置</td></tr>
  * </table>
  * ⇒ 所以 {@code service/common} 里还配了一个
  * {@link GoStyleTomcatParameterLimitCustomizer}，把容器上限抬到 <b>10001</b>
- * （= Go 的 {@code net/url} 段数上限 10000 <b>+1</b>）⇒ <b>让应用层有机会先按 Go 的语义判定</b>
+ * （= B 的 {@code net/url} 段数上限 10000 <b>+1</b>）⇒ <b>让应用层有机会先按 B 的语义判定</b>
  * ⇒ 详见该类的 javadoc。
  *
  * <h2>为什么叫这个名字</h2>
- * Go 侧这些行为<b>全在同一个函数里</b>（{@code rest/httpx/util.go:22-65} 的 {@code GetFormValues}）：
+ * B 侧这些行为<b>全在同一个函数里</b>（{@code service/common/src/main/java/com/rag/common/http/GoStyleFormValues.java:82:22-65} 的 {@code GetFormValues}）：
  * <ol>
- *   <li>{@code r.ParseForm()} ⇒ 触发 Go 标准库 {@code net/url} 的解析（<b>含它的三条错误</b>）；</li>
- *   <li>然后才是 go-zero 自己的 {@code maxFormParamCount = 2048} 计数。</li>
+ *   <li>{@code r.ParseForm()} ⇒ 触发 B 侧 标准库 {@code net/url} 的解析（<b>含它的三条错误</b>）；</li>
+ *   <li>然后才是框架层自己的 {@code maxFormParamCount = 2048} 计数（B 侧承载者 = {@code service/common/src/main/java/com/rag/common/http/GoStyleFormValues.java:91-96}）。</li>
  * </ol>
  * ⇒ 本类按<b>同样的顺序</b>复刻这两步 —— 顺序本身就是<b>可观察</b>的。
  *
- * <h2>Go 出处（逐行，消费点）</h2>
+ * <h2>B 出处（逐行，消费点）</h2>
  * <pre>
- * go-zero@v1.10.2/rest/httpx/util.go:10-16
+ * B 出处：service/common/src/main/java/com/rag/common/http/GoStyleFormValues.java:91:10-16
  *   const (
  *       // most servers and clients have a limit of 8192 bytes (8 KB)
  *       // one parameter at least take 4 chars, for example `?a=b&amp;c=d`
  *       maxFormParamCount = 2048
  *   )
  *
- * go-zero@v1.10.2/rest/httpx/util.go:22-65  GetFormValues（下面摘录的是其中 :35-54 的双层循环）
+ * B 出处：service/common/src/main/java/com/rag/common/http/GoStyleFormValues.java:98:22-65  GetFormValues（下面摘录的是其中 :35-54 的双层循环）
  *   for name, values := range r.Form {
  *       for _, v := range values {
  *           if len(v) == 0 { continue }              // ← 空值不计数
@@ -105,7 +106,7 @@ import java.util.Map;
  *   }
  * </pre>
  *
- * <p><b>调用链</b>：Go handler 里的 {@code httpx.Parse(r, &amp;req)}
+ * <p><b>调用链</b>：B 侧 handler 里的 {@code httpx.Parse(r, &amp;req)}
  * （{@code service/article/api/internal/handler/article/*.go:21}）
  * → {@code httpx.ParseForm} → {@code httpx.GetFormValues} ⇒ 上面那个上限生效。
  * <br>⇒ 超限时 {@code GetFormValues} 返回 error → handler 调 {@code httpx.ErrorCtx}
@@ -116,7 +117,7 @@ import java.util.Map;
  * ⇒ <b>HTTP 400</b>，body = {@code "too many form values, error: " + r.Form.Encode()} + {@code "\n"}。
  *
  * <h2>⚠️ 为什么这条不是「无害的防御性增强」</h2>
- * 它在 Go 侧是一条 <b>DoS 闸门</b>（注释明说是为了 8 KB query 上限）。
+ * 它在 B 侧是一条 <b>DoS 闸门</b>（注释明说是为了 8 KB query 上限）。
  * 没有它 ⇒ 客户端可以发任意多个 query 参数，服务端<b>全部解析</b>并绑定。
  * <br>⚠️ Tomcat 自己也有 {@code maxParameterCount}（默认 10000），
  * 但那是<b>另一个阈值</b> ⇒ 在 <b>2049 ~ 10000</b> 这段区间里两侧行为不同。
@@ -125,17 +126,17 @@ import java.util.Map;
  * Tomcat 自己有请求行/请求头上限（Boot 4 的 {@code server.max-http-request-header-size}，默认 <b>8 KB</b>），
  * 而 2049 个<b>最短</b>的非空 query 值（{@code a=1&} × 2049 ≈ 8196 字节）<b>本身就超了</b>
  * ⇒ Tomcat 在<b>连接器层</b>就以 <b>400</b> 拒掉，请求<b>根本到不了</b>应用层
- * （实测 body 是 Tomcat 的 <b>HTML 错误页</b>，不是 Go 的 text/plain）。
+ * （实测 body 是 Tomcat 的 <b>HTML 错误页</b>，不是 B 的 text/plain）。
  * <br>⇒ 所以这条闸门的价值是：<b>让上限不依赖容器配置</b> ——
  * 部署把 {@code server.max-http-request-header-size} 调高（长 header 场景常见）时，
- * RAG 仍然按 Go 的 2048 判据拒绝，<b>且给出 Go 逐字相同的 body</b>（实测已验证）。
+ * RAG 仍然按 B 的 2048 判据拒绝，<b>且给出 B 侧 逐字相同的 body</b>（实测已验证）。
  * <br>⚠️ Boot 4 里属性名是 {@code server.max-http-request-header-size}；
  * 旧的 {@code server.max-http-header-size} <b>已不存在</b> ⇒ 写它会被<b>静默忽略</b>
  * （实测踩过：写了它，请求仍被 Tomcat 以 400 拒掉，闸门根本没执行）。
  *
  * <h2>⚠️ 为什么只统计 <b>query string</b>，不碰 body</h2>
- * Go 侧 {@code r.Form} 是「query + body（仅 urlencoded / multipart 字段）」的合并结果
- * （{@code httpx/util.go:23-31}：{@code r.ParseForm()} ＋ {@code r.ParseMultipartForm(maxMemory)}）。
+ * B 侧 {@code r.Form} 是「query + body（仅 urlencoded / multipart 字段）」的合并结果
+ * （{@code service/common/src/main/java/com/rag/common/http/GoStyleFormValues.java:137:23-31}：{@code r.ParseForm()} ＋ {@code r.ParseMultipartForm(maxMemory)}）。
  * <br>⇒ 本判据只数 query，<b>理论上</b>会漏掉 body 里的表单字段。实测这条漏口<b>不可达</b>：
  * <ul>
  *   <li><b>multipart</b>：Tomcat 的 {@code Connector.maxPartCount} 默认 <b>50</b>
@@ -153,12 +154,12 @@ import java.util.Map;
  *
  * <h2>⚠️ 它和「容器上限」必须<b>配合</b>才有意义</h2>
  * 单靠本判据不够：<b>Tomcat 的上限会先于它触发</b>（只要应用读了 query 参数）
- * ⇒ Tomcat 拒的是 <b>400 + HTML</b>，而 Go 拒的是 <b>400 + {@code text/plain} 的原文 body</b>
+ * ⇒ Tomcat 拒的是 <b>400 + HTML</b>，而 B 侧 拒的是 <b>400 + {@code text/plain} 的原文 body</b>
  * ⇒ ⇒ 必须同时把容器上限抬起来 ⇒ {@link GoStyleTomcatParameterLimitCustomizer}（同包）。
  *
- * <h2>⚠️ Go 标准库 {@code net/url} 的三条行为 —— 本类 <b>已覆盖</b>（2026-10-24）</h2>
+ * <h2>⚠️ B 侧 标准库 {@code net/url} 的三条行为 —— 本类 <b>已覆盖</b>（2026-10-24）</h2>
  * <pre>
- * Go 1.25 标准库 net/url/url.go:1019-1054  parseQuery
+ * B 侧 1.25 标准库 net/url/url.go:1019-1054  parseQuery
  *   if !urlParamsWithinMax(strings.Count(query, "&amp;") + 1) {
  *       return errors.New("number of URL query parameters exceeded limit")
  *   }                                              // ← ⚠️ **在解析之前**就 return
@@ -173,17 +174,17 @@ import java.util.Map;
  *       value, err1 = QueryUnescape(value)
  *   }
  * </pre>
- * ⇒ Go 侧这三条**都返 400**（body = 对应文案 + {@code "\n"}）：
+ * ⇒ B 侧这三条**都返 400**（body = 对应文案 + {@code "\n"}）：
  * <ul>
  *   <li>{@code number of URL query parameters exceeded limit}（&gt; 10000 <b>段</b>，<b>最先</b>发生）；</li>
  *   <li>{@code invalid semicolon separator in query}；</li>
- *   <li>{@code invalid URL escape "%zz"}（文案由 Go 的 {@code strconv.Quote} 产生）。</li>
+ *   <li>{@code invalid URL escape "%zz"}（文案由 B 的 {@code strconv.Quote} 产生）。</li>
  * </ul>
- * ⚠️ <b>顺序可观察</b>：Go 里 10000 段的上限<b>先于</b> go-zero 的 2048 计数
- * ⇒ 10001 段时 Go 报的是前者，不是 {@code too many form values}。
+ * ⚠️ <b>顺序可观察</b>：B 侧 里 10000 段的上限<b>先于</b> 框架层的 2048 计数
+ * ⇒ 10001 段时 B 侧 报的是前者，不是 {@code too many form values}。
  * <br>⚠️ <b>修之前的 RAG 现状</b>（2026-10-24 真容器实测）：
  * <table>
- *   <tr><td>场景</td><td>Go</td><td>RAG（修前）</td></tr>
+ *   <tr><td>场景</td><td>B 侧</td><td>RAG（修前）</td></tr>
  *   <tr><td>{@code ?a=1;b=2}</td><td>400 + 分号文案</td><td>🔴 <b>200</b>（请求被接受）</td></tr>
  *   <tr><td>{@code ?a=%zz}</td><td>400 + 转义文案</td><td>🔴 <b>500 空 body</b></td></tr>
  *   <tr><td>10001 段</td><td>400 + 段数文案</td><td>🟡 400，但 body 是 <b>2048</b> 那条（顺序反了）</td></tr>
@@ -193,8 +194,8 @@ import java.util.Map;
  * <p>拒绝成什么形状（400 原文 / 200 信封）由<b>各域自己</b>决定（见类 javadoc 的「两种拒绝形状」）⇒
  * 本类只暴露两个公开入口：
  * <ul>
- *   <li>{@link #goParseViolation(String)} —— 「按 Go 的语义该不该拒、原文是什么」；</li>
- *   <li>{@link #writeGoStyleBadRequest(HttpServletResponse, String)} —— Go 的
+ *   <li>{@link #goParseViolation(String)} —— 「按 B 的语义该不该拒、原文是什么」；</li>
+ *   <li>{@link #writeGoStyleBadRequest(HttpServletResponse, String)} —— B 的
  *       {@code http.Error} 形状（<b>只有「没注册 SetErrorHandler」的域</b>用）。</li>
  * </ul>
  */
@@ -209,34 +210,34 @@ import java.util.Map;
 public final class GetFormValuesFilter {
 
     /**
-     * Go {@code rest/httpx/util.go:15} 的 {@code maxFormParamCount}，<b>不可配置</b>
-     * （Go 侧它是常量 ⇒ 做成 property 等于凭空多出 Go 没有的开关）。
+     * B 侧 {@code rest/httpx/util.go:15} 的 {@code maxFormParamCount}，<b>不可配置</b>
+     * （B 侧它是常量 ⇒ 做成 property 等于凭空多出 B 侧 没有的开关）。
      */
     public static final int MAX_FORM_PARAM_COUNT = 2048;
 
     /**
-     * Go 标准库 {@code net/url/url.go:1001} 的 {@code defaultMaxParams = 10000}。
+     * B 侧 标准库 {@code net/url/url.go:1001} 的 {@code defaultMaxParams = 10000}。
      *
      * <p>⚠️ 它数的是 <b>{@code &} 分隔的段数</b>（{@code strings.Count(query, "&") + 1}），
      * <b>不是</b> distinct key 数 —— 10001 个 {@code a=1} 也是 10001 段 ⇒ 超限。
      */
     public static final int MAX_URL_QUERY_PARAMS = 10000;
 
-    /** Go {@code url.go} 的 {@code upperhex}（大写十六进制）。 */
+    /** B 侧 {@code url.go} 的 {@code upperhex}（大写十六进制）。 */
     private static final char[] HEX = "0123456789ABCDEF".toCharArray();
 
     private GetFormValuesFilter() {
     }
 
     /**
-     * 按 Go 的语义判定「这个 query 该不该被拒」，并给出<b>Go 的原文</b>。
+     * 按 B 的语义判定「这个 query 该不该被拒」，并给出<b>B 的原文</b>。
      *
-     * <p>判定顺序与 Go 完全一致（<b>顺序本身是可观察的</b>）：
+     * <p>判定顺序与 B 侧 完全一致（<b>顺序本身是可观察的</b>）：
      * <ol>
      *   <li>{@code net/url} 的<b>段数上限</b>（{@code url.go:1020-1022}）—— 它在<b>解析之前</b>就 return；</li>
      *   <li>{@code net/url} 的<b>分段解析错误</b>（{@code url.go:1023-1054}）——
-     *       Go 的 {@code ParseForm} 把 error 原样往上抛（{@code httpx/util.go:23-25}）；</li>
-     *   <li>go-zero 的 <b>2048 非空值计数</b>（{@code httpx/util.go:44-53}）。</li>
+     *       B 的 {@code ParseForm} 把 error 原样往上抛（{@code httpx/util.go:23-25}）；</li>
+     *   <li>B 侧 的 <b>2048 非空值计数</b>（{@code service/common/src/main/java/com/rag/common/http/GoStyleFormValues.java:231:44-53}）。</li>
      * </ol>
      *
      * <h2>🔴 消费者清单（改本方法的规则或次序 ⇒ 必须同步通知下列域）</h2>
@@ -259,24 +260,24 @@ public final class GetFormValuesFilter {
      * ⇒ 域侧只允许「<b>判定</b>本方法的结论」并<b>自行决定拒绝形状</b>。
      *
      * @param query 原始 query string（{@code request.getQueryString()}）；{@code null} / 空串 ⇒ 不拒绝
-     * @return {@code null} = 按 Go 的语义<b>应当放行</b>；
-     *         否则 = Go 的原文（{@code http.Error} 的 body 内容，<b>不含</b>尾随换行）
+     * @return {@code null} = 按 B 的语义<b>应当放行</b>；
+     *         否则 = B 的原文（{@code http.Error} 的 body 内容，<b>不含</b>尾随换行）
      */
     public static String goParseViolation(String query) {
         if (query == null || query.isEmpty()) {
             return null;
         }
-        // ① Go 的 net/url **先**做段数上限（url.go:1020-1022）—— 它在解析**之前**就 return
+        // ① B 的 net/url **先**做段数上限（url.go:1020-1022）—— 它在解析**之前**就 return
         if (countQuerySegments(query) > MAX_URL_QUERY_PARAMS) {
             return "number of URL query parameters exceeded limit";
         }
-        // ② 再按 Go 的分段规则解析（url.go:1023-1054）；错误**要上报**
-        //    （Go 的 ParseForm 把 net/url 的 error 返回，util.go:23-25 原样往上抛）
+        // ② 再按 B 的分段规则解析（url.go:1023-1054）；错误**要上报**
+        //    （B 的 ParseForm 把 net/url 的 error 返回，util.go:23-25 原样往上抛）
         GoQueryParse parsed = parseGoQuery(query);
         if (parsed.error != null) {
             return parsed.error;
         }
-        // ③ 最后才做 go-zero 的 2048 计数（util.go:44-53）
+        // ③ 最后才做 B 侧的 2048 计数（service/common/src/main/java/com/rag/common/http/GoStyleFormValues.java:271:44-53）
         int nonEmpty = countNonEmptyValues(parsed.form);
         if (nonEmpty > MAX_FORM_PARAM_COUNT) {
             return "too many form values, error: " + encodeGoValues(parsed.form);
@@ -285,12 +286,12 @@ public final class GetFormValuesFilter {
     }
 
     /**
-     * Go 的 {@code net/http.Error} 形状 —— <b>只给「没注册 {@code SetErrorHandler}」的域用</b>
-     * （article / user / admin；task 也没注册，但它 Go 侧不解析 form/query
+     * B 的 {@code net/http.Error} 形状 —— <b>只给「没注册 {@code SetErrorHandler}」的域用</b>
+     * （article / user / admin；task 也没注册，但它 B 侧不解析 form/query
      * ⇒ 闸门根本不开 ⇒ 用不到这个形状；favorite 也没注册，但它 <b>自己捕获</b>解析错
      * ⇒ 拒绝形状由域自己定 ⇒ <b>也用不到这个形状</b>）。
      *
-     * <p>Go 出处：{@code net/http/server.go} 的 {@code Error()}：
+     * <p>B 出处：{@code service/common/src/main/java/com/rag/common/http/GoStyleFormValues.java:285} 的 {@code Error()}：
      * <pre>
      *   h.Del("Content-Length")
      *   h.Set("Content-Type", "text/plain; charset=utf-8")
@@ -307,9 +308,9 @@ public final class GetFormValuesFilter {
     }
 
     /**
-     * Go {@code strings.Count(query, "&amp;") + 1}（{@code url.go:1020}）—— <b>段数</b>。
+     * B 侧 {@code strings.Count(query, "&amp;") + 1}（{@code url.go:1020}）—— <b>段数</b>。
      *
-     * <p>⚠️ Go 的判据是 {@code params &lt;= defaultMaxParams}（{@code url.go:1003}）
+     * <p>⚠️ B 的判据是 {@code params &lt;= defaultMaxParams}（{@code url.go:1003}）
      * ⇒ 恰好 10000 段<b>不</b>超限，10001 段才超。
      */
     private static int countQuerySegments(String query) {
@@ -323,10 +324,10 @@ public final class GetFormValuesFilter {
     }
 
     /**
-     * Go {@code net/url.parseQuery}（{@code url.go:1023-1054}）的解析结果。
+     * B 侧 {@code net/url.parseQuery}（{@code url.go:1023-1054}）的解析结果。
      *
-     * @param form  已成功解析的键值（Go 侧出错时已解析的部分仍在 {@code m} 里，但**没人用**）
-     * @param error Go 侧会返回的那个 error 文案（{@code null} = 无错）
+     * @param form  已成功解析的键值（B 侧出错时已解析的部分仍在 {@code m} 里，但**没人用**）
+     * @param error B 侧会返回的那个 error 文案（{@code null} = 无错）
      */
     private static final class GoQueryParse {
         final Map<String, List<String>> form;
@@ -339,18 +340,18 @@ public final class GetFormValuesFilter {
     }
 
     /**
-     * Go {@code net/url.parseQuery}（{@code url.go:1019-1054}）的分段规则。
+     * B 侧 {@code net/url.parseQuery}（{@code url.go:1019-1054}）的分段规则。
      *
      * <p>逐条对齐：
      * <ul>
-     *   <li>按 {@code &} 切分（Go 1.17+ <b>不</b>把 {@code ;} 当分隔符）；</li>
-     *   <li>段内含 {@code ;} ⇒ Go 记错误并<b>跳过该段</b>（{@code url.go:1026-1029}）
-     *       —— ⚠️ Go 是<b>无条件赋值</b>，所以<b>最后一个</b>分号段会覆盖前面的错误；</li>
+     *   <li>按 {@code &} 切分（B 侧 1.17+ <b>不</b>把 {@code ;} 当分隔符）；</li>
+     *   <li>段内含 {@code ;} ⇒ B 侧 记错误并<b>跳过该段</b>（{@code url.go:1026-1029}）
+     *       —— ⚠️ B 侧 是<b>无条件赋值</b>，所以<b>最后一个</b>分号段会覆盖前面的错误；</li>
      *   <li>key 为空 ⇒ 跳过（{@code url.go:1030-1032}）；</li>
      *   <li>按<b>第一个</b> {@code =} 切 key/value（{@code url.go:1033}）；</li>
      *   <li>key 与 value 各自 {@code QueryUnescape}（{@code +} ⇒ 空格，{@code %XX} ⇒ 字节）；</li>
-     *   <li>解码失败 ⇒ Go 记错误并跳过该段（{@code url.go:1034-1045}）
-     *       —— ⚠️ Go 是 {@code if err == nil { err = err1 }} ⇒ <b>第一个</b>转义错误胜出。</li>
+     *   <li>解码失败 ⇒ B 侧 记错误并跳过该段（{@code url.go:1034-1045}）
+     *       —— ⚠️ B 侧 是 {@code if err == nil { err = err1 }} ⇒ <b>第一个</b>转义错误胜出。</li>
      * </ul>
      */
     private static GoQueryParse parseGoQuery(String query) {
@@ -363,12 +364,12 @@ public final class GetFormValuesFilter {
             start = (amp < 0) ? query.length() + 1 : amp + 1;
 
             if (part.indexOf(';') >= 0) {
-                // Go url.go:1026-1029 —— 无条件赋值（会覆盖前面的错误）
+                // B 侧 url.go:1026-1029 —— 无条件赋值（会覆盖前面的错误）
                 error = "invalid semicolon separator in query";
                 continue;
             }
             if (part.isEmpty()) {
-                continue;                       // Go: key == "" ⇒ 跳过
+                continue;                       // B 侧: key == "" ⇒ 跳过
             }
             int eq = part.indexOf('=');
             String rawKey = (eq < 0) ? part : part.substring(0, eq);
@@ -393,7 +394,7 @@ public final class GetFormValuesFilter {
         return new GoQueryParse(form, error);
     }
 
-    /** Go {@code GetFormValues} 的 {@code if len(v) == 0 { continue }} —— <b>空值不计数</b>。 */
+    /** B 侧 {@code GetFormValues} 的 {@code if len(v) == 0 { continue }} —— <b>空值不计数</b>。 */
     private static int countNonEmptyValues(Map<String, List<String>> form) {
         int n = 0;
         for (List<String> values : form.values()) {
@@ -407,7 +408,7 @@ public final class GetFormValuesFilter {
     }
 
     /**
-     * Go {@code net/url.Values.Encode}（{@code url.go:1055-1073}）：<b>按 key 排序</b>后逐个转义。
+     * B 侧 {@code net/url.Values.Encode}（{@code url.go:1055-1073}）：<b>按 key 排序</b>后逐个转义。
      *
      * <p>⚠️ 排序用<b>码点序</b>（= UTF-8 字节序），不是 {@link String#compareTo}
      * （UTF-16 码元序）—— 与 {@code DRIFT-ARTICLE-API-007} 同一个坑。
@@ -429,11 +430,11 @@ public final class GetFormValuesFilter {
     }
 
     /**
-     * Go {@code net/url.QueryEscape}（{@code url.go:282-284} → {@code shouldEscape} 的
+     * B 侧 {@code net/url.QueryEscape}（{@code url.go:282-284} → {@code shouldEscape} 的
      * {@code encodeQueryComponent} 分支，{@code url.go:158-161}）。
      *
      * <p>规则：{@code A-Z a-z 0-9 - _ . ~} <b>不转义</b>；空格 ⇒ {@code +}；其余 ⇒ {@code %XX}（<b>大写</b>）。
-     * <br>⚠️ 不能用 {@code java.net.URLEncoder}：它保留 {@code *}、把 {@code ~} 转成 {@code %7E} ⇒ 与 Go 不同。
+     * <br>⚠️ 不能用 {@code java.net.URLEncoder}：它保留 {@code *}、把 {@code ~} 转成 {@code %7E} ⇒ 与 B 侧 不同。
      */
     private static String queryEscape(String s) {
         StringBuilder out = new StringBuilder(s.length());
@@ -452,11 +453,11 @@ public final class GetFormValuesFilter {
     }
 
     /**
-     * Go {@code net/url.QueryUnescape}（{@code url.go:282-284} → {@code unescape}）。
+     * B 侧 {@code net/url.QueryUnescape}（{@code url.go:282-284} → {@code unescape}）。
      *
      * <p>⚠️ 按<b>字节</b>解码（不是 char）：{@code %E4%B8%AD} 是 3 个字节的「中」，
-     * 若按 char 解会得到 3 个 U+00E4/U+00B8/U+00AD ⇒ 再编成 UTF-8 就是 6 个字节 ⇒ 与 Go 不同。
-     * <br>返回 {@code null} 表示解码失败（Go 侧是 error ⇒ 跳过该段）。
+     * 若按 char 解会得到 3 个 U+00E4/U+00B8/U+00AD ⇒ 再编成 UTF-8 就是 6 个字节 ⇒ 与 B 侧 不同。
+     * <br>返回 {@code null} 表示解码失败（B 侧是 error ⇒ 跳过该段）。
      */
     private static String queryUnescape(String s) {
         ByteArrayOutputStream out = new ByteArrayOutputStream(s.length());
@@ -478,7 +479,7 @@ public final class GetFormValuesFilter {
                 out.write(' ');
                 i++;
             } else {
-                // Go 按字节处理 ⇒ 非 ASCII 原样写成 UTF-8 字节
+                // B 侧 按字节处理 ⇒ 非 ASCII 原样写成 UTF-8 字节
                 byte[] encoded = String.valueOf(c).getBytes(StandardCharsets.UTF_8);
                 out.write(encoded, 0, encoded.length);
                 i++;
@@ -515,11 +516,11 @@ public final class GetFormValuesFilter {
     }
 
     // ==================================================================
-    // Go 的 EscapeError 文案：invalid URL escape "<那一小截>"
+    // B 的 EscapeError 文案：invalid URL escape "<那一小截>"
     // ==================================================================
 
     /**
-     * Go 的 {@code net/url.EscapeError}（{@code net/url/url.go:91-96}）。
+     * B 的 {@code net/url.EscapeError}（{@code net/url/url.go:91-96}）。
      *
      * <pre>
      * type EscapeError string
@@ -528,10 +529,10 @@ public final class GetFormValuesFilter {
      * }
      * </pre>
      *
-     * <p>⚠️ <b>按字节</b>处理（Go 的 {@code unescape} 扫的是字节）：
+     * <p>⚠️ <b>按字节</b>处理（B 的 {@code unescape} 扫的是字节）：
      * ① 找<b>第一个</b>非法转义的位置；
      * ② 截取「{@code %} + 最多 2 个字节」（不足则到串尾）——
-     *    ⚠️ 这个切片<b>可能截断一个多字节字符</b>（Go 也是这样）⇒ 必须按字节做。
+     *    ⚠️ 这个切片<b>可能截断一个多字节字符</b>（B 侧 也是这样）⇒ 必须按字节做。
      */
     private static String escapeErrorMessage(String raw) {
         byte[] b = raw.getBytes(StandardCharsets.UTF_8);
@@ -554,17 +555,17 @@ public final class GetFormValuesFilter {
     }
 
     /**
-     * Go 的 {@code strconv.Quote}（{@code strconv/quote.go:23-24,31-56,68-115}）。
+     * B 的 {@code strconv.Quote}（{@code strconv/quote.go:23-24,31-56,68-115}）。
      *
      * <p>逐条对齐：
      * <ul>
      *   <li>首尾加 {@code "}；</li>
      *   <li>{@code "} 与 {@code \} ⇒ 前加 {@code \}；</li>
-     *   <li>可打印（Go 的 {@code IsPrint}：L/M/N/P/S 类 + ASCII 空格）⇒ 原样；</li>
+     *   <li>可打印（B 的 {@code IsPrint}：L/M/N/P/S 类 + ASCII 空格）⇒ 原样；</li>
      *   <li>控制字符 ⇒ {@code \a \b \f \n \r \t \v}；其余 {@code < 0x20} 或 {@code 0x7f}
      *       ⇒ {@code \xNN}（<b>小写</b>十六进制）；</li>
      *   <li>非 BMP ⇒ {@code \}{@code uNNNN}（小写）；</li>
-     *   <li><b>非法 UTF-8 字节</b> ⇒ {@code \xNN}（小写）—— Go 的
+     *   <li><b>非法 UTF-8 字节</b> ⇒ {@code \xNN}（小写）—— B 的
      *       {@code quote.go:46-51}；</li>
      * </ul>
      */
@@ -578,7 +579,7 @@ public final class GetFormValuesFilter {
             int width = decoded[1];
             i += width;
             if (width == 1 && r == 0xFFFD && (s[i - 1] & 0xFF) >= 0x80) {
-                // Go quote.go:46-51 —— 非法 UTF-8 字节 ⇒ \xNN
+                // B 侧 quote.go:46-51 —— 非法 UTF-8 字节 ⇒ \xNN
                 out.append("\\x").append(lowerHex(s[i - 1] >> 4)).append(lowerHex(s[i - 1] & 0xF));
                 continue;
             }
@@ -591,7 +592,7 @@ public final class GetFormValuesFilter {
                 continue;
             }
             switch (r) {
-                // ⚠️ Java **没有** \a / \v 这两个转义（那是 C/Go 的）⇒ 用码点常量
+                // ⚠️ Java **没有** \a / \v 这两个转义（那是 C/B 的）⇒ 用码点常量
                 case 0x07 -> out.append("\\a");
                 case '\b' -> out.append("\\b");
                 case '\f' -> out.append("\\f");
@@ -620,13 +621,13 @@ public final class GetFormValuesFilter {
         return out.toString();
     }
 
-    /** Go 的 {@code strconv.lowerhex}（<b>小写</b>十六进制）。 */
+    /** B 的 {@code strconv.lowerhex}（<b>小写</b>十六进制）。 */
     private static char lowerHex(int nibble) {
         return "0123456789abcdef".charAt(nibble & 0xF);
     }
 
     /**
-     * Go 的 {@code utf8.DecodeRuneInString}（{@code unicode/utf8/utf8.go}）。
+     * B 的 {@code utf8.DecodeRuneInString}（{@code unicode/utf8/utf8.go}）。
      *
      * @return {@code [码点, 字节数]}；非法序列 ⇒ {@code [0xFFFD, 1]}
      */
@@ -677,14 +678,14 @@ public final class GetFormValuesFilter {
     }
 
     /**
-     * Go 的 {@code strconv.IsPrint}（{@code strconv/quote.go:522-563}；
+     * B 的 {@code strconv.IsPrint}（{@code strconv/quote.go:522-563}；
      * ASCII / Latin-1 段的判据 = {@code quote.go:524-533}）。
      *
-     * <p>Go 的判据逐条：
+     * <p>B 的判据逐条：
      * <ul>
      *   <li>ASCII 段 {@code 0x20..0x7E} ⇒ 可打印；</li>
      *   <li>Latin-1 补充段 {@code 0xA1..0xFF} ⇒ 可打印，
-     *       <b>唯一例外是软连字符 U+00AD</b>（Go 源码的注释叫它 "the bizarre soft hyphen"）；</li>
+     *       <b>唯一例外是软连字符 U+00AD</b>（B 侧 源码的注释叫它 "the bizarre soft hyphen"）；</li>
      *   <li>{@code > 0xFF} ⇒ unicode 的 L/M/N/P/S 五类 <b>加</b> ASCII 空格
      *       （<b>不含</b>其它 Unicode 空格，如 U+00A0、U+3000）。</li>
      * </ul>
@@ -693,12 +694,12 @@ public final class GetFormValuesFilter {
      * Tomcat 在<b>连接器层</b>就拒掉了 query 里任何 {@code >= 0x80} 的字节
      * （HTTP/1.1：{@code Http11InputBuffer} 的 {@code isQueryRelaxed} 检查；
      * HTTP/2：{@code StreamProcessor} 的同名检查）⇒ {@code goQuote} 的输入恒为纯 ASCII。
-     * <br>此处仍按 Go 逐条实现（而不是就 ASCII 取近似），理由与逐行证据 ⇒
+     * <br>此处仍按 B 侧 逐条实现（而不是就 ASCII 取近似），理由与逐行证据 ⇒
      * 本域台账 {@code docs/DRIFT/article/api.md}。
      */
     private static boolean isGoPrintable(int r) {
         if (r <= 0xFF) {
-            // Go strconv/quote.go:524-533（IsPrint 的 Latin-1 快路径）
+            // B 侧 strconv/quote.go:524-533（IsPrint 的 Latin-1 快路径）
             if (r >= 0x20 && r <= 0x7E) {
                 return true;
             }
@@ -736,7 +737,7 @@ public final class GetFormValuesFilter {
         }
     }
 
-    /** 码点序（= UTF-8 字节序），与 Go 的字符串比较一致。 */
+    /** 码点序（= UTF-8 字节序），与 B 的字符串比较一致。 */
     private static int compareByCodePoint(String a, String b) {
         int i = 0;
         int j = 0;
@@ -753,6 +754,6 @@ public final class GetFormValuesFilter {
     }
 
     // ⚠️ 刻意<b>不</b>再保留第二份 {@code http.Error} 形状的实现：
-    // 两份实现一旦漂移，就会出现「有的域返 Go 的 body、有的域返别的」
+    // 两份实现一旦漂移，就会出现「有的域返 B 的 body、有的域返别的」
     // ⇒ 与本条要消除的「同一个请求 10 个域 10 种行为」同源。
 }

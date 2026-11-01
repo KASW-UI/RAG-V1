@@ -20,20 +20,20 @@ import java.time.Duration;
 import java.util.function.BiFunction;
 
 /**
- * 对应 Go 版 service/common/communityfact/authority_http.go（80 行）
+ * 对应 B 侧版 service/common/communityfact/authority_http.go（80 行）
  *
  * <p>职责：暴露一个内部 HTTP 端点 {@code GET /internal/v1/community/facts}，
  * 用于跨服务查询 community fact authority 的源数据。
  *
- * <p>Go 版用 {@code http.Handler} + {@code http.ServeMux}，Java 版用 {@link HttpServlet}；
+ * <p>B 侧版用 {@code http.Handler} + {@code http.ServeMux}，Java 版用 {@link HttpServlet}；
  * 注册方式由业务模块决定（{@code ServletContext.addServlet(...)} 或 {@code @Bean ServletRegistrationBean}）。
  *
  * <p>框架职责：
  * <ul>
- *   <li>Go 版 net/http → Jakarta Servlet API（{@link HttpServlet}/{@link HttpServletRequest}/{@link HttpServletResponse}）</li>
- *   <li>Go 版 log/slog → SLF4J（{@link Logger}）</li>
- *   <li>Go 版 crypto/subtle.ConstantTimeCompare → Java {@link java.security.MessageDigest#isEqual(byte[], byte[])}（恒定时间）</li>
- *   <li>Go 版 otel propagator → Java OpenTelemetry {@link TextMapGetter} 从 servlet header 提取</li>
+ *   <li>B 侧版 net/http → Jakarta Servlet API（{@link HttpServlet}/{@link HttpServletRequest}/{@link HttpServletResponse}）</li>
+ *   <li>B 侧版 log/slog → SLF4J（{@link Logger}）</li>
+ *   <li>B 侧版 crypto/subtle.ConstantTimeCompare → Java {@link java.security.MessageDigest#isEqual(byte[], byte[])}（恒定时间）</li>
+ *   <li>B 侧版 otel propagator → Java OpenTelemetry {@link TextMapGetter} 从 servlet header 提取</li>
  * </ul>
  */
 public final class AuthorityHandler {
@@ -42,7 +42,7 @@ public final class AuthorityHandler {
     private static final ObjectMapper MAPPER = Wire.MAPPER;
 
     /**
-     * 对应 Go 版 {@code type AuthorityLookup func(context.Context, string, string) (AuthorityFact, error)}。
+     * 对应 B 侧版 {@code type AuthorityLookup func(context.Context, string, string) (AuthorityFact, error)}。
      */
     @FunctionalInterface
     public interface AuthorityLookup {
@@ -51,7 +51,7 @@ public final class AuthorityHandler {
 
     /**
      * DRIFT-012 修复：业务模块抛此 sentinel 异常（或其子类）表示"authority 不可用"，被识别为 404 而非 503。
-     * 对应 Go 版 {@code var ErrAuthorityUnavailable = errors.New("community fact authority unavailable")} + errors.Is。
+     * 对应 B 侧版 {@code var ErrAuthorityUnavailable = errors.New("community fact authority unavailable")} + errors.Is。
      */
     public static final class AuthorityUnavailableException extends RuntimeException {
         private static final long serialVersionUID = 1L;
@@ -64,7 +64,7 @@ public final class AuthorityHandler {
     }
 
     /**
-     * 沿 cause 链查找 {@link AuthorityUnavailableException} sentinel，等价 Go 版 {@code errors.Is(err, ErrAuthorityUnavailable)}。
+     * 沿 cause 链查找 {@link AuthorityUnavailableException} sentinel，等价 B 侧版 {@code errors.Is(err, ErrAuthorityUnavailable)}。
      */
     private static boolean isAuthorityUnavailable(Throwable err) {
         Throwable t = err;
@@ -78,7 +78,7 @@ public final class AuthorityHandler {
     }
 
     /**
-     * 对应 Go 版 {@code func NewAuthorityHandler(producer, token string, lookup AuthorityLookup, logger *slog.Logger) (http.Handler, error)}。
+     * 对应 B 侧版 {@code func NewAuthorityHandler(producer, token string, lookup AuthorityLookup, logger *slog.Logger) (http.Handler, error)}。
      *
      * <p>工厂方法：传入 producer/token/lookup，返回一个 Servlet，由业务模块注册到 servlet 容器上。
      */
@@ -108,7 +108,7 @@ public final class AuthorityHandler {
         AuthorityServlet(String producer, String token, AuthorityLookup lookup, Logger logger) {
             this.producer = producer;
             // M20 修复：M20 之前用 token.getBytes()（平台默认字符集）。
-            // Go 侧 []byte(token) 是 UTF-8 字节切片；在非 UTF-8 默认字符集的平台上
+            // B 侧 []byte(token) 是 UTF-8 字节切片；在非 UTF-8 默认字符集的平台上
             // （LANG=C / POSIX locale 的 JVM）两边的字节序列不同，恒定时间比较永远不等 → 合法 token 也 401。
             this.tokenBytes = token.getBytes(StandardCharsets.UTF_8);
             this.lookup = lookup;
@@ -121,7 +121,7 @@ public final class AuthorityHandler {
             long started = System.nanoTime();
 
             // 1) otel context 提取 + 起 server span
-            // 对应 Go 版：ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+            // 对应 B 侧版：ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
             //            ctx, span := otel.Tracer(...).Start(ctx, "...", trace.WithSpanKind(SERVER))
             Context ctx = GlobalOpenTelemetry.getPropagators().getTextMapPropagator()
                     .extract(Context.current(), req, HeaderGetter.INSTANCE);
@@ -137,8 +137,8 @@ public final class AuthorityHandler {
                 resp.setHeader("Cache-Control", "no-store");
 
                 // 2) Bearer token 校验（恒定时间比较）
-                // 对应 Go 版 subtle.ConstantTimeCompare([]byte(...), []byte(token)) != 1
-                // Go 版 r.Header.Values("Authorization") 要求 len == 1（多个 Authorization 头直接 401）；
+                // 对应 B 侧版 subtle.ConstantTimeCompare([]byte(...), []byte(token)) != 1
+                // B 侧版 r.Header.Values("Authorization") 要求 len == 1（多个 Authorization 头直接 401）；
                 // Java 版 req.getHeader 取首个会漏检；DRIFT-013 修复：显式遍历所有 Authorization 头。
                 java.util.List<String> authzValues = java.util.Collections.list(req.getHeaders("Authorization"));
                 if (authzValues.size() != 1 || !authzValues.get(0).startsWith("Bearer ")) {
@@ -160,7 +160,7 @@ public final class AuthorityHandler {
 
                 // 3) Query 校验：producer 必须匹配 + event_id 必须非空
                 // DRIFT-031 修复：用 getParameterValues 严格检查重复参数
-                // 对应 Go 版 r.URL.Query()["producer"] 取 []string，len != 1 → 404
+                // 对应 B 侧版 r.URL.Query()["producer"] 取 []string，len != 1 → 404
                 // Java 默认 req.getParameter 取第一个，导致 ?producer=a&producer=b 通过验证 → 错误语义
                 String[] producerValues = req.getParameterValues("producer");
                 String[] eventIdValues = req.getParameterValues("event_id");
@@ -182,7 +182,7 @@ public final class AuthorityHandler {
                     fact = lookup.lookup(ctx, producerParam, eventIdParam);
                 } catch (Exception ex) {
                     // DRIFT-COMMON-003 修复：判定必须从**原始异常 ex** 起遍历整条 cause 链。
-                    // Go 出处 authority_http.go:58 `errors.Is(err, ErrAuthorityUnavailable)` ——
+                    // B 出处 service/common/src/main/java/com/rag/common/communityfact/AuthorityHandler.java:185:58 `errors.Is(err, ErrAuthorityUnavailable)` ——
                     // errors.Is 从 err 出发沿 Unwrap 链逐个比对。
                     // 旧实现先 unwrapCause(ex) 走到链**最深**，再拿那个末端元素去判：
                     // AuthorityUnavailableException 有 (String, Throwable) 构造器（:61），
@@ -228,7 +228,7 @@ public final class AuthorityHandler {
                 }
                 resp.setStatus(200);
                 // DRIFT-033 修复：捕获 outputStream.write() 的 IOException（client 断开 / 容器关闭）
-                // 输出 community.fact_authority.response_interrupted 日志，对齐 Go 版 json.NewEncoder(w).Encode 失败语义
+                // 输出 community.fact_authority.response_interrupted 日志，对齐 B 侧版 json.NewEncoder(w).Encode 失败语义
                 try {
                     resp.getOutputStream().write(body);
                 } catch (IOException writeErr) {
@@ -258,7 +258,7 @@ public final class AuthorityHandler {
 
     /**
      * Servlet Header getter，把 HttpServletRequest 的 header 喂给 otel propagator。
-     * 对应 Go 版 {@code propagation.HeaderCarrier(r.Header)}。
+     * 对应 B 侧版 {@code propagation.HeaderCarrier(r.Header)}。
      *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/communityfact/AuthorityHandler.java}
  * （1:1 · 映射表 §1.2 第 146 行；L2 业务语义层以 RAG 为基准整段抄 · D13；
@@ -283,7 +283,7 @@ public final class AuthorityHandler {
     private AuthorityHandler() {
     }
 
-    // 保留 BiFunction 引用作为"业务模块可自行实现的接口"提示（Go 版 AuthorityLookup 是函数类型）
+    // 保留 BiFunction 引用作为"业务模块可自行实现的接口"提示（B 侧版 AuthorityLookup 是函数类型）
     @SuppressWarnings("unused")
     private static final Class<?> LOOKUP_HINT = BiFunction.class;
 }

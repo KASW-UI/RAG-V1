@@ -27,7 +27,7 @@ grpc:
     address: 0.0.0.0
     reflection-service-enabled: false
   client:
-    # ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而 Go zrpc 是明文 gRPC。
+    # ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而上游 zrpc 是明文 gRPC。
     #    不写会静默变 TLS —— 见《完全spring化的文件树》§9.1 断言 A4。
 
 mybatis-plus:

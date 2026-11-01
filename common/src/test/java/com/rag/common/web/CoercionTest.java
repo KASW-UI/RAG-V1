@@ -16,8 +16,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * **证不了 Jackson 真的拒了** ⇒ ⇒ 这里用<b>真实</b> {@code JsonMapper} +
  * <b>真实</b> {@code readValue}，断言<b>可观察的解析结果</b>。
  *
- * <p><b>Go 出处</b>：go-zero {@code core/mapping/unmarshaler.go}（真进程 18889 实测，见
- * {@link Coercion} 类注释里逐条的 Go 判定表）。
+ * <p><b>B 出处</b>：B 侧 {@code service/users/users-common/src/main/java/com/rag/users/common/http/GoStyleCoercion.java:18-32}
+ * （RAG 仓，真进程 18889 实测，见
+ * {@link Coercion} 类注释里逐条的 B 侧 判定表）。
  *
  * <p><b>⚠️ 这条测试同时是「Jackson 2 ↔ Jackson 3 行为一致」的证据</b>：
  * RAG 侧这些规则配在 Jackson 3 上；本仓配在 Jackson 2 上 ⇒ 本测试的期望值
@@ -25,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class CoercionTest {
 
-    /** Go 侧的请求 DTO 形状：String 字段 + int64 字段。 */
+    /** B 侧的请求 DTO 形状：String 字段 + int64 字段。 */
     static class Req {
         public String username;
         public Long uid;
@@ -43,7 +44,7 @@ class CoercionTest {
     private static final JsonMapper MAPPER = goStyleMapper();
 
     @Test
-    @DisplayName("规则 1：数字进 String 字段被拒（Go: type mismatch for field \"username\"）")
+    @DisplayName("规则 1：数字进 String 字段被拒（B 侧: type mismatch for field \"username\"）")
     void numberIntoStringIsRejected() {
         assertThatThrownBy(() -> MAPPER.readValue("{\"username\":1}", Req.class))
                 .isInstanceOf(com.fasterxml.jackson.databind.exc.MismatchedInputException.class);
@@ -78,7 +79,7 @@ class CoercionTest {
     }
 
     @Test
-    @DisplayName("规则 2：浮点 1.0 进 Long 被拒（Go: strconv.ParseInt(\"1.0\") 失败）")
+    @DisplayName("规则 2：浮点 1.0 进 Long 被拒（B 侧: strconv.ParseInt(\"1.0\") 失败）")
     void floatOneZeroIntoLongIsRejected() {
         assertThatThrownBy(() -> MAPPER.readValue("{\"uid\":1.0}", Req.class))
                 .isInstanceOf(com.fasterxml.jackson.databind.exc.MismatchedInputException.class);
@@ -92,14 +93,14 @@ class CoercionTest {
     }
 
     @Test
-    @DisplayName("规则 2：整数进 Long 照常接受（Go: {\"uid\":1} → 200）")
+    @DisplayName("规则 2：整数进 Long 照常接受（B 侧: {\"uid\":1} → 200）")
     void integerIntoLongIsAccepted() throws Exception {
         Req req = MAPPER.readValue("{\"uid\":1}", Req.class);
         assertThat(req.uid).isEqualTo(1L);
     }
 
     @Test
-    @DisplayName("刻意不动的一条：字符串进 Long 保持接受（Go: 先字符串化再 ParseInt）")
+    @DisplayName("刻意不动的一条：字符串进 Long 保持接受（B 侧: 先字符串化再 ParseInt）")
     void stringIntoLongIsStillAccepted() throws Exception {
         Req req = MAPPER.readValue("{\"uid\":\"1\"}", Req.class);
         assertThat(req.uid).isEqualTo(1L);

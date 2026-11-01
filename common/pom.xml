@@ -129,7 +129,7 @@
             ══════════════════════════════════════════════════════════════════════
         -->
 
-        <!-- ============ 日志门面 + 实现（替代 go-zero logx） ============ -->
+        <!-- ============ 日志门面 + 实现（替代上游 logx；B 侧落点 = service/common/src/main/java/com/rag/common/logger/Logger.java） ============ -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
@@ -230,7 +230,7 @@
         -->
 
         <!--
-            gRPC **client** 全局拦截器（Go zrpc client 熔断）——
+            gRPC **client** 全局拦截器（上游 zrpc client 熔断）——
             optional（同 spring-web 的理由）：`common` 自己能编译，但不传递给下游。
         -->
         <dependency>
@@ -336,8 +336,8 @@
             **全部业务语义都长在 PG 的列类型上**：
               · jsonb 列**会规范化**空白与键序 ⇒ 读回文本 ≠ 写入原文（javadoc 明写 ⇒ 必须真 PG 才能证）；
               · jsonb 列**拒收** `\u0000` 转义（SQLSTATE 22P05）而 **text 列照单全收**
-                ⇒ 这正是「两个 handler 必须分开」的**唯一判据**（Go 侧 `encoding/json` 产出的是
-                6 个 ASCII 字符 `\u0000`，不是裸 NUL 字节 ⇒ Go 侧 text 列必须收下）。
+                ⇒ 这正是「两个 handler 必须分开」的**唯一判据**（上游 `encoding/json` 产出的是
+                6 个 ASCII 字符 `\u0000`，不是裸 NUL 字节 ⇒ text 列必须收下）。
             ⇒ mock 数据层不执行 SQL、H2 没有 JSONB 类型 ⇒ 二者都**验不到要验的东西**
               （RAG 侧 `ArticleJsonbResultMapWiringTest` 的 javadoc 已写明同款理由）。
 

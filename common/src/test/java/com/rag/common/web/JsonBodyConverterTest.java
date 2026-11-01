@@ -17,9 +17,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * §3.3 真触发测试 —— {@link JsonBodyConverter} 的「Go 何时才读 body」判据 + 8 MiB 上限。
+ * §3.3 真触发测试 —— {@link JsonBodyConverter} 的「B 侧 何时才读 body」判据 + 8 MiB 上限。
  *
- * <p><b>Go 出处</b>：go-zero {@code rest/httpx/requests.go:117-124,153-155}
+ * <p><b>B 出处</b>：B 侧 {@code service/common/src/main/java/com/rag/common/http/GoStyleJsonBodyConverter.java:15:117-124,153-155}（RAG 仓）
  * （{@code withJsonBody} = {@code r.ContentLength > 0 && strings.Contains(Content-Type, "application/json")}
  * ＋ {@code io.LimitReader(r.Body, maxBodyLen)}，{@code maxBodyLen = 8 << 20}）。
  *
@@ -78,7 +78,7 @@ class JsonBodyConverterTest {
     }
 
     @Test
-    @DisplayName("⚠️ 判据：Content-Type 大小写敏感（Go: strings.Contains）⇒ Application/JSON 不读")
+    @DisplayName("⚠️ 判据：Content-Type 大小写敏感（B 侧: strings.Contains）⇒ Application/JSON 不读")
     void contentTypeIsCaseSensitive() {
         assertThat(JsonBodyConverterConfig.goReadsBody("Application/JSON", 10L)).isFalse();
     }
@@ -97,13 +97,13 @@ class JsonBodyConverterTest {
     }
 
     @Test
-    @DisplayName("判据：Content-Length 为 0 不读（Go: r.ContentLength > 0）")
+    @DisplayName("判据：Content-Length 为 0 不读（B 侧: r.ContentLength > 0）")
     void zeroLengthDoesNotReadBody() {
         assertThat(JsonBodyConverterConfig.goReadsBody("application/json", 0L)).isFalse();
     }
 
     @Test
-    @DisplayName("⚠️ 判据：chunked（Content-Length = -1）不读（Go 侧同样是 -1 ⇒ 判据为假）")
+    @DisplayName("⚠️ 判据：chunked（Content-Length = -1）不读（B 侧同样是 -1 ⇒ 判据为假）")
     void chunkedDoesNotReadBody() {
         assertThat(JsonBodyConverterConfig.goReadsBody("application/json", -1L)).isFalse();
     }
@@ -127,7 +127,7 @@ class JsonBodyConverterTest {
     }
 
     @Test
-    @DisplayName("⚠️ 读层：判据不满足 ⇒ 返回 null 且**不消费请求流**（Go: UnmarshalJsonMap(nil, v)）")
+    @DisplayName("⚠️ 读层：判据不满足 ⇒ 返回 null 且**不消费请求流**（B 侧: UnmarshalJsonMap(nil, v)）")
     void returnsNullWithoutReadingBodyWhenPredicateFails() throws Exception {
         byte[] body = utf8("{\"target_type\":\"article\"}");
         SimpleInputMessage msg = new SimpleInputMessage("text/plain", body.length, body);
@@ -135,7 +135,7 @@ class JsonBodyConverterTest {
     }
 
     @Test
-    @DisplayName("⚠️ 读层：畸形 Content-Type 不抛 InvalidMediaTypeException（Go 只做字面 Contains，从不解析 MIME）")
+    @DisplayName("⚠️ 读层：畸形 Content-Type 不抛 InvalidMediaTypeException（B 侧 只做字面 Contains，从不解析 MIME）")
     void malformedContentTypeDoesNotThrow() throws Exception {
         byte[] body = utf8("{\"target_type\":\"article\"}");
         SimpleInputMessage msg = new SimpleInputMessage("application/json, application/xml", body.length, body);
@@ -143,7 +143,7 @@ class JsonBodyConverterTest {
     }
 
     @Test
-    @DisplayName("⚠️ 读层：charset 被去掉 ⇒ Jackson 按 UTF-8 读（Go 的 encoding/json 只认 UTF-8）")
+    @DisplayName("⚠️ 读层：charset 被去掉 ⇒ Jackson 按 UTF-8 读（B 的 encoding/json 只认 UTF-8）")
     void charsetIsStripped() throws Exception {
         byte[] body = utf8("{\"target_type\":\"文章\"}");
         SimpleInputMessage msg = new SimpleInputMessage("application/json; charset=gbk", body.length, body);
@@ -152,7 +152,7 @@ class JsonBodyConverterTest {
     }
 
     @Test
-    @DisplayName("⚠️ 读层：超过 8 MiB 的 body 被截断 ⇒ 解析失败（Go: io.LimitReader 静默截断在 8 MiB）")
+    @DisplayName("⚠️ 读层：超过 8 MiB 的 body 被截断 ⇒ 解析失败（B 侧: io.LimitReader 静默截断在 8 MiB）")
     void bodyIsTruncatedAtEightMiB() {
         String big = "x".repeat(9 * 1024 * 1024);
         byte[] body = utf8("{\"target_type\":\"" + big + "\"}");
@@ -163,7 +163,7 @@ class JsonBodyConverterTest {
     }
 
     @Test
-    @DisplayName("读层：8 MiB 上限常量 = Go 的 8 << 20")
+    @DisplayName("读层：8 MiB 上限常量 = B 的 8 << 20")
     void maxBodyLenMatchesGo() {
         assertThat(JsonBodyConverter.GO_MAX_BODY_LEN).isEqualTo(8 * 1024 * 1024);
     }

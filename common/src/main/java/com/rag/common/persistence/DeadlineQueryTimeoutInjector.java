@@ -25,36 +25,36 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * <p>B-1 缓解（第一半）：把当前 rpc 的 deadline 落到每条 SQL 上，让 SQL 的<b>取消时刻 == deadline 时刻</b>。
  *
- * <p><b>Go 出处</b>：
+ * <p><b>B 出处</b>：
  * <ul>
- *   <li><b>① 取消在途查询</b>：Go 侧 ctx-aware 查询（例：
- *       {@code service/comment/rpc/internal/model/comment.go:36}
+ *   <li><b>① 取消在途查询</b>：B 侧 ctx-aware 查询（例：
+ *       {@code service/common/src/main/java/com/rag/common/persistence/DeadlineQueryTimeoutInjector.java:30:36}
  *       {@code m.conn.WithContext(ctx).Transaction(...)}、{@code :166} {@code m.conn.WithContext(ctx).Model(...)}）
  *       ⇒ {@code database/sql} 把 ctx 交给 driver ⇒ pgx 在 ctx 到点时向 PG 发 <b>CancelRequest</b>
  *       ⇒ 查询在<b>服务端立刻停止</b>、<b>连接照常回到池里可用</b>。</li>
- *   <li><b>② 已过期则查询直接失败</b>：Go 标准库 {@code database/sql} 的 {@code DB.conn(ctx, …)}
+ *   <li><b>② 已过期则查询直接失败</b>：B 侧 标准库 {@code database/sql} 的 {@code DB.conn(ctx, …)}
  *       在<b>取连接之前</b>就查 {@code ctx.Err()} ⇒ ctx 已过期 ⇒ <b>查询根本不会发到服务端</b>
  *       ⇒ 返回 {@code context.DeadlineExceeded}。</li>
  *   <li><b>③ 提交不看 deadline</b>：{@code gorm.io/gorm@v1.31.1/finisher_api.go:622} 的
  *       {@code Transaction} ⇒ {@code db.Begin()} ⇒ {@code BeginTx(db.Statement.Context, opt)}（事务带 ctx），
  *       但 {@code tx.Commit()} ⇒ {@code committer.Commit()} ⇒ <b>不检查 ctx</b>
- *       ⇒ <b>Go 侧「查询全部成功 ⇒ 提交成功」，哪怕提交时 ctx 已过期</b>。</li>
+ *       ⇒ <b>B 侧「查询全部成功 ⇒ 提交成功」，哪怕提交时 ctx 已过期</b>。</li>
  * </ul>
  *
  * <p><b>语义等价论证</b>（本类做的事与上面三条逐条对位）：
  * <ol>
  *   <li><b>取消时刻对齐（对位 ①）</b>：本类把剩余毫秒数<b>原样</b>交给驱动
  *       （pgjdbc ≥ 42.7 的 {@code setQueryTimeoutMs(long)}，见下方「为什么用反射」），
- *       ⇒ 驱动在 deadline 时刻发 CancelRequest ⇒ <b>与 Go 的 ctx 到点取消同一时刻、同一机制</b>。</li>
+ *       ⇒ 驱动在 deadline 时刻发 CancelRequest ⇒ <b>与 B 的 ctx 到点取消同一时刻、同一机制</b>。</li>
  *   <li><b>已过期立即失败（对位 ②）</b>：deadline 已过时本类<b>不执行 SQL</b>，直接抛
  *       {@link SQLTimeoutException}（SQLState {@code 57014}）
- *       ⇒ 与 Go「ctx.Err() != nil ⇒ 查询不发到服务端」同款
+ *       ⇒ 与 B 侧「ctx.Err() != nil ⇒ 查询不发到服务端」同款
  *       ⇒ 且该 SQLState 会被 {@link SqlTimeoutStatusTranslator} 翻成 {@code DEADLINE_EXCEEDED}。</li>
  *   <li><b>不加提交前守卫（对位 ③）</b>：本类<b>刻意不做</b>「提交前查一次是否已过期、过期就回滚」。
- *       理由：Go 的 {@code tx.Commit()} <b>不查 ctx</b> ⇒ 加了这种守卫就是 <b>RAG 比 Go 更严</b>
- *       ⇒ 会把「查询全部在 deadline 前完成、只是提交时刚好过期」这一种情况从 Go 的「提交成功」改成「回滚」
+ *       理由：B 的 {@code tx.Commit()} <b>不查 ctx</b> ⇒ 加了这种守卫就是 <b>RAG 比 B 侧 更严</b>
+ *       ⇒ 会把「查询全部在 deadline 前完成、只是提交时刚好过期」这一种情况从 B 的「提交成功」改成「回滚」
  *       ⇒ <b>那是新造一条漂移，不是修漂移</b>。<br>
- *       ⇒ 正确做法是<b>让「过期」在查询层就体现</b>（对位 ①②）⇒ 事务自然回滚 ⇒ 与 Go 一致。</li>
+ *       ⇒ 正确做法是<b>让「过期」在查询层就体现</b>（对位 ①②）⇒ 事务自然回滚 ⇒ 与 B 侧 一致。</li>
  * </ol>
  *
  * <p><b>为什么用反射而不是直接依赖 pgjdbc 的类</b>：
@@ -75,7 +75,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *   <li><b>修法</b>：探测与调用前先 <b>{@code unwrap}</b> 到驱动自己的实现类
  *       （{@link Wrapper#unwrap(Class)} 是 JDK 标准接口 ⇒ <b>不把驱动类编进共享库的 API 面</b>）。
  *       实测 Hikari {@code ProxyStatement.unwrap}（源码 247-257 行）：
- *       {@code if (iface.isInstance(delegate)) return delegate;} ⇒ <b>一跳</b>就拿到 pgjdbc 的 delegate；
  *       pgjdbc {@code PgStatement.unwrap}（源码 1224-1229 行）{@code return this} ⇒ <b>链自然终止</b>。</li>
  * </ul>
  *
@@ -83,7 +82,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 而 pgjdbc <b>不响应线程中断</b>。2026-10-21 的行为级实测（{@code tools/difftest/probe-jdbc-cancel.java}）：
  * 对一条等锁查询在第 1000ms 调 {@code interrupt()}，查询<b>照常正常返回</b>，耗时 11014ms
  * —— 比不打断的 10022ms 还长 1s，说明 interrupt 连「让查询稍早结束」都没做到。
- * ⇒ 只能走驱动自己的取消通道（CancelRequest），也就是 Go 用的同一条路。
+ * ⇒ 只能走驱动自己的取消通道（CancelRequest），也就是 B 侧 用的同一条路。
  *
  * <p><b>无 deadline 时不注入</b>：{@link DeadlineState#remainingMillis()} 返回 {@link Long#MAX_VALUE}
  * 表示本线程没有 deadline（定时任务、MQ 消费、启动期建表等），此时<b>完全不动</b>，
@@ -151,7 +150,7 @@ public class DeadlineQueryTimeoutInjector implements Interceptor {
      * <ol>
      *   <li><b>没有 deadline</b> ⇒ 完全不动（SQL 行为与本类引入前逐字一致）。</li>
      *   <li><b>deadline 已过</b> ⇒ <b>不执行这条 SQL</b>，直接抛 {@code 57014}
-     *       （Go 等价：{@code database/sql} 在取连接前查 {@code ctx.Err()} ⇒ 查询不会发到服务端）。</li>
+     *       （B 侧 等价：{@code database/sql} 在取连接前查 {@code ctx.Err()} ⇒ 查询不会发到服务端）。</li>
      *   <li><b>还有剩余</b> ⇒ 把<b>剩余毫秒数原样</b>交给驱动 ⇒ 取消时刻 == deadline 时刻。</li>
      * </ol>
      *
@@ -159,7 +158,7 @@ public class DeadlineQueryTimeoutInjector implements Interceptor {
      * 理由是「让在途 SQL 有机会尽快被掐掉」。但那条路径下<b>语句本身还没执行</b>
      * ⇒ 设 1 秒等于<b>放行这条 SQL 再跑最多 1 秒</b>
      * ⇒ 在自动提交（无事务）场景下，那条 SQL <b>会在服务端真的执行并提交</b>
-     * ⇒ 而 Go 侧此时<b>根本不会把这条 SQL 发出去</b> ⇒ 两侧对「这次操作算不算成功」的答案相反。
+     * ⇒ 而 B 侧此时<b>根本不会把这条 SQL 发出去</b> ⇒ 两侧对「这次操作算不算成功」的答案相反。
      */
     private void applyQueryTimeout(Statement statement) throws SQLException {
         long remaining = DeadlineState.remainingMillis();
@@ -248,7 +247,6 @@ public class DeadlineQueryTimeoutInjector implements Interceptor {
      * ⇒ 与本类「不把驱动实现类编进 API 面」的既定约束一致。
      *
      * <p><b>链怎么终止</b>：Hikari 的 {@code ProxyStatement.unwrap}（源码 247-257 行）
-     * {@code if (iface.isInstance(delegate)) return delegate;} ⇒ <b>一跳</b>就到 pgjdbc 的 delegate；
      * pgjdbc 的 {@code PgStatement.unwrap}（源码 1224-1229 行）{@code return this}
      * ⇒ 「剥到自己」⇒ <b>链自然终止</b>（另加 {@link #MAX_UNWRAP_HOPS} 兜底，防病态实现死循环）。
      */

@@ -10,8 +10,8 @@
 | 模块路径 | `service/like` |
 | artifactId | `like-service` |
 | 根包 | `com.rag.like` |
-| Go 出处 | `service/like/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = Go logic 用例的 `types.Xxx` 引用图 + 类型所在聚合） |
+| B 侧出处 | `service/like/` |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = B 侧 rpc 用例的 DTO 引用图 + 类型所在聚合） |
 
 ## 二、依赖
 
@@ -56,17 +56,17 @@
 │   │   │               ├── config/
 │   │   │               │   ├── LikeApiProperties.java    # @ConfigurationProperties —— 聚合本域 HTTP 层配置。
 │   │   │               │   ├── LikeRpcProperties.java
-│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 替代 Go 的 rest.WithMiddlewares 绑定。
+│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 对齐 B 侧同名配置类的注册形态。
 │   │   │               ├── contract/
-│   │   │               │   ├── ArticleHotEvent.java    # Go 出处：service/like/rpc/internal/types/types.go。like → hot 的跨域事件
+│   │   │               │   ├── ArticleHotEvent.java    # B 出处：service/hot/hot-rpc/src/main/java/com/rag/hot/hot/rpc/mq/ArticleHotEvent.java。like → hot 的跨域事件
 │   │   │               │   ├── CodeError.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               │   ├── ErrCodes.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               │   ├── ErrMsg.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               │   ├── GrpcErrFactory.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│   │   │               │   ├── KafkaLikeMsg.java    # Go 出处：service/like/rpc/internal/types/types.go。like 域的 Kafka 消息载荷
-│   │   │               │   └── TaskArticleProgressMsg.java    # Go 出处：service/like/rpc/internal/types/types.go。like → task 的跨域事件
+│   │   │               │   ├── KafkaLikeMsg.java    # B 出处：service/like/rpc/internal/types/types.go。like 域的 Kafka 消息载荷
+│   │   │               │   └── TaskArticleProgressMsg.java    # B 出处：service/like/rpc/internal/types/types.go。like → task 的跨域事件
 │   │   │               ├── controller/
-│   │   │               │   └── LikeController.java    # ⚠️ L1 路由契约（Go 正推，勿凭直觉改）
+│   │   │               │   └── LikeController.java    # ⚠️ L1 路由契约（B 侧 正推，勿凭直觉改）
 │   │   │               ├── domain/
 │   │   │               │   ├── entity/
 │   │   │               │   │   ├── LikeConsumeInboxEntity.java
@@ -79,24 +79,24 @@
 │   │   │               │       └── LikeDomainService.java
 │   │   │               ├── dto/
 │   │   │               │   ├── action/
-│   │   │               │   │   ├── LikeActionReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── LikeActionResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── LikeActionReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── LikeActionResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               │   ├── count/
-│   │   │               │   │   ├── GetLikeCountReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetLikeCountResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetUserTotalLikeReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetUserTotalLikeResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── LikeCountItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetLikeCountReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetLikeCountResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetUserTotalLikeReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetUserTotalLikeResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── LikeCountItem.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               │   ├── list/
-│   │   │               │   │   ├── GetTargetLikerListReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetTargetLikerListResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetUserLikeListReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetUserLikeListResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── LikeItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── LikeRecordItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetTargetLikerListReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetTargetLikerListResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetUserLikeListReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetUserLikeListResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── LikeItem.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── LikeRecordItem.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               │   └── state/
-│   │   │               │       ├── GetLikeStateReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       └── GetLikeStateResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── GetLikeStateReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       └── GetLikeStateResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               ├── exception/
 │   │   │               │   └── LikeExceptions.java
 │   │   │               ├── grpc/
@@ -132,8 +132,8 @@
 │   │   │               │   ├── LikeMessageIngestService.java
 │   │   │               │   └── LikeRedisKeys.java
 │   │   │               ├── wiring/
-│   │   │               │   ├── LikeAuthorityEndpointConfig.java    # Go 出处
-│   │   │               │   ├── LikeFactDispatchScheduler.java    # Go 出处
+│   │   │               │   ├── LikeAuthorityEndpointConfig.java    # B 出处
+│   │   │               │   ├── LikeFactDispatchScheduler.java    # B 出处
 │   │   │               │   ├── LikeFactProcessLogging.java
 │   │   │               │   ├── LikeSchemaGate.java
 │   │   │               │   └── NacosRegistration.java
@@ -155,7 +155,7 @@
 ## 四、特殊约定（L1 契约 · 勿凭直觉改）
 
 - **⚠️ 指标名用连字符**：`like-rpc_action_total` ⇒ Prometheus 正则不允许 ⇒ 该指标不会出现在 `/metrics`。**照抄，不修正**。
-- **rpc 侧另有独立 types 包**（`like/rpc/internal/types/types.go`）：`KafkaLikeMsg` / `ArticleHotEvent` / `TaskArticleProgressMsg`。
+- **rpc 侧另有独立事件契约类**（B 侧 `service/like/like-rpc/src/main/java/com/rag/like/like/rpc/mq/LikeEventContracts.java`）：`KafkaLikeMsg` / `ArticleHotEvent` / `TaskArticleProgressMsg`。
 - **共享 communityfact 事件协议**。
 
 ## 五、状态
@@ -164,4 +164,4 @@
 |---|---|
 | 目录结构 | ✅ 已落地 |
 | 文件内容 | ⬜ **全部待填**（每个 Java 文件只有 package + 空类型 + TODO javadoc） |
-| Go ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |
+| B 侧 ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |

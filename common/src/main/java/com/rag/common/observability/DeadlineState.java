@@ -34,8 +34,8 @@ public final class DeadlineState {
      *
      * <p>🔴 <b>为什么存「单调钟纳秒」而不是「墙钟 epoch 毫秒」</b>（DRIFT-COMMON-005 修复）：
      * <ul>
-     *   <li><b>Go 出处（逐条可核）</b>：标准库 {@code context.WithDeadline}
-     *       （{@code $GOROOT/src/context/context.go:625} · {@code :632}）把 deadline 存成
+     *   <li><b>B 出处（逐条可核）</b>：标准库 {@code context.WithDeadline}
+     *       （{@code $service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java:1004:625} · {@code :632}）把 deadline 存成
      *       {@code time.Time}（字段见 {@code $GOROOT/src/context/context.go:666}）⇒ <b>纳秒精度</b>；
      *       而 {@code time.Time} <b>自带单调时钟读数</b>（{@code $GOROOT/src/time/time.go:152}
      *       的 {@code ext int64} + {@code :164} 的 {@code hasMonotonic} 标志位）；
@@ -103,7 +103,7 @@ public final class DeadlineState {
      * <p>实际生效路径：{@link #newUnaryServerInterceptor} 的 {@code onHalfClose}
      * 在<b>真正跑 handler 的线程</b>上 {@link #bindToCurrent(long)}（M7 修复）。
      *
-     * <p>对应 Go 版 ctx 触发 cancel 后，handler ctx 立即 Done() 的语义。
+     * <p>对应 B 侧版 ctx 触发 cancel 后，handler ctx 立即 Done() 的语义。
      */
 
     /** 当前线程是否已过 deadline；false 包括"未设置"和"还有时间"。 */
@@ -119,7 +119,7 @@ public final class DeadlineState {
         if (d == null) return Long.MAX_VALUE;
         long remainNanos = d - monotonicNanos.getAsLong();
         if (remainNanos <= 0) return 0L;
-        // 🔴 **下取整**（对齐 Go：time.Until 返回 Duration，转毫秒即截断）
+        // 🔴 **下取整**（对齐 B 侧：time.Until 返回 Duration，转毫秒即截断）
         return remainNanos / 1_000_000L;
     }
 
@@ -137,7 +137,7 @@ public final class DeadlineState {
      * }
      * }</pre>
      *
-     * <p>对应 Go 版 handler 在循环里 {@code select { case <-ctx.Done(): ... }}。
+     * <p>对应 B 侧版 handler 在循环里 {@code select { case <-ctx.Done(): ... }}。
      *
      * <p>🔴 <b>兼容入口（DRIFT-COMMON-005 修复后的形态）</b>：入参仍是<b>墙钟 epoch 毫秒</b>
      * （既有跨域调用方都这么传：{@code favorite-rpc/.../FavoriteAuthorityEndpointConfig.java:276}

@@ -6,9 +6,9 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 请求级 deadline 的<b>载体</b>：把 {@link HttpMiddleware} 的 HTTP 超时预算，
- * 显式带到 gRPC 调用点上 —— 即 Go 侧 <b>ctx 传播</b>的 Java 等价物。
+ * 显式带到 gRPC 调用点上 —— 即 B 侧 <b>ctx 传播</b>的 Java 等价物。
  *
- * <h2>为什么需要它（Go 侧的机制，逐句对齐）</h2>
+ * <h2>为什么需要它（B 侧的机制，逐句对齐）</h2>
  *
  * <pre>
  *   rest/handler/timeouthandler.go:68-71
@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
  *       go func() { h.handler.ServeHTTP(tw, r); close(done) }()
  * </pre>
  *
- * <p>⇒ Go 的「超时后不 kill goroutine」是**假象**：handler 函数还在跑，
+ * <p>⇒ B 的「超时后不 kill goroutine」是**假象**：handler 函数还在跑，
  * 但它手上的 {@code ctx} 已经到期，于是所有 <b>ctx-aware</b> 的下游 I/O
  * （gRPC / DB）**立即中止**，goroutine 随之迅速结束。
  * <p>Java 没有隐式 ctx。超时分支只能 {@code Future.cancel(true)}。
@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit;
  * <table border="1">
  *   <caption>同一个「下游超时」事件的两条路径</caption>
  *   <tr><th>路径</th><th>客户端看到</th><th>在 codes.Acceptable 失败名单里？</th><th>breaker 会</th></tr>
- *   <tr><td>Go ctx 到期</td><td>{@code DEADLINE_EXCEEDED}</td><td><b>是</b></td><td>计为失败</td></tr>
+ *   <tr><td>B 侧 ctx 到期</td><td>{@code DEADLINE_EXCEEDED}</td><td><b>是</b></td><td>计为失败</td></tr>
  *   <tr><td>Java {@code Future.cancel(true)}</td><td>{@code CANCELLED}</td><td><b>否</b></td><td>计为<b>成功</b></td></tr>
  * </table>
  * ⇒ 不补 deadline，下游变慢对 client breaker <b>完全不可见</b>（被当成成功），
@@ -38,7 +38,7 @@ import java.util.concurrent.TimeUnit;
  * <h2>⚠️ 用 ThreadLocal 而不是显式传参，是一次<b>有意识的取舍</b></h2>
  *
  * <p>显式传参（每个 {@code rpcClient.method(req, deadline)}）在类型上更安全，
- * 但它要改 Go 侧<b>每个</b> logic 的函数签名，而 Go 那边恰恰是靠 ctx「隐形」传递的 ——
+ * 但它要改 B 侧<b>每个</b> logic 的函数签名，而 B 侧 那边恰恰是靠 ctx「隐形」传递的 ——
  * 强行显式化会让两边的调用形状对不上，也让「6 份逐字重复的 logic 模板」这一观察失效。
  * <p>ThreadLocal 的代价是<b>它对「谁在跑这段代码」有假设</b>，这个假设必须写死并被测住：
  * <ul>
@@ -46,18 +46,18 @@ import java.util.concurrent.TimeUnit;
  *       容器线程的 ThreadLocal 对它<b>不可见</b>。这是最容易写错的一处。</li>
  *   <li><b>必须在 worker 的 finally 里 clear</b> —— worker 来自线程池，
  *       残留会把下一个请求的 deadline 污染成上一个的（§3.3：静默串味）。</li>
- *   <li><b>无超时路径不 set</b> —— 对应 Go「没装 TimeoutHandler 就没有 ctx deadline」。</li>
+ *   <li><b>无超时路径不 set</b> —— 对应 B 侧「没装 TimeoutHandler 就没有 ctx deadline」。</li>
  * </ul>
  *
  * <h2>⚠️ 与 client breaker 的关系（用户 2026-10-22 拍板）</h2>
  *
  * <p>deadline 生效后，gRPC 调用超时会真的返回 {@code DEADLINE_EXCEEDED}。
  * 而 {@code com.rag.common.protection.GoStyleGrpcClientBreakerInterceptor#isAcceptable}
- * 把 {@code DEADLINE_EXCEEDED} 列为<b>失败</b>（对齐 Go {@code zrpc/internal/codes/accept.go}）
+ * 把 {@code DEADLINE_EXCEEDED} 列为<b>失败</b>（对齐 B 侧 {@code zrpc/internal/codes/accept.go}）
  * ⇒ <b>超时会计入 breaker、并可能触发熔断</b>。
  * <p>这是<b>有意接受的</b>：在补 deadline 之前，该码<b>永远不可能出现</b>
- * （调用不会被 deadline 打断），所以这条判据是「按 Go 写好但从未被触发」。
- * 现在它开始真实生效，语义与 Go 一致 —— <b>不是新增偏离</b>。
+ * （调用不会被 deadline 打断），所以这条判据是「按 B 侧 写好但从未被触发」。
+ * 现在它开始真实生效，语义与 B 侧 一致 —— <b>不是新增偏离</b>。
  */
 public final class GoStyleRequestDeadline {
 
@@ -99,11 +99,11 @@ public final class GoStyleRequestDeadline {
      * 剩余<b>纳秒</b>数；无 deadline 时返回 -1；已耗尽时返回 0。
      *
      * <p>⚠️ <b>为什么要有纳秒版</b>：{@link #remainingMillis()} 会把亚毫秒部分截掉
-     * ⇒ 出向上界的计算若走毫秒版，会比 Go 侧（纳秒）<b>宽最多 1ms</b>
-     * ⇒ 而 Go 的 ctx deadline 是<b>纳秒精度</b>（grpc-go 走 wire 的 {@code grpc-timeout}）
+     * ⇒ 出向上界的计算若走毫秒版，会比 B 侧（纳秒）<b>宽最多 1ms</b>
+     * ⇒ 而 B 的 ctx deadline 是<b>纳秒精度</b>（grpc-go 走 wire 的 {@code grpc-timeout}）
      * ⇒ ⇒ 对拍时会出现「差不到 1ms」的不可解释差异。
      *
-     * <p>Go 出处：{@code go-zero@v1.10.2/zrpc/internal/clientinterceptors/timeoutinterceptor.go:25}
+     * <p>B 出处：{@code service/common/src/main/java/com/rag/common/observability/GoStyleRequestDeadline.java:106:25}（RAG 仓）
      * （{@code context.WithTimeout(ctx, t)} ⇒ 纳秒精度 ⇒ min 语义）。
      */
     public static long remainingNanos() {
@@ -130,13 +130,13 @@ public final class GoStyleRequestDeadline {
      * （服务端 SQL 超时用），本类是<b>出向 gRPC</b> 用 ⇒ 两者必须绑<b>同一个绝对时刻</b>
      * ⇒ 故本方法收<b>绝对</b>纳秒时刻（调用方算好一次、两个载体共用）。
      *
-     * <p>Go 出处（ctx 传播 = 同一个 ctx 派生 ⇒ 同一个 deadline）：
+     * <p>B 出处（ctx 传播 = 同一个 ctx 派生 ⇒ 同一个 deadline）：
      * <pre>
-     *   go-zero@v1.10.2/zrpc/internal/serverinterceptors/timeoutinterceptor.go:34
+     *   B 出处：service/common/src/main/java/com/rag/common/observability/GoStyleRequestDeadline.java:135:34
      *       ctx, cancel := context.WithTimeout(ctx, t)
-     *   go-zero@v1.10.2/zrpc/internal/serverinterceptors/timeoutinterceptor.go:53
+     *   B 出处：service/common/src/main/java/com/rag/common/observability/GoStyleRequestDeadline.java:137:53
      *       resp, err = handler(ctx, req)      // ← handler 拿到的 ctx 已带 deadline
-     *   go-zero@v1.10.2/zrpc/internal/clientinterceptors/timeoutinterceptor.go:25
+     *   B 出处：service/common/src/main/java/com/rag/common/observability/GoStyleRequestDeadline.java:139:25
      *       ctx, cancel := context.WithTimeout(ctx, t)   // ← 出向调用再 min 一次
      * </pre>
      */
@@ -163,9 +163,9 @@ public final class GoStyleRequestDeadline {
         /**
          * <b>空作用域</b>（什么也不绑）—— 用于「本层<b>没有预算</b> ⇒ 不给载体赋值」的分支。
          *
-         * <p>⚠️ <b>为什么需要它</b>：Go 侧 ctx <b>没有 deadline</b> 时，出向调用**也不该有** deadline
+         * <p>⚠️ <b>为什么需要它</b>：B 侧 ctx <b>没有 deadline</b> 时，出向调用**也不该有** deadline
          * ⇒ 若此时给载体绑一个「292 年后到期」的值 ⇒ 出向就会**凭空多出一个 deadline**
-         * ⇒ ⇒ 与 Go 的形态<b>反向</b>（Go 是「没有 ⇒ 没有」）。
+         * ⇒ ⇒ 与 B 的形态<b>反向</b>（B 侧 是「没有 ⇒ 没有」）。
          *
          * <p>⚠️ 载体<b>没绑</b>时 {@link #remainingNanos()} 返回 {@code -1}
          * ⇒ 出向拦截器据此<b>不注入</b>任何约束（见
@@ -181,7 +181,7 @@ public final class GoStyleRequestDeadline {
      * 给 stub 套上当前线程的剩余预算；<b>没有预算时原样返回</b>。
      *
      * <p>⚠️ <b>预算已耗尽时给 1 纳秒</b>（而不是原样返回）：
-     * Go 侧 ctx 已到期时下游调用会<b>立刻失败</b>；若这里原样返回，
+     * B 侧 ctx 已到期时下游调用会<b>立刻失败</b>；若这里原样返回，
      * Java 就会发起一个「没有 deadline 的慢调用」—— 那正是要修的那个漂移。
      *
      * @param stub 任意 grpc blocking stub

@@ -7,9 +7,9 @@
 > ⇒ 本报告的「要不要迁 / 迁了多少钱 / 哪些文件要改」**全部不再适用**（Boot 4 时代的评估过程**保留作历史存档**）。
 > ⇒ 现行口径 ⇒ [`docs/决策记录.md`](决策记录.md) **D14** · 索引 ⇒ [`docs/README.md`](README.md)。
 
-> **评估对象**：RAG（Go 部署形态版，Boot 4.0.8）的 Jackson 2 / 3 混用 → **RAG-V1 全面统一 Jackson 3** 的实际工作量、风险与长期维护成本。
+> **评估对象**：RAG（B 侧 · api/rpc 分离形态，Boot 4.0.8）的 Jackson 2 / 3 混用 → **RAG-V1 全面统一 Jackson 3** 的实际工作量、风险与长期维护成本。
 > **核对日期**：2026-11-01 · **性质**：成本评估（只读审计，未改任何 POM / 源码 / 测试 / 配置）。
-> **口径**：与 `docs/决策记录.md` §1.0c「抄 RAG 实现」路线一致（L2 以 RAG 为基准，不回 Go 逐行复核）。
+> **口径**：与 `docs/决策记录.md` §1.0c「抄 RAG 实现」路线一致（L2 以 RAG 为基准，不回真源逐行复核）。
 > **配套**：[`SpringBoot4-Jackson3-Jackson2-Inventory.md`](SpringBoot4-Jackson3-Jackson2-Inventory.md) —— **Jackson 2 全量清单（206 个文件逐个列出 + 分类 + 刻意配置并集）**。
 
 ---
@@ -109,7 +109,7 @@
 | **10 域 Spring Context 启动**（真容器；Bean 真进容器、Kafka listener 真进 registry —— Boot 4 把 Kafka 自动配置拆成独立模块，**注解存在≠生效**） | 真容器 | 1.5~2.5 |
 | **HTTP 边界真实序列化**（真 Tomcat；禁 MockMvc；断言 `Content-Type`/`nosniff`/状态行/响应体） | 真 Tomcat | 1.0~1.5 |
 | **RPC / Kafka / Outbox 往返** + 5 个 TypeHandler 的 JSONB/JSON 列 | 集成 | 0.5~1.0 |
-| **GoCompatibleJson 字节对拍**（对 Go `encoding/json`；含浮点/大数/HTML 转义/U+2028） | 对拍 | 0.5~1.0 |
+| **`GoCompatibleJson` 字节对拍**（对 B 侧 `GoCompatibleJson` 的基准输出；含浮点/大数/HTML 转义/U+2028） | 对拍 | 0.5~1.0 |
 | **Coercion / 异常边界**（复用 DRIFT-LIKEAPI-012/014、DRIFT-LIKE-007 的用例形态，**期望值重算**） | 单测 + 真容器 | 0.5~1.0 |
 | **JJWT 签发/验签** + **MinIO put/get** | 集成 | 0.3~0.5 |
 | **已有 DRIFT / PITFALL 门禁重跑**（Jackson 相关子集） | 回归 | 0.5~1.0 |
@@ -146,7 +146,7 @@
 
 | 口径 | 工期 |
 |---|---|
-| 机械搬运基线（不回 Go 复核） | 35 ~ 50 人天 |
+| 机械搬运基线（不回真源复核） | 35 ~ 50 人天 |
 | ＋ Jackson 3 增量（**全量扫描 + MinIO 实验口径**） | 13.5 ~ 27.0 人天 |
 | **更新总工期** | **48.5 ~ 77.0 人天** |
 | **最可能** | **~55 ~ 60 人天** |
@@ -161,7 +161,7 @@
 | 🔴 高 | **MinIO 排除 Jackson 2 后不可用 ⇒「运行时零 Jackson 2」与「MinIO 可用」互斥** | minio-8.5.17.pom（compile scope） | 隔离最小实验（putObject/getObject）；若互斥则目标降级为「**业务代码零 Jackson 2 + 运行时仅 MinIO 传递带入**」并登记为签字偏离 |
 | 🔴 高 | **`FAIL_ON_TRAILING_TOKENS` 翻面 ⇒ 消息收/不收的判定改变**（消费侧 ⇒ 影响幂等与错误映射） | RAG `docs/DRIFT/like/api.md` DRIFT-LIKEAPI-014 | 逐路径核对 10 处独立 mapper + 5 个 TypeHandler + `Wire.MAPPER`；**真容器验证** |
 | 🔴 高 | **coercion 语义不等价 ⇒ 同请求体两侧结果不同**（静默强转 vs 拒；`1e400`→`Infinity`） | RAG `docs/DRIFT/like/api.md` DRIFT-LIKEAPI-012 | 2 个 validator 可能需**重写元素级解析器**（≠ 改包名） |
-| 🟡 中 | **`JsonNode.toString()` 字节差异 ⇒ `payload_hash` 变 ⇒ 跨语言幂等键漂移**（社区事实指纹走独立 JCS，**不受影响**） | `GoCompatibleJson.java:56-71` | 与 Go `encoding/json` 逐字节对拍 |
+| 🟡 中 | **`JsonNode.toString()` 字节差异 ⇒ `payload_hash` 变 ⇒ 跨语言幂等键漂移**（社区事实指纹走独立 JCS，**不受影响**） | `GoCompatibleJson.java:56-71` | 与 B 侧 `GoCompatibleJson` 的基准输出逐字节对拍 |
 | 🟡 中 | **5 份刻意配置并集化时丢失域差异**（article 无 Textual coercion、task 无 Boolean coercion） | 配套清单 §四 | 迁移前逐域核对「不需要」vs「漏配」 |
 | 🟡 中 | **Jackson 3 异常 unchecked ⇒ catch 语义变化** | `JsonProcessingException` 1 · `InvalidFormatException` 2 · `MismatchedInputException` 4 | 逐处复核 catch 范围 |
 | 🟡 中 | **Boot 4 `spring-boot-jackson` 只产 Jackson 3 ⇒ 任何残留 Jackson 2 注入点必然启动失败**（RAG 已记过同类坑） | RAG `docs/Pitfalls/like/rpc.md` PIT-LIKE-19 | 10 域逐一启动验证；**不用 Mockito 判存活** |

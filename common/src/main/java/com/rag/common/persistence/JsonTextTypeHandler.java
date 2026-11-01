@@ -22,21 +22,21 @@ import java.util.Map;
  * <p><b>为什么不能用「jsonb 味」的写法</b>（{@code ps.setObject(i, json, Types.OTHER)}
  * 让 PG 按 jsonb 解释参数）——
  * 那只对 **jsonb 列**成立。本模块的两张表（{@code admin_admin} / {@code users_user}）
- * 的 {@code extra_info} 列在 Go 侧都是 <b>text</b>
- * （{@code data_model.go:11} 与 {@code :43} 的 {@code serializer:json} ⇒ GORM 按 String 建列），
+ * 的 {@code extra_info} 列在 B 侧都是 <b>text</b>
+ * （{@code service/users/admin/admin-rpc/src/main/java/com/rag/users/admin/rpc/mapper/JsonTextTypeHandler.java:25:11} 与 {@code :43} 的 {@code serializer:json} ⇒ GORM 按 String 建列），
  * 而 jsonb 列比 text 列<b>多一套校验</b>，会拒收 {@code encoding/json} 能合法产出的内容。
  *
  * <p><b>这不是洁癖，有活体对拍证据（DRIFT-ARPC-004①，2026-10-23；B10，2026-10-25）</b>：
  * <pre>
  *   同一份请求体（extra_info 含 U+0000）：
- *     Go  → HTTP 200 {code:200}，行已落库
+ *     B 侧  → HTTP 200 {code:200}，行已落库
  *     RAG → HTTP 200 {code:5001}，无行，PG 报 22P05
  *            ERROR: unsupported Unicode escape sequence
  *            DETAIL: \u0000 cannot be converted to text.
  * </pre>
  * 根因：{@code encoding/json} 把 U+0000 转义成 6 个 ASCII 字符 {@code \u0000}
  * （**不是**裸 NUL 字节），而 jsonb 的 unicode escape 校验拒绝 {@code \u0000}；
- * text 列照单全收，与 Go 完全一致。
+ * text 列照单全收，与 B 侧 完全一致。
  *
  * <p>⚠️ <b>2026-10-25 订正</b>：本文件此前写「<b>不要把本 handler 与 JsonbTypeHandler 合并</b>：
  * admin-rpc 里另一张表的同名列 {@code users_user.extra_info} 仍是 JSONB」——
@@ -55,7 +55,7 @@ import java.util.Map;
  * <p>配套要求：实体上的 {@code @TableName} 必须带 {@code autoResultMap = true}，
  * 否则 MyBatis-Plus 生成的 ResultMap 不采用字段级 TypeHandler（读回来恒 null）。
  *
- * <p><b>Go 出处（声明点 + 消费点）</b>：
+ * <p><b>B 出处（声明点 + 消费点）</b>：
  * <ul>
  *   <li>声明点 {@code service/user/admin/rpc/internal/model/data_model.go:11}（{@code admin_admin}）
  *       与 {@code :43}（{@code users_user}）：

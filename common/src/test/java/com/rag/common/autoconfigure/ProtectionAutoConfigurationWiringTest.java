@@ -23,7 +23,7 @@ import static org.mockito.Mockito.verify;
 
 /**
  * §3.3「机制可证」守门：<b>gRPC 拦截链真的挂到了 server 上</b>（A3 的<b>运行时</b>证据），
- * 且<b>链序真的是 Go 的顺序</b>（V03 的核心契约）。
+ * 且<b>链序真的是 B 侧的顺序</b>（V03 的核心契约）。
  *
  * <p>⚠️ <b>为什么「Bean 存在」不算证据</b>：
  * devh starter 的三个 server factory 方法<b>只</b>注入 {@code List<GrpcServerConfigurer>}
@@ -32,7 +32,7 @@ import static org.mockito.Mockito.verify;
  * ⇒ ⇒ 本测试<b>真的调</b> {@code Configurer.configure(builder)} 并断言 {@code intercept(...)} 被调用了。
  *
  * <p>⚠️ <b>为什么链序必须真的搭出来断言</b>：
- * Go 的注册序 {@code Trace → Recover → Stat → Prometheus → Breaker → Shedding → Timeout}
+ * B 侧的注册序 {@code Trace → Recover → Stat → Prometheus → Breaker → Shedding → Timeout}
  * 是<b>行为语义</b>（recover 必须最外层否则兜不住 panic；breaker 必须在 shedding 外层
  * 否则降载不会把熔断打开；prometheus 必须在 breaker/shedding 外层否则被拒的请求在指标里消失）
  * ⇒ ⇒ 「{@code @Order} 看着对」不算证据 ⇒ ⇒ 本测试把链<b>真的搭出来</b>、逐层读层名。
@@ -75,7 +75,7 @@ class ProtectionAutoConfigurationWiringTest {
     }
 
     @Test
-    @DisplayName("V03 链序：recover → stat → prometheus → breaker → shedding → business（Go 注册序）")
+    @DisplayName("V03 链序：recover → stat → prometheus → breaker → shedding → business（B 侧注册序）")
     void chainLayerOrderMatchesGo() {
         fullRunner.run(context -> {
             ServerInterceptor chain = composeOf(context);

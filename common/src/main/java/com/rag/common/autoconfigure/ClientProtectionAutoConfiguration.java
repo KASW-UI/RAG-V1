@@ -47,7 +47,7 @@ import java.util.Map;
 public class ClientProtectionAutoConfiguration {
 
     /**
-     * 出向熔断拦截器（Go：{@code zrpc/internal/client.go:112-113}）。
+     * 出向熔断拦截器（<b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/protection/GoStyleGrpcClientBreakerInterceptor.java}（RAG 仓））。
      *
      * <p>⚠️ <b>隔离 key = (下游服务, 方法)</b> ⇒ 两个下游服务调用<b>同名方法</b>时
      * <b>不共用</b>熔断器（否则 A 服务的失败会拖开 B 服务的熔断器 ⇒ 跨服务污染）。
@@ -62,10 +62,10 @@ public class ClientProtectionAutoConfiguration {
     }
 
     /**
-     * 出向 deadline 传播拦截器（Go：{@code zrpc/internal/clientinterceptors/timeoutinterceptor.go:25}）。
+     * 出向 deadline 传播拦截器（<b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/protection/GoStyleOutboundDeadlineInterceptor.java}（RAG 仓））。
      *
      * <p>⚠️ <b>客户端硬上界默认不启用</b>（{@code capMillis = 0}）——
-     * Go 的 2000ms 是<b>默认值</b>而<b>各域可覆盖</b> ⇒ 写成全局默认会让某些域比 Go 严几十倍
+     * 上游的 2000ms 是<b>默认值</b>而<b>各域可覆盖</b> ⇒ 写成全局默认会让某些域比上游严几十倍
      * ⇒ ⇒ <b>逐域启用</b>登记在 L3 清单（域侧 yml 是各域 lane 的写权面）。
      */
     @Bean

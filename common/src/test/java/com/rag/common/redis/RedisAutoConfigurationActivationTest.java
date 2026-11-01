@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 这两个类在批 1 就<b>实现完整</b>（{@code ClientAutoConfiguration} 146 行 /
  * {@code DeadlineAutoConfiguration} 98 行，Boot 3.5 的包名也已回改）
  * ⇒ 但它们<b>不在</b> {@code AutoConfiguration.imports} ⇒ <b>永不加载</b>
- * ⇒ ⇒ Lettuce 断连拒单（Go 的 fail-fast 语义）与「请求预算耗尽 ⇒ 不下发 Redis 命令」
+ * ⇒ ⇒ Lettuce 断连拒单（B 的 fail-fast 语义）与「请求预算耗尽 ⇒ 不下发 Redis 命令」
  * <b>双双静默失效</b>，且<b>编译期不报错、启动期不报错</b>。
  * <br>⇒ ⇒ 修法 = 登记进 imports 清单；本测试断言登记之后<b>行为真的生效</b>。
  *
@@ -60,7 +60,7 @@ class RedisAutoConfigurationActivationTest {
             ClientOptions options = builder.build();
 
             assertThat(options.getDisconnectedBehavior())
-                    .as("Go 侧「Redis 失败 ⇒ 尽快失败 ⇒ 上层 fail-open」⇒ 断连即拒单")
+                    .as("B 侧「Redis 失败 ⇒ 尽快失败 ⇒ 上层 fail-open」⇒ 断连即拒单")
                     .isEqualTo(ClientOptions.DisconnectedBehavior.REJECT_COMMANDS);
         });
     }
@@ -79,7 +79,7 @@ class RedisAutoConfigurationActivationTest {
                     RedisConnectionFactory factory = template.getConnectionFactory();
 
                     assertThat(factory)
-                            .as("BPP 没生效 ⇒ 预算耗尽后仍会下发 Redis 命令（与 Go 相反）")
+                            .as("BPP 没生效 ⇒ 预算耗尽后仍会下发 Redis 命令（与 B 侧 相反）")
                             .isInstanceOf(DeadlineConnectionFactory.class);
                 });
     }

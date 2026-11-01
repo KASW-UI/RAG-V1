@@ -1,8 +1,8 @@
 # Intentional_Deviations / like —— 已签字偏离
 
-> **记什么**：明知与 Go 真源不同、**经用户签字批准**的差异。
+> **记什么**：明知与 **B 侧（RAG 仓）** 不同、**经用户签字批准**的差异。
 > **⚠️ 是决策不是缺陷**：不重复质疑，**也不得「顺手修正回旧行为」**。
-> **核对日期 2026-10-26**（逐行核对 Go 源文件，非估算）
+> **核对日期 2026-10-26**（逐行核对源文件，非估算）· **依据基准 2026-11-02**：**B 侧为唯一真理**（原始逐条来源下沉到 B 侧自有台账）
 
 ---
 
@@ -19,17 +19,20 @@
 
 `.proto` 文件顶部的 **proto 包声明**（决定 gRPC 完整方法路径）：
 
-| | Go 真源 | RAG-V1 |
-|---|---|---|
-| **proto `package`** | `package pb;` | `package like;` |
-| **gRPC service 全名** | `pb.LikeService` | `like.LikeService` |
-| **完整方法路径** | `/pb.LikeService/LikeAction` | `/like.LikeService/LikeAction` |
+| | **原始包名**（遗留） | **B 侧（RAG 仓）** | **RAG-V1（C）** |
+|---|---|---|---|
+| **proto `package`** | `package pb;` | `package like;` | `package like;` |
+| **gRPC service 全名** | `pb.LikeService` | `like.LikeService` | `like.LikeService` |
+| **完整方法路径** | `/pb.LikeService/LikeAction` | `/like.LikeService/LikeAction` | `/like.LikeService/LikeAction` |
 
-### Go 出处（逐行核对）
+⇒ ⚠️ **基准切换后的定性**：**B 侧自己已做过这次归一并已签字**（编号 `SD-2026-10-23-05`）⇒ **C 侧逐字承接 ⇒ C ≡ B** ⇒ 本条登记的是「**继承并承接 B 侧已签字的归一决策**」，**不是 C 侧自创的偏离**。
 
-- `Sea-RideTheWind_golang/proto/like.proto:3` —— `package pb;`
-- `Sea-RideTheWind_golang/proto/like.proto:7` —— `option go_package = "./pb";`
-- `Sea-RideTheWind_golang/service/like/rpc/pb/like_grpc.pb.go` —— `LikeService_LikeAction_FullMethodName = "/pb.LikeService/LikeAction"`（6 个方法全是 `/pb.LikeService/*`）
+### B 侧出处（逐行核对）
+
+- B 侧 `service/like/like-proto/src/main/proto/like.proto:3` —— `package like;`
+- B 侧 `ci/contracts/proto/like.proto:1-6` —— 头部注明「proto `package` 由原始来源的 `pb` 归一为 `like`（**已签字**）」＋ 裁定编号 `SD-2026-10-23-05` ＋「原始 package 行原文：`package pb;`」
+- B 侧台账 `docs/Intentional_Deviations/like/proto.md` —— `SD-2026-10-23-05`（**已签字**，核对日期 2026-10-29 **仍成立** ⇒ 签字有效，继续计入计数）
+- B 侧生成物 `service/like/like-proto/target/generated-sources/protobuf/grpc-java/com/rag/like/like/proto/LikeServiceGrpc.java:15` —— `SERVICE_NAME = "like.LikeService"`（6 个方法全是 `/like.LikeService/*`）
 
 ### RAG-V1 落点
 
@@ -40,26 +43,27 @@
 
 | 项 | 结论 |
 |---|---|
-| **gRPC 方法路径** | ⛔ **改变** —— `/pb.LikeService/*` → `/like.LikeService/*`（6 个方法） |
+| **gRPC 方法路径** | ⛔ **改变** —— `/pb.LikeService/*` → `/like.LikeService/*`（6 个方法 · 相对原始遗留包名） |
 | **proto 消息全名** | ⛔ **改变** —— `pb.LikeActionReq` → `like.LikeActionReq` |
-| **`google.protobuf.Any` type URL** | ✅ **无影响** —— Go 侧全仓**不使用** `anypb` / `proto.Any`（实测 `grep -rn "anypb\|proto.Any" service/` 为空）⇒ 不存在 type URL 错配 |
+| **`google.protobuf.Any` type URL** | ✅ **无影响** —— B 侧全仓**不使用** `anypb` / `proto.Any`（实测全仓扫描 `service/` 为空）⇒ 不存在 type URL 错配 |
 | **message 名 / 字段名 / 字段号 / 类型 / 枚举值** | ✅ **零改动** —— 144 个 message/enum 中 like 域的 9 个全部逐字保留 |
 | **跨域调用** | ✅ **内部自洽** —— RAG-V1 侧 10 个域的 pb 全部由**同一套 proto** 生成 ⇒ 客户端 stub 与服务端注册的 service 全名天然一致 |
 
-### 偏离理由
+### 偏离理由（**B 侧已签字归一的理由** · B 侧台账 `SD-2026-10-23-05`）
 
-Go 侧 `like.proto` 的 `package pb;` 是 **goctl 生成时的历史遗留**（与 `comment.proto` 同款），并非业务语义。
-RAG-V1 统一改为域名后：
+B 侧（RAG 仓）把 `like.proto` 的 `package pb;` 归一为 `package like;` —— 判定为**原始来源生成时的历史遗留包名**（与 `comment.proto` 同款），并非业务语义；B 侧已签字（2026-10-23），C 侧**原样承接**。
+
+统一改为域名后：
 
 1. **10 个域的 package 命名规则一致**（域名前缀），消除 `pb` 这种无语义残留；
 2. **RAG-V1 内部自洽** —— 全部 pb 同源生成，不存在「客户端 stub 与服务端注册名不一致」的断链；
-3. Go 侧 `package pb;` 与 `option go_package = "./pb";` 是**同一处遗留的两个表现**，RAG-V1 删 `go_package` 时保留 `package` 会造成「一半照搬、一半翻译」的不一致状态。
+3. 原始的 `package pb;` 与 `option go_package = "./pb";` 是**同一处遗留的两个表现**，删 `go_package` 时保留 `package` 会造成「一半照搬、一半翻译」的不一致状态。
 
 ### ⚠️ 边界声明（不得越界）
 
 - 本条**只覆盖 proto `package` 声明**，**不覆盖** `option java_package`（那是 L4 表达层，由 `DEV-LIKE-PROTO-002` 承载）。
-- **不得反向「修回」** `package pb;` —— 那是 Go-ism，会把 wire 路径改回与 Go 一致但与 RAG-V1 内部 pb 不自洽的状态。
-- 本条**不豁免** L1 的其它部分：message 名 / 字段号 / 枚举值 / 错误码值 / HTTP path / Kafka topic **仍须逐字对齐 Go**。
+- **不得反向「修回」** `package pb;` —— 那是原始来源的历史遗留包名，会把 wire 路径改回与 B 侧不一致的状态。
+- 本条**不豁免** L1 的其它部分：message 名 / 字段号 / 枚举值 / 错误码值 / HTTP path / Kafka topic **仍须逐字对齐 B 侧**。
 
 ---
 
@@ -75,10 +79,13 @@ RAG-V1 统一改为域名后：
 
 proto 集中到根级 `proto/` 模块后，`option java_package` 随之调整：
 
-| | 集中化前 | 集中化后 |
+| | **B 侧（RAG 仓）** | **RAG-V1（C）** |
 |---|---|---|
-| **Maven 模块** | `service/like/contract`（artifactId `like-contract`）—— **已删除** | `proto`（artifactId `proto`）—— **已落地** |
-| **java_package** | `com.rag.like.contract.proto` | `com.rag.proto.like` |
+| **Maven 模块** | `service/like/like-proto` | `proto`（artifactId `proto`）—— **已落地** |
+| **java_package** | `com.rag.like.like.proto` | `com.rag.proto.like` |
+| *（C 侧集中化前的旧值）* | — | `com.rag.like.contract.proto`（`service/like/contract` · **已删除**） |
+
+⇒ ⚠️ **B ≠ C**：B 侧的包根是**按模块名派生**（`like-proto` ⇒ `com.rag.like.like.proto`），C 侧集中化后包根是 **`com.rag.proto`**（模块坐标 `com.rag:proto`）⇒ ⇒ 属 **D7 proto 集中化的机械后果**，**不是抄错**。
 
 ### 理由
 
@@ -103,6 +110,7 @@ UpdateUserReq / UpdateUserResp / UserInfo
 
 - 跨 proto 重名清单：`proto/src/main/proto/*.proto` 全量扫描（144 个 message/enum 名，冲突 12 个）。
 - 包名实测：集中化后 `proto/target/generated-sources/protobuf/java/com/rag/proto/like/*.java` 的 `package` 声明。
+- B 侧实测：`service/like/like-proto/src/main/proto/like.proto:5` —— `option java_package = "com.rag.like.like.proto";`
 
 ---
 
@@ -110,6 +118,7 @@ UpdateUserReq / UpdateUserResp / UserInfo
 
 - 决策台账 → [`../../决策记录.md`](../../决策记录.md)（**D1 · D7**）
 - 推导依据 → [`../../完全spring化的文件树.md`](../../完全spring化的文件树.md) §5.1 · §5.2
-- 三方对照 → [`../../Mapping_Table/_INDEX.md`](../../Mapping_Table/_INDEX.md)
+- 两方对照 → [`../../Mapping_Table/_INDEX.md`](../../Mapping_Table/_INDEX.md)
 - 漂移档 → [`../../DRIFT/_INDEX.md`](../../DRIFT/_INDEX.md)
 - 降级档 → [`../../L3-降级清单.md`](../../L3-降级清单.md)
+- **B 侧台账（原始逐条来源下沉处）** → `/Users/pr/Documents/java&golang/RAG` 的 `docs/Intentional_Deviations/like/proto.md`（`SD-2026-10-23-05`）· `ci/contracts/proto/like.proto`（契约基准头）

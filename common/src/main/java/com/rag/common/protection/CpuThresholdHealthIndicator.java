@@ -7,10 +7,10 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.OperatingSystemMXBean;
 
 /**
- * CPU 降载的<b>观测面</b>：把 Go {@code core/stat/usage.go:51} {@code CpuUsage()}
+ * CPU 降载的<b>观测面</b>：把 B 侧 {@code core/stat/usage.go:51} {@code CpuUsage()}
  * （整机千分比）暴露成 Actuator 健康指标，供 D-04 的降载决策消费。
  *
- * <h3>Go 出处</h3>
+ * <h3>B 出处</h3>
  * <pre>
  *   core/stat/usage.go:51          func CpuUsage() int64 { return atomic.LoadInt64(&cpuUsage) }
  *   core/load/sheddingstat.go:59   c := stat.CpuUsage()          // 降载统计日志里的 cpu
@@ -20,24 +20,24 @@ import java.lang.management.OperatingSystemMXBean;
  *       }
  * </pre>
  *
- * <p>Go 的 {@code stat.CpuUsage()} 在 Linux 下读 {@code /proc/stat} 的<b>整机</b> CPU，
+ * <p>B 的 {@code stat.CpuUsage()} 在 Linux 下读 {@code /proc/stat} 的<b>整机</b> CPU，
  * 返回 <b>千分比</b>（0..1000，900 = 90%）。
  *
  * <p>⚠️ <b>不可用时 fail-open</b>（读不到 ⇒ 视作未过载 ⇒ 不降载），
- * 与 Go 侧 {@code systemOverloadChecker} 返回 false 的分支一致。
+ * 与 B 侧 {@code systemOverloadChecker} 返回 false 的分支一致。
  *
- * <p><b>「不可用 ⇒ -1」这条哨兵值是自定的</b>（Go 侧没有这个值）：Go 的
- * {@code core/stat/usage.go:22} 把 {@code cpuUsage} 初值定为 <b>0</b>，此后只被
+ * <p><b>「不可用 ⇒ -1」这条哨兵值是自定的</b>（B 侧没有这个值）：B 的
+ * {@code service/common/src/main/java/com/rag/common/protection/GoStyleCpuReader.java:22} 把 {@code cpuUsage} 初值定为 <b>0</b>，此后只被
  * {@code core/stat/usage.go:35-39} 的 250ms 移动平均（β=0.95 ⇒ 有效窗口 ≈5s）覆盖 ⇒
- * <b>Go 侧永远不会返回负数</b> ⇒ ⇒ 两边的<b>行为等价</b>（都判「未过载」），但
- * <b>哨兵值不等价</b>（Go=0 / 本实现=-1）⇒ ⇒ 依赖该值的上层必须走
+ * <b>B 侧永远不会返回负数</b> ⇒ ⇒ 两边的<b>行为等价</b>（都判「未过载」），但
+ * <b>哨兵值不等价</b>（B 侧=0 / 本实现=-1）⇒ ⇒ 依赖该值的上层必须走
  * {@code < 0 ⇒ fail-open} 这一支。
  *
  * ══════════════════════════════════════════════════════════════════════
  * <p><b>⚠️ D4 生态缺口（G-1 · D-04）：为什么是「健康指标」而不是「降载器」</b>
  * ══════════════════════════════════════════════════════════════════════
  * <p><b>resilience4j 无 CPU 降载等价物</b> ⇒ 若不自研就没有这个能力 ⇒ 自研 1 类。
- * <br>但 <b>形态</b>被生态改写了：Go 的 {@code adaptive shedder} 是
+ * <br>但 <b>形态</b>被生态改写了：B 的 {@code adaptive shedder} 是
  * <b>「CPU 过载 + 在途超动态上限」两个条件同时成立才丢请求</b>
  * （{@code core/load/adaptiveshedder.go}）⇒ 单看 CPU 会误丢请求。
  * <br>⇒ 本仓把 <b>CPU 判定</b>与 <b>丢弃动作</b>分开：
@@ -55,7 +55,7 @@ import java.lang.management.OperatingSystemMXBean;
  */
 public class CpuThresholdHealthIndicator implements HealthIndicator {
 
-    /** 不可用（对应 Go 侧读不到 /proc/stat 的情形）。 */
+    /** 不可用（对应 B 侧读不到 /proc/stat 的情形）。 */
     public static final int UNAVAILABLE = -1;
 
     private static final int PERMILLE = 1000;
@@ -69,14 +69,14 @@ public class CpuThresholdHealthIndicator implements HealthIndicator {
     }
 
     /**
-     * 整机 CPU 千分比（Go {@code stat.CpuUsage()} 口径），不可用时 {@link #UNAVAILABLE}。
+     * 整机 CPU 千分比（B 侧 {@code stat.CpuUsage()} 口径），不可用时 {@link #UNAVAILABLE}。
      */
     public static int systemCpuPermille() {
         double load = systemCpuLoad();
         return load < 0D ? UNAVAILABLE : (int) Math.round(load * PERMILLE);
     }
 
-    /** 仅本 JVM 进程的 CPU 千分比（偏离 Go，需显式配置）。 */
+    /** 仅本 JVM 进程的 CPU 千分比（偏离 B 侧，需显式配置）。 */
     public static int processCpuPermille() {
         double load = processCpuLoad();
         return load < 0D ? UNAVAILABLE : (int) Math.round(load * PERMILLE);
@@ -93,7 +93,7 @@ public class CpuThresholdHealthIndicator implements HealthIndicator {
     /**
      * <b>过载判定</b>：{@code cpu >= threshold}。
      *
-     * <p>⚠️ <b>不可用（-1）⇒ 恒判未过载</b>（fail-open）—— 这是 Go 侧
+     * <p>⚠️ <b>不可用（-1）⇒ 恒判未过载</b>（fail-open）—— 这是 B 侧
      * {@code systemOverloadChecker} 返回 false 的等价物。
      *
      * <p>⚠️ <b>2026-11-02 批次 H：本方法不再是「降载 filter 的判据」</b> ——
@@ -108,7 +108,7 @@ public class CpuThresholdHealthIndicator implements HealthIndicator {
         }
         int cpu = currentCpuPermille();
         if (cpu < 0) {
-            // fail-open：读不到 CPU ⇒ 视作未过载（与 Go 一致）
+            // fail-open：读不到 CPU ⇒ 视作未过载（与 B 侧 一致）
             return false;
         }
         return cpu >= config.getCpuThreshold();

@@ -1,15 +1,15 @@
 package com.rag.common.communityfact;
 
 /**
- * <p><b>⚠️ L1 契约（取值 0/1/2/3 · D13「L1 以 Go 为准」）</b> ——
- * Go 出处：{@code service/common/communityfact/wire.go:33-38}
+ * <p><b>⚠️ L1 契约（取值 0/1/2/3 · D13「L1 以 B 侧 为准」）</b> ——
+ * B 出处：{@code service/common/communityfact/wire.go:33-38}
  * （{@code const ( DeliveryPending int32 = iota; DeliveryAccepted; DeliveryFailed; DeliveryBlocked )}）。
  *
  * <p><b>取值逐条一致</b>：{@code DELIVERY_PENDING=0} · {@code DELIVERY_ACCEPTED=1} ·
  * {@code DELIVERY_FAILED=2} · {@code DELIVERY_BLOCKED=3}。
  *
  * <p><b>⚠️ {@code fromCode} 的未知值回落是 {@code DELIVERY_PENDING}</b>（不是抛异常）
- * ⇒ 与 Go 的 {@code iota} 常量表语义一致（Go 侧没有「反查」函数，
+ * ⇒ 与 B 的 {@code iota} 常量表语义一致（B 侧没有「反查」函数，
  * 未知 code 由调用方按常量表自行处理）。
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/communityfact/Wire.java}

@@ -10,7 +10,7 @@ package com.rag.favorite.metrics;
  *     favorite_ops_total
  *     favorite_db_error_total
  * </pre>
- * <p>⚠️ 指标名与标签是<b>业务定义</b>，不是实现细节 ⇒ 逐字照抄 Go 侧 `internal/metrics/metrics.go`。
+ * <p>⚠️ 指标名与标签是<b>业务定义</b>，不是实现细节 ⇒ 逐字照抄 B 侧 `service/favorite/favorite-rpc/src/main/java/com/rag/favorite/favorite/rpc/metrics/FavoriteRpcMetrics.java`。
  *
  * <p>Micrometer 承担注册与暴露；<b>指标名、标签、helper 的调用点与触发条件</b>保留为业务代码。
  */

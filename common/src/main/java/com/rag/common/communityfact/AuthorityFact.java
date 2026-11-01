@@ -4,17 +4,17 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * <p><b>⚠️ L1 wire 契约（D13「L1 以 Go 为准」）</b> ——
- * Go 出处：{@code service/common/communityfact/wire.go:68-74}
+ * <p><b>⚠️ L1 wire 契约（D13「L1 以 B 侧 为准」）</b> ——
+ * B 出处：{@code service/common/communityfact/wire.go:68-74}
  * （{@code type AuthorityFact struct { Event Event `json:"event"`; SubjectRef SubjectRef `json:"subject_ref"`; ... }}）。
  *
  * <p><b>5 个字段的 JSON tag 与顺序逐条一致</b>：
  * {@code event} · {@code subject_ref} · {@code predecessor_event_id} ·
  * {@code technical_receipt} · {@code source_event_hash}。
  *
- * <p><b>⚠️ {@code predecessor_event_id} 带 {@code omitempty}</b>（Go 侧<b>唯一</b>一个带 omitempty 的字段）
+ * <p><b>⚠️ {@code predecessor_event_id} 带 {@code omitempty}</b>（B 侧<b>唯一</b>一个带 omitempty 的字段）
  * ⇒ ⇒ Java 侧对应 {@code @JsonInclude(JsonInclude.Include.NON_EMPTY)}
- * ⇒ ⇒ 空串/缺失时该键<b>不出现</b>（与 Go 一致）；其余 4 个字段<b>不带</b> omitempty
+ * ⇒ ⇒ 空串/缺失时该键<b>不出现</b>（与 B 侧 一致）；其余 4 个字段<b>不带</b> omitempty
  * ⇒ ⇒ <b>不得</b>给它们加 {@code @JsonInclude}（否则键会消失 ⇒ 可观察形状不等价）。
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/communityfact/Wire.java}

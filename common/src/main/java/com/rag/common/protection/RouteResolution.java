@@ -20,7 +20,7 @@ public record RouteResolution(Kind kind, String template) {
     public enum Kind {
         /** 确定匹配到路由，模板可用。 */
         TEMPLATE,
-        /** 确定<b>没有</b>任何路由匹配（Go 侧的 404 / 405 ⇒ 不进 breaker）。 */
+        /** 确定<b>没有</b>任何路由匹配（B 侧的 404 / 405 ⇒ 不进 breaker）。 */
         NOT_MATCHED,
         /** 判不出来（调用方必须<b>回落旧行为</b>，绝不静默关掉熔断保护）。 */
         UNKNOWN

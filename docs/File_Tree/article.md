@@ -10,8 +10,8 @@
 | 模块路径 | `service/article` |
 | artifactId | `article-service` |
 | 根包 | `com.rag.article` |
-| Go 出处 | `service/article/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = Go logic 用例的 `types.Xxx` 引用图 + 类型所在聚合） |
+| B 侧出处 | `service/article/` |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = B 侧 rpc 用例的 DTO 引用图 + 类型所在聚合） |
 
 ## 二、依赖
 
@@ -52,24 +52,24 @@
 │   │   │               │   ├── ArticleApiExceptionHandler.java
 │   │   │               │   └── ArticleApiResponseAdvice.java
 │   │   │               ├── client/
-│   │   │               │   ├── ArticleObjectStorageClient.java    # 对象存储客户端 —— MinIO put/get（Go 侧 ArticleRpc 的对象存储腿）。
+│   │   │               │   ├── ArticleObjectStorageClient.java    # 对象存储客户端 —— MinIO put/get（B 侧 ArticleRpc 的对象存储腿）。
 │   │   │               │   ├── ContentAuditAutoConfiguration.java    # 内容审计端口的兜底注册 —— 容器里没有实现时落 Unavailable。
 │   │   │               │   ├── ContentAuditPort.java    # 内容安全审计端口 —— RAG-V1 不迁移 security 域，此端口是审核链路唯一的审计入口。
 │   │   │               │   ├── MessageRpcClient.java    # 跨域 gRPC 客户端 —— 域内调用已直连，此处只保留跨域依赖。
-│   │   │               │   └── UnavailableContentAuditClient.java    # 内容安全不可用时的默认实现 —— fail-loud（复刻 Go 侧 SecurityRpc == nil 分支）。
+│   │   │               │   └── UnavailableContentAuditClient.java    # 内容安全不可用时的默认实现 —— fail-loud（复刻 B 侧 SecurityRpc == nil 分支）。
 │   │   │               ├── config/
 │   │   │               │   ├── ArticleApiProperties.java    # @ConfigurationProperties —— 聚合本域 HTTP 层配置。
 │   │   │               │   ├── ArticleKafkaChannelValidator.java
 │   │   │               │   ├── ArticleMetaObjectHandler.java
 │   │   │               │   ├── ArticleRpcProperties.java
-│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 替代 Go 的 rest.WithMiddlewares 绑定。
+│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 对齐 B 侧同名配置类的注册形态。
 │   │   │               ├── contract/
-│   │   │               │   ├── ArticleSyncEvent.java    # Go 出处：article/rpc/internal/mqs/article_sync_types.go。
-│   │   │               │   ├── CommunityArticleEvent.java    # Go 出处：article/rpc/internal/mqs/community_article_event.go。
+│   │   │               │   ├── ArticleSyncEvent.java    # B 出处：article/rpc/internal/mqs/article_sync_types.go。
+│   │   │               │   ├── CommunityArticleEvent.java    # B 出处：article/rpc/internal/mqs/community_article_event.go。
 │   │   │               │   ├── ErrCodes.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               │   └── ErrMsg.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               ├── controller/
-│   │   │               │   └── ArticleController.java    # ⚠️ L1 路由契约（Go 正推，勿凭直觉改）
+│   │   │               │   └── ArticleController.java    # ⚠️ L1 路由契约（B 侧 正推，勿凭直觉改）
 │   │   │               ├── domain/
 │   │   │               │   ├── entity/
 │   │   │               │   │   ├── ArticleDomainOutboxEntity.java
@@ -83,20 +83,20 @@
 │   │   │               │       └── ArticlePublicDomainService.java
 │   │   │               ├── dto/
 │   │   │               │   ├── article/
-│   │   │               │   │   ├── Article.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── CreateArticleReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── CreateArticleResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── DeleteArticleReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── DeleteArticleResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetArticleReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetArticleResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── ListArticlesReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── ListArticlesResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── UpdateArticleReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── UpdateArticleResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── Article.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── CreateArticleReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── CreateArticleResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── DeleteArticleReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── DeleteArticleResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetArticleReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetArticleResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── ListArticlesReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── ListArticlesResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── UpdateArticleReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── UpdateArticleResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               │   └── upload/
-│   │   │               │       ├── UploadImageReq.java    # Go 侧同名 struct 存在 —— RAG 形态改用 `@RequestParam MultipartFile`（multipart 表单）承载，属 L4 idiomatization；本 DTO 若保留则用于承载 multipart 之外的其余字段。
-│   │   │               │       └── UploadImageResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── UploadImageReq.java    # B 侧同名 struct 存在 —— RAG 形态改用 `@RequestParam MultipartFile`（multipart 表单）承载，属 L4 idiomatization；本 DTO 若保留则用于承载 multipart 之外的其余字段。
+│   │   │               │       └── UploadImageResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               ├── exception/
 │   │   │               │   └── ArticleExceptions.java
 │   │   │               ├── grpc/
@@ -152,4 +152,4 @@
 |---|---|
 | 目录结构 | ✅ 已落地 |
 | 文件内容 | ⬜ **全部待填**（每个 Java 文件只有 package + 空类型 + TODO javadoc） |
-| Go ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |
+| B 侧 ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |

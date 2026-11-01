@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
  * <b>L4 idiomatization：把「请求 deadline 传播给出向 gRPC 调用」做成 client 侧拦截器。</b>
  *
  * <h2>它解决的是什么（E65）</h2>
- * <p>Go 侧的出向 gRPC 调用<b>一律沿用（派生自）请求 ctx</b> ⇒ deadline 随 ctx 传播 ⇒
+ * <p>B 侧的出向 gRPC 调用<b>一律沿用（派生自）请求 ctx</b> ⇒ deadline 随 ctx 传播 ⇒
  * 请求超时后，<b>出向调用立即失败</b>。而 RAG 侧此前<b>没有 ctx</b> ⇒ 出向调用要么
  * 没有 deadline（裸 stub）、要么要靠每个调用点<b>手工</b>调
  * {@link GoStyleRequestDeadline#applyTo} ⇒ ⇒ <b>7 个类 / 27 处调用点是裸的</b>
@@ -26,44 +26,44 @@ import java.util.concurrent.TimeUnit;
  * <b>min(请求剩余, 调用点自带, 客户端上界)</b> 算一次 deadline ⇒ ⇒
  * <b>域侧不用改一行</b>。
  *
- * <h2>Go 出处（三段，逐行核对过）</h2>
+ * <h2>B 出处（三段，逐行核对过）</h2>
  * <pre>
- * // ① go-zero@v1.10.2 zrpc/internal/clientinterceptors/timeoutinterceptor.go:25
+ * // ① B 侧：service/common/src/main/java/com/rag/common/protection/GoStyleOutboundDeadlineInterceptor.java:31:25
  * //    —— 出向调用的 deadline = min(父 ctx 的 deadline, 本层的 timeout)
  * ctx, cancel := context.WithTimeout(ctx, t)
  * defer cancel()
  *
- * // ② go-zero@v1.10.2 zrpc/internal/client.go:115-116
+ * // ② B 侧：service/common/src/main/java/com/rag/common/protection/GoStyleOutboundDeadlineInterceptor.java:36:115-116
  * //    —— 客户端超时中间件（默认开，① 装在**每个** zrpc client 上）
  * if c.middlewares.Timeout {
  *     interceptors = append(interceptors, clientinterceptors.TimeoutInterceptor(timeout))
  * }
- * //    开关默认值：go-zero@v1.10.2 zrpc/internal/config.go:15  Timeout bool `json:",default=true"`
+ * //    开关默认值：B 侧：service/common/src/main/java/com/rag/common/protection/GoStyleOutboundDeadlineInterceptor.java:41:15  Timeout bool `json:",default=true"`
  *
- * // ③ go-zero@v1.10.2 zrpc/client.go:70-71 ＋ zrpc/config.go:31
+ * // ③ B 侧：service/common/src/main/java/com/rag/common/protection/GoStyleOutboundDeadlineInterceptor.java:43:70-71 ＋ zrpc/config.go:31
  * //    —— 客户端上界（默认 2000ms，**各域可覆盖**）
  * if c.Timeout &gt; 0 {
  *     opts = append(opts, WithTimeout(time.Duration(c.Timeout)*time.Millisecond))
  * }
  * //    Timeout       int64           `json:",default=2000"`
  * </pre>
- * <p>（真源仓库 {@code Sea-RideTheWind_golang} <b>不包含</b> {@code zrpc} ——
- * 那是 go-zero 框架自身的包；真源通过 {@code go.mod} 锁定
- * {@code github.com/zeromicro/go-zero v1.10.2} ⇒ 上面的行号对应<b>该版本</b>的框架源码。）
+ * <p>（<b>B 侧仓</b> <b>不包含</b> {@code zrpc} ——
+ * 那是框架自身的包；B 侧仓 通过 {@code go.mod} 锁定框架的 v1.10.2 版本
+ * ⇒ 上面的行号对应<b>该版本</b>的框架源码。）
  *
  * <h2>语义等价论证</h2>
  * <ul>
- *   <li><b>「继承」这一面</b>：Go 侧出向 deadline ⊇ 父 ctx 的 deadline（① 的 min 语义）；
+ *   <li><b>「继承」这一面</b>：B 侧出向 deadline ⊇ 父 ctx 的 deadline（① 的 min 语义）；
  *       本类把请求载体的剩余纳秒纳入 min ⇒ <b>两侧同形</b>。</li>
- *   <li><b>「不覆盖」这一面</b>：Go 的 {@code context.WithTimeout} <b>取更早者</b>，从不覆盖父 deadline；
+ *   <li><b>「不覆盖」这一面</b>：B 的 {@code context.WithTimeout} <b>取更早者</b>，从不覆盖父 deadline；
  *       本类同样取 min（请求剩余 / 调用点自带 / 上界 三者取最小）⇒ <b>不会把调用点已声明的
  *       deadline 放宽</b>。</li>
- *   <li><b>「无预算不设限」这一面</b>：Go 侧 {@code WithTimeout} 只在 {@code c.Timeout > 0} 时才加；
+ *   <li><b>「无预算不设限」这一面</b>：B 侧 {@code WithTimeout} 只在 {@code c.Timeout > 0} 时才加；
  *       本类在<b>三项都没有</b>时<b>原样返回</b> {@link CallOptions} ⇒ 不给调用凭空加约束。</li>
  * </ul>
  *
  * <h2>为什么放在共享层（而不是让各域改调用点）</h2>
- * <p>Go 侧这件事是<b>拦截器级</b>的（②：每个 zrpc client 都装）⇒ RAG 侧同形也应是
+ * <p>B 侧这件事是<b>拦截器级</b>的（②：每个 zrpc client 都装）⇒ RAG 侧同形也应是
  * <b>拦截器级</b>。若改成「每个调用点手工 {@code applyTo}」⇒ 27 处调用点要逐个改
  * ⇒ 漏一处就是一个静默漂移 ⇒ ⇒ <b>不取</b>。
  *
@@ -101,14 +101,14 @@ import java.util.concurrent.TimeUnit;
  *
  * <h2>效力边界（诚实声明）</h2>
  * <ol>
- *   <li><b>客户端硬上界（Go 的 2000ms）本轮默认不启用</b> ——
+ *   <li><b>客户端硬上界（B 的 2000ms）本轮默认不启用</b> ——
  *       {@link ProtectionProperties.OutboundDeadline#getCapMillis()} 默认 0
- *       ⇒ 理由 = Go 的 2000ms 是<b>默认值</b>而<b>各域可覆盖</b>（真源
+ *       ⇒ 理由 = B 的 2000ms 是<b>默认值</b>而<b>各域可覆盖</b>（真源
  *       {@code service/article/api/etc/article-api.yaml:12} = 70000 ⇒ 那是
  *       <b>api 侧出向 article-rpc 的客户端</b>上界；⚠️ <b>别引错</b>：
  *       {@code service/article/rpc/etc/article.yaml:3} = 70000 是<b>服务端</b>超时
  *       （顶层挨着 {@code ListenOn}），同文件 {@code :90} = 10000 才是客户端）
- *       ⇒ 写成全局默认会让 article 比 Go 严 35 倍
+ *       ⇒ 写成全局默认会让 article 比 B 侧 严 35 倍
  *       ⇒ ⇒ 逐域启用登记在 P2-T04（域侧 yml = 各域 lane 的写权面）
  *       ⇒ ⇒ <b>这一轴仍是漂移，不假装已对齐</b>。</li>
  *   <li><b>依赖「调用发生在带请求载体的线程上」</b>：本类读的是 ThreadLocal
@@ -159,12 +159,12 @@ public class OutboundDeadlineInterceptor implements ClientInterceptor {
      * 这件事 ⇒ ⇒ 它必须装<b>生产这个类</b> ⇒ ⇒ 而探针不在 {@code com.rag.common.protection} 包里
      * ⇒ ⇒ **package-private 构造器它用不了** ⇒ ⇒ ⇒ 若不放开，探针只有两条路：
      * <b>① 在探针里自己写一份等价拦截器</b>（⇒ 那它量的是**副本**不是产品 ⇒ ⇒ 又一处漂移面）
-     * ／ <b>② 起真 devh 上下文</b>（⇒ 探针变成集成测试 ⇒ ⇒ 与 Go 半边【独立进程】不对称
+     * ／ <b>② 起真 devh 上下文</b>（⇒ 探针变成集成测试 ⇒ ⇒ 与 B 侧 半边【独立进程】不对称
      * ⇒ ⇒ 双侧对拍失去公平性）⇒ ⇒ **两条都更差** ⇒ ⇒ ⇒ 故本构造器<b>公开</b>，
      * 让「探针复用生产类」这条路成立。
      *
-     * <p>⚠️ <b>两个参数的口径必须与生产默认一致</b>：{@code enabled=true}（Go 侧
-     * {@code zrpc/config.go:15} 的 {@code Timeout} 默认开）＋ {@code capMillis=0}
+     * <p>⚠️ <b>两个参数的口径必须与生产默认一致</b>：{@code enabled=true}（B 侧
+     * {@code service/common/src/main/java/com/rag/common/protection/GoStyleOutboundDeadlineInterceptor.java:166:15} 的 {@code Timeout} 默认开）＋ {@code capMillis=0}
      * （客户端硬上界默认不启用，理由见 {@link ProtectionProperties.OutboundDeadline}）
      * ⇒ ⇒ **与 {@link ProtectionProperties} 的出厂默认同形**。
      *
@@ -211,7 +211,7 @@ public class OutboundDeadlineInterceptor implements ClientInterceptor {
      * <p>⚠️ <b>为什么必须显式算 min 而不是直接覆盖</b>：grpc-java 的
      * {@link CallOptions#withDeadlineAfter(long, TimeUnit)} 是<b>覆盖</b>语义
      * ⇒ 若直接用它写「请求剩余」，会把调用点自己声明的<b>更早</b> deadline <b>放宽</b>
-     * ⇒ ⇒ 那就与 Go 的 {@code context.WithTimeout}（取更早者）<b>反向</b>了。
+     * ⇒ ⇒ 那就与 B 的 {@code context.WithTimeout}（取更早者）<b>反向</b>了。
      *
      * @param callOptions 调用点原本的选项（可能已带 deadline，例如
      *                    {@link GoStyleRequestDeadline#applyTo} 的产物）
@@ -229,7 +229,7 @@ public class OutboundDeadlineInterceptor implements ClientInterceptor {
      *   <caption>本方法的算术</caption>
      *   <tr><th>项</th><th>关系</th><th>理由</th></tr>
      *   <tr><td>入向请求预算</td><td>与 cap <b>取 min</b></td>
-     *       <td>Go 的 {@code context.WithTimeout(ctx, t)} ⇒ 取更早者</td></tr>
+     *       <td>B 的 {@code context.WithTimeout(ctx, t)} ⇒ 取更早者</td></tr>
      *   <tr><td>调用点自带 deadline</td><td>与上面 <b>取 min</b></td>
      *       <td>同上（不能覆盖调用点自己声明的更早 deadline）</td></tr>
      *   <tr><td><b>per-service 上界 vs 组件级上界</b></td><td><b>覆盖</b>（不是 min）</td>
@@ -248,13 +248,13 @@ public class OutboundDeadlineInterceptor implements ClientInterceptor {
         }
         long budgetNanos = Long.MAX_VALUE;
 
-        // ① 请求载体（Go 的 ctx 传播）：入向 deadline 的剩余纳秒
+        // ① 请求载体（B 的 ctx 传播）：入向 deadline 的剩余纳秒
         long requestRemaining = GoStyleRequestDeadline.remainingNanos();
         if (requestRemaining >= 0L) {
             budgetNanos = Math.min(budgetNanos, requestRemaining);
         }
 
-        // ② 客户端硬上界（Go 的 zrpc client Timeout；本轮默认 0 = 不启用，见类 javadoc）
+        // ② 客户端硬上界（B 的 zrpc client Timeout；本轮默认 0 = 不启用，见类 javadoc）
         //    ⚠️ **per-service 是「覆盖」组件级，不是 min**（理由见本方法 javadoc 的表）
         long effectiveCap = capMillis;
         if (serviceName != null) {
@@ -275,11 +275,11 @@ public class OutboundDeadlineInterceptor implements ClientInterceptor {
         }
 
         if (budgetNanos == Long.MAX_VALUE) {
-            // 三项都没有 ⇒ 不给这次调用凭空加约束（Go 侧 WithTimeout 只在 c.Timeout > 0 时才加）
+            // 三项都没有 ⇒ 不给这次调用凭空加约束（B 侧 WithTimeout 只在 c.Timeout > 0 时才加）
             return callOptions;
         }
         if (budgetNanos <= 0L) {
-            // 预算已耗尽 ⇒ Go 侧 ctx 已到期 ⇒ 立刻失败（与 GoStyleRequestDeadline.applyTo 的同款处理）
+            // 预算已耗尽 ⇒ B 侧 ctx 已到期 ⇒ 立刻失败（与 GoStyleRequestDeadline.applyTo 的同款处理）
             return callOptions.withDeadlineAfter(1L, TimeUnit.NANOSECONDS);
         }
         return callOptions.withDeadlineAfter(budgetNanos, TimeUnit.NANOSECONDS);

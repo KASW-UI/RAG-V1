@@ -18,13 +18,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * §3.3「机制可证」守门：<b>熔断隔离 key 真的是 {@code METHOD://<路由模板>}</b>，
  * 且<b>失败判据真的是「状态码 ≥ 500」</b>。
  *
- * <p>⚠️ <b>Go 出处</b>：
+ * <p>⚠️ <b>B 出处</b>：
  * <pre>
- *   go-zero@v1.10.2/rest/engine.go:149
+ *   B 侧：service/common/src/main/java/com/rag/common/protection/GoStyleBreakerFilter.java:48
  *       chn = chn.Append(handler.BreakerHandler(route.Method, route.Path, metrics))
- *   go-zero@v1.10.2/rest/handler/breakerhandler.go:18-19
+ *   B 侧：service/common/src/main/java/com/rag/common/protection/GoStyleBreakerFilter.java:26
  *       brk := breaker.NewBreaker(breaker.WithName(strings.Join([]string{method, path}, "://")))
- *   go-zero@v1.10.2/rest/handler/breakerhandler.go:36-42
+ *   B 侧：service/common/src/main/java/com/rag/common/protection/GoStyleBreakerFilter.java:36-39
  *       if cw.Code &lt; http.StatusInternalServerError { promise.Accept() } else { promise.Reject(...) }
  * </pre>
  *
@@ -53,9 +53,9 @@ class RouteIsolationFilterTest {
 
                     // ⚠️ 判据：resilience4j **真的**被要求了一个叫 "PUT:///article/{id}" 的实例
                     //    ⇒ 隔离单位是「每路由一个实例」，且模板来自注册期而不是原始 URI。
-                    // ⚠️ **三个斜杠是对的**：Go 的 key 是
+                    // ⚠️ **三个斜杠是对的**：B 的 key 是
                     //    `strings.Join([]string{method, path}, "://")`，而 `path` 本身以 "/" 开头
-                    //    ⇒ Go 侧同样是 "PUT:///article/:id" ⇒ 逐字对齐（不是笔误）。
+                    //    ⇒ B 侧同样是 "PUT:///article/:id" ⇒ 逐字对齐（不是笔误）。
                     assertThat(names(registry)).contains("PUT:///article/{id}");
                     assertThat(names(registry)).doesNotContain("PUT:///article/42");
                 });
@@ -84,7 +84,7 @@ class RouteIsolationFilterTest {
     }
 
     @Test
-    @DisplayName("5xx 计入失败（Go 的 cw.Code >= 500）")
+    @DisplayName("5xx 计入失败（B 的 cw.Code >= 500）")
     void serverErrorCountsAsFailure() {
         CircuitBreakerRegistry registry = CircuitBreakerRegistry.ofDefaults();
         runner
@@ -129,7 +129,7 @@ class RouteIsolationFilterTest {
     }
 
     @Test
-    @DisplayName("确定未命中（NOT_MATCHED）⇒ 本层完全不参与：不建 breaker、不计数（Go 的 404 链没有 breaker）")
+    @DisplayName("确定未命中（NOT_MATCHED）⇒ 本层完全不参与：不建 breaker、不计数（B 的 404 链没有 breaker）")
     void notMatchedSkipsBreakerEntirely() {
         CircuitBreakerRegistry registry = CircuitBreakerRegistry.ofDefaults();
         runner

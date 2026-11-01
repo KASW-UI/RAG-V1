@@ -1,14 +1,13 @@
 # RAG：完全 Spring 化的理论 Java 文件树
 
 > **本仓库**：`/Users/pr/Documents/GitHub/RAG-V1` —— 本文档是 **RAG-V1 的架构推导与决策依据**，本文档所在仓库即按 §5 的树生成。
-> **推导范围**：RAG 全部 10 个业务域 + 共享层 `service/common`
+> **推导范围**：10 个业务域 + 共享层 `common`
 > **对照对象**：
-> - Go 真源：`/Users/pr/Documents/java&golang/Sea-RideTheWind_golang`（冻结）
-> - RAG 现状（Go 形态的第一版重构产物）：`/Users/pr/Documents/java&golang/RAG`（分支 `do-my-own-gh`）
-> **推导原则**：Go 源码决定**迁移什么**；目标 Spring Boot 项目决定**如何组织**；Spring / Java 实际提供的机制决定**哪些实现职责可以被直接吸收**。
+> - **B 侧（RAG 仓）—— 唯一真理**：行为判定的唯一基准（本仓一切实现以 B 侧逐条对照为准）。
+> **推导原则**：**B 侧源码决定「迁移什么」**；目标 Spring Boot 项目决定「如何组织」；Spring / Java 实际提供的机制决定「哪些实现职责可以被直接吸收」。
 > **产出性质**：这是一棵**目标形态**的理论文件树（"完全 Spring 化"是什么样子）。**§5 的树已在本仓库落地为完整空文件树** —— **2026-10-26 D7 之后**的实测形态是 **16 个 pom / 559 个 Java 文件（549 主代码 + 10 测试骨架）/ 10 个 proto 集中在根级 `proto/` 模块**，实现待填。
 > **配套文档**：[`决策记录.md`](决策记录.md)（**D1–D9 已定** / P1–P6 待拍板）· [`L3-降级清单.md`](L3-降级清单.md) · [`架构符合性断言.md`](架构符合性断言.md) · [`../AGENTS.md`](../AGENTS.md)（新 session 自动加载的根政策）
-> **本文档同时是模板**：§1–§8 的结构与《Go → Spring Boot：基于目标项目既有架构与框架职责推导理论 Java 文件树》一致（12.1–12.7 输出要求 + 五问自检），可作为"推导读某个 Component"任务的投喂底本。
+> **本文档同时是模板**：§1–§8 的结构与《推导读某个 Component》任务的输出要求一致（12.1–12.7 输出要求 + 五问自检），可作为"推导读某个 Component"任务的投喂底本。
 
 ---
 
@@ -25,7 +24,7 @@
 
 ### 0.2 基线数据（实测）
 
-| 域 | Go 主代码文件 | RAG 主代码文件 | 倍率 |
+| 域 | 更早基线主代码文件 | B 侧主代码文件 | 倍率 |
 |---|---|---|---|
 | article | 43 | 81 | 1.88× |
 | comment | 56 | 79 | 1.41× |
@@ -39,37 +38,37 @@
 | **common** | **11** | **51** | **4.64×** |
 | **合计** | **461** | **695** | **1.51×** |
 
-RAG 侧另有 **63 个 `GoStyle*` 命名的类**（其中 19 个是测试文件 ⇒ **44 个主代码类**），`service/common/protection/` 一个包就占 **17 个主代码类**。
+B 侧另有 **63 个 `GoStyle*` 命名的类**（其中 19 个是测试文件 ⇒ **44 个主代码类**），`service/common/protection/` 一个包就占 **17 个主代码类**。
 
-> **基线读法**：Go 侧 `service/common` 只有 11 个非测试 `.go`，因为熔断、降载、限连接、限体积、日志、HTTP 解析全是 **go-zero 内置**；RAG 侧 `service/common` 有 51 个主代码类，其中 17 个在重写 go-zero 的运行时。**这 4.64× 的倍率不是"翻译成本"，是"框架差距补齐成本"。**
+> **基线读法**：更早基线的 `service/common` 只有 11 个非测试主代码文件，因为熔断、降载、限连接、限体积、日志、HTTP 解析全是**原框架内置**；B 侧 `service/common` 有 51 个主代码类，其中 17 个在重写那套运行时。**这 4.64× 的倍率不是"翻译成本"，是"框架差距补齐成本"。**
 
 ### 0.3 六项关键决策（决定了整棵树）
 
 | # | 决策 | 依据 | 代价 |
 |---|---|---|---|
-| **D1** | **api 与 rpc 合并为一个 app**（一域一进程） | Spring Cloud 的部署单元是"可部署服务"，不是"api 层 / rpc 层"；go-zero 的 api/rpc 分离源于 `.api` 文件与 `.proto` 两条 codegen 路径，是**语言产物**不是架构原则 | Go/RAG 20 进程 → 10 进程；Nacos 注册项减少；**rpc 进程不可用这一故障模式消失** |
+| **D1** | **api 与 rpc 合并为一个 app**（一域一进程） | Spring Cloud 的部署单元是"可部署服务"，不是"api 层 / rpc 层"；B 侧的 api/rpc 分离源于 `.api` 文件与 `.proto` 两条 codegen 路径，是**语言产物**不是架构原则 | B 侧 20 进程 → 本仓 10 进程；Nacos 注册项减少；**rpc 进程不可用这一故障模式消失** |
 | **D2** | **域内调用直连，不再自我 gRPC 往返** | 同进程内调 gRPC 是无意义的序列化开销与故障注入 | api 层的"gRPC code → 业务码"映射层消失；**同一份业务逻辑要能同时产出 HTTP 与 gRPC 两种错误表达**（见 §5.3 的统一错误模型） |
 | **D3** | **`service/common` 升级为真 starter** | Spring 生态里共享能力层的标准形态是 starter（`AutoConfiguration.imports`），不是"普通 jar + 每个消费者手写 `@Import`" | 消除 10 份 `@Import` 清单（4~10 个 Bean 不等）与 **9 份重复的 `MybatisPlusOrderingBridgeAutoConfiguration`** |
 | **D4** | **生态优先，手写只补生态缺口** | resilience4j / spring-cloud-stream / Micrometer Observation / SLF4J+MDC / Spring Data 已是成熟实现 | 部分 L3 语义降级（见 §0.4） |
-| **D5** | **DTO 改 immutable record + Bean Validation** | Java 生态的数据契约形态 | 错误文案从 go-zero 的 `field "uid" is not set` 变为 Bean Validation 文案 ⇒ **L3 降级**，除非显式保留自定义 validator |
+| **D5** | **DTO 改 immutable record + Bean Validation** | Java 生态的数据契约形态 | 错误文案从 B 侧手写校验器的 `field "uid" is not set` 变为 Bean Validation 文案 ⇒ **L3 降级**，除非显式保留自定义 validator |
 | **D6** | **跨域调用仍走 gRPC**（devh `@GrpcClient`） | proto 是 **L1 契约**，改传输就是改契约；且 devh starter 已是 Spring 生态做法 | 无。`api/client/` 因域内直连而清空，但跨域 client 需另置（§5.2 的 `client/`） |
 
 > ⚠️ **D1 与 D4 共同决定了"完全 Spring 化"的核心特征**：**进程数减半、共享层瘦身后一半、每域少一套 Application/Properties/advice/metrics 样板**。
 
 ### 0.4 L3 降级表（"完全 Spring 化"要付的账）
 
-| Go / RAG 现状 | 完全 Spring 化后的承载 | L3 状态 | 备注 |
+| B 侧现状（RAG 仓） | 完全 Spring 化后的承载 | L3 状态 | 备注 |
 |---|---|---|---|
-| go-zero `httpx.Parse` 的必填校验文案 `field "uid" is not set` | Bean Validation（`@NotNull` + `ProblemDetail`） | 🔴 **降级** | 需逐字一致 ⇒ 自定义 `ConstraintValidator`，成本高于收益，**默认接受降级** |
-| go-zero `mapping` 的类型强转判定（数字不进 String 字段等） | Jackson `CoercionConfig`（**RAG 已在用**，`GoStyleCoercion`） | 🟢 **保留** | 已是 Spring/Jackson 原生机制，只需改名与归位 |
-| go-zero `withJsonBody` 判据（`ContentLength > 0` 且 Content-Type 字面含 `application/json`） | 自定义 `HttpMessageConverter.canRead` | 🟢 **保留**（L2 级等价） | 2 行判定，非框架能力，但极便宜 |
-| go-zero `rest` 内置熔断（`Middlewares.Breaker`） | resilience4j `CircuitBreaker` | 🟡 **语义降级** | 失败判定窗口、half-open 探测策略不同；resilience4j 的默认值 ≠ go-zero 的默认值 |
-| go-zero `rest` 内置 CPU 降载（`CpuThreshold` 900‰） | resilience4j **无等价** ⇒ 保留一个自研 `CpuThresholdHealthIndicator` | 🟡 **部分降级** | 生态缺口，只能自研，但只需 1~2 类（现状 17 类） |
-| go-zero `rest` 内置 `MaxConns` / `MaxBytes` | Tomcat `max-connections` / `max-http-form-post-size` + `OncePerRequestFilter` | 🟢 **保留** | Spring Boot 已有对应配置项 |
-| go-zero `logx` 输出格式（含 `call_chain` 字段） | **实现 SLF4J `Logger` 接口**的适配器 | 🟢 **保留** | 格式不变，但接入 Spring 的日志生态（配置/采集/traceId 自动注入） |
-| go-zero `rest` 内置超时（`context.WithTimeout` 可取消在途 IO） | `DeadlineState` + `setQueryTimeout`（**RAG 已有**，E-4 修过） | 🟢 **保留** | Java 无法取消阻塞 IO，已用服务端取消语义等价替代 |
-| go-zero `zrpc` 内置的 Trace/Recover/Stat/Prometheus/Breaker/Shedding 链 | Micrometer Observation + resilience4j + Spring Cloud Stream | 🟡 **语义降级** | 链路顺序、span 属性命名需逐条对拍 |
-| `users` 域 `SchemaInitializer` 幂等重放 | 保留（已弃用 Flyway） | 🟢 **保留** | — |
+| B 侧 `GoStyleRequiredFields` / `GoStyleRequired` / `GoStyleRequest`（手写必填校验，文案 `field "uid" is not set`） | Bean Validation（`@NotNull` + `ProblemDetail`） | 🔴 **降级** | 需逐字一致 ⇒ 自定义 `ConstraintValidator`，成本高于收益，**默认接受降级** |
+| B 侧 `GoStyleCoercion`（Jackson `CoercionConfig` 类型强转判定） | Jackson `CoercionConfig`（**B 侧已在用**，`GoStyleCoercion`） | 🟢 **保留** | 已是 Spring/Jackson 原生机制，只需改名与归位 |
+| B 侧 `GoStyleJsonBodyConverter`（`ContentLength > 0` 且 Content-Type 字面含 `application/json`） | 自定义 `HttpMessageConverter.canRead` | 🟢 **保留**（L2 级等价） | 2 行判定，非框架能力，但极便宜 |
+| B 侧 `GoStyleBreaker`（手写 googlebreaker 移植：滚动窗口 ＋ 概率 drop ＋ force-pass ＋ 无三态） | resilience4j `CircuitBreaker` | 🟡 **语义降级** | 失败判定窗口、half-open 探测策略不同；resilience4j 的默认值 ≠ B 侧的默认值 |
+| B 侧 `GoStyleCpuSheddingFilter` + `GoStyleAdaptiveShedder`（CPU 900‰ ＋ 在途动态上限双条件） | resilience4j **无等价** ⇒ 保留一个自研 `CpuThresholdHealthIndicator` | 🟡 **部分降级** | 生态缺口，只能自研，但只需 1~2 类（现状 17 类） |
+| B 侧 `GoStyleFormLimitWebMvcConfig` / `GoStyleTomcatParameterLimitCustomizer`（限连接 / 限体积 / 限参数） | Tomcat `max-connections` / `max-http-form-post-size` + `OncePerRequestFilter` | 🟢 **保留** | Spring Boot 已有对应配置项 |
+| B 侧 `GoStyleLogger` 输出格式（含 `call_chain` 字段） | **实现 SLF4J `Logger` 接口**的适配器 | 🟢 **保留** | 格式不变，但接入 Spring 的日志生态（配置/采集/traceId 自动注入） |
+| B 侧 `GoStyleRequestDeadline` + `DeadlineQueryTimeoutInjector`（`setQueryTimeout` 取消在途 SQL） | `DeadlineState` + `setQueryTimeout`（**B 侧已有**） | 🟢 **保留** | Java 无法取消阻塞 IO，已用服务端取消语义等价替代 |
+| B 侧 `common/observability` 的 Trace/Recover/Stat/Prometheus/Breaker/Shedding 拦截链 | Micrometer Observation + resilience4j + Spring Cloud Stream | 🟡 **语义降级** | 链路顺序、span 属性命名需逐条对拍 |
+| B 侧 `users-common` 的 `SchemaInitializer` 幂等重放 | 保留（待定，见 `RAG-困境反哺.md` F-04） | 🟢 **保留** | — |
 | 事务边界 / 行级悲观锁 / 幂等键 / 游标编码 | 逐条保留 | 🟢 **保留** | 这些是业务语义，不是框架机制 |
 
 > **结论**：完全 Spring 化 = **L1 全保、L2 全保、L3 保 6 降 4**。降级的 4 项全部集中在**框架内部行为**（错误文案、熔断策略、span 属性），**没有一项落在业务语义上**。
@@ -149,99 +148,97 @@ api 模块                                     rpc 模块
 
 ---
 
-## 二、Go 原始文件树（spec 12.2）
+## 二、B 侧原始文件树（spec 12.2）
 
 ```
-Sea-RideTheWind_golang/service/              # 13 个目录（knowledge/points/security 范围外）
-├── common/                                   # 11 个非测试 .go —— 跨服务共享
-│   ├── communityfact/                        # authority_http.go / process.go / wire.go / logging.go
-│   ├── logger/logger.go
-│   ├── observability/                        # observability.go / http.go / mq.go / rpc.go
-│   ├── response/response.go
-│   └── snowflake/snowflake.go
-├── article/     ├── api/ └── rpc/
-├── comment/     ├── api/ └── rpc/
-├── favorite/    ├── api/ └── rpc/
-├── follow/      ├── api/ └── rpc/
-├── hot/         ├── api/ └── rpc/
-├── knowledge/   ├── api/ └── rpc/             # 范围外
-├── like/        ├── api/ └── rpc/
-├── message/     ├── api/ └── rpc/
-├── points/      ├── api/ └── rpc/             # 范围外
-├── security/    ├── api/ └── rpc/             # 范围外
-├── task/        ├── api/ └── rpc/
-└── user/
-    ├── admin/   ├── api/ └── rpc/
-    ├── common/
-    ├── rpc/
-    └── user/    ├── api/ └── rpc/
+service/                                   # 10 个业务域 + 共享层 common + users 聚合
+├── common/                                # 共享层（12 个包：web / communityfact / http / redis /
+│   │                                      #   protection / observability / persistence / logger /
+│   │                                      #   security / exception / response / spring / snowflake）
+│   ├── communityfact/
+│   ├── exception/
+│   ├── http/
+│   ├── logger/
+│   ├── observability/
+│   ├── persistence/
+│   ├── protection/
+│   ├── redis/
+│   ├── response/
+│   ├── snowflake/
+│   ├── spring/
+│   └── web/
+├── article/     ├── article-api/  ├── article-common/  ├── article-proto/  └── article-rpc/
+├── comment/     ├── comment-api/  ├── comment-common/  ├── comment-proto/  └── comment-rpc/
+├── favorite/    ├── favorite-api/  ├── favorite-common/  ├── favorite-proto/  └── favorite-rpc/
+├── follow/      ├── follow-api/  ├── follow-common/  ├── follow-proto/  └── follow-rpc/
+├── hot/         ├── hot-api/  ├── hot-common/  ├── hot-proto/  └── hot-rpc/
+├── like/        ├── like-api/  ├── like-common/  ├── like-proto/  └── like-rpc/
+├── message/     ├── message-api/  ├── message-common/  ├── message-proto/  └── message-rpc/
+├── task/        ├── task-api/  ├── task-proto/  └── task-rpc/
+└── users/       ├── admin/（admin-api / admin-rpc）  ├── user/（user-api / user-rpc）  └── users-common/
 ```
 
-### 以 `message` 域为样板（Go 侧完整文件清单，53 个主代码文件）
+### 以 `message` 域为样板（B 侧完整包清单）
 
 ```
 service/message/
-├── api/
-│   ├── etc/messagecenter.yaml
-│   ├── messagecenter.go                          # main 入口
-│   └── internal/
-│       ├── config/config.go
-│       ├── handler/
-│       │   ├── routes.go                         # 13 个 endpoint 注册 + middleware
-│       │   ├── message/                          # 8 个 handler
-│       │   └── messageadmin/                     # 5 个 handler
-│       ├── logic/
-│       │   ├── message/                          # 8 个 logic
-│       │   ├── messageadmin/                     # 5 个 logic
-│       │   └── shared/helper.go
-│       ├── metrics/metrics.go
-│       ├── svc/servicecontext.go
-│       └── types/types.go
-├── common/errmsg.go
-└── rpc/
-    ├── etc/message.yaml
-    ├── message.go                                # main 入口
-    ├── messageservice/messageservice.go
-    ├── pb/                                       # 生成物（message.pb.go / message_grpc.pb.go）
-    └── internal/
-        ├── config/config.go
-        ├── logic/                                # 10 个 logic + helper.go
-        ├── metrics/metrics.go
-        ├── model/                                # data_model.go / db.go / message.go
-        ├── server/messageserviceserver.go
-        └── svc/servicecontext.go
+├── message-api/src/main/java/com/rag/message/message/api/
+│   ├── advice/                            # GlobalResponseAdvice / GlobalExceptionHandler
+│   ├── auth/                              # JWT 鉴权
+│   ├── client/                            # 跨域 gRPC client
+│   ├── config/                            # *Properties（@ConfigurationProperties）
+│   ├── controller/                        # HTTP 端点
+│   ├── dto/                               # 出入参
+│   ├── interceptor/                       # 拦截器（鉴权 / 黑名单）
+│   ├── metrics/                           # Micrometer 指标
+│   ├── protection/                        # 保护链（熔断 / 降载 / 限流）
+│   └── service/                           # api 侧业务编排
+├── message-common/src/main/java/com/rag/message/message/common/
+│   └── errmsg/                            # 错误码契约 + <域>GrpcError
+├── message-proto/src/main/proto/          # message.proto（pb 生成物）
+└── message-rpc/src/main/java/com/rag/message/message/rpc/
+    ├── bootstrap/                         # 启动初始化
+    ├── client/                            # 跨域 gRPC client
+    ├── config/                            # *Properties
+    ├── domain/                            # *Entity（@TableName）
+    ├── exception/
+    ├── mapper/                            # *Mapper（extends BaseMapper<Entity>）
+    ├── metrics/
+    └── service/                           # *DomainService + service/impl/（*GrpcImpl）
 ```
 
-> **Go 侧结构特征（= Go-ism 的具体来源）**：
-> 1. `handler/` `logic/` `types/` `svc/` `metrics/` —— goctl 模板的固定分层
-> 2. `servicecontext.go` —— 手工 DI 容器（Go 无 DI 框架的补偿）
-> 3. `pb/` —— proto 生成物
-> 4. api 与 rpc 各一个 `main` 入口 ⇒ 两个进程
+> **B 侧结构特征（= 原形态惯性的具体来源）**：
+> 1. `advice/` `controller/` `dto/` `interceptor/` `metrics/` `service/` + rpc 侧 `domain/` `mapper/` `service/impl/` —— api/rpc 二分留下的固定分层
+> 2. `*DomainService` + `service/impl/` 双层（业务用例与 gRPC 适配器分离）—— 传输协议纵向切开的投影
+> 3. `<域>-proto` 独立模块 —— proto 生成物独立成模块
+> 4. api 与 rpc 各一个 `Application` 入口 ⇒ 两个进程
+> 5. `GoStyle*` 前缀类（44 个主代码类）—— 逐个复刻原运行时能力的痕迹
 
 ---
 
-## 三、Go 文件职责矩阵（spec 12.3）
+## 三、B 侧文件职责矩阵（spec 12.3）
 
 > 每行回答：「文件」「主要职责」「业务语义（L2）」「实现机制（L4，可换）」
 
-| Go 文件（message 域为样板） | 主要职责 | 业务语义（L2，必须保留） | 实现机制（L4，可换） |
+| B 侧文件（message 域为样板） | 主要职责 | 业务语义（L2，必须保留） | 实现机制（L4，可换） |
 |---|---|---|---|
-| `messagecenter.go` / `message.go` | 进程入口：读 yaml → 起 server → 注册 handler → 装载统一响应/错误处理 | 统一响应包装（成功 `Code=Success`、失败业务码）；错误码还原 `{code,msg}` | `flag.Parse` / `conf.MustLoad` / `logx.MustSetup` / `rest.MustNewServer` / `zrpc.MustNewServer` |
-| `etc/*.yaml` | 端口 / JWT / Redis / etcd key / Kafka / DB | 端口号、JWT secret 与有效期、Redis 地址、Kafka topic、DB 连接 | go-zero 的 `rest.RestConf` / `zrpc.RpcClientConf` 结构约定 |
-| `internal/config/config.go` | Config struct | 实际依赖的配置块 | go-zero 结构体嵌入 |
-| `internal/handler/routes.go` | 挂载路由 + 绑定 middleware | **路由前缀 `/message/v1`（L1，客户端按它寻址）**；全部 POST；middleware 必须先于业务执行 | `rest.WithMiddlewares` / `rest.WithJwt` / `rest.WithPrefix` |
-| `internal/handler/*/*.go` | HTTP entry：解析 req → new logic → 调 logic → 包装响应 | HTTP 契约 + ctx-aware 错误传递 | `httpx.Parse` / `httpx.ErrorCtx` / `httpx.OkJsonCtx` |
-| `internal/logic/*/*.go` | 业务用例：取身份 → 调 rpc → 错误码转换 → 指标 → 业务日志 | **核心业务规则**、错误码语义、reject 上报条件 | `logx.WithContext` / 自包 metrics |
-| `internal/logic/shared/helper.go` | 跨 logic 复用辅助函数 | uid 解析的多类型兼容、日志字段、**error → 业务码的映射规则** | 无 |
-| `internal/middleware/checkblacklistmiddleware.go` | JWT blacklist：解析 Bearer → 查 Redis → 命中 401 | **blacklist 校验是本域特定能力，不是通用 auth**；无 token 直接放行 | `rest.Middleware` 的 `func(next) http.HandlerFunc` 签名 |
-| `internal/metrics/metrics.go` | Prometheus 指标定义 + Observe helper | **指标名与标签是业务定义**（`message_api_request_total{route,result}` 等） | Prometheus client_golang + `sync.Once` 注册 |
-| `internal/svc/servicecontext.go` | 装配根：Config / Model / Redis / Rpc client / Middleware | （无业务方法时）纯装配 | `redis.MustNewRedis` / `zrpc.MustNewClient` / 手工 new |
-| `internal/types/types.go` | HTTP DTO 定义 | **HTTP 进出参契约（L1）** | 纯数据 + json tag |
-| `rpc/internal/model/*.go` | 实体 + DB 初始化 + CRUD | **持久化语义**：查询条件、更新行为、唯一约束 | GORM / `database/sql` |
-| `rpc/internal/server/*serviceserver.go` | gRPC 方法分发 | **gRPC 方法契约（L1）** | goctl 自动生成的 router |
-| `rpc/internal/logic/*.go` | gRPC 侧业务逻辑 | 业务规则 + **抛 gRPC status code 的错误语义** | `errmsg.NewGrpcErr(code,msg)` → `status.Error` |
-| `rpc/messageservice/messageservice.go` | proto 生成物 | **proto 契约（L1）** | protoc |
-| `service/common/*` | 共享：日志 / 响应信封 / 雪花 ID / 可观测 / communityfact | 跨服务共享的**输出格式与基础设施行为** | go-zero `logx` / `rest` / `zrpc` 内置能力的项目级封装 |
+| `MessageApiApplication` / `MessageRpcApplication` | 进程入口：读配置 → 起 server → 注册 Bean → 装载统一响应/错误处理 | 统一响应包装（成功 `Code=Success`、失败业务码）；错误码还原 `{code,msg}` | `@SpringBootApplication` + `@EnableDiscoveryClient` + devh `GrpcServerConfigurer` |
+| `application.yml` | 端口 / JWT / Redis / etcd key / Kafka / DB | 端口号、JWT secret 与有效期、Redis 地址、Kafka topic、DB 连接 | Spring `Environment` + `@ConfigurationProperties` |
+| `api/config/*Properties` | 配置绑定 | 实际依赖的配置块 | `@ConfigurationProperties`（Boot 绑定） |
+| `api/controller/*Controller` | HTTP entry：解析 req → 调 service → 包装响应 | HTTP 契约 + 错误传递 | `@RestController` + `@RequestMapping` + `@Valid` |
+| `api/dto/*` | HTTP DTO 定义 | **HTTP 进出参契约（L1）** | 可变 POJO（`@JsonProperty` 等注解） |
+| `api/service/*` | 业务用例：取身份 → 调 rpc → 错误码转换 → 指标 → 业务日志 | **核心业务规则**、错误码语义、reject 上报条件 | Spring Bean + 自包 metrics |
+| `api/service/` 里的 helper | 跨用例复用辅助函数 | uid 解析的多类型兼容、日志字段、**error → 业务码的映射规则** | 无 |
+| `api/interceptor/JwtAuthInterceptor` | JWT blacklist：解析 Bearer → 查 Redis → 命中 401 | **blacklist 校验是本域特定能力，不是通用 auth**；无 token 直接放行 | `HandlerInterceptor` |
+| `api/metrics/*` | Micrometer 指标定义 + Observe helper | **指标名与标签是业务定义**（`message_api_request_total{route,result}` 等） | Micrometer `MeterRegistry` + `GlobalConfig` 注册 |
+| `api/advice/GlobalResponseAdvice` / `GlobalExceptionHandler` | 统一信封 + 异常 → HTTP 响应 | **信封形状（`{code,msg,data}`）与状态码语义** | `@RestControllerAdvice` + `@ExceptionHandler` |
+| `rpc/domain/*Entity` | 实体（表映射） | **持久化语义**：查询条件、更新行为、唯一约束 | `@TableName` + MyBatis-Plus `BaseMapper` |
+| `rpc/mapper/*Mapper` | 持久化读写 | **查询条件与更新行为逐条保留** | MyBatis-Plus `BaseMapper` + `LambdaQueryWrapper` |
+| `rpc/service/impl/*GrpcImpl` | gRPC 方法分发 | **gRPC 方法契约（L1）** | `@GrpcService` |
+| `rpc/service/*DomainService` | gRPC 侧业务逻辑 | 业务规则 + **抛业务码的错误语义** | `<域>GrpcError.grpcError(code,msg)` → `StatusException` |
+| `message-common/.../errmsg/<域>GrpcError` | 错误码契约 + 业务码 ↔ 标准码映射 | **错误码取值与文案（L1）** | `Status` + trailer 元数据 |
+| `message-proto/message.proto` | proto 定义 | **proto 契约（L1）** | protoc |
+| `service/common/*` | 共享：日志 / 响应信封 / 雪花 ID / 可观测 / communityfact | 跨服务共享的**输出格式与基础设施行为** | B 侧 `common/` 12 个包（含 `GoStyle*` 复刻类） |
 
 ---
 
@@ -251,62 +248,62 @@ service/message/
 
 ### 4.1 入口与装配
 
-| Go 来源及职责 | Java 目标包或现有机制 | 承载方式 | 依据与原因 |
+| B 侧来源及职责 | Java 目标包或现有机制 | 承载方式 | 依据与原因 |
 |---|---|---|---|
-| `messagecenter.go` main 入口 | `MessageServiceApplication.java` | **ADAPT** | `@SpringBootApplication` + `@EnableDiscoveryClient` |
-| `messagecenter.go` 统一响应包装 | `api/advice/MessageApiResponseAdvice.java` | **SPLIT** | 现有 `GlobalResponseAdvice` 已是 `@RestControllerAdvice`；信封语义保留 |
-| `messagecenter.go` 错误码还原 | `api/advice/MessageApiExceptionHandler.java` | **REUSE** | 现有 `GlobalExceptionHandler` 承担；**合并后不再需要"gRPC code → 业务码"这一层**（见 §5.3） |
-| `routes.go` 路由注册 | `@RequestMapping` / `@PostMapping` | **ABSORB** | Spring MVC 注解；**前缀 `/message/v1` 是 L1，必须逐字保留** |
-| `routes.go` middleware 绑定 | `api/config/WebMvcConfig.java` + `api/interceptor/JwtAuthInterceptor.java` | **ADAPT** | `rest.WithMiddlewares` → `HandlerInterceptor`；**注册顺序（interceptor 先于业务）属于 L3，必须保留并有断言** |
-| `servicecontext.go` 装配根 | Spring DI 容器 | **ABSORB** | 无业务方法 ⇒ 不生成 `ServiceContext.java` |
-| `servicecontext.go` 里的 `ensureDefaultAdmin` 之类 | `wiring/*Seeder.java` | **REUSE** | 现有 `AdminSeederBootstrap` / `ArticleSchemaGate` 承担；**含业务方法故不吸收** |
+| B 侧 `MessageApiApplication` / `MessageRpcApplication`（两个 main 入口） | `MessageServiceApplication.java` | **ADAPT** | `@SpringBootApplication` + `@EnableDiscoveryClient` |
+| B 侧 `GlobalResponseAdvice`（统一响应包装） | `api/advice/MessageApiResponseAdvice.java` | **SPLIT** | B 侧 `GlobalResponseAdvice` 已是 `@RestControllerAdvice`；信封语义保留 |
+| B 侧 `GlobalExceptionHandler`（错误码还原） | `api/advice/MessageApiExceptionHandler.java` | **REUSE** | B 侧 `GlobalExceptionHandler` 承担；**合并后不再需要"gRPC code → 业务码"这一层**（见 §5.3） |
+| B 侧 `*Controller` 的路由注册 | `@RequestMapping` / `@PostMapping` | **ABSORB** | Spring MVC 注解；**前缀 `/message/v1` 是 L1，必须逐字保留** |
+| B 侧 `WebMvcConfig` + `JwtAuthInterceptor`（拦截链绑定） | `api/config/WebMvcConfig.java` + `api/interceptor/JwtAuthInterceptor.java` | **ADAPT** | B 侧的 `HandlerInterceptor` → 本仓归位；**注册顺序（interceptor 先于业务）属于 L3，必须保留并有断言** |
+| B 侧 `*Application` 的装配根 | Spring DI 容器 | **ABSORB** | 无业务方法 ⇒ 不生成 `ServiceContext.java` |
+| B 侧 `bootstrap/` 里的 `ensureDefaultAdmin` 之类 | `wiring/*Seeder.java` | **REUSE** | B 侧 `AdminSeederBootstrap` / `ArticleSchemaGate` 承担；**含业务方法故不吸收** |
 
 ### 4.2 HTTP 层
 
-| Go 来源及职责 | Java 目标包或现有机制 | 承载方式 | 依据与原因 |
+| B 侧来源及职责 | Java 目标包或现有机制 | 承载方式 | 依据与原因 |
 |---|---|---|---|
-| `types/types.go` 13 个 DTO | `api/dto/*`（immutable record） | **ADAPT** | 契约不变（L1），形态从可变 POJO → record（D5）；**D11 后** C 侧 `dto/` 按业务对象拆子包 |
-| `httpx.Parse` 必填校验 | Bean Validation `@NotNull/@NotBlank` + `api/advice` | **SPLIT** | ⚠️ **L3 降级**：错误文案从 go-zero 改为 Bean Validation 文案 |
-| `httpx.Parse` 类型强转判定 | `common/autoconfigure/JsonBodyConverterAutoConfiguration`（`CoercionConfig`） | **ADAPT** | **已是 Jackson 原生机制**（现存 `Coercion`），只需归位到 starter 并改名 |
-| `httpx.Parse` 读取 body 判据 | `common/web/JsonBodyConverter`（→ `JsonBodyConverter`） | **REUSE** | 保留 `withJsonBody` 的字面判据（`ContentLength>0` + Content-Type 字面含 `application/json`） |
-| `internal/logic/*/*.go`（13 个用例） | `api/service/*Service.java` | **KEEP→MERGE 视边界** | 13 个用例**合并为 1~2 个 Service**（见 §5.2 的"用例内聚"判据），因为合并后用例不再需要"构造 logic + 转交"这一层 |
-| `internal/logic/shared/helper.go` | `api/service/*ApiSupport.java` | **MERGE** | 辅助函数与用例同属 HTTP 编排层；uid 解析 / 错误码映射保留 |
-| `internal/middleware/checkblacklistmiddleware.go` | `api/interceptor/JwtAuthInterceptor.java` | **SPLIT** | 中间件签名 → `HandlerInterceptor`；**Redis 查询 + 无 token 放行规则保留** |
-| `internal/metrics/metrics.go` | `api/metrics/MessageApiMetrics.java` | **ADAPT** | Micrometer 承担注册；**指标名与标签保留**（业务定义） |
+| B 侧 `api/dto/*` 13 个 DTO（可变 POJO） | `api/dto/*`（immutable record） | **ADAPT** | 契约不变（L1），形态从可变 POJO → record（D5）；**D11 后** C 侧 `dto/` 按业务对象拆子包 |
+| B 侧 `GoStyleRequiredFields` / `GoStyleRequired` / `GoStyleRequest`（必填校验） | Bean Validation `@NotNull/@NotBlank` + `api/advice` | **SPLIT** | ⚠️ **L3 降级**：错误文案从 B 侧手写校验器改为 Bean Validation 文案 |
+| B 侧 `GoStyleCoercion`（类型强转判定） | `common/autoconfigure/JsonBodyConverterAutoConfiguration`（`CoercionConfig`） | **ADAPT** | **已是 Jackson 原生机制**（B 侧 `GoStyleCoercion`），只需归位到 starter 并改名 |
+| B 侧 `GoStyleJsonBodyConverter`（读取 body 判据） | `common/web/JsonBodyConverter`（→ `JsonBodyConverter`） | **REUSE** | 保留 B 侧的字面判据（`ContentLength>0` + Content-Type 字面含 `application/json`） |
+| B 侧 `api/service/*`（13 个用例） | `api/service/*Service.java` | **KEEP→MERGE 视边界** | 13 个用例**合并为 1~2 个 Service**（见 §5.2 的"用例内聚"判据），因为合并后用例不再需要"构造 logic + 转交"这一层 |
+| B 侧 `api/service/` 里的 helper | `api/service/*ApiSupport.java` | **MERGE** | 辅助函数与用例同属 HTTP 编排层；uid 解析 / 错误码映射保留 |
+| B 侧 `JwtAuthInterceptor`（JWT 鉴权 + 黑名单） | `api/interceptor/JwtAuthInterceptor.java` | **SPLIT** | B 侧已是 `HandlerInterceptor` 形态；**Redis 查询 + 无 token 放行规则保留** |
+| B 侧 `api/metrics/*`（指标注册） | `api/metrics/MessageApiMetrics.java` | **ADAPT** | Micrometer 承担注册；**指标名与标签保留**（业务定义） |
 
 ### 4.3 gRPC 与领域层
 
-| Go 来源及职责 | Java 目标包或现有机制 | 承载方式 | 依据与原因 |
+| B 侧来源及职责 | Java 目标包或现有机制 | 承载方式 | 依据与原因 |
 |---|---|---|---|
-| `rpc/internal/server/*serviceserver.go` | `grpc/*GrpcService.java` | **REUSE** | 现有 `@GrpcService` 实现（**D7 后改名**：`*ServiceGrpcImpl` → `*GrpcService`，包从 `rpc/service/impl/` 上收到 `grpc/`）；**proto 方法签名是 L1，一个字节都不改** |
-| `rpc/internal/logic/*.go`（10 个） | `rpc/service/*DomainService.java` | **MERGE** | 合并后 HTTP 与 gRPC **共享同一份业务用例** ⇒ 由一个 DomainService 承担，gRPC 侧做 proto ↔ 领域模型转换 |
-| `rpc/internal/model/*.go` | `rpc/domain/*Entity.java` | **ADAPT** | `@TableName` + MyBatis-Plus；**列类型/可空性/索引逐列对拍（DDL 探针）** |
-| `rpc/internal/model/db.go` | `rpc/mapper/*Mapper.java` | **REUSE** | `BaseMapper` + XML/注解 SQL；**查询条件必须逐条保留** |
-| `errmsg.NewGrpcErr(code,msg)` → `status.Error` | `rpc/exception/*` + `common/autoconfigure/GrpcExceptionMapperAutoConfiguration` | **SPLIT** | ⚠️ **关键设计点**：合并后业务层抛 `BusinessException(code,msg)`；gRPC 边界统一转 `StatusRuntimeException`，HTTP 边界统一转 HTTP 响应（见 §5.3） |
-| `rpc/internal/svc/servicecontext.go` | Spring DI | **ABSORB** | — |
-| `rpc/pb/*`（生成物） | `proto/`（根级 proto 模块，artifactId `proto`；**D7 后 10 域共用一个模块**） | **KEEP** | **L1 契约，一个字节都不改** |
+| B 侧 `rpc/service/impl/*GrpcImpl` | `grpc/*GrpcService.java` | **REUSE** | B 侧的 `@GrpcService` 实现（**D7 后改名**：`*ServiceGrpcImpl` → `*GrpcService`，包从 `rpc/service/impl/` 上收到 `grpc/`）；**proto 方法签名是 L1，一个字节都不改** |
+| B 侧 `rpc/service/*DomainService`（10 个用例） | `rpc/service/*DomainService.java` | **MERGE** | 合并后 HTTP 与 gRPC **共享同一份业务用例** ⇒ 由一个 DomainService 承担，gRPC 侧做 proto ↔ 领域模型转换 |
+| B 侧 `rpc/domain/*Entity` | `rpc/domain/*Entity.java` | **ADAPT** | `@TableName` + MyBatis-Plus；**列类型/可空性/索引逐列对拍（DDL 探针）** |
+| B 侧 `rpc/mapper/*Mapper` | `rpc/mapper/*Mapper.java` | **REUSE** | `BaseMapper` + 注解 SQL；**查询条件必须逐条保留** |
+| B 侧 `<域>GrpcError.grpcError(code,msg)` → `StatusException` | `rpc/exception/*` + `common/autoconfigure/GrpcExceptionMapperAutoConfiguration` | **SPLIT** | ⚠️ **关键设计点**：合并后业务层抛 `BusinessException(code,msg)`；gRPC 边界统一转 `StatusRuntimeException`，HTTP 边界统一转 HTTP 响应（见 §5.3） |
+| B 侧 `*RpcApplication` 的装配 | Spring DI | **ABSORB** | — |
+| B 侧 `<域>-proto` 模块（生成物） | `proto/`（根级 proto 模块，artifactId `proto`；**D7 后 10 域共用一个模块**） | **KEEP** | **L1 契约，一个字节都不改** |
 
 ### 4.4 跨域调用
 
-| Go 来源及职责 | Java 目标包或现有机制 | 承载方式 | 依据与原因 |
+| B 侧来源及职责 | Java 目标包或现有机制 | 承载方式 | 依据与原因 |
 |---|---|---|---|
-| `svcCtx.FollowRpc.*`（同域） | `rpc/service/*DomainService`（**直连**） | **ABSORB**（D2） | 合并后同域不再走网络 |
-| `svcCtx.UserRpc.GetUser`（article/api 跨域） | `client/ArticleRpcClient.java` | **SPLIT** | 跨域调用是**业务能力**（取作者信息），不是 HTTP 层能力 ⇒ 归入业务层；包位置需按 §3.3.8 说明 |
-| `svcCtx.ArticleRpc.GetArticle`（hot/api 跨域） | 同上 | **SPLIT** | 同上 |
-| devh `@GrpcClient` 的 TLS 默认值 | `grpc.client.*.negotiation-type: plaintext` | **ADAPT** | ⚠️ **L3 必须显式配置**，devh 默认 TLS，Go 是明文 |
+| B 侧同域 `*RpcClient` 调用（如 `FollowRpc`） | `rpc/service/*DomainService`（**直连**） | **ABSORB**（D2） | 合并后同域不再走网络 |
+| B 侧 `svcCtx.UserRpc.GetUser`（article/api 跨域） | `client/ArticleRpcClient.java` | **SPLIT** | 跨域调用是**业务能力**（取作者信息），不是 HTTP 层能力 ⇒ 归入业务层；包位置需按 §3.3.8 说明 |
+| B 侧 `svcCtx.ArticleRpc.GetArticle`（hot/api 跨域） | 同上 | **SPLIT** | 同上 |
+| B 侧 devh `@GrpcClient` 的 TLS 默认值 | `grpc.client.*.negotiation-type: plaintext` | **ADAPT** | ⚠️ **L3 必须显式配置**，devh 默认 TLS，B 侧也是靠 yml 显式写明文 |
 
 ### 4.5 共享层 `service/common` → starter
 
-| Go 来源及职责 | Java 目标包或现有机制 | 承载方式 | 依据与原因 |
+| B 侧来源及职责 | Java 目标包或现有机制 | 承载方式 | 依据与原因 |
 |---|---|---|---|
-| `common/logger/logger.go`（logx 封装） | `common/logger/GoStyleLogger implements org.slf4j.Logger` | **ADAPT** | **格式与字段保留**（`call_chain` 等是行为契约），但接入 SLF4J 生态 |
-| `common/response/response.go`（信封） | `common/contract/ApiResponse.java` | **ADAPT** | 信封是 L1（客户端按 `{code,msg,data}` 解析）⇒ **不能用 `ProblemDetail` 替换**，只作为内部异常表达可用 |
-| `common/snowflake/snowflake.go` | `common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration` | **REUSE** | 现有实现；**epoch/位段是业务契约（like 域游标依赖 `>>22`）** |
-| `common/observability/*.go`（http/mq/rpc 三条链） | Micrometer `Observation` + OTel bridge | **ABSORB** | ⚠️ **L3 部分降级**：span 名称/属性需逐条对拍 |
-| go-zero `rest` 内置熔断 | resilience4j `CircuitBreaker` | **ABSORB** | ⚠️ **L3 降级**：失败窗口/half-open 策略不同 |
-| go-zero `rest` 内置 CPU 降载 | `common/protection/CpuThresholdHealthIndicator`（**自研 1 类**） | **NEW** | 生态缺口。现状 17 类 → 目标 1~2 类 |
-| go-zero `rest` 内置 `MaxConns`/`MaxBytes` | Tomcat 配置 + `OncePerRequestFilter` | **ABSORB + NEW(1 类)** | `MaxConns` 是 Tomcat 原生项；`MaxBytes` 需一个 filter |
-| `common/communityfact/*.go` | `common/communityfact/*`（保留） | **REUSE** | 业务特有（社区事实），无生态等价物 |
+| B 侧 `common/logger/Logger`（日志封装） | `common/logger/GoStyleLogger implements org.slf4j.Logger` | **ADAPT** | **格式与字段保留**（`call_chain` 等是行为契约），但接入 SLF4J 生态 |
+| B 侧 `common/response/Response`（信封） | `common/contract/ApiResponse.java` | **ADAPT** | 信封是 L1（客户端按 `{code,msg,data}` 解析）⇒ **不能用 `ProblemDetail` 替换**，只作为内部异常表达可用 |
+| B 侧 `common/snowflake/Snowflake` | `common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration` | **REUSE** | B 侧实现；**epoch/位段是业务契约（like 域游标依赖 `>>22`）** |
+| B 侧 `common/observability/*`（http/mq/rpc 三条链） | Micrometer `Observation` + OTel bridge | **ABSORB** | ⚠️ **L3 部分降级**：span 名称/属性需逐条对拍 |
+| B 侧 `common/protection/GoStyleBreaker`（手写熔断） | resilience4j `CircuitBreaker` | **ABSORB** | ⚠️ **L3 降级**：失败窗口/half-open 策略不同 |
+| B 侧 `common/protection/GoStyleAdaptiveShedder` + `GoStyleCpuSheddingFilter`（CPU 降载） | `common/protection/CpuThresholdHealthIndicator`（**自研 1 类**） | **NEW** | 生态缺口。现状 17 类 → 目标 1~2 类 |
+| B 侧 `common/http/GoStyleFormLimitWebMvcConfig` + `GoStyleTomcatParameterLimitCustomizer`（限连接/限体积/限参数） | Tomcat 配置 + `OncePerRequestFilter` | **ABSORB + NEW(1 类)** | 限连接是 Tomcat 原生项；限体积需一个 filter |
+| B 侧 `common/communityfact/*` | `common/communityfact/*`（保留） | **REUSE** | 业务特有（社区事实），无生态等价物 |
 | —— | `common/autoconfigure/*` + `AutoConfiguration.imports` | **NEW** | **D3 的载体**；消除 10 份 `@Import` 清单与 9 份重复的 MP 桥 |
 
 ---
@@ -334,7 +331,7 @@ RAG-V1/
 │       │   │   └── GrpcExceptionMapperAutoConfiguration.java  # §5.3 的统一错误模型
 │       │   ├── contract/
 │       │   │   └── ApiResponse.java            # 信封（L1）
-│       │   ├── web/                            # ★ Go 的 JSON / 表单 / 错误形状兼容层（原 common/http）
+│       │   ├── web/                            # ★ B 侧的 JSON / 表单 / 错误形状兼容层（B 侧 `common/http`）
 │       │   │   ├── JsonBodyConverter.java
 │       │   │   ├── JsonBodyConverterConfig.java
 │       │   │   ├── RouterErrorResponses.java
@@ -384,7 +381,7 @@ RAG-V1/
 └── docs/
 ```
 
-> **proto 模块保留的理由**：proto 是 **L1 外部契约**，跨服务共享。把它塞进 app 模块会让消费方依赖整个应用。**契约模块与实现模块分离是 Spring 生态的常规做法，不是 Go-ism。**
+> **proto 模块保留的理由**：proto 是 **L1 外部契约**，跨服务共享。把它塞进 app 模块会让消费方依赖整个应用。**契约模块与实现模块分离是 Spring 生态的常规做法，不是原形态惯性。**
 > ⚠️ **D7 后与「每域一个契约模块」的区别**：错误码与事件 DTO 是**逐域隔离**的（AGENTS §五.2 R1）⇒ 放进 `common/` 是错的；但为每域单开一个 Maven 坐标收益不足 ⇒ **错误契约落进域模块的 `contract/` 包**，proto 单独集中到根级模块。
 
 ### 5.2 每域内部的包结构（以 `message` 域为样板，10 域同构）
@@ -469,7 +466,7 @@ service/message/
 
 - **职责**：跨域调用下游 gRPC 服务（如 `message` 域取 `user` 信息、`hot` 域取 `article` 内容）。
 - **现有包为何无法承载**：`api/client/` 在合并后**域内调用消失**，只对跨域调用适用；但跨域调用是**业务能力**（取作者资料、批量补齐文章），由 `api/service/` 承担会造成"HTTP 层依赖下游服务"的错误依赖方向。
-- **实际依据**：Go 侧 `svcCtx.UserRpc.GetUser` 出现在 `article/api/internal/logic/article/helper.go` —— 是**业务逻辑的一部分**，不是 HTTP 入口的一部分。合并后该 helper 落在业务层。
+- **实际依据**：B 侧的 `svcCtx.UserRpc.GetUser` 调用出现在 `article` 域的**业务 helper**（api 侧业务层）—— 是**业务逻辑的一部分**，不是 HTTP 入口的一部分。合并后该 helper 落在业务层。
 - **最小范围**：新增 1 个包，不新增顶层模块，不改动既有包职责。
 
 #### 关于 `rpc.*` 的命名债（**已由 D7 结清**）
@@ -481,7 +478,7 @@ service/message/
 
 ### 5.3 统一错误模型（D2 带来的最关键设计）
 
-Go 侧同一份业务错误在两处各写一遍：api 层把 gRPC status 映射成业务码，rpc 层抛原始 status。合并后只有一份业务逻辑，因此需要**一个业务异常 + 两个边界适配器**：
+B 侧同一份业务错误在两处各写一遍：api 层把 gRPC status 映射成业务码，rpc 侧抛原始 status。合并后只有一份业务逻辑，因此需要**一个业务异常 + 两个边界适配器**：
 
 ```
                     ┌─────────────────────────────┐
@@ -493,14 +490,14 @@ Go 侧同一份业务错误在两处各写一遍：api 层把 gRPC status 映射
    RagGrpcExceptionMapper              @RestControllerAdvice
    （gRPC 边界）                        （HTTP 边界）
    → StatusRuntimeException             → HTTP 200 + {code,msg}
-     .withCode(code)                       或 400/401（按 Go 的形状）
+     .withCode(code)                       或 400/401（按 B 侧的形状）
 ```
 
-| 边界 | Go 侧行为 | 完全 Spring 化后 | L3 |
+| 边界 | B 侧行为 | 完全 Spring 化后 | L3 |
 |---|---|---|---|
-| gRPC | `status.Error(codes.Code(code), msg)` —— **业务码被塞进 gRPC status code 字段** | `BusinessException` → mapper → `StatusRuntimeException` | 🟢 保留（code 值与 msg 逐字一致） |
-| HTTP | api 层 `switch` 把 gRPC code 映射回业务码 | `@RestControllerAdvice` 直接读 `BusinessException.code` | 🟢 保留（结果等价，路径更短） |
-| HTTP 错误形状 | `httpx.Error` ⇒ 400 + text/plain | `@RestControllerAdvice` ⇒ 400 + text/plain | 🟢 保留（已由 `RouterErrorResponses` 实现） |
+| gRPC | B 侧 `<域>GrpcError.grpcError(code,msg)` —— **业务码塞进标准 status code 字段**（B 侧另有 trailer 承载业务码） | `BusinessException` → mapper → `StatusRuntimeException` | 🟢 保留（code 值与 msg 逐字一致） |
+| HTTP | B 侧 api 层 `switch` 把 gRPC code 映射回业务码 | `@RestControllerAdvice` 直接读 `BusinessException.code` | 🟢 保留（结果等价，路径更短） |
+| HTTP 错误形状 | B 侧 `GoStyleRouterErrorResponses` ⇒ 400 + text/plain | `@RestControllerAdvice` ⇒ 400 + text/plain | 🟢 保留（已由 `RouterErrorResponses` 实现） |
 
 > ⚠️ **注意**：`like` 域的 rpc 侧错误码空间是 like 自己的（2001/5001/…），**不是 gRPC 标准码**。这一条在合并后**必须原样保留** —— 它是 §4.3 中"业务码塞进 gRPC status code 字段"的行为契约。
 
@@ -517,7 +514,7 @@ Go 侧同一份业务错误在两处各写一遍：api 层把 gRPC status 映射
 | ⑤ 合并后职责不模糊 | 合并后仍是"HTTP 编排层"，不含持久化、不含业务规则 |
 
 ⇒ **5 条全中 ⇒ 合并为 1 个 `MessageApiService`。**
-⇒ 对照：Go 侧的 13 个 `logic` 文件之所以是 13 个，**是因为 goctl 按 RPC 生成**（codegen 产物），不是职责边界。
+⇒ 对照：B 侧的 13 个用例之所以是 13 个，**是因为 B 侧照搬了原形态的按 RPC 生成结构**（codegen 产物），不是职责边界。
 
 > ⚠️ **但业务规则密集的域不适用**。`follow` 域的 8 个用例中有 2 个带**专属业务规则**（`forbidden_scope` 私密性约束、proto → DTO 列表转换）⇒ 若合并，这些规则会埋进一个大类。判据 ⑤ 失败 ⇒ 拆为 `FollowRelationService`（4 个纯转发）+ `FollowQueryService`（4 个带规则）。
 
@@ -527,7 +524,7 @@ Go 侧同一份业务错误在两处各写一遍：api 层把 gRPC status 映射
 >
 > | 类型 | 例子 | 能否合并 | 理由 |
 > |---|---|---|---|
-> | 业务用例 | `LikeDomainService` / `MessageDomainService` | ✅ 合并 | 一个用例一个类是 goctl 生成模板的产物 |
+> | 业务用例 | `LikeDomainService` / `MessageDomainService` | ✅ 合并 | 一个用例一个类是原形态生成模板的产物 |
 > | 领域协作者 | `LikeRedisKeys` / `TaskDefs` / `CommentSensitiveFilter` / `FavoriteFactEnvelopeFactory` / `GoCompatibleJson` | ❌ **保留独立** | 它们**不是用例**，是常量表与算法片段，各自的变化原因独立（如 `TaskDefs` 只随 task 域的奖励规则变） |
 > | 事务边界类 | `LikeActionScript` / `FollowBlockTransactionService` / `CommentTransactionalService` | ❌ 保留独立 | 事务边界是独立的 L3 关注点，必须能被单独审视 |
 >
@@ -566,7 +563,7 @@ common/
 >
 > 另有两个原表未列的包：`security/`（3 类，来自 `users-common/jwt` + `cryptx`）、`exception/`（2 类，来自 `common/exception`）。
 >
-> ⇒ **真实缩减是 51 → 47（−8%），不是 −57%。** 缩减幅度远小于原估算，因为**生态吸收主要发生在 `protection`（17 → 2），而 `web/` 这一层的 Go 语义等价物必须手写**（Jackson 的 `CoercionConfig` 是原生机制，但"何时读 body"与"错误文案形状"不是）。
+> ⇒ **真实缩减是 51 → 47（−8%），不是 −57%。** 缩减幅度远小于原估算，因为**生态吸收主要发生在 `protection`（17 → 2），而 `web/` 这一层的 B 侧语义等价物必须手写**（Jackson 的 `CoercionConfig` 是原生机制，但"何时读 body"与"错误文案形状"不是）。
 >
 > ⚠️ **2026-11-01 增量**（`find` 实测）：C 侧 `common/` = **12 个包 / 69 个类**（上表的「47 类」是 2026-10-25 的实测值）⇒ ① **新增第 12 个包 `redis/`**（5 类：断连行为收口 + 请求预算传播）；② `web/` 16 → **21**（form 值上限闸门 3 类 + `JsonContentTypeAdvice` + `TraceparentFilter`）；③ `observability/` 3 → **4**（`ClientDisconnectProbe`）；④ `protection/` 2 → **4**（`RouteResolution` + `RouteTemplateSource`）。⇒ **相对 B 侧 `service/common` 的 12 包 / 88 类，C 侧是 12 包 / 69 类（少 19 类）**。
 
@@ -575,12 +572,12 @@ common/
 > 559 个空壳的 javadoc 都写着「推导依据见《完全spring化的文件树》对应条目」⇒ **本表就是那 7 个 auto-config 的「对应条目」**。
 > ⚠️ **每个 auto-config 都要写 `@ConditionalOnMissingBean`** ⇒ 消费方可用自己的 Bean 覆盖默认行为。
 
-| auto-config | 收编自（RAG 侧） | 提供的 Bean / 装配 | Go 出处 |
+| auto-config | 收编自（B 侧） | 提供的 Bean / 装配 | B 侧来源 |
 |---|---|---|---|
 | `WebAutoConfiguration` | `spring/HttpMiddlewareFilter` + `spring/AuthorityHandlerFactory` | servlet filter 注册 + `ServletRegistrationBean`（communityfact 权威端点） | `common/authority_http.go`（`/internal/v1/community/facts`） |
-| `JsonBodyConverterAutoConfiguration` | `http/GoStyleJsonBodyConverterConfig` + `users-common/http/GoStyleCoercion` | Jackson `CoercionConfig`（K-01 类型强转判定）+ `JsonBodyConverter` 注册（K-02 body 读取判据） | `httpx.Parse` 内置强转 + `httpx.OkJsonCtx` |
+| `JsonBodyConverterAutoConfiguration` | `http/GoStyleJsonBodyConverterConfig` + `users-common/http/GoStyleCoercion` | Jackson `CoercionConfig`（K-01 类型强转判定）+ `JsonBodyConverter` 注册（K-02 body 读取判据） | B 侧 `GoStyleCoercion` + `GoStyleJsonBodyConverter` |
 | `ObservabilityAutoConfiguration` | `spring/ObservabilityLifecycle` + `spring/ObservabilityProperties` + `observability/RpcInterceptor` + `observability/HttpMiddleware` + `observability/MqConsumer` + `observability/GoStyleRecoverInterceptor` + `spring/RpcServerInterceptorFactory` | Micrometer `Observation` + **业务观测 `ServerInterceptor`**（`ServerInterceptor` bean，7 个业务 gRPC code 集）+ recover 拦截器 | `observability/rpc.go` + `observability/http.go` + `observability/mq.go` |
-| `ProtectionAutoConfiguration` | `protection/GoStyleProtectionConfiguration` + `GoStyleProtectionProperties` + 熔断/降载/限连接/限体积族 | resilience4j `CircuitBreaker` + Tomcat `max-connections` + `MaxBytesFilter` + CPU 指标 **＋ `GrpcServerConfigurer`（gRPC 保护链的唯一挂载点，见 §5.5.2）** | go-zero `zrpc` 内置熔断/降载 + `rest` 内置 `MaxConns`/`MaxBytes`/`CpuThreshold` |
+| `ProtectionAutoConfiguration` | `protection/GoStyleProtectionConfiguration` + `GoStyleProtectionProperties` + 熔断/降载/限连接/限体积族 | resilience4j `CircuitBreaker` + Tomcat `max-connections` + `MaxBytesFilter` + CPU 指标 **＋ `GrpcServerConfigurer`（gRPC 保护链的唯一挂载点，见 §5.5.2）** | B 侧 `common/protection/GoStyleBreaker` + `GoStyleAdaptiveShedder` + `common/http/GoStyleFormLimitWebMvcConfig` |
 | `SnowflakeAutoConfiguration` | `spring/SnowflakeBean` + `spring/SnowflakeProperties` + `snowflake/Snowflake` | 唯一的 `Snowflake` Bean（`@ConditionalOnMissingBean` ⇒ 容器内**有且仅有 1 个**） | `common/snowflake/snowflake.go`（`Init` / `GetID` / `generateNodeId`） |
 | `MybatisPlusOrderingBridgeAutoConfiguration` | **9 个 rpc 模块各一份**的 `MybatisPlusOrderingBridgeAutoConfiguration` | MP 自动配置排序桥（**消掉 9 份重复**） | ——（⚠️ Boot 4 迁移产物；**D14 后 Boot 3.5 下 MP 的 `@AutoConfigureAfter` 引用有效 ⇒ 本桥非必需，待裁决**） |
 | `GrpcExceptionMapperAutoConfiguration` | `article-api/http/GoStyleGrpcStatusMapper` | gRPC code → 业务码的**统一错误模型**（§5.3） | `errmsg.NewGrpcErr(code,msg)` → `status.Error` |
@@ -589,7 +586,7 @@ common/
 
 > ⚠️ **这是 D1 合并带来的一处真实收益**，也是 A3 断言必须改写的原因。
 
-**Go 侧（范围内 10 个服务逐条显式）**：
+**B 侧（范围内 10 个 rpc 模块逐条显式）**：
 
 ```go
 // service/{like,comment,follow,message,favorite,task,hot,article}/rpc/*.go
@@ -640,7 +637,7 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 
 > 关系：`KEEP` 仍需独立载体且保留独立文件 / `ADAPT` 职责保留、形态调整 / `ABSORB` 由框架机制直接承担 / `REUSE` 由现有组件承担 / `SPLIT` 拆到多个承载位置 / `MERGE` 并入同一组件
 
-| Go 来源文件 | Java 理论文件或现有机制 | 关系 | 原因 |
+| B 侧来源文件 | Java 理论文件或现有机制 | 关系 | 原因 |
 |---|---|---|---|
 | `*/api/*center.go`（main） | `*ServiceApplication.java` | **ADAPT** | main → Spring Boot 入口；**api 与 rpc 的两个入口合并为一个** |
 | `*/rpc/*.go`（main） | 同上 | **MERGE** | **D1：两个进程 → 一个** |
@@ -665,17 +662,17 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 | `common/response/response.go` | `common/contract/ApiResponse.java` | **REUSE** | 信封是 L1，**不能用 `ProblemDetail` 替换** |
 | `common/snowflake/snowflake.go` | `common/snowflake/Snowflake.java` | **REUSE** | epoch/位段是业务契约 |
 | `common/observability/*.go` | Micrometer Observation + OTel | **ABSORB** | ⚠️ L3 部分降级（span 属性需对拍） |
-| go-zero `rest` 熔断 | resilience4j | **ABSORB** | ⚠️ L3 降级 |
-| go-zero `rest` CPU 降载 | `common/protection/CpuThresholdHealthIndicator.java` | **NEW** | 生态缺口；17 类 → 1 类 |
-| go-zero `rest` `MaxBytes` | `common/protection/MaxBytesFilter.java` + Tomcat `max-connections` | **NEW + ABSORB** | `MaxConns` 是 Tomcat 原生项 |
+| B 侧 `common/protection/GoStyleBreaker` | resilience4j | **ABSORB** | ⚠️ L3 降级 |
+| B 侧 `common/protection/GoStyleCpuSheddingFilter` + `GoStyleAdaptiveShedder` | `common/protection/CpuThresholdHealthIndicator.java` | **NEW** | 生态缺口；17 类 → 1 类 |
+| B 侧 `common/http/GoStyleFormLimitWebMvcConfig`（限体积） | `common/protection/MaxBytesFilter.java` + Tomcat `max-connections` | **NEW + ABSORB** | 限连接是 Tomcat 原生项 |
 | `common/communityfact/*.go` | `common/communityfact/*` | **KEEP** | 业务特有，无生态等价物 |
-| ——（Go 无对应） | `common/autoconfigure/*` + `AutoConfiguration.imports` | **NEW** | **D3 的载体** |
+| ——（B 侧无对应） | `common/autoconfigure/*` + `AutoConfiguration.imports` | **NEW** | **D3 的载体** |
 
 ### 6.1 全仓规模（实测,非估算）
 
 > **2026-10-25 已在本仓库落地并实测** —— 下表右列是 `RAG-V1` 树的**真实文件数**（`src/main/java` 下的 Java 文件数，含各域 `contract/` 包的 `ErrCodes` / `ErrMsg`），不再是估算。
 
-| 域 | Go | RAG 现状 | **RAG-V1 实测** | 主要缩减来源 |
+| 域 | 更早基线 | B 侧现状 | **RAG-V1 实测** | 主要缩减来源 |
 |---|---|---|---|---|
 | article | 43 | 81 | **47** | 合并省一套 app 样板；用例内聚 |
 | comment | 56 | 79 | **64** | 合并 + 用例内聚（但 rpc 协作者多，抵消大半） |
@@ -697,7 +694,7 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 > ⚠️ **规模缩减的来源分布与直觉相反**：
 > - **降幅最大的是"样板"** —— 每域一套 `Application` + `Properties` + `advice` ×2 + `metrics` ×2 + `wiring` 样板，合并后减半。
 > - **降幅最小的是"业务"** —— rpc 层的**协作者类**（`LikeRedisKeys` / `TaskDefs` / `CommentSensitiveFilter` / `FavoriteFactEnvelopeFactory` 等）**不是用例，不能合并**，它们有独立的变化原因。
-> - **`common` 几乎没降** —— 因为可被生态吸收的只有 `protection`（17 → 2），而 `web/` 层的 Go 语义等价物**必须手写**（"何时读 body"与"错误文案形状"都不是框架能力）。
+> - **`common` 几乎没降** —— 因为可被生态吸收的只有 `protection`（17 → 2），而 `web/` 层的 B 侧语义等价物**必须手写**（"何时读 body"与"错误文案形状"都不是框架能力）。
 >
 > ⇒ **推论**：完全 Spring 化的收益**不在文件数**，而在 ①消除 `@Import` 清单 ②拿到 resilience4j / cloud-stream / Observation 的生态红利 ③消灭"复制模块模板 ⇒ 抄走错误接线"这类沉默失效。**用文件数衡量这件事会得出错误结论。**
 
@@ -709,9 +706,9 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 
 ### 1. `servicecontext.go` → ABSORB（无独立 Java 文件）
 
-1. **Go 文件原本负责什么？** 装配：`Config` / Model / Redis / Rpc client / Middleware 实例。
+1. **更早基线的文件原本负责什么？** 装配：`Config` / Model / Redis / Rpc client / Middleware 实例。
 2. **哪些是行为语义？** 无业务方法 ⇒ 无 L2。
-3. **哪些只是 Go 的实现机制？** 全部：`redis.MustNewRedis`、`zrpc.MustNewClient`、构造器把依赖塞给下游。
+3. **哪些只是原形态的实现机制？** 全部：手工 new 客户端、构造器把依赖塞给下游。
 4. **Java 中哪个已有机制直接承担？** Spring DI 容器 + `@ConfigurationProperties` + `@Bean`。
 5. **依据？** 现有 RAG 的 rpc 模块已经证明：10 个模块都没有 `ServiceContext.java`，全部靠 `@Import` + DI，行为等价。
 
@@ -729,7 +726,7 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 
 1. **原本负责什么？** 每个 logic 一个用例：取身份 → 调下游 → 错误码转换 → 指标 → 业务日志。
 2. **行为语义？** **全部保留**（业务规则、错误码语义、reject 上报条件）。
-3. **实现机制？** goctl 的一 RPC 一 logic 生成模板 + `new XxxLogic(ctx, svcCtx)` 的构造器。
+3. **实现机制？** 一 RPC 一 logic 的生成模板 + `new XxxLogic(ctx, svcCtx)` 的构造器。
 4. **Java 机制？** 无需框架吸收 —— 是**职责内聚**问题，不是框架能力问题。
 5. **判据（五问之外的关键一条）**？**§5.4 的五条全部成立** ⇒ 合并。⚠️ **但业务规则密集的域不合并**（`follow` 域 8 个用例中 2 个带专属规则 ⇒ 拆 2 个 Service）。
 
@@ -739,23 +736,23 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 
 1. **原本负责什么？** 解析 `Authorization: Bearer xxx` → 查 Redis key `user:jwt_blacklist:{token}` → 命中返回 401。
 2. **行为语义？** **Redis 查询 + 无 token 直接放行的策略是业务语义，必须保留**；中间件函数签名不是。
-3. **实现机制？** go-zero 的 `func(next http.HandlerFunc) http.HandlerFunc`。
+3. **实现机制？** B 侧的 `HandlerInterceptor`（Spring MVC 的拦截器契约）。
 4. **Java 机制？** `HandlerInterceptor#preHandle`（返回 false 即拒绝）+ `WebMvcConfig` 注册。
 5. **依据？** 现有 RAG 的 `AdminJwtAuthInterceptor` 已按此形态实现并通过对拍。
 
 ### 5. `service/common` → 升级为 starter（D3）
 
-1. **原本负责什么？** Go 侧 11 个文件：logger / response / snowflake / observability / communityfact。
+1. **原本负责什么？** 更早基线的 11 个文件：logger / response / snowflake / observability / communityfact；**B 侧对应 `common/` 的 12 个包**。
 2. **行为语义？** **日志格式、信封形状、雪花 ID 位段**是业务契约，必须保留；**熔断/降载/限流的内部策略**是 L3，可降级。
-3. **实现机制？** go-zero 的内置运行时（熔断、降载、MaxConns、MaxBytes、logx、httpx）。
+3. **实现机制？** 更早基线是原框架的内置运行时（熔断、降载、限连接、限体积、日志、HTTP 解析）；**B 侧用 44 个 `GoStyle*` 主代码类逐个复刻**。
 4. **Java 机制？** resilience4j / Tomcat 配置 / SLF4J+MDC / Jackson `CoercionConfig` / 自定义 `HttpMessageConverter`。
-5. **依据？** **RAG 现状是 51 个主代码类 vs Go 的 11 个 —— 这 4.64× 就是"框架差距补齐成本"**；生态吸收后目标 22 类。
+5. **依据？** **B 侧现状是 51 个主代码类 vs 更早基线的 11 个 —— 这 4.64× 就是"框架差距补齐成本"**；生态吸收后目标 22 类。
 
 ### 6. `internal/metrics/metrics.go` → REUSE（`Micrometer` 承担注册，helper 保留）
 
 1. **原本负责什么？** 定义指标名与标签 + `ObserveRequest` / `ObserveReject` helper。
 2. **行为语义？** **指标名与标签是业务定义**（`message_api_request_total{route,result}`）⇒ 必须逐字保留。
-3. **实现机制？** Prometheus client_golang + `sync.Once` 注册。
+3. **实现机制？** 更早基线用 Prometheus 原生 client + 一次性注册；**B 侧用 Micrometer `GlobalConfig` 注册 + `GoStylePrometheusSink` 静态接缝**。
 4. **Java 机制？** Micrometer `MeterRegistry` 承担注册与暴露；**helper 的调用点与触发条件保留为业务代码**。
 5. **依据？** 现有 RAG 的 `*Metrics` 类已按此形态落地。
 
@@ -774,7 +771,7 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 | 7 | 新增 Java 文件都有明确职责依据 | ✅ | 新增项仅 4 处：`common/autoconfigure/*`、`common/protection/CpuThresholdHealthIndicator`、`common/protection/MaxBytesFilter`、各域 `client/` —— 均有 §4 / §5.2 的依据说明 |
 | 8 | 合并的文件都有组织依据 | ✅ | 合并项集中在三类：api+rpc 入口（D1）、用例内聚（§5.4 五判据）、common 生态吸收（D4） |
 | 9 | 拆分的文件都能解释职责边界 | ✅ | 拆分项：`config` 分 api/rpc 两份、`domain/exception/mapper` 与 `api` 分立、跨域 client 独立 |
-| 10 | 没有仅为对应 Go 文件而创建的 Java 文件 | ✅ | 无 `Handler.java` / `Logic.java` / `Repository.java` / `Middleware.java` / `ServiceContext.java` / `Types.java` |
+| 10 | 没有仅为对应更早基线文件而创建的 Java 文件 | ✅ | 无 `Handler.java` / `Logic.java` / `Repository.java` / `Middleware.java` / `ServiceContext.java` / `Types.java` |
 | 11 | 没有为减少文件数而不合理合并 | 🟡 **需逐域复核** | §5.4 判据 ⑤ 是闸门；`follow` 域已识别为不合并的例外 |
 | 12 | 没有把未实现的业务职责误判为框架吸收 | ✅ | L3 降级项**全部**如实标注，未计入 ABSORB |
 | 13 | 没有把尚未实现的能力描述成现有机制 | ✅ | §1 分「已确认的框架机制」与「完全没用的生态能力」两栏，后者标为增量空间 |
@@ -786,7 +783,7 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 
 ## 九、可执行符合性检查（把"完全 Spring 化"变成红灯）
 
-> 这一节回应一个前置问题：**"文件树像不像 Spring"不是差分问题，是符合性问题**——它没有 Go 那样的冻结真源可比，但**可以写成断言**。
+> 这一节回应一个前置问题：**"文件树像不像 Spring"不是差分问题，是符合性问题**——它没有「两个实现比行为」那样的可比基线，但**可以写成断言**。
 
 ### 9.1 新增断言（`tools/difftest/check-arch-invariants.py`）
 
@@ -807,14 +804,14 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 
 > **RAG-V1 的达标状态（2026-10-25 实测）**：空文件树已满足 **A5 / A6 / A7 / A9 / A10** 的结构前提 —— `api/client` 目录 0 个、`@Import` 清单 0 个、MP bridge 副本 0 个、DTO 全为 `record`、`protection` 只剩 2 类。
 > ⚠️ **A1 / A2 在 RAG-V1 不适用**（api/rpc 已合并，见 §9.2）—— 它们是「沉默不变量」：RAG 形态下 10/10 通过，一旦合并就自动消失。
-> ⚠️ **但 A3 不是** —— 「拦截链有没有真挂到 server 上」**与进程形态无关**：Go 侧范围内 10 个服务逐条显式 `AddUnaryInterceptors(...)` ⇒ 合并后仍要挂，只是**挂载点从「每 rpc 模块」变成「共享层 1 份」**。⇒ **A3 已改写为契约 B 版**（2026-10-26）：正向「`common/` 有挂载点」＋ 反向「域内 0 重复」⇒ 详见 §5.5.2 与 [`架构符合性断言.md`](架构符合性断言.md) A3。
+> ⚠️ **但 A3 不是** —— 「拦截链有没有真挂到 server 上」**与进程形态无关**：**B 侧**范围内 10 个 rpc 模块逐条显式 `server.intercept(...)` ⇒ 合并后仍要挂，只是**挂载点从「每 rpc 模块」变成「共享层 1 份」**。⇒ **A3 已改写为契约 B 版**（2026-10-26）：正向「`common/` 有挂载点」＋ 反向「域内 0 重复」⇒ 详见 §5.5.2 与 [`架构符合性断言.md`](架构符合性断言.md) A3。
 > ⇒ 断言脚本落点：`tools/difftest/check-arch-invariants.py`（**待实现**，清单见 [`架构符合性断言.md`](架构符合性断言.md)）。
 
 ### 9.2 分化提醒：断言绑定契约，不可跨契约复用
 
 | 契约 | A1 | A2 | A3 | A5 | A7 | A9 |
 |---|---|---|---|---|---|---|
-| **A（Go 部署等价，RAG 现状）** | ✅ 适用 | ✅ 适用 | ✅ 适用 | ✅ 适用 | 🔴 待修 | 🔴 待修 |
+| **A（B 侧部署形态等价，B 侧现状）** | ✅ 适用 | ✅ 适用 | ✅ 适用 | ✅ 适用 | 🔴 待修 | 🔴 待修 |
 | **B（Spring 惯用，本文目标）** | ❌ **不适用** | ❌ **不适用** | ✅ **适用（已改写）** —— 挂载点 = `common/` 1 份 ＋ 域内 0 重复 | ✅ 适用 | ✅ 适用 | ✅ 适用 |
 
 ⇒ **A1/A2 是 api/rpc 分离的派生物，合并后自动消失**（§0.4 之外新增的两条）；**A3 例外** —— 它管的是「拦截链有没有真挂上」，与进程形态无关 ⇒ 合并形态下**改写而非消失**（§5.5.2）。
@@ -824,11 +821,11 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 
 | # | 取舍 | 选项 | 建议 |
 |---|---|---|---|
-| P1 | 错误文案保真度 | ① 接受 Bean Validation 文案（L3 降级）② 自定义 validator 逐字复刻 go-zero | **①**。② 的成本高于收益，但需在 §0.4 明确记录为已知降级 |
+| P1 | 错误文案保真度 | ① 接受 Bean Validation 文案（L3 降级）② 自定义 validator 逐字复刻 B 侧手写校验器 | **①**。② 的成本高于收益，但需在 §0.4 明确记录为已知降级 |
 | P2 | 熔断语义 | ① 迁 resilience4j（语义降级）② 保留自研（17 类）③ 迁 resilience4j + 逐条对拍关键参数 | **③**，但**必须排在 `global` 收口域销账之后** |
 | P3 | Kafka 接入方式 | ① 保留裸 `spring-kafka` ② 迁 Spring Cloud Stream binder | **①**。Stream 的 binding 抽象对本项目（单消费者、无 broker 切换需求）没有收益 |
 | P4 | `rpc.*` 是否改名 | ① 不改（记技术债）② 改 `domain.*` | **①**，改名成本与收益不成比例 |
-| P5 | api/rpc 合并是否进 RAG 本体 | ① RAG 不动，新项目用合并形态 ② RAG 也合并 | **①**。RAG 的职责是「Go 字节级真源」，部署拓扑属 Go 事实，改了就不是迁移了 |
+| P5 | api/rpc 合并是否进 B 侧本体 | ① B 侧不动，本仓用合并形态 ② B 侧也合并 | **①**。B 侧是本仓的唯一真理基准，部署拓扑属 B 侧事实，改了就不是对齐了 |
 
 > **P5 是总闸门**：若 RAG 保持契约 A，则 §5 的树是**新项目**的目标形态，RAG 侧只需做 **D3（starter 化）+ D4 的低风险子集（SLF4J 适配器）** 这两项**契约无关**的改进。
 
@@ -857,7 +854,7 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
 
 ## 附：本文档作为模板的使用方式
 
-1. **投喂给 AI 做单 Component 推导**：把 §0（契约分层与决策）作为前置约束，把 §1（目标组织依据）替换为"当前 Component 相关的实际检查结果"，其余章节结构（§2 Go 树 → §3 职责矩阵 → §4 映射表 → §5 Java 树 → §6 变化表 → §7 五问 → §8 覆盖检查）保持不变。
+1. **投喂给 AI 做单 Component 推导**：把 §0（契约分层与决策）作为前置约束，把 §1（目标组织依据）替换为"当前 Component 相关的实际检查结果"，其余章节结构（§2 B 侧树 → §3 职责矩阵 → §4 映射表 → §5 Java 树 → §6 变化表 → §7 五问 → §8 覆盖检查）保持不变。
 2. **作为评审清单**：§9.1 的 10 条断言是"完全 Spring 化"的客观判据，可直接接入 CI —— 落点 `tools/difftest/check-arch-invariants.py`。
 3. **与台账的关系**：§0.4 的降级表已独立成 [`L3-降级清单.md`](L3-降级清单.md)；§9.3 的取舍清单已独立成 [`决策记录.md`](决策记录.md) 的 P1–P5；逐条漂移写 `docs/DRIFT/<域>/`，签字偏离写 `docs/Intentional_Deviations/<域>/`。**不要只留在本文档里。**
 4. **本文档的修订**：落地实测后已修正三处偏差并标注「2026-10-25 修正」——
@@ -865,7 +862,7 @@ ProtectionAutoConfiguration      →  提供 GrpcServerConfigurer bean
    ② §5.4「用例内聚」仅适用于 api 层，rpc 层协作者类保留独立
    ③ §6.1 规模数字改为实测（主代码 507，不是估算 450）
 
-> ⚠️ **2026-10-25 第二次修正（重要）**：本文档 §2–§4 的 Go 侧职责盘点**是从 RAG 的 Java 侧反推的**，而非 Go 正推。
-> **Go 正推后发现 8 处偏差**（HTTP method 分布、路由前缀、错误契约形态、错误码值/文案/语言、task 域无错误码空间、DTO 清单、users 域契约归属、MQ 消息契约），
+> ⚠️ **2026-10-25 第二次修正（重要）**：本文档 §2–§4 的职责盘点**当时是从 B 侧的 Java 侧反推的**，而非从真源正推。
+> **从真源正推后发现 8 处偏差**（HTTP method 分布、路由前缀、错误契约形态、错误码值/文案/语言、task 域无错误码空间、DTO 清单、users 域契约归属、MQ 消息契约），
 > 其中 **6 处属 L1 风险**。⇒ 完整清单与 5 条方法论纪律 ⇒ **[`深挖修正记录.md`](深挖修正记录.md)**。
-> ⇒ **本仓库的树已按 Go 正推结果修正**；本文档的 §2–§4 段落请以深挖修正记录为准。
+> ⇒ **本仓库的树已按正推结果修正**；本文档的 §2–§4 段落请以深挖修正记录为准。

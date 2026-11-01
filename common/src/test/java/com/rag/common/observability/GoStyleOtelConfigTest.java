@@ -8,24 +8,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 🔴 **Go {@code Telemetry} 段的配置投影守门** —— 对应 Go
+ * 🔴 **B 侧 {@code Telemetry} 段的配置投影守门** —— 对应 B 侧
  * {@code core/trace/config.go} 的 {@code Name / Endpoint / Sampler / Batcher} 四个字段。
  *
- * <h2>要证的<b>五件事</b>（逐条对应 Go / B 的一行）</h2>
+ * <h2>要证的<b>五件事</b>（逐条对应 B 侧 / B 的一行）</h2>
  * <table border="1">
  *   <caption>五条守门 ↔ 出处</caption>
- *   <tr><th>守门</th><th>Go / B 出处</th></tr>
+ *   <tr><th>守门</th><th>B 侧 / B 出处</th></tr>
  *   <tr><td>① 服务名三套拼法都认（且有优先级）</td>
  *       <td>B 侧 {@code GoStyleOtelConfig#from}（api 模块写
  *           {@code otel.resource.attributes.service.name}、rpc 模块写 {@code otel.service.name}）</td></tr>
- *   <tr><td>② 裸 {@code host:port} 补 {@code http://}（= Go 的 {@code WithInsecure()}）</td>
- *       <td>Go {@code core/trace/agent.go:71-72}</td></tr>
- *   <tr><td>③ 采样器<b>名字</b> → Go 的<b>比例</b></td>
- *       <td>Go {@code core/trace/config.go:9}（{@code Sampler float64}）</td></tr>
+ *   <tr><td>② 裸 {@code host:port} 补 {@code http://}（= B 的 {@code WithInsecure()}）</td>
+ *       <td>B 侧 {@code core/trace/agent.go:71-72}</td></tr>
+ *   <tr><td>③ 采样器<b>名字</b> → B 的<b>比例</b></td>
+ *       <td>B 侧 {@code core/trace/config.go:9}（{@code Sampler float64}）</td></tr>
  *   <tr><td>④ 非法采样器名 ⇒ <b>炸</b>（不静默降级成 always_on）</td>
- *       <td>Go 的 yaml 解析器按 tag 校验 ⇒ 启动即炸</td></tr>
+ *       <td>B 的 yaml 解析器按 tag 校验 ⇒ 启动即炸</td></tr>
  *   <tr><td>⑤ batcher（协议）校验：端点为空<b>不校验</b>；端点非空 + 非法 ⇒ 装不上</td>
- *       <td>Go {@code core/trace/agent.go:100-101} + {@code :115-124}</td></tr>
+ *       <td>B 侧 {@code core/trace/agent.go:100-101} + {@code :115-124}</td></tr>
  * </table>
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/test/java/com/rag/common/observability/GoStyleOtelSamplerProtocolGateTest.java}
@@ -63,7 +63,7 @@ class GoStyleOtelConfigTest {
     // ── ② 端点归一 ──────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("🔴 裸 host:port ⇒ 补 http://（对齐 Go 的 WithInsecure()）")
+    @DisplayName("🔴 裸 host:port ⇒ 补 http://（对齐 B 的 WithInsecure()）")
     void bareEndpointGetsHttpScheme() {
         MockEnvironment env = new MockEnvironment()
                 .withProperty("otel.exporter.otlp.endpoint", "jaeger:4317");
@@ -83,7 +83,7 @@ class GoStyleOtelConfigTest {
     }
 
     @Test
-    @DisplayName("🔴 端点为空串 ⇒ null ⇒ **不装 exporter**（照 Go 的 len(c.Endpoint) > 0）")
+    @DisplayName("🔴 端点为空串 ⇒ null ⇒ **不装 exporter**（照 B 的 len(c.Endpoint) > 0）")
     void emptyEndpointMeansNoExporter() {
         MockEnvironment env = new MockEnvironment()
                 .withProperty("otel.exporter.otlp.endpoint", "   ");
@@ -93,7 +93,7 @@ class GoStyleOtelConfigTest {
     // ── ③ 协议 ──────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("🔴 协议缺省 = grpc（= Go 的 Batcher: otlpgrpc）")
+    @DisplayName("🔴 协议缺省 = grpc（= B 的 Batcher: otlpgrpc）")
     void protocolDefaultsToGrpc() {
         assertThat(GoStyleOtelConfig.from(new MockEnvironment()).protocol()).isEqualTo("grpc");
 
@@ -134,7 +134,7 @@ class GoStyleOtelConfigTest {
     }
 
     @Test
-    @DisplayName("🔴 sampler 未配置 ⇒ 1.0（Go 的 Sampler 默认值 = 1.0）")
+    @DisplayName("🔴 sampler 未配置 ⇒ 1.0（B 的 Sampler 默认值 = 1.0）")
     void samplerDefaultsToOne() {
         assertThat(GoStyleOtelConfig.from(new MockEnvironment()).samplerRatio()).isEqualTo(1.0d);
     }
@@ -142,14 +142,14 @@ class GoStyleOtelConfigTest {
     // ── ⑤ batcher（协议）校验 ───────────────────────────────────────────
 
     @Test
-    @DisplayName("🔴 非法协议 + 端点非空 ⇒ 装不上（Go: unknown exporter ⇒ 整个 agent 装不上）")
+    @DisplayName("🔴 非法协议 + 端点非空 ⇒ 装不上（B 侧: unknown exporter ⇒ 整个 agent 装不上）")
     void unknownProtocolMustFailInsteadOfSilentlyUsingGrpc() {
         assertThatThrownBy(() -> GoStyleOtelConfig
                 .from(new MockEnvironment()
                         .withProperty("otel.exporter.otlp.endpoint", "collector:4317")
                         .withProperty("otel.exporter.otlp.protocol", "not-a-batcher"))
                 .validateBatcher())
-                .as("非法协议必须抛错（Go: core/trace/agent.go:100-101 unknown exporter）"
+                .as("非法协议必须抛错（B 侧: core/trace/agent.go:100-101 unknown exporter）"
                         + "—— 静默按 grpc 处理就是**静默降级**")
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unknown exporter")
@@ -157,14 +157,14 @@ class GoStyleOtelConfigTest {
     }
 
     @Test
-    @DisplayName("🔴 Go 支持但本仓未实现的 batcher（写成 Go 的名字 otlphttp）⇒ 同样装不上")
+    @DisplayName("🔴 B 侧 支持但本仓未实现的 batcher（写成 B 的名字 otlphttp）⇒ 同样装不上")
     void goSupportedButUnimplementedProtocolMustFail() {
         assertThatThrownBy(() -> GoStyleOtelConfig
                 .from(new MockEnvironment()
                         .withProperty("otel.exporter.otlp.endpoint", "collector:4317")
                         .withProperty("otel.exporter.otlp.protocol", "otlphttp"))
                 .validateBatcher())
-                .as("Go 的 Batcher 合法集合含 otlphttp，但本仓**只实现了 grpc**（= Go 的 otlpgrpc）"
+                .as("B 的 Batcher 合法集合含 otlphttp，但本仓**只实现了 grpc**（= B 的 otlpgrpc）"
                         + " ⇒ 不能静默按 grpc 处理")
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unknown exporter")
@@ -173,14 +173,14 @@ class GoStyleOtelConfigTest {
     }
 
     @Test
-    @DisplayName("🔴 端点为空 ⇒ **根本不校验** batcher（Go: createExporter 只在 len(Endpoint)>0 时被调用）")
+    @DisplayName("🔴 端点为空 ⇒ **根本不校验** batcher（B 侧: createExporter 只在 len(Endpoint)>0 时被调用）")
     void emptyEndpointSkipsProtocolValidation() {
         GoStyleOtelConfig config = GoStyleOtelConfig
                 .from(new MockEnvironment().withProperty("otel.exporter.otlp.protocol", "not-a-batcher"));
-        // Go 出处：core/trace/agent.go:115-120 —— 端点为空 ⇒ 不建 exporter ⇒ 不走 createExporter
+        // B 出处：service/common/src/main/java/com/rag/common/observability/GoStyleOtelConfig.java:115-120 —— 端点为空 ⇒ 不建 exporter ⇒ 不走 createExporter
         assertThat(config.endpoint()).isNull();
         org.assertj.core.api.Assertions.assertThatCode(config::validateBatcher)
-                .as("端点为空时必须能通过校验（Go 同款：只少了 exporter）")
+                .as("端点为空时必须能通过校验（B 侧 同款：只少了 exporter）")
                 .doesNotThrowAnyException();
     }
 }

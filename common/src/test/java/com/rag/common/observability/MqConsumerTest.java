@@ -14,13 +14,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * §3.3「机制可证」守门：<b>MQ 消费端包装真的产出观测、真的按 Go 的口径分类错误</b>。
+ * §3.3「机制可证」守门：<b>MQ 消费端包装真的产出观测、真的按 B 的口径分类错误</b>。
  *
- * <p>⚠️ <b>Go 出处</b>：{@code service/common/observability/mq.go} 的 {@code TraceConsumer}。
+ * <p>⚠️ <b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/observability/MqConsumer.java} 的 {@code TraceConsumer}。
  *
  * <p>⚠️ <b>抄写基准 = RAG</b>：{@code MqConsumer} 整段抄（L2 · D13）。
  *
- * <p>⚠️ <b>panic 语义是行为的一部分</b>：Go 的 {@code mq.go:30} 是裸的
+ * <p>⚠️ <b>panic 语义是行为的一部分</b>：B 的 {@code mq.go:30} 是裸的
  * {@code err := fn(consumeCtx)}，<b>没有 recover</b> ⇒ panic 继续向上传播
  * ⇒ ⇒ 本类<b>刻意不 catch</b> ⇒ 用例 {@link #panicPropagates()} 把这条钉住。
  */
@@ -72,7 +72,7 @@ class MqConsumerTest {
     }
 
     @Test
-    @DisplayName("panic 不被吞掉（照抄 Go 的裸调用语义）")
+    @DisplayName("panic 不被吞掉（照抄 B 的裸调用语义）")
     void panicPropagates() {
         ObservationRegistry registry = registry(new AtomicReference<>());
 

@@ -3,7 +3,7 @@ package com.rag.favorite.wiring;
 /**
  * <p><b>TODO：职责待补</b> —— 推导依据见《完全spring化的文件树》+《第二轮深挖-契约盘点》U-2。
  *
- * <h2>Go 出处</h2>
+ * <h2>B 出处</h2>
  * <pre>
  * service/favorite/rpc/cmd/fact-dispatch/main.go
  *   → communityfact.RunDispatcher(ctx, model.NewFavoriteFactModel(db), sender, logger, once)
@@ -11,12 +11,12 @@ package com.rag.favorite.wiring;
  * </pre>
  *
  * <h2>为什么它是域内组件而不是独立进程（D1 的例外判定）</h2>
- * <p>与 like 域同源：Go 的独立进程是<b>架构意图</b>而非技术约束 ——
+ * <p>与 like 域同源：B 的独立进程是<b>架构意图</b>而非技术约束 ——
  * <code>main.go</code> 不注册任何对外服务，{@code Dispatcher} 已是纯库（静态工厂），
  * Spring 侧用 <code>@Scheduled</code> + <code>@PreDestroy</code> 即可等价承载。
  *
  * <h2>⚠️ favorite 域独有的第三个 fact-* 进程</h2>
- * <p>Go 侧 favorite <b>比 comment/like 多一个</b>：
+ * <p>B 侧 favorite <b>比 comment/like 多一个</b>：
  * <pre>
  * service/favorite/rpc/cmd/fact-legacy-preflight/main.go
  *   → model.NewFavoriteModel(db).FavoriteLegacyPreflight(ctx)   ← 一次性诊断报告

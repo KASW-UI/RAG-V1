@@ -4,7 +4,7 @@ package user;
 
 // Java 端生成代码落到 com.rag.users.user.proto 包下
 // java_multiple_files=true 让每个 message 各成一个 .java,而不是全部塞进 user.UserInfo 这种 OuterClass
-// 对应 Go:proto/user.proto(Go 一个文件装 20 个 message,实测 user.pb.go 生成 20 个 struct;Java 按规范拆开)
+// 对应 B 侧 service/users/user/user-proto/src/main/proto/users.proto（一个文件装 20 个 message；Java 按规范拆开）
 option java_package = "com.rag.proto.user";
 option java_multiple_files = true;
 

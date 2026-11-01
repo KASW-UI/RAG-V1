@@ -3,7 +3,7 @@ package com.rag.favorite.wiring;
 /**
  * <p><b>TODO：职责待补</b> —— 推导依据见《完全spring化的文件树》+《第二轮深挖-契约盘点》U-2。
  *
- * <h2>Go 出处</h2>
+ * <h2>B 出处</h2>
  * <pre>
  * service/favorite/rpc/cmd/fact-authority/main.go
  *   → communityfact.NewAuthorityHandler("rtw.favorite-rpc", token, model.NewFavoriteFactModel(db).AuthoritativeFact, logger)
@@ -15,12 +15,12 @@ package com.rag.favorite.wiring;
  * ⇒ 无强类型契约依赖独立进程 ⇒ 可并入域内 app 作为 Servlet 装配。
  *
  * <h2>⚠️ L1：权威事实响应体是逐字节契约</h2>
- * <p>Go 侧 <code>authority_http.go:72</code> 的 <code>json.NewEncoder().Encode</code>
+ * <p>B 侧 <code>service/favorite/favorite-rpc/src/main/java/com/rag/favorite/favorite/rpc/fact/FavoriteAuthorityEndpointConfig.java:72</code> 的 <code>json.NewEncoder().Encode</code>
  * <b>追加尾 <code>\n</code></b>，且 <code>escapeHTML</code> 默认开启
  * ⇒ 响应体<b>字节</b>是跨服务契约。
  * ⚠️ RAG 在此处有 <code>DRIFT-CF-003</code>（尾 <code>\n</code> + <code>escapeHTML</code> 缺失）
  * 与 <code>DRIFT-CF-014</code>（畸形 endpoint 报错形态）两条<b>已登记未修</b>漂移
- * ⇒ 本仓<b>直接从 Go 语义写</b>，不要照抄 RAG 实现。
+ * ⇒ 本仓<b>直接从 B 侧 语义写</b>，不要照抄 RAG 实现。
  *
  * <h2>⚠️ 与 favorite 域第三进程的关系</h2>
  * <p>本类（权威事实查询）与 {@code fact-legacy-preflight}（一次性预检）职责不同：

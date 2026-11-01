@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>⚠️ <b>为什么这条特别重要</b>：共享层走的是 <b>postConfigurer 路线</b>
  * （Spring 6.2 的 {@code Jackson2ObjectMapperBuilder} <b>没有</b> coercion API）
  * ⇒ ⇒ 如果这条路线失效，<b>不会报错</b>，只是「number 能进 String 字段了」
- * ⇒ ⇒ 与 Go 的 go-zero 解析层<b>相反</b>（Go 恒 400）⇒ ⇒ 只能靠真触发测试钉住。
+ * ⇒ ⇒ 与 B 的解析层<b>相反</b>（B 侧 恒 400）⇒ ⇒ 只能靠真触发测试钉住。
  */
 class JsonBodyConverterAutoConfigurationTest {
 
@@ -39,7 +39,7 @@ class JsonBodyConverterAutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("K-01：number → String 字段被拒（Go 的 type mismatch）")
+    @DisplayName("K-01：number → String 字段被拒（B 的 type mismatch）")
     void numberIntoStringIsRejected() {
         runner.run(context -> {
             ObjectMapper mapper = context.getBean(ObjectMapper.class);
@@ -60,7 +60,7 @@ class JsonBodyConverterAutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("K-01：string → 整数字段仍被接受（Go 的正规入口，不许收紧）")
+    @DisplayName("K-01：string → 整数字段仍被接受（B 的正规入口，不许收紧）")
     void stringIntoLongIsAccepted() {
         runner.run(context -> {
             ObjectMapper mapper = context.getBean(ObjectMapper.class);

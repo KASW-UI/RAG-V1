@@ -12,18 +12,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * §3.3 真触发测试 —— {@link RawStringListDeserializer} 的 go-zero {@code json.Number} 语义。
+ * §3.3 真触发测试 —— {@link RawStringListDeserializer} 的 B 侧 {@code json.Number} 语义。
  *
- * <p><b>Go 出处</b>：go-zero {@code core/jsonx/json.go:74-77}（{@code decoder.UseNumber()}）
- * ＋ {@code core/mapping/unmarshaler.go:228-229}（{@code fillSliceValue} 的
- * {@code case fmt.Stringer} ⇒ 数字被字符串化接受）
- * ＋ {@code core/mapping/utils.go}（{@code convertTypeFromString} 的
+ * <p><b>B 出处</b>：B 侧 {@code service/like/like-api/src/main/java/com/rag/like/like/api/dto/GoStyleRawStringListDeserializer.java:17-29}
+ * （RAG 仓）—— {@code decoder.UseNumber()}
+ * ＋ {@code fillSliceValue} 的
+ * {@code case fmt.Stringer} ⇒ 数字被字符串化接受
+ * ＋ {@code convertTypeFromString} 的
  * {@code case reflect.String: return str, nil} ⇒ 原样返回，不解析不校验）。
  *
  * <p><b>⚠️ 本测试钉住的是「原始字面量」这一条</b>：{@code 1.50} 必须落成
  * {@code "1.50"}、{@code 1e3} 必须落成 {@code "1e3"} —— 若 Jackson 2 的
  * {@code getText()} 给的是规范化值（{@code "1.5"} / {@code "1000.0"}），
- * 则与 Go 的 {@code json.Number.String()} **不同形** ⇒ 幂等键/目标 id 会漂。
+ * 则与 B 的 {@code json.Number.String()} **不同形** ⇒ 幂等键/目标 id 会漂。
  */
 class RawStringListDeserializerTest {
 
@@ -36,7 +37,7 @@ class RawStringListDeserializerTest {
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
     @Test
-    @DisplayName("整数数组被字符串化（Go: [1,2] ⇒ [\"1\",\"2\"]）")
+    @DisplayName("整数数组被字符串化（B 侧: [1,2] ⇒ [\"1\",\"2\"]）")
     void integersAreStringified() throws Exception {
         assertThat(MAPPER.readValue("{\"target_ids\":[1,2]}", Req.class).targetIds)
                 .containsExactly("1", "2");
@@ -64,7 +65,7 @@ class RawStringListDeserializerTest {
     }
 
     @Test
-    @DisplayName("⚠️ 超长整数不溢出（原样字面量，Go: convertTypeFromString 不校验）")
+    @DisplayName("⚠️ 超长整数不溢出（原样字面量，B 侧: convertTypeFromString 不校验）")
     void hugeIntegerIsNotOverflowed() throws Exception {
         assertThat(MAPPER.readValue("{\"target_ids\":[99999999999999999999]}", Req.class).targetIds)
                 .containsExactly("99999999999999999999");
@@ -107,7 +108,7 @@ class RawStringListDeserializerTest {
     }
 
     @Test
-    @DisplayName("布尔元素被拒（Go: errTypeMismatch）")
+    @DisplayName("布尔元素被拒（B 侧: errTypeMismatch）")
     void booleanElementIsRejected() {
         assertThatThrownBy(() -> MAPPER.readValue("{\"target_ids\":[true]}", Req.class))
                 .isInstanceOf(com.fasterxml.jackson.databind.exc.MismatchedInputException.class);

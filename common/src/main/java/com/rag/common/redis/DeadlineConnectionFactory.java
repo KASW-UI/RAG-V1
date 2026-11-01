@@ -38,22 +38,22 @@ public class DeadlineConnectionFactory implements RedisConnectionFactory {
 
     @Override
     public RedisConnection getConnection() {
-        // 🔴 E66（对齐 Go 的检查位置 · 2026-10-30 G4 第六次订正）：
-        //   预算检查**必须在建连之前** ⇒ ⇒ 与 Go 的检查位置逐条对齐。
-        //   Go 出处：go-redis v9.20.0 internal/pool/pool.go:1098-1103
+        // 🔴 E66（对齐 B 的检查位置 · 2026-10-30 G4 第六次订正）：
+        //   预算检查**必须在建连之前** ⇒ ⇒ 与 B 的检查位置逐条对齐。
+        //   B 出处：go-redis v9.20.0 service/common/src/main/java/com/rag/common/redis/GoStyleRedisDeadlineConnectionFactory.java:43:1098-1103
         //     func (p *ConnPool) waitTurn(ctx context.Context) error {
         //         // Fast path: check context first
         //         select { case <-ctx.Done(): return ctx.Err(); default: }
         //   ⇒ waitTurn 由 pool.go:837 的 getConn 调用 ⇒ 而 getConn 由 pool.Get(ctx) 调用
-        //   ⇒ ⇒ Go 的顺序是「**先查 ctx → 再取/拨连接 → 再写**」
+        //   ⇒ ⇒ B 的顺序是「**先查 ctx → 再取/拨连接 → 再写**」
         //   ⇒ ⇒ 而拨号在 pool.go:591 dialConn(ctx, …)（**晚于** waitTurn）。
         //   语义等价论证：本方法在 delegate.getConnection()（= 拨号）**之前**查预算
-        //   ⇒ ⇒ 预算已耗尽时**连都不拨** ⇒ ⇒ 与 Go「ctx 已 Done ⇒ 不取连接、不拨号」同形；
-        //   ⇒ ⇒ 修正前是「先拨了连接、再在命令下发前拦」⇒ ⇒ 资源层比 Go 多一次拨号。
+        //   ⇒ ⇒ 预算已耗尽时**连都不拨** ⇒ ⇒ 与 B 侧「ctx 已 Done ⇒ 不取连接、不拨号」同形；
+        //   ⇒ ⇒ 修正前是「先拨了连接、再在命令下发前拦」⇒ ⇒ 资源层比 B 侧 多一次拨号。
         //   ⚠️ 为什么**必须同时保留**命令处的检查（DeadlineConnection）：
         //   事务绑定场景下 RedisConnectionUtils 直接返回**已绑定的那条连接**
         //   ⇒ ⇒ 不再走本方法 ⇒ ⇒ 若只有本处检查，事务内的第 2 条命令就漏检
-        //   ⇒ ⇒ 而 Go 侧**每条命令**都过一次 waitTurn ⇒ ⇒ 命令处的检查是「每命令一次」那一份。
+        //   ⇒ ⇒ 而 B 侧**每条命令**都过一次 waitTurn ⇒ ⇒ 命令处的检查是「每命令一次」那一份。
         if (enabled) {
             Deadline.assertNotExhausted("getConnection");
         }

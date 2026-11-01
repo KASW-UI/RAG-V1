@@ -18,11 +18,11 @@ import static org.mockito.Mockito.when;
 /**
  * §3.3「机制可证」守门：<b>路由模板解析真的能区分三态</b>
  * （TEMPLATE / NOT_MATCHED / UNKNOWN）—— 三态是「404 不进 breaker」与
- * 「解析不了要回落旧行为」这两条 Go 语义的地基。
+ * 「解析不了要回落旧行为」这两条 B 侧 语义的地基。
  *
  * <p>⚠️ <b>抄写基准 = RAG</b>：{@code GoStyleRouteTemplateResolver}。
  *
- * <p>⚠️ <b>Go 出处</b>：
+ * <p>⚠️ <b>B 出处</b>：
  * <pre>
  *   rest/engine.go:244-268  notFoundHandler ⇒ 404 的链里**没有 breaker**
  *   rest/handler/breakerhandler.go:19 ⇒ 键 = METHOD://route.Path（注册期模板）
@@ -43,7 +43,7 @@ class RouteTemplateResolverTest {
     }
 
     @Test
-    @DisplayName("没有任何 mapping 匹配上 ⇒ NOT_MATCHED（Go 侧 404 不进 breaker）")
+    @DisplayName("没有任何 mapping 匹配上 ⇒ NOT_MATCHED（B 侧 404 不进 breaker）")
     void noMatchYieldsNotMatched() {
         RouteTemplateResolver resolver = new RouteTemplateResolver(
                 List.of(mappingOf(null, null)));

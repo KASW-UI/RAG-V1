@@ -13,14 +13,14 @@ package com.rag.common.exception;
  * 论证引用了一个在本工程里并不存在的机制。
  *
  * <p>更麻烦的是<b>不能靠业务码区分层次</b>：1006 在两条路径上都可能出现
- * （拦截器的鉴权失败 = 应 401；Service 的 token 失效 = Go 侧同样是 envelope + 200）。
+ * （拦截器的鉴权失败 = 应 401；Service 的 token 失效 = B 侧同样是 envelope + 200）。
  * 按 code 分流会把两层重新搅在一起，正是这次缺陷的成因。
  * 所以层次必须由<b>类型</b>承载。
  *
- * <p><b>Go 出处（HTTP 状态码对齐 Go，body 形状是本端有意统一，见 AGENTS.md §3.4）</b>
+ * <p><b>B 出处（HTTP 状态码对齐 B 侧，body 形状是本端有意统一，见 AGENTS.md §3.4）</b>
  * <table border="1">
- *   <caption>Go 侧两处鉴权短路</caption>
- *   <tr><th>位置</th><th>触发</th><th>Go 输出</th></tr>
+ *   <caption>B 侧两处鉴权短路</caption>
+ *   <tr><th>位置</th><th>触发</th><th>B 侧 输出</th></tr>
  *   <tr>
  *     <td>{@code rest.WithJwt}<br>{@code → rest/handler/authhandler.go:106 unauthorized()}
  *         <br>{@code → rest/engine.go:70-79 appendAuthHandler}</td>
@@ -35,13 +35,13 @@ package com.rag.common.exception;
  *     <td><b>HTTP 401</b> + {@code {"code":401,"msg":"登录已失效,请重新登陆"}}（无 data）</td>
  *   </tr>
  * </table>
- * 两处都是 <b>401</b>，这是必须对齐的部分；两处 body 形状不同是 Go 自身的不一致，
+ * 两处都是 <b>401</b>，这是必须对齐的部分；两处 body 形状不同是 B 侧 自身的不一致，
  * 本端统一成 {@code {code,msg,data}} 完整 envelope，属表达层差异。
  *
  * <p><b>不要在 Service 层抛这个类型</b>：Service 层的失败一律是 HTTP 200 + 业务码
- * （与 Go 的 {@code httpx.OkJson} 一致）。只有拦截器用。
+ * （与 B 的 {@code httpx.OkJson} 一致）。只有拦截器用。
  *
- * <p>Go 侧的对应实现已由 {@code service/user/user/api/identity_contract.md} 第 11 行坐实：
+ * <p>B 侧的对应实现已由 {@code service/user/user/api/identity_contract.md} 第 11 行坐实：
  * 「错误签名在读取 RPC 前即 401」。
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/exception/AuthenticationException.java}

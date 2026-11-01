@@ -10,7 +10,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * <b>业务观测标记的<b>唯一载体</b></b> —— 对齐 go-zero {@code service/common/observability/observability.go} 的
+ * <b>业务观测标记的<b>唯一载体</b></b> —— 对齐 B 侧
+ * {@code service/common/src/main/java/com/rag/common/observability/Observability.java:30-34}（RAG 仓）的
  * {@code Mark*} 系列，<b>但把写入目标从「手写 OTel span」换成「Micrometer Observation + OTel span 双载体」</b>。
  *
  * ══════════════════════════════════════════════════════════════════════
@@ -33,11 +34,11 @@ import java.util.Set;
  * ══════════════════════════════════════════════════════════════════════
  * <p>Micrometer 的 {@link io.micrometer.common.KeyValue} <b>只有 String 值</b>
  * （javap 实测：{@code KeyValue.of(String, String)} 是唯一的 String 键工厂）
- * ⇒ ⇒ 写进 Observation 的 {@code sea.biz_code}（Go 是 <b>long</b>）与
- * {@code sea.duration_ms}（Go 是 <b>double</b>）会退化成<b>字符串属性</b>
+ * ⇒ ⇒ 写进 Observation 的 {@code sea.biz_code}（B 侧 是 <b>long</b>）与
+ * {@code sea.duration_ms}（B 侧 是 <b>double</b>）会退化成<b>字符串属性</b>
  * ⇒ ⇒ <b>属性类型变了</b>（值不变）⇒ 告警/看板的查询表达式要跟着改。
  * <br>⇒ ⇒ 本类同时写 <b>OTel span</b>（<b>带类型</b>：{@code put(String, long)} / {@code put(String, double)}）
- * ⇒ ⇒ <b>Go 的属性类型逐字保住</b>；
+ * ⇒ ⇒ <b>B 的属性类型逐字保住</b>；
  * ⇒ ⇒ 同时写 <b>Micrometer {@code Observation.Context}</b>（D4 的目标形态，供指标与未来的 tracing bridge 用）。
  * <br>⚠️ <b>取舍说明</b>：两处都写 ⇒ 同一标记在两个载体里各有一份。
  * ⇒ 这是**有意的**：OTel 侧保类型、Micrometer 侧接生态。
@@ -85,7 +86,7 @@ import java.util.Set;
  */
 public final class ObservabilityCustomizer {
 
-    // ── 业务常量：Go observability.go 的两个常量块，键名与取值逐字一致 ──────
+    // ── 业务常量：B 侧 observability.go 的两个常量块，键名与取值逐字一致 ──────
 
     /** 业务成功码（⚠️ <b>不是</b> HTTP 200 / gRPC OK，是 SEA 业务约定的成功码）。 */
     public static final int SUCCESS_BIZ_CODE = 200;
@@ -123,7 +124,7 @@ public final class ObservabilityCustomizer {
     /** 错误种类：超时。 */
     public static final String ERROR_KIND_TIMEOUT = "timeout";
 
-    /** 环境变量名（slow 阈值，Go duration 格式）。 */
+    /** 环境变量名（slow 阈值，B 侧 duration 格式）。 */
     public static final String ENV_SLOW_THRESHOLD = "SEA_OBSERVABILITY_SLOW_THRESHOLD";
 
     /** 环境变量名（slow 阈值，整数毫秒）。 */
@@ -139,14 +140,14 @@ public final class ObservabilityCustomizer {
      * <b>只能是字符串</b> ⇒ ⇒ <b>类型退化为字符串</b>（值不变：{@code "true"}）
      * ⇒ ⇒ <b>已登记为 L3</b>（D-03 的降级面）。
      * <br>⇒ ⇒ OTel 侧仍然写<b>真正的 boolean</b>（{@code span.setAttribute(key, true)}）
-     * ⇒ ⇒ Go 的属性类型在 OTel 侧逐字保住。
+     * ⇒ ⇒ B 的属性类型在 OTel 侧逐字保住。
      */
     private static final String TRUE_STRING = "true";
 
     // ── gRPC 侧的码语义（被 gRPC 拦截器 与 RpcHandleRunner 共用） ──────────
 
     /**
-     * Go 的业务码集合（gRPC 侧「算 business 错误」的那 7 个码）。
+     * B 的业务码集合（gRPC 侧「算 business 错误」的那 7 个码）。
      *
      * <p>⚠️ <b>顺序无关</b>（是集合不是优先级）。
      * <p>⚠️ <b>为什么用字符串而不是 {@code io.grpc.Status.Code} 枚举</b>：
@@ -175,10 +176,10 @@ public final class ObservabilityCustomizer {
     }
 
     /**
-     * Go {@code status.Error(...).Error()} 的文本形状。
+     * B 侧 {@code status.Error(...).Error()} 的文本形状。
      *
      * <p>⚠️ <b>已知残留差异</b>：gRPC Java 的 {@code Code#name()} 返回全大写（{@code NOT_FOUND}），
-     * Go 的 {@code codes.Code.String()} 返回驼峰（{@code NotFound}）⇒
+     * B 的 {@code codes.Code.String()} 返回驼峰（{@code NotFound}）⇒
      * <b>语言常量表示不同，不做臆造映射</b>（照抄 RAG 的同一处取舍）。
      *
      * @param codeName    gRPC 码名
@@ -196,7 +197,7 @@ public final class ObservabilityCustomizer {
 
     /**
      * <b>环境变量口径</b>的慢调用阈值：先读 {@code SEA_OBSERVABILITY_SLOW_THRESHOLD}
-     * （Go duration 串），再读 {@code SEA_OBSERVABILITY_SLOW_THRESHOLD_MS}（整数毫秒），
+     * （B 侧 duration 串），再读 {@code SEA_OBSERVABILITY_SLOW_THRESHOLD_MS}（整数毫秒），
      * 全不合法回落 {@link #DEFAULT_SLOW_THRESHOLD}。
      */
     public static Duration slowThreshold() {
@@ -222,7 +223,7 @@ public final class ObservabilityCustomizer {
         return DEFAULT_SLOW_THRESHOLD;
     }
 
-    /** Go {@code TimeoutFromMillis}：{@code ms <= 0 ⇒ 0}（不限时）。 */
+    /** B 侧 {@code TimeoutFromMillis}：{@code ms <= 0 ⇒ 0}（不限时）。 */
     public static Duration timeoutFromMillis(long ms) {
         if (ms <= 0) {
             return Duration.ZERO;
@@ -230,7 +231,7 @@ public final class ObservabilityCustomizer {
         return Duration.ofMillis(ms);
     }
 
-    /** Go {@code durationMilliseconds}：{@code float64(microseconds)/1000}（保留亚毫秒精度）。 */
+    /** B 侧 {@code durationMilliseconds}：{@code float64(microseconds)/1000}（保留亚毫秒精度）。 */
     public static double durationMillis(Duration duration) {
         if (duration == null) {
             return 0.0D;
@@ -239,7 +240,7 @@ public final class ObservabilityCustomizer {
     }
 
     /**
-     * Go {@code IsTimeoutError}：沿 cause 链走，对齐 {@code errors.Is} / {@code errors.As}。
+     * B 侧 {@code IsTimeoutError}：沿 cause 链走，对齐 {@code errors.Is} / {@code errors.As}。
      *
      * <p>覆盖面很宽：{@link java.util.concurrent.TimeoutException} ·
      * {@link java.net.SocketTimeoutException} · {@link java.net.http.HttpTimeoutException} ·
@@ -318,7 +319,7 @@ public final class ObservabilityCustomizer {
     // ── 四个判定（纯函数 · 照抄 RAG 的 mark* 语义） ────────────────────────
 
     /**
-     * Go {@code MarkBusinessError} 的判定部分。
+     * B 侧 {@code MarkBusinessError} 的判定部分。
      *
      * <p>⚠️ {@code code == 200} 时<b>降级</b>成「只写 duration / slow」，
      * 且此时用的是<b>环境变量口径</b>的阈值（{@link #slowThreshold()}）—— 照抄 RAG 的这处口径分叉。
@@ -331,7 +332,7 @@ public final class ObservabilityCustomizer {
                 isSlow(duration, slowThreshold()), durationMillis(duration), null);
     }
 
-    /** Go {@code MarkSystemError} 的判定部分（<b>不带 biz_code</b>）。 */
+    /** B 侧 {@code MarkSystemError} 的判定部分（<b>不带 biz_code</b>）。 */
     public static Markers classifySystemError(Throwable err, Duration duration) {
         String msg = err == null ? "system error" : errorMessageOf(err);
         Throwable recorded = err != null ? err : new RuntimeException(msg);
@@ -339,7 +340,7 @@ public final class ObservabilityCustomizer {
                 isSlow(duration, slowThreshold()), durationMillis(duration), recorded);
     }
 
-    /** Go {@code MarkTimeout} 的判定部分（<b>不带 biz_code</b>，<b>带 sea.timeout</b>）。 */
+    /** B 侧 {@code MarkTimeout} 的判定部分（<b>不带 biz_code</b>，<b>带 sea.timeout</b>）。 */
     public static Markers classifyTimeout(Throwable err, Duration duration) {
         String msg = err == null ? "timeout" : errorMessageOf(err);
         Throwable recorded = err != null ? err : new RuntimeException(msg);
@@ -347,7 +348,7 @@ public final class ObservabilityCustomizer {
                 isSlow(duration, slowThreshold()), durationMillis(duration), recorded);
     }
 
-    /** Go {@code MarkDurationAndSlow} 的判定部分（正常路径：<b>无 error 标记</b>）。 */
+    /** B 侧 {@code MarkDurationAndSlow} 的判定部分（正常路径：<b>无 error 标记</b>）。 */
     public static Markers classifySuccess(Duration duration, Duration slowThreshold) {
         return new Markers(null, null, null, false,
                 isSlow(duration, slowThreshold), durationMillis(duration), null);
@@ -356,7 +357,7 @@ public final class ObservabilityCustomizer {
     // ── 写入（双载体） ────────────────────────────────────────────────────
 
     /**
-     * 对应 Go {@code MarkBusinessError}。
+     * 对应 B 侧 {@code MarkBusinessError}。
      *
      * @param ctx Micrometer {@link Observation.Context}（可为 {@code null} ⇒ 只写 OTel span）
      */
@@ -365,17 +366,17 @@ public final class ObservabilityCustomizer {
         apply(ctx, m);
     }
 
-    /** 对应 Go {@code MarkSystemError}。 */
+    /** 对应 B 侧 {@code MarkSystemError}。 */
     public static void markSystemError(Observation.Context ctx, Throwable err, Duration duration) {
         apply(ctx, classifySystemError(err, duration));
     }
 
-    /** 对应 Go {@code MarkTimeout}。 */
+    /** 对应 B 侧 {@code MarkTimeout}。 */
     public static void markTimeout(Observation.Context ctx, Throwable err, Duration duration) {
         apply(ctx, classifyTimeout(err, duration));
     }
 
-    /** 对应 Go {@code MarkDurationAndSlow}（显式传阈值）。 */
+    /** 对应 B 侧 {@code MarkDurationAndSlow}（显式传阈值）。 */
     public static void markDurationAndSlow(Observation.Context ctx, Duration duration, Duration slowThreshold) {
         apply(ctx, classifySuccess(duration, slowThreshold));
     }
@@ -387,7 +388,7 @@ public final class ObservabilityCustomizer {
      * <b>不 recording ⇒ 整批静默丢弃</b>）；Micrometer 侧以 {@code ctx == null} 为同样的保护。
      */
     public static void apply(Observation.Context ctx, Markers m) {
-        // ── OTel span（带类型，保住 Go 的属性类型） ──
+        // ── OTel span（带类型，保住 B 的属性类型） ──
         Span span = Span.current();
         if (span.isRecording()) {
             if (m.errorKind != null) {
@@ -398,7 +399,7 @@ public final class ObservabilityCustomizer {
                 span.setAttribute(ATTR_BIZ_CODE, m.bizCode.longValue());
             }
             if (m.bizMsg != null) {
-                // ⚠️ business 类的 msg 可能为 null ⇒ OTel 忽略 null 值 ⇒ 属性直接缺失（与 Go 一致）
+                // ⚠️ business 类的 msg 可能为 null ⇒ OTel 忽略 null 值 ⇒ 属性直接缺失（与 B 侧 一致）
                 span.setAttribute(ATTR_BIZ_MSG, m.bizMsg);
             }
             if (m.timeout) {
@@ -442,17 +443,17 @@ public final class ObservabilityCustomizer {
     }
 
     /**
-     * Go {@code err.Error()} 的取值语义：{@code getMessage()} 原样，{@code null} 归一为 {@code ""}。
+     * B 侧 {@code err.Error()} 的取值语义：{@code getMessage()} 原样，{@code null} 归一为 {@code ""}。
      *
      * <p>⚠️ <b>刻意不</b>用 {@code getClass().getSimpleName()} 兜底 ——
-     * 那是 Java 独有的信息，Go 侧对应位置会是空串 ⇒ 属于凭空多出来的 {@code sea.biz_msg} 值。
+     * 那是 Java 独有的信息，B 侧对应位置会是空串 ⇒ 属于凭空多出来的 {@code sea.biz_msg} 值。
      */
     private static String errorMessageOf(Throwable err) {
         String m = err.getMessage();
         return m != null ? m : "";
     }
 
-    /** 解析 Go 版 {@code time.ParseDuration} 子集（ns/us/ms/s/m/h）。 */
+    /** 解析 B 侧版 {@code time.ParseDuration} 子集（ns/us/ms/s/m/h）。 */
     private static Duration parseGoDuration(String raw) {
         try {
             long totalNanos = 0;

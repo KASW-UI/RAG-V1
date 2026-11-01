@@ -10,8 +10,8 @@
 | 模块路径 | `service/favorite` |
 | artifactId | `favorite-service` |
 | 根包 | `com.rag.favorite` |
-| Go 出处 | `service/favorite/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = Go logic 用例的 `types.Xxx` 引用图 + 类型所在聚合） |
+| B 侧出处 | `service/favorite/` |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = B 侧 rpc 用例的 DTO 引用图 + 类型所在聚合） |
 
 ## 二、依赖
 
@@ -58,13 +58,13 @@
 │   │   │               │   ├── FavoriteApiProperties.java    # @ConfigurationProperties —— 聚合本域 HTTP 层配置。
 │   │   │               │   ├── FavoriteRpcLabels.java
 │   │   │               │   ├── FavoriteRpcProperties.java
-│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 替代 Go 的 rest.WithMiddlewares 绑定。
+│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 对齐 B 侧同名配置类的注册形态。
 │   │   │               ├── contract/
 │   │   │               │   ├── ErrCodes.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               │   ├── ErrMsg.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               │   └── GrpcErrorMapper.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               ├── controller/
-│   │   │               │   └── FavoriteController.java    # ⚠️ L1 路由契约（Go 正推，勿凭直觉改）
+│   │   │               │   └── FavoriteController.java    # ⚠️ L1 路由契约（B 侧 正推，勿凭直觉改）
 │   │   │               ├── domain/
 │   │   │               │   ├── entity/
 │   │   │               │   │   ├── FavoriteFactOutboxEntity.java
@@ -77,30 +77,30 @@
 │   │   │               │       └── FavoriteDomainService.java
 │   │   │               ├── dto/
 │   │   │               │   ├── favorite/
-│   │   │               │   │   ├── CreateFavoriteReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── CreateFavoriteResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── DeleteFavoriteReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── DeleteFavoriteResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── FavoriteItem.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetFavoritesByFolderReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── GetFavoritesByFolderResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── CreateFavoriteReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── CreateFavoriteResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── DeleteFavoriteReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── DeleteFavoriteResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── FavoriteItem.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetFavoritesByFolderReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   └── GetFavoritesByFolderResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               │   └── folder/
-│   │   │               │       ├── CreateFavoriteFolderReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── CreateFavoriteFolderResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── DeleteFavoriteFolderReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── DeleteFavoriteFolderResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── FavoriteFolder.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── GetFavoriteFoldersReq.java    # Go 侧同名 struct 存在（空 struct）—— RAG 形态改用 `assertGoEmptyStructBody()` 手工复刻 Go 的「GET 端点也解析并校验 body」行为，属 L4。
-│   │   │               │       ├── GetFavoriteFoldersResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── UpdateFavoriteFolderNameReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       └── UpdateFavoriteFolderNameResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── CreateFavoriteFolderReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── CreateFavoriteFolderResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── DeleteFavoriteFolderReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── DeleteFavoriteFolderResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── FavoriteFolder.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── GetFavoriteFoldersReq.java    # B 侧同名 struct 存在（空 struct）—— RAG 形态改用 `assertGoEmptyStructBody()` 手工复刻 B 的「GET 端点也解析并校验 body」行为，属 L4。
+│   │   │               │       ├── GetFavoriteFoldersResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── UpdateFavoriteFolderNameReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       └── UpdateFavoriteFolderNameResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               ├── exception/
 │   │   │               │   └── FavoriteExceptions.java
 │   │   │               ├── grpc/
 │   │   │               │   └── FavoriteGrpcService.java
 │   │   │               ├── interceptor/
 │   │   │               │   ├── FavoriteJwtAuthInterceptor.java
-│   │   │               │   └── QueryLimitInterceptor.java    # Go 语义的 query 判据闸门 —— 逐字复刻 httpx.GetFormValues + net/url.parseQuery。
+│   │   │               │   └── QueryLimitInterceptor.java    # 上游语义的 query 判据闸门 —— 逐字复刻 {@code httpx.GetFormValues} + {@code net/url.parseQuery}（B 出处：{@code service/common/src/main/java/com/rag/common/http/GoStyleFormValues.java}（RAG 仓））。
 │   │   │               ├── mapper/
 │   │   │               │   ├── FavoriteFactOutboxMapper.java
 │   │   │               │   ├── FavoriteFolderMapper.java
@@ -121,8 +121,8 @@
 │   │   │               │   ├── FavoriteRpcSupport.java
 │   │   │               │   └── FavoriteUserGuard.java
 │   │   │               ├── wiring/
-│   │   │               │   ├── FavoriteAuthorityEndpointConfig.java    # Go 出处
-│   │   │               │   ├── FavoriteFactDispatchScheduler.java    # Go 出处
+│   │   │               │   ├── FavoriteAuthorityEndpointConfig.java    # B 出处
+│   │   │               │   ├── FavoriteFactDispatchScheduler.java    # B 出处
 │   │   │               │   ├── FavoriteFactProcessLogging.java
 │   │   │               │   ├── FavoriteNacosRegistration.java
 │   │   │               │   ├── FavoriteSchemaGate.java
@@ -146,7 +146,7 @@
 
 - **共享 communityfact 事件协议**。
 - **错误契约形态独有**：本域是唯一「只有常量 + `codeMsg` + 反查索引 + `GRPCError` + `BizCodeFromError`，无 `CodeError` 类型」的域。
-- **注意**：`GET /favorite/v1/folder/list` 是 GET 端点，但 Go 仍解析并校验 body ⇒ 必须保留（否则非法 body 会从 5003 放过成 200）。
+- **注意**：`GET /favorite/v1/folder/list` 是 GET 端点，但 B 侧仍解析并校验 body（`FavoriteController` 的 `assertGoEmptyStructBody`）⇒ 必须保留（否则非法 body 会从 5003 放过成 200）。
 
 ## 五、状态
 
@@ -154,4 +154,4 @@
 |---|---|
 | 目录结构 | ✅ 已落地 |
 | 文件内容 | ⬜ **全部待填**（每个 Java 文件只有 package + 空类型 + TODO javadoc） |
-| Go ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |
+| B 侧 ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |

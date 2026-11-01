@@ -13,7 +13,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
 /**
- * <p><b>Go 出处</b>：{@code service/common/communityfact/wire.go} 的
+ * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/communityfact/Wire.java} 的
  * {@code type Sender interface { Send(context.Context, Event, json.RawMessage) (TechnicalReceipt, error) }}
  * ＋ {@code type DCEventSender struct} ＋ {@code func NewDCEventSender(...)} ＋ {@code func (s *DCEventSender) Send(...)}。
  *
@@ -48,8 +48,7 @@ public interface EventSender {
     TechnicalReceipt send(Context ctx, Event event, byte[] raw) throws Exception;
 
     /**
-     * DC 事件发送器 —— 对应 Go 版 {@code type DCEventSender struct} ＋
-     * {@code func NewDCEventSender(endpoint, token string, client *http.Client) (*DCEventSender, error)}。
+     * DC 事件发送器 —— 对应 B 侧版 {@code type DCEventSender struct} ＋
      */
     final class DCEventSender implements EventSender {
         private final String endpoint;
@@ -63,7 +62,7 @@ public interface EventSender {
         }
 
         /**
-         * 对应 Go 版 {@code func NewDCEventSender(endpoint, token string, client *http.Client) (*DCEventSender, error)}。
+         * 对应 B 侧版 {@code func NewDCEventSender(endpoint, token string, client *http.Client) (*DCEventSender, error)}。
          * 校验 endpoint 协议/路径 + token 长度 + client 非空。
          */
         public static DCEventSender create(String endpoint, String token, HttpClient client) {
@@ -84,9 +83,9 @@ public interface EventSender {
         }
 
         /**
-         * 对应 Go 版 {@code func (s *DCEventSender) Send(ctx, event, raw) (TechnicalReceipt, error)}。
+         * 对应 B 侧版 {@code func (s *DCEventSender) Send(ctx, event, raw) (TechnicalReceipt, error)}。
          *
-         * <p>非 200/201 状态码按 Go 版语义抛 {@link Wire.DataCenterAcceptanceRejectedException}，
+         * <p>非 200/201 状态码按 B 侧版语义抛 {@link Wire.DataCenterAcceptanceRejectedException}，
          * 不再返"伪 receipt"以避免调用方误把错误的 receipt 当成合法的 acceptance。
          */
         @Override
@@ -101,19 +100,19 @@ public interface EventSender {
                     .header("Authorization", "Bearer " + token)
                     .POST(HttpRequest.BodyPublishers.ofByteArray(raw));
             // otel trace propagation：把当前 ctx 的 traceparent 写进 header
-            // 对应 Go 版 otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(request.Header))
+            // 对应 B 侧版 otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(request.Header))
             GlobalOpenTelemetry.getPropagators().getTextMapPropagator().inject(ctx, builder, BuilderSetter.INSTANCE);
 
             HttpResponse<InputStream> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
             int status = response.statusCode();
             if (status != 201 && status != 200) {
-                // 对应 Go 版 io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10)) 丢弃 body 防连接泄漏
+                // 对应 B 侧版 io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10)) 丢弃 body 防连接泄漏
                 try (InputStream in = response.body()) {
                     discardUpTo(in, 64 * 1024);
                 }
                 throw new Wire.DataCenterAcceptanceRejectedException(status, "DataCenter event acceptance status " + status);
             }
-            // 对应 Go 版 io.LimitReader(response.Body, 64<<10)：流式读取最多 64KB
+            // 对应 B 侧版 io.LimitReader(response.Body, 64<<10)：流式读取最多 64KB
             try (InputStream in = response.body()) {
                 byte[] limited = readLimitUpTo(in, 64 * 1024);
                 return Wire.strictDecode(new java.io.ByteArrayInputStream(limited), TechnicalReceipt.class);
@@ -123,11 +122,11 @@ public interface EventSender {
         /**
          * 流式读取最多 {@code maxBytes} 字节后停止；<b>不</b>把剩余字节抽干。
          *
-         * <p><b>M21 修复</b>：Go 版是 {@code StrictDecode(io.LimitReader(body, 64<<10), &receipt)}，
+         * <p><b>M21 修复</b>：B 侧版是 {@code StrictDecode(io.LimitReader(body, 64<<10), &receipt)}，
          * {@code LimitReader} 读到上限就停，剩余部分由 {@code defer response.Body.Close()} 直接丢弃 ——
          * <b>从不多读一个字节</b>。旧 Java 版在触到上限后还调 {@code discardUpTo(in, MAX_VALUE)}
-         * 把整个响应体读完：一个超大/慢速的响应体会让投递线程一直挂着，而 Go 侧会立刻返回。
-         * 现与 Go 对齐：读到上限即返回，剩下的交给 try-with-resources 关闭。
+         * 把整个响应体读完：一个超大/慢速的响应体会让投递线程一直挂着，而 B 侧会立刻返回。
+         * 现与 B 侧 对齐：读到上限即返回，剩下的交给 try-with-resources 关闭。
          */
         private static byte[] readLimitUpTo(InputStream in, int maxBytes) throws IOException {
             ByteArrayOutputStream buf = new ByteArrayOutputStream(Math.min(maxBytes, 1024));
@@ -145,8 +144,8 @@ public interface EventSender {
         }
 
         /**
-         * 对应 Go 版 {@code io.Copy(io.Discard, io.LimitReader(body, 64<<10))}：
-         * <b>仅用于非 2xx 分支</b>——那里 Go 确实主动读了最多 64KB 再关连接（为了让连接能进复用池）。
+         * 对应 B 侧版 {@code io.Copy(io.Discard, io.LimitReader(body, 64<<10))}：
+         * <b>仅用于非 2xx 分支</b>——那里 B 侧 确实主动读了最多 64KB 再关连接（为了让连接能进复用池）。
          * 2xx 分支走 {@link #readLimitUpTo}，不调用本方法。
          */
         private static void discardUpTo(InputStream in, int maxBytes) throws IOException {

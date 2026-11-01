@@ -12,12 +12,12 @@ import java.util.function.Supplier;
 
 /**
  * <p><b>L4 idiomatization</b>：在 <b>Servlet Filter</b> 里解析出「<b>注册期路由模板</b>」，
- * 让共享层的 HTTP 熔断器能按 Go 的隔离单位（<b>每条路由一个 breaker</b>）分桶。
+ * 让共享层的 HTTP 熔断器能按 B 的隔离单位（<b>每条路由一个 breaker</b>）分桶。
  *
  * <p>RAG 出处：{@code service/common/protection/GoStyleRouteTemplateResolver.java}
  * （抄写基准 = RAG，L2 业务语义层整段抄 · D13）。
  *
- * <p><b>Go 出处（消费点，不是声明点）</b>：
+ * <p><b>B 出处（消费点，不是声明点）</b>：
  * <pre>
  *   rest/engine.go:99-101   bindRoute(...)
  *       chn := ng.chain
@@ -48,18 +48,18 @@ import java.util.function.Supplier;
  *       chn := chain.New(handler.TraceHandler(ng.conf.Name, "", …))
  *       if ng.conf.Middlewares.Log { chn = chn.Append(ng.getLogHandler()) }
  *       ⇒ <b>404 的链只有 Trace + Log</b>：<b>没有 MaxConns / Breaker / Shedding</b>
- *       ⇒ ⇒ <b>Go 侧未命中路由（404 / 405）根本不经过 breaker</b>
+ *       ⇒ ⇒ <b>B 侧未命中路由（404 / 405）根本不经过 breaker</b>
  * </pre>
  *
  * <p><b>本类要解决的两处漂移</b>（登记在 {@code DRIFT-USERAPI-013②} / {@code DRIFT-FOLLOW-008} 同族条目里）：
  * <ol>
  *   <li><b>隔离单位错</b>：原先用 raw {@code getRequestURI()} 当键
  *       ⇒ {@code /article/1} 与 {@code /article/2} 是<b>两个</b> breaker；
- *       Go 侧是<b>一个</b>（模板 {@code /article/:id}）
- *       ⇒ ⇒ <b>熔断爆炸半径不同</b>：Go 上 {@code /article/1} 持续 5xx 会把
+ *       B 侧是<b>一个</b>（模板 {@code /article/:id}）
+ *       ⇒ ⇒ <b>熔断爆炸半径不同</b>：B 侧 上 {@code /article/1} 持续 5xx 会把
  *       <b>同模板的 {@code /article/2} 一起挡住</b>，不照做就不会。</li>
  *   <li><b>未命中路由也进 breaker</b>：Filter 对<b>所有</b>请求生效（含 404）
- *       ⇒ 404 会凭空造出 breaker 条目；Go 侧 404 链里<b>没有</b> breaker。</li>
+ *       ⇒ 404 会凭空造出 breaker 条目；B 侧 404 链里<b>没有</b> breaker。</li>
  * </ol>
  *
  * <p><b>⚠️ 为什么解析发生在 Filter 里、而不是靠 Spring MVC 现成的模板属性</b>：
@@ -74,9 +74,9 @@ import java.util.function.Supplier;
  * Boot 的<b>静态资源处理器</b>（{@code SimpleUrlHandlerMapping}）把 {@code /**} 映射到
  * {@code ResourceHttpRequestHandler} ⇒ ⇒ <b>它匹配一切</b> ⇒
  * ⇒ 若把它算进来，<b>永远得不到「确定未命中」</b>（每条路径都被它兜住）
- * ⇒ ⇒ 「404 不进 breaker」这条 Go 语义就<b>永远落不了地</b>。
+ * ⇒ ⇒ 「404 不进 breaker」这条 B 侧 语义就<b>永远落不了地</b>。
  * <p>⇒ 只认<b>注解驱动</b>的路由（{@code @RequestMapping} / {@code @GetMapping} …）
- * ⇒ 它正是 Go 侧 {@code AddRoutes} 注册表的等价物。
+ * ⇒ 它正是 B 侧 {@code AddRoutes} 注册表的等价物。
  * <p>⚠️ 同一个陷阱在 RAG 仓已有先例：{@code FavoriteJwtAuthInterceptor} 的注释
  * 写明「Boot 的静态资源处理器匹配 {@code /**}，于是未注册路径<b>也拿到了 handler</b>」
  * ⇒ ⇒ 本类沿用同一口径（{@code handler instanceof HandlerMethod}）。

@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Bean;
 /**
  * <b>共享日志门面的装配点</b> —— 产出 {@link LoggerFactoryBean}。
  *
- * <p><b>Go 出处</b>：{@code service/common/logger/logger.go:63-70}
+ * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/spring/LoggerFactoryBean.java:9:63-70}
  * （{@code func Init(svcName string)} ⇒ 服务名的<b>唯一</b>来源，且<b>空名 panic</b>）。
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/spring/LoggerFactoryBean.java}

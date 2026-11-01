@@ -26,11 +26,11 @@ import java.util.Properties;
  * 于是超时会被当成「数据库故障」上报。
  * 2026-10-21 的端到端实测证实了这个后果：只注入 {@code default-statement-timeout=2}
  * 而不做翻译时，RAG 的超时响应体是 {@code {"code":5001,"msg":"系统内部错误"}}，
- * 而 Go 是 {@code {"code":1015,"msg":"服务繁忙"}} —— <b>离 Go 更远了</b>。
+ * 而 B 侧 是 {@code {"code":1015,"msg":"服务繁忙"}} —— <b>离 B 侧 更远了</b>。
  *
- * <p><b>Go 出处（消费点，不是声明点）—— 1015 是谁产出的</b>：
+ * <p><b>B 出处（消费点，不是声明点）—— 1015 是谁产出的</b>：
  * <b>各 api logic 显式 {@code switch st.Code()} 的 {@code default} 分支</b>；
- * <b>不是</b> go-zero 的错误映射，<b>也不是</b> deadline 映射：
+ * <b>不是</b> 框架层的错误映射，<b>也不是</b> deadline 映射：
  * <ul>
  *   <li>{@code service/user/admin/api/internal/logic/admin/getuserlistlogic.go:44-48}
  *       （{@code switch st.Code()} 44 · {@code case codes.Internal:} 45 → {@code errmsg.ErrorServerCommon} 46
@@ -49,8 +49,8 @@ import java.util.Properties;
  * ⇒ <b>这些 switch 只单列了 {@code codes.Internal}（→5001）与 {@code codes.NotFound}（→500）
  * ⇒ {@code DEADLINE_EXCEEDED} 未被单列 ⇒ 落 default ⇒ 1015</b>。
  *
- * <p><b>那 Go 侧 ctx 到点是怎么变成 {@code DeadlineExceeded} 的</b>：
- * {@code service/common/observability/observability.go:146-158}（{@code IsTimeoutError}：
+ * <p><b>那 B 侧 ctx 到点是怎么变成 {@code DeadlineExceeded} 的</b>：
+ * {@code service/common/src/main/java/com/rag/common/persistence/SqlTimeoutStatusTranslator.java:52:146-158}（{@code IsTimeoutError}：
  * {@code errors.Is(err, context.DeadlineExceeded)} 在 {@code :150}、
  * {@code codes.DeadlineExceeded} 在 {@code :153}、网络超时在 {@code :157}）
  * ⇒ 它<b>只做可观测性判定（判「是不是超时」），不产出任何业务码</b>
@@ -64,17 +64,17 @@ import java.util.Properties;
  *   <li>{@code service/users/user/user-api/src/main/java/com/rag/users/user/api/advice/GlobalExceptionHandler.java:153}
  *       ＋ <b>:162</b>（同款）；</li>
  * </ul>
- * ⇒ <b>因此本类只要产出正确的 DEADLINE_EXCEEDED，api 层无需任何改动即可与 Go 对齐</b>。
+ * ⇒ <b>因此本类只要产出正确的 DEADLINE_EXCEEDED，api 层无需任何改动即可与 B 侧 对齐</b>。
  *
  * <p>⚠️ <b>结论的适用范围</b>：「{@code DEADLINE_EXCEEDED} 未被单列 ⇒ 落 default ⇒ 1015」
  * <b>只对 users 域（admin + user 的 api）成立</b> ——
- * Go 侧 <b>article 域单列了</b> {@code codes.DeadlineExceeded}
- * （{@code service/article/api/internal/logic/article/create_article_logic.go:66}
+ * B 侧 <b>article 域单列了</b> {@code codes.DeadlineExceeded}
+ * （{@code service/common/src/main/java/com/rag/common/persistence/SqlTimeoutStatusTranslator.java:71:66}
  * ⇒ 走 {@code errmsg.ErrorArticlePublishing}，<b>不走 1015</b>）
  * ⇒ <b>本条不适用于 article 域</b>，也不外推到其它域。
  *
  * <p><b>为什么不能翻译成 INTERNAL 再在 api 层改</b>：那是把「超时」和「数据库真的坏了」混成
- * 一个码，而 Go 侧这两者本来就不同（超时 1015 / 数据库错 5001）。翻译点必须在
+ * 一个码，而 B 侧这两者本来就不同（超时 1015 / 数据库错 5001）。翻译点必须在
  * 异常离开数据访问层之前，也就是这里。
  *
  * <p><b>拦截位置选 {@link Executor} 而非 {@code StatementHandler}</b>：CancelRequest 引发的

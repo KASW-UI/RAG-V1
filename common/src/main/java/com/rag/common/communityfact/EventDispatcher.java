@@ -16,8 +16,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * <p>对应 Go 版 {@code service/common/communityfact/process.go}（69 行）的
- * {@code func RunDispatcher(...)} ＋ {@code func deliveryErrorCode(err error) string}。
+ * <p>对应 B 侧版 {@code service/common/communityfact/process.go}（69 行）的
  *
  * <p>职责：dispatcher 循环把 frozen event 投递到 DC；批次 16，超时 10s，节奏 1s。
  *
@@ -29,9 +28,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p><b>框架职责</b>：
  * <ul>
- *   <li>Go 版 time.Ticker + for-loop → Java {@code CompletableFuture.get(1s)} + stopSignal 让 1s 节奏可中断</li>
- *   <li>Go 版 ctx.Done → Java {@link DispatcherHandle#stop()} 让业务方主动停止</li>
- *   <li>Go 版 context.WithTimeout 10s + defer cancel() → Java {@code CompletableFuture.get(10s)} + {@code future.cancel(true)}（cancel(true) 给业务线程发 interrupt）</li>
+ *   <li>B 侧版 time.Ticker + for-loop → Java {@code CompletableFuture.get(1s)} + stopSignal 让 1s 节奏可中断</li>
+ *   <li>B 侧版 ctx.Done → Java {@link DispatcherHandle#stop()} 让业务方主动停止</li>
+ *   <li>B 侧版 context.WithTimeout 10s + defer cancel() → Java {@code CompletableFuture.get(10s)} + {@code future.cancel(true)}（cancel(true) 给业务线程发 interrupt）</li>
  * </ul>
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/communityfact/Dispatcher.java}
@@ -40,12 +39,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class EventDispatcher {
 
     /**
-     * 🔴🔴 <b>DRIFT-CF-018 修复：调用方先造句柄</b>（Go-faithful 的停止能力入口）。
+     * 🔴🔴 <b>DRIFT-CF-018 修复：调用方先造句柄</b>（B 侧-faithful 的停止能力入口）。
      *
-     * <p><b>Go 出处</b>：{@code service/comment/rpc/cmd/fact-dispatch/main.go:68}
+     * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/communityfact/Dispatcher.java:50:68}
      * （{@code ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)}）
      * ＋ {@code :69}（{@code defer stop()}）。
-     * <p><b>语义等价论证</b>：Go 侧「停止 dispatcher」= 让<b>调用方自己</b>的 ctx 变成 done
+     * <p><b>语义等价论证</b>：B 侧「停止 dispatcher」= 让<b>调用方自己</b>的 ctx 变成 done
      * ⇒ 停止能力<b>在 dispatcher 被调用之前</b>就已属于调用方
      * ⇒ Java 侧对应物 = 本工厂方法（调用方先拿到句柄，再交给 {@code run}）。
      * <p><b>为什么不能反过来</b>（旧形态为什么必然坏）：旧形态由 {@code run} 内部新建句柄、
@@ -54,9 +53,9 @@ public final class EventDispatcher {
      *
      * <p><b>用法</b>：
      * <pre>{@code
-     * EventDispatcher.DispatcherHandle handle = EventDispatcher.newHandle();  // ← 对应 Go 的 ctx, stop := ...
+     * EventDispatcher.DispatcherHandle handle = EventDispatcher.newHandle();  // ← 对应 B 的 ctx, stop := ...
      * // 容器关闭回调：
-     * //   @PreDestroy void shutdown() { handle.stop(); }          // ← 对应 Go 的 signal handler
+     * //   @PreDestroy void shutdown() { handle.stop(); }          // ← 对应 B 的 signal handler
      * EventDispatcher.run(ctx, dispatcher, sender, logger, false, handle, false);
      * }</pre>
      */
@@ -67,7 +66,7 @@ public final class EventDispatcher {
     /**
      * 默认配置版：<b>不</b>注册 JVM shutdown hook（Spring 化推荐路径：业务用 {@code @PreDestroy} 显式
      * 调 {@link EventDispatcher.DispatcherHandle#stop()}）。
-     * <p>对应 Go 版 {@code func RunDispatcher(ctx context.Context, dispatcher Dispatcher, sender Sender, logger *slog.Logger, once bool) error}。
+     * <p>对应 B 侧版 {@code func RunDispatcher(ctx context.Context, dispatcher Dispatcher, sender Sender, logger *slog.Logger, once bool) error}。
      *
      * <p><b>Spring 化变更</b>：原默认版本注册 JVM shutdown hook 在进程退出时兜底；但 JVM hook 在 Spring
      * 容器场景下不可控（与 SpringApplication 的 graceful shutdown 时序冲突，且在测试 / 反复创建场景下
@@ -83,21 +82,21 @@ public final class EventDispatcher {
      * }</pre>
      *
      * <p>🔴 <b>DRIFT-CF-018（2026-10-29 修）：本重载在 {@code once=false} 时<b>不可用</b>。</b>
-     * <p><b>Go 出处</b>：{@code service/common/communityfact/process.go:20}
+     * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/communityfact/Dispatcher.java:91:20}
      * （{@code RunDispatcher} <b>只收 ctx、不返回任何句柄</b>）
      * ＋ {@code process.go:56-60}（{@code select { case <-ctx.Done(): return nil; case <-ticker.C: }}）
      * ＋ <b>调用方</b> {@code service/comment/rpc/cmd/fact-dispatch/main.go:68}
      * （{@code ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)}）
      * ＋ {@code :77}（{@code return communityfact.RunDispatcher(ctx, …)}）。
-     * <p><b>语义等价论证</b>：Go 侧「停止能力」= <b>调用方持有的 ctx 的 cancel</b>
+     * <p><b>语义等价论证</b>：B 侧「停止能力」= <b>调用方持有的 ctx 的 cancel</b>
      * ⇒ 它在 {@code RunDispatcher} 被调用<b>之前</b>就已存在 ⇒ 调用方从那一刻起就能停。
      * ⇒ 而本重载返回的 {@link EventDispatcher.DispatcherHandle} 只在<b>循环退出之后</b>才交出
      * ⇒ ⇒ 阻塞版 {@code run(once=false)} 的调用方<b>永远拿不到句柄</b>
      * ⇒ ⇒ {@code @PreDestroy} 停不下来 ⇒ 这就是 DRIFT-CF-018。
-     * <p><b>正确用法</b>（Go-faithful）：<b>调用方先造句柄</b>，再交给阻塞式 run：
+     * <p><b>正确用法</b>（B 侧-faithful）：<b>调用方先造句柄</b>，再交给阻塞式 run：
      * <pre>{@code
-     * EventDispatcher.DispatcherHandle handle = EventDispatcher.newHandle();   // ← 对应 Go 的 ctx, stop := signal.NotifyContext(...)
-     * // ... 容器关闭回调里调 handle.stop()（对应 Go 的 signal handler）
+     * EventDispatcher.DispatcherHandle handle = EventDispatcher.newHandle();   // ← 对应 B 的 ctx, stop := signal.NotifyContext(...)
+     * // ... 容器关闭回调里调 handle.stop()（对应 B 的 signal handler）
      * EventDispatcher.run(ctx, dispatcher, sender, logger, false, handle, false);
      * }</pre>
      *
@@ -112,9 +111,9 @@ public final class EventDispatcher {
     }
 
     /**
-     * 对应 Go 版 {@code func RunDispatcher(ctx context.Context, dispatcher Dispatcher, sender Sender, logger *slog.Logger, once bool) error}。
+     * 对应 B 侧版 {@code func RunDispatcher(ctx context.Context, dispatcher Dispatcher, sender Sender, logger *slog.Logger, once bool) error}。
      *
-     * <p><b>DRIFT-015 修复</b>：Go 版调用方可以 {@code cancel()} ctx 主动退出；Java 版返回 {@link EventDispatcher.DispatcherHandle}，
+     * <p><b>DRIFT-015 修复</b>：B 侧版调用方可以 {@code cancel()} ctx 主动退出；Java 版返回 {@link EventDispatcher.DispatcherHandle}，
      * 调用方调 {@link EventDispatcher.DispatcherHandle#stop()} 立即中断循环（不等 JVM shutdown）。
      *
      * <p><b>DRIFT-008 修复 + Spring 化</b>：{@code registerShutdownHook} 参数控制是否注册 JVM shutdown hook：
@@ -126,7 +125,7 @@ public final class EventDispatcher {
      * </ul>
      *
      * <p><b>DRIFT-008 二次修复</b>：单次 dispatch 10s 超时后不仅返回错误，还 {@code future.cancel(true)} 给业务线程发 interrupt，
-     * 业务函数如果响应 {@link InterruptedException} 会立即停（对齐 Go 版 context.WithTimeout 的 cancel 语义）。
+     * 业务函数如果响应 {@link InterruptedException} 会立即停（对齐 B 侧版 context.WithTimeout 的 cancel 语义）。
      *
      * <p>🔴 <b>DRIFT-CF-018（2026-10-29 修）：本重载在 {@code once=false} 时<b>不可用</b></b>，理由同
      * {@link #run(Context, Dispatcher, EventSender, Logger, boolean)} 的 javadoc。
@@ -143,7 +142,7 @@ public final class EventDispatcher {
     /**
      * 🔴🔴 <b>DRIFT-CF-018 修复后的主入口</b>：阻塞式投递循环，<b>句柄由调用方持有</b>。
      *
-     * <p><b>Go 出处（两层都要）</b>：
+     * <p><b>B 出处（两层都要）</b>：
      * <ul>
      *   <li><b>被调方</b>：{@code service/common/communityfact/process.go:20}
      *       （{@code func RunDispatcher(ctx context.Context, …, once bool) error} —— <b>不返回句柄</b>）
@@ -154,16 +153,16 @@ public final class EventDispatcher {
      *       （{@code return communityfact.RunDispatcher(ctx, …, once)}）。</li>
      * </ul>
      *
-     * <p><b>语义等价论证（为什么「句柄归调用方」才是 Go 的形状）</b>：
+     * <p><b>语义等价论证（为什么「句柄归调用方」才是 B 的形状）</b>：
      * <ol>
-     *   <li>Go 侧停止 dispatcher 的<b>唯一</b>途径 = 让<b>调用方自己的</b> ctx 变成 done
+     *   <li>B 侧停止 dispatcher 的<b>唯一</b>途径 = 让<b>调用方自己的</b> ctx 变成 done
      *       ⇒ 停止能力<b>从调用那一刻起就归调用方</b>，与 dispatcher 内部循环无关；</li>
-     *   <li>Go 侧 {@code RunDispatcher} <b>不返回任何东西</b> ⇒ 「循环结束后返回一个句柄」这件事
-     *       <b>在 Go 里没有对应物</b> ⇒ Java 侧那个「返回句柄」的重载是<b>无出处的 idiomatization</b>
+     *   <li>B 侧 {@code RunDispatcher} <b>不返回任何东西</b> ⇒ 「循环结束后返回一个句柄」这件事
+     *       <b>在 B 侧 里没有对应物</b> ⇒ Java 侧那个「返回句柄」的重载是<b>无出处的 idiomatization</b>
      *       （AGENTS.md §3.2）⇒ 它在阻塞形态下<b>必然交不出句柄</b>（DRIFT-CF-018）；</li>
      *   <li>⇒ Java 侧对应物 = <b>调用方先 {@link #newHandle()} 造句柄</b>，再把它交给本方法
      *       ⇒ 调用方可以在<b>任意线程、任意时刻</b>（哪怕 {@code run} 还在阻塞）调 {@code handle.stop()}
-     *       ⇒ 与 Go 的「signal handler 随时 cancel」<b>形状一致</b>。</li>
+     *       ⇒ 与 B 的「signal handler 随时 cancel」<b>形状一致</b>。</li>
      * </ol>
      *
      * <p><b>⚠️ {@code handle} 必须在 {@code run} 返回<b>之前</b>就可用</b> ——
@@ -171,7 +170,7 @@ public final class EventDispatcher {
      *
      * <p><b>幂等性</b>：{@code handle.stop()} 可重复调用（见 {@link EventDispatcher.DispatcherHandle#stop()}）。
      * 若在 {@code run} <b>启动前</b>就 {@code stop()} ⇒ 停止信号已置位 ⇒ 循环在第一个 1s 栅格处立即退出
-     * （Go 侧等价：ctx 在调用前就已取消 ⇒ {@code select} 立即命中 {@code ctx.Done()}）。
+     * （B 侧等价：ctx 在调用前就已取消 ⇒ {@code select} 立即命中 {@code ctx.Done()}）。
      *
      * @param handle 调用方持有的句柄（{@code null} ⇒ 本方法内部新建，<b>但那样就退回了 DRIFT-CF-018 的老形态</b>）
      * @return 与 {@code handle} 同一个句柄（便于链式使用）
@@ -203,12 +202,12 @@ public final class EventDispatcher {
      *   <li>循环跑在一条<b>守护线程</b>（{@code communityfact-dispatcher}）上；</li>
      *   <li><b>立即</b>返回 {@link EventDispatcher.DispatcherHandle}（句柄在进入循环<b>之前</b>就发布，
      *       所以调用方能立刻拿到它去 {@code stop()}）；</li>
-     *   <li>{@code once = true} 时，那一轮也在后台跑完（Go 的 {@code -once} 是进程级一次性，
+     *   <li>{@code once = true} 时，那一轮也在后台跑完（B 的 {@code -once} 是进程级一次性，
      *       单 JVM 里没有「进程退出」这个自然终点 ⇒ 以日志为准）。</li>
      * </ul>
      *
      * <p>⚠️ <b>{@link #run} 的阻塞语义刻意保持不变</b>：
-     * 它对应 Go 的独立进程形态（进程主循环就是阻塞的），
+     * 它对应 B 的独立进程形态（进程主循环就是阻塞的），
      * 改它会波及所有仍在用 {@code run} 的调用方 ⇒ 语义差异由本方法承担。
      *
      * @throws IllegalStateException 循环线程启动失败（配置错误 / 启动超时）
@@ -220,7 +219,7 @@ public final class EventDispatcher {
             try {
                 run(ctx, dispatcher, sender, logger, once, registerShutdownHook, handleFuture::complete, null);
             } catch (Throwable t) {
-                // ⚠️ once 模式下 run 会把投递错误抛出来（Go 的 -once 非零退出）。
+                // ⚠️ once 模式下 run 会把投递错误抛出来（B 的 -once 非零退出）。
                 //    单 JVM 里没有退出码 ⇒ 以日志为准（否则错误会被静默吞掉）。
                 logger.atError()
                         .addKeyValue("event", "community.fact_delivery.failed")
@@ -255,7 +254,7 @@ public final class EventDispatcher {
      * <p>🔴 <b>DRIFT-CF-018（2026-10-29 修）</b>：{@code callerHandle} 非 {@code null} 时，
      * 本方法<b>复用调用方的句柄</b>（而不是自己新建一个）⇒ ⇒ 调用方从 {@code run} 被调用那一刻起
      * 就握着停止能力 ⇒ ⇒ 阻塞形态（{@code once=false}）下也能被 {@code @PreDestroy} 停掉。
-     * <p>Go 出处：{@code service/common/communityfact/process.go:20}（不返回句柄）
+     * <p>B 出处：{@code service/common/src/main/java/com/rag/common/communityfact/Dispatcher.java:263:20}（不返回句柄）
      * ＋ {@code process.go:56-60}（退出条件只有 ctx）
      * ＋ {@code service/comment/rpc/cmd/fact-dispatch/main.go:68}（调用方先造 cancel）。
      */
@@ -270,20 +269,20 @@ public final class EventDispatcher {
         Tracer tracer = GlobalOpenTelemetry.get().getTracer("sea.rtw.communityfact");
 
         // 单独线程池跑 dispatch；用 CompletableFuture.get(10s) 实现 10s deadline
-        // 对应 Go 版 context.WithTimeout(attempt, 10*time.Second) + defer cancel()
+        // 对应 B 侧版 context.WithTimeout(attempt, 10*time.Second) + defer cancel()
         ExecutorService dispatchExecutor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "communityfact-dispatch");
             t.setDaemon(true);
             return t;
         });
 
-        // 对应 Go 版内层 dispatch 函数：真正包 10s deadline
+        // 对应 B 侧版内层 dispatch 函数：真正包 10s deadline
         java.util.function.Supplier<DispatchAttempt> dispatch = () -> {
             // M14 修复：补 setParent(ctx)。
-            // Go process.go:26 是 `otel.Tracer(...).Start(ctx, "community.fact_delivery.dispatch")`，
+            // B 侧 process.go:26 是 `otel.Tracer(...).Start(ctx, "community.fact_delivery.dispatch")`，
             // 第三参数即父 ctx —— 该 span 是调用方 span 的子节点。
             // 旧 Java 版 `tracer.spanBuilder(...).startSpan()` 不带 parent，
-            // 于是每次投递都开出一条**根 span**，整条 dispatch 的 trace 拓扑与 Go 完全不同
+            // 于是每次投递都开出一条**根 span**，整条 dispatch 的 trace 拓扑与 B 侧 完全不同
             // （在 Jaeger 里表现为一批互不相连的孤立 span，且丢失与上游请求的因果链）。
             Span span = tracer.spanBuilder("community.fact_delivery.dispatch")
                     .setParent(ctx)
@@ -302,7 +301,7 @@ public final class EventDispatcher {
                 // 🔴 DRIFT-CF-018 修复带来的可达路径：调用方可能在 run 阻塞期间调 handle.stop()
                 //    ⇒ stop() 会 shutdownNow() 执行器 ⇒ 此刻再提交任务会被拒绝。
                 //    ⇒ 这里必须把它收敛成「一次失败的投递」，而不是让它裸奔出去打断整个 run()。
-                //    Go 侧等价：ctx 被取消后 DispatchFactOnce 立刻失败，返回 (false, err)。
+                //    B 侧等价：ctx 被取消后 DispatchFactOnce 立刻失败，返回 (false, err)。
                 span.end();
                 return new DispatchAttempt(false, rejected);
             }
@@ -359,7 +358,7 @@ public final class EventDispatcher {
                 logger.atInfo()
                         .addKeyValue("event", "community.fact_delivery.once")
                         .addKeyValue("outcome", "succeeded")
-                        // M15 修复：Go process.go:38 用 Microseconds()/1000（亚毫秒浮点），
+                        // M15 修复：B 侧 process.go:38 用 Microseconds()/1000（亚毫秒浮点），
                         // 旧 Java 版用 NANOSECONDS.toMillis()（整毫秒，截断亚毫秒部分）。
                         // 本文件另两处 duration_ms（AuthorityHandler / Dispatcher 内层）都已是浮点，
                         // 只有 once 这条是整数 —— 同一字段在同一个信封里出现两种精度。
@@ -369,7 +368,7 @@ public final class EventDispatcher {
                 return handle;
             }
 
-            // 对应 Go 版 ticker = time.NewTicker(time.Second) + 内层 16 次循环
+            // 对应 B 侧版 ticker = time.NewTicker(time.Second) + 内层 16 次循环
             while (running.get() && !runnerThread.isInterrupted()) {
                 for (int i = 0; i < 16; i++) {
                     if (!running.get() || runnerThread.isInterrupted()) {
@@ -389,7 +388,7 @@ public final class EventDispatcher {
                         break;
                     }
                 }
-                // 对应 Go 版 select { case <-ctx.Done(): return nil; case <-ticker.C: }
+                // 对应 B 侧版 select { case <-ctx.Done(): return nil; case <-ticker.C: }
                 // 等待最多 1 秒，但 stopSignal.complete() 会立即唤醒（DRIFT-015 修复）
                 try {
                     stopSignal.get(1, TimeUnit.SECONDS);
@@ -422,12 +421,12 @@ public final class EventDispatcher {
      * {@link EventDispatcher.DispatcherHandle#stop()}，避免 JVM shutdown hook 在 SpringApplication 关闭链路里触发时序冲突。
      *
      * <p>🔴 <b>DRIFT-CF-018（2026-10-29 修）：句柄现在<b>由调用方持有</b>。</b>
-     * <p><b>Go 出处</b>：{@code service/comment/rpc/cmd/fact-dispatch/main.go:68}
+     * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/communityfact/Dispatcher.java:50:68}
      * （{@code ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)}）
      * ＋ {@code :69}（{@code defer stop()}）
      * ＋ {@code service/common/communityfact/process.go:20}（{@code RunDispatcher} 不返回句柄）
      * ＋ {@code process.go:56-60}（{@code case <-ctx.Done(): return nil} ⇒ 退出条件只有 ctx）。
-     * <p><b>语义等价论证</b>：Go 的停止能力（cancel）<b>由调用方在调用 dispatcher 之前创建</b>
+     * <p><b>语义等价论证</b>：B 的停止能力（cancel）<b>由调用方在调用 dispatcher 之前创建</b>
      * ⇒ 调用方从那一刻起就能停 ⇒ Java 侧对应物 = {@link EventDispatcher#newHandle()} 造句柄后交给
      * {@link EventDispatcher#run(Context, Dispatcher, EventSender, Logger, boolean, DispatcherHandle, boolean)}。
      * <p>⚠️ <b>旧形态的问题</b>：句柄由 {@code run} 内部新建、且只在<b>循环退出后</b>交出
@@ -446,7 +445,7 @@ public final class EventDispatcher {
         /**
          * <b>调用方持有的句柄</b>（DRIFT-CF-018 修复后的入口）。
          *
-         * <p>Go 出处：{@code service/comment/rpc/cmd/fact-dispatch/main.go:68}
+         * <p>B 出处：{@code service/common/src/main/java/com/rag/common/communityfact/Dispatcher.java:454:68}
          * （{@code ctx, stop := signal.NotifyContext(...)} ⇒ 调用方先造停止能力，再调 dispatcher）。
          */
         public static DispatcherHandle create() {
@@ -457,8 +456,8 @@ public final class EventDispatcher {
          * 绑定内部资源（由 {@code run} 调用）。<b>包级私有</b> —— 外部只能通过 {@code run} 拿到已绑定的句柄。
          *
          * <p>⚠️ 若调用方在 {@code run} 启动<b>之前</b>就 {@link EventDispatcher.DispatcherHandle#stop()} 了 ⇒ 停止信号已置位
-         * ⇒ 此时<b>不</b>去 interrupt / shutdownNow（那时执行器还不存在，且 Go 侧等价语义是
-         * 「仍然跑完第一批」—— {@code process.go:43-55} 的批次循环在 {@code select} 之前）
+         * ⇒ 此时<b>不</b>去 interrupt / shutdownNow（那时执行器还不存在，且 B 侧等价语义是
+         * 「仍然跑完第一批」—— {@code service/common/src/main/java/com/rag/common/communityfact/Dispatcher.java:465:43-55} 的批次循环在 {@code select} 之前）
          * ⇒ 循环会在第一个 1s 栅格处看到信号已置位并退出。
          */
         void bind(ExecutorService dispatchExecutor, Thread runnerThread) {
@@ -479,7 +478,7 @@ public final class EventDispatcher {
          *   <li>{@code shutdownNow()} dispatch 线程池——若业务线程正在跑，会被 interrupt</li>
          * </ol>
          *
-         * <p>对应 Go 版 {@code ctx, cancel := context.WithCancel(...) + cancel()}。
+         * <p>对应 B 侧版 {@code ctx, cancel := context.WithCancel(...) + cancel()}。
          *
          * <p><b>幂等</b>：重复调用安全（{@code stopSignal.complete} 第二次 no-op；{@code interrupt} 幂等；
          * {@code shutdownNow} 重复执行 OK）。
@@ -504,14 +503,14 @@ public final class EventDispatcher {
     }
 
     /**
-     * M15：亚毫秒精度的 elapsed 毫秒数，对齐 Go 的 {@code float64(time.Since(started).Microseconds())/1000}。
+     * M15：亚毫秒精度的 elapsed 毫秒数，对齐 B 的 {@code float64(time.Since(started).Microseconds())/1000}。
      */
     private static double elapsedMillisSince(long startNanos) {
         return (System.nanoTime() - startNanos) / 1_000_000.0;
     }
 
     /**
-     * 对应 Go 版 {@code func deliveryErrorCode(err error) string}：
+     * 对应 B 侧版 {@code func deliveryErrorCode(err error) string}：
      * 区分 frozen envelope 阻塞 vs 普通投递失败。
      *
      * <p><b>M16 修复</b>：旧实现沿 cause 链做「实例相同 <b>或</b> message 字符串相等」判定。
@@ -521,7 +520,7 @@ public final class EventDispatcher {
      * 上游据此做的重试/隔离决策随之出错。
      *
      * <p>现只认 {@link Wire.FrozenEnvelopeBlockedException} 类型（沿 cause 链），
-     * 与 Go 的 {@code errors.Is(err, ErrFrozenEnvelopeBlocked)} 同构。
+     * 与 B 的 {@code errors.Is(err, ErrFrozenEnvelopeBlocked)} 同构。
      */
     public static String deliveryErrorCode(Throwable err) {
         if (err == null) {

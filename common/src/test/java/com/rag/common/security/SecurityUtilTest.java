@@ -13,20 +13,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * §3.3「机制可证」守门：**JWT / Bearer / 口令** 三条 L1 契约。
  *
- * <p>⚠️ <b>JWT 是 L1 契约</b>（客户端拿它调接口）⇒ ⇒ 「C 签的 token，Go 侧
+ * <p>⚠️ <b>JWT 是 L1 契约</b>（客户端拿它调接口）⇒ ⇒ 「C 签的 token，B 侧
  * {@code token.SignedString([]byte(secretKey))} 能不能验过」是<b>必须被证</b>的，
  * 不能靠「用了同一个库」推断。
  *
  * <p>⚠️ <b>本测试刻意用「手写 HMAC 验签」而不是 jjwt 的 parser</b>：
  * jjwt 强制要求 key ≥ 256 bit ⇒ 用它验签就<b>必然</b>用补齐过的 key ⇒
- * ⇒ **验不出「Go 用原始短密钥能否验过」这件事** ⇒ ⇒ 手写才是真判据。
+ * ⇒ **验不出「B 侧 用原始短密钥能否验过」这件事** ⇒ ⇒ 手写才是真判据。
  */
 class SecurityUtilTest {
 
     // ── JwtUtil ────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("JWT：Go 用**原始短密钥**就能验过 C 签的 token（RFC 2104 零填充等价性）")
+    @DisplayName("JWT：B 侧 用**原始短密钥**就能验过 C 签的 token（RFC 2104 零填充等价性）")
     void tokenVerifiesWithRawShortSecretLikeGo() throws Exception {
         // ⚠️ 15 字节 —— 与真源 admin 默认密钥**同长度**（形状，不含明文）
         String secret = "fifteen-bytes!!";
@@ -34,7 +34,7 @@ class SecurityUtilTest {
 
         String token = JwtUtil.getToken(secret, 1_700_000_000L, 3600L, 42L);
 
-        // ⚠️ **手写验签**：完全按 Go 的方式（原始密钥 ＋ HMAC-SHA256）
+        // ⚠️ **手写验签**：完全按 B 的方式（原始密钥 ＋ HMAC-SHA256）
         String[] parts = token.split("\\.");
         assertThat(parts).hasSize(3);
 
@@ -75,7 +75,7 @@ class SecurityUtilTest {
     @DisplayName("Bearer：验签用 token 剥前缀（大小写不敏感 ＋ 长度必须 > 6 ＋ 不匹配原样返回）")
     void bearerTokenForSignatureVerification() {
         assertThat(BearerTokenExtractor.tokenForSignatureVerification("Bearer abc")).isEqualTo("abc");
-        // ⚠️ Go 是 strings.ToUpper(tok[0:7]) ⇒ 大小写不敏感
+        // ⚠️ B 侧 是 strings.ToUpper(tok[0:7]) ⇒ 大小写不敏感
         assertThat(BearerTokenExtractor.tokenForSignatureVerification("bearer abc")).isEqualTo("abc");
         assertThat(BearerTokenExtractor.tokenForSignatureVerification("BEARER abc")).isEqualTo("abc");
         // ⚠️ 判定是 len(tok) > 6 ⇒ 正好 7 字符（"Bearer "）⇒ 剥成空串
@@ -88,10 +88,10 @@ class SecurityUtilTest {
     }
 
     @Test
-    @DisplayName("Bearer：黑名单 key 用 token 剥前缀是**大小写敏感**的 TrimPrefix（与验签那套不同 ⇒ Go 自身的不一致）")
+    @DisplayName("Bearer：黑名单 key 用 token 剥前缀是**大小写敏感**的 TrimPrefix（与验签那套不同 ⇒ B 侧 自身的不一致）")
     void bearerTrimPrefixIsCaseSensitive() {
         assertThat(BearerTokenExtractor.trimBearerPrefix("Bearer abc")).isEqualTo("abc");
-        // ⚠️ 大小写敏感 ⇒ "bearer abc" 原样返回（Go 的 TrimPrefix 语义）
+        // ⚠️ 大小写敏感 ⇒ "bearer abc" 原样返回（B 的 TrimPrefix 语义）
         assertThat(BearerTokenExtractor.trimBearerPrefix("bearer abc")).isEqualTo("bearer abc");
         assertThat(BearerTokenExtractor.trimBearerPrefix("XXBearer eyJ")).isEqualTo("XXBearer eyJ");
     }
@@ -110,7 +110,7 @@ class SecurityUtilTest {
         assertThat(PasswordUtil.check("s3cret", "$2a$10$tooshort")).isFalse();
 
         // ⚠️ **cost 越界** ⇒ Spring 会抛 IllegalArgumentException ⇒ 必须被吞成 false
-        //    （Go 的 `err == nil` 语义 ⇒ 任何 err 都返回 false）
+        //    （B 的 `err == nil` 语义 ⇒ 任何 err 都返回 false）
         assertThat(PasswordUtil.check("s3cret", "$2a$99$" + "a".repeat(53))).isFalse();
     }
 

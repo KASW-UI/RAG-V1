@@ -21,7 +21,7 @@ service/article                     →  File_Tree/article.md
 
 ## 全局
 
-| 模块路径 | artifactId | 类型 | 文件树 | Go 出处 |
+| 模块路径 | artifactId | 类型 | 文件树 | B 侧出处 |
 |---|---|---|---|---|
 | `common` | `common` | 公共库 | [`common.md`](common.md) | `service/common/` |
 | `proto` | `proto` | 契约 | [`proto.md`](proto.md) | `proto/` |
@@ -30,59 +30,59 @@ service/article                     →  File_Tree/article.md
 
 ### **article 域**
 
-| 模块路径 | artifactId | 类型 | 文件树 | Go 出处 |
+| 模块路径 | artifactId | 类型 | 文件树 | B 侧出处 |
 |---|---|---|---|---|
 | `service/article` | `article-service` | 应用 | [`article.md`](article.md) | `service/article/` |
 
 ### **comment 域**
 
-| 模块路径 | artifactId | 类型 | 文件树 | Go 出处 |
+| 模块路径 | artifactId | 类型 | 文件树 | B 侧出处 |
 |---|---|---|---|---|
 | `service/comment` | `comment-service` | 应用 | [`comment.md`](comment.md) | `service/comment/` |
 
 ### **favorite 域**
 
-| 模块路径 | artifactId | 类型 | 文件树 | Go 出处 |
+| 模块路径 | artifactId | 类型 | 文件树 | B 侧出处 |
 |---|---|---|---|---|
 | `service/favorite` | `favorite-service` | 应用 | [`favorite.md`](favorite.md) | `service/favorite/` |
 
 ### **follow 域**
 
-| 模块路径 | artifactId | 类型 | 文件树 | Go 出处 |
+| 模块路径 | artifactId | 类型 | 文件树 | B 侧出处 |
 |---|---|---|---|---|
 | `service/follow` | `follow-service` | 应用 | [`follow.md`](follow.md) | `service/follow/` |
 
 ### **hot 域**
 
-| 模块路径 | artifactId | 类型 | 文件树 | Go 出处 |
+| 模块路径 | artifactId | 类型 | 文件树 | B 侧出处 |
 |---|---|---|---|---|
 | `service/hot` | `hot-service` | 应用 | [`hot.md`](hot.md) | `service/hot/` |
 
 ### **like 域**
 
-| 模块路径 | artifactId | 类型 | 文件树 | Go 出处 |
+| 模块路径 | artifactId | 类型 | 文件树 | B 侧出处 |
 |---|---|---|---|---|
 | `service/like` | `like-service` | 应用 | [`like.md`](like.md) | `service/like/` |
 
 ### **message 域**
 
-| 模块路径 | artifactId | 类型 | 文件树 | Go 出处 |
+| 模块路径 | artifactId | 类型 | 文件树 | B 侧出处 |
 |---|---|---|---|---|
 | `service/message` | `message-service` | 应用 | [`message.md`](message.md) | `service/message/` |
 
 ### **task 域**
 
-| 模块路径 | artifactId | 类型 | 文件树 | Go 出处 |
+| 模块路径 | artifactId | 类型 | 文件树 | B 侧出处 |
 |---|---|---|---|---|
 | `service/task` | `task-service` | 应用 | [`task.md`](task.md) | `service/task/` |
 
 ### **users 域**（一个域，两个子域 user / admin）
 
-| 模块路径 | artifactId | 类型 | 文件树 | Go 出处 |
+| 模块路径 | artifactId | 类型 | 文件树 | B 侧出处 |
 |---|---|---|---|---|
-| `service/users/common` | `users-common` | 公共库 | [`users/common.md`](users/common.md) | `service/user/common/errmsg/errmsg.go` |
-| `service/users/user` | `user-service` | 应用 | [`users/user.md`](users/user.md) | `service/user/user/` |
-| `service/users/admin` | `admin-service` | 应用 | [`users/admin.md`](users/admin.md) | `service/user/admin/` |
+| `service/users/common` | `users-common` | 公共库 | [`users/common.md`](users/common.md) | `service/users/users-common/` |
+| `service/users/user` | `user-service` | 应用 | [`users/user.md`](users/user.md) | `service/users/user/` |
+| `service/users/admin` | `admin-service` | 应用 | [`users/admin.md`](users/admin.md) | `service/users/admin/` |
 
 ## 说明
 

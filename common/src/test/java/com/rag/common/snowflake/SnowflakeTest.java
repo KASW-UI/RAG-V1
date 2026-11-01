@@ -8,8 +8,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * §3.3 真触发测试 —— {@link Snowflake} 的<b>位布局</b>与<b>单调性</b>。
  *
- * <p><b>Go 出处</b>：{@code github.com/bwmarrin/snowflake@v0.3.0/snowflake.go:135-160}
- * ＋ go-zero 侧 {@code service/common/snowflake/snowflake.go} 的 epoch 常量
+ * <p><b>B 出处</b>：{@code github.com/bwmarrin/snowflake@service/common/src/main/java/com/rag/common/snowflake/Snowflake.java:135-160}
+ * ＋ B 侧 {@code service/common/src/main/java/com/rag/common/snowflake/Snowflake.java:18} 的 epoch 常量
  * （{@code 1288834974657} = Twitter 2010-11-04T01:42:54.657Z）。
  *
  * <p><b>⚠️ 为什么位布局必须被测试钉住</b>：它不是「内部实现」——
@@ -53,7 +53,7 @@ class SnowflakeTest {
     }
 
     @Test
-    @DisplayName("epoch 常量 = Twitter 2010-11-04T01:42:54.657Z（Go 侧同值）")
+    @DisplayName("epoch 常量 = Twitter 2010-11-04T01:42:54.657Z（B 侧同值）")
     void epochConstantMatchesGo() {
         assertThat(Snowflake.EPOCH).isEqualTo(1288834974657L);
     }

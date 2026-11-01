@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * §3.3「机制可证」守门：<b>并发连接闸门真的在超限时立刻 503</b>（而不是排队）。
  *
- * <p>⚠️ <b>Go 出处</b>：{@code rest/handler/maxconnshandler.go:12-36}
+ * <p>⚠️ <b>B 出处</b>：{@code rest/handler/maxconnshandler.go:12-36}
  * <pre>
  *   if latch.TryBorrow() { defer latch.Return(); next.ServeHTTP(w, r) }
  *   else { w.WriteHeader(http.StatusServiceUnavailable) }   // ← 裸 503，无 body
@@ -67,7 +67,7 @@ class MaxConnsFilterTest {
     }
 
     @Test
-    @DisplayName("maxConns <= 0 ⇒ no-op（照抄 Go 的短路）")
+    @DisplayName("maxConns <= 0 ⇒ no-op（照抄 B 的短路）")
     void zeroMeansNoop() throws Exception {
         ProtectionProperties props = new ProtectionProperties();
         props.setMaxConns(0);
@@ -100,7 +100,7 @@ class MaxConnsFilterTest {
     }
 
     @Test
-    @DisplayName("默认值 = 10000（Go 的 RestConf.MaxConns tag 默认）")
+    @DisplayName("默认值 = 10000（B 的 RestConf.MaxConns tag 默认）")
     void defaultIsTenThousand() {
         assertThat(new ProtectionProperties().getMaxConns()).isEqualTo(10000);
         assertThat(new MaxConnsFilter(new ProtectionProperties()).maxConns()).isEqualTo(10000);

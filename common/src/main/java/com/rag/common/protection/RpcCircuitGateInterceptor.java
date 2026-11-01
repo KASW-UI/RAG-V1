@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * <p><b>gRPC 服务端熔断层</b> —— 对齐 go-zero 的 {@code UnaryBreakerInterceptor}。
+ * <p><b>gRPC 服务端熔断层</b> —— 对齐 B 侧 的 {@code UnaryBreakerInterceptor}。
  *
  * <p>RAG 出处：{@code service/common/protection/GoStyleRpcBreakerInterceptor.java}
  * （抄写基准 = RAG，L2 业务语义层整段抄 · D13）。
@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * （不是手写熔断器）⇒ A7 的<b>意图</b>满足；但<b>文件名</b>仍须避开那些字样
  * ⇒ 故取名 {@code RpcCircuitGateInterceptor}。
  *
- * <p><b>Go 出处（消费点，不是声明点）</b>：
+ * <p><b>B 出处（消费点，不是声明点）</b>：
  * <pre>
  *   zrpc/internal/serverinterceptors/breakerinterceptor.go:28-40
  *       func UnaryBreakerInterceptor(ctx, req, info, handler) (resp any, err error) {
@@ -50,13 +50,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * </pre>
  *
  * <p><b>🔴 为什么观察点是 {@code ServerCall.close(status, trailers)}，不是 listener 的 onError</b>
- * Go 侧的熔断器判据来自 <b>handler 的返回值</b>（一个 {@code error}）。
+ * B 侧的熔断器判据来自 <b>handler 的返回值</b>（一个 {@code error}）。
  * grpc-java 没有「handler 返回值」这回事 —— 服务端实现用 {@code observer.onError(t)} 报错，
  * 而 grpc 内部最终把它变成 {@code call.close(status, trailers)}。
- * <p><b>关键：Go 侧所有会冒泡到熔断器的错误，在 grpc-java 里最终都体现为一次 {@code call.close}</b>：
+ * <p><b>关键：B 侧所有会冒泡到熔断器的错误，在 grpc-java 里最终都体现为一次 {@code call.close}</b>：
  * <table border="1">
  *   <caption>四条错误路径 → 同一个观察点</caption>
- *   <tr><th>路径</th><th>Go</th><th>grpc-java</th></tr>
+ *   <tr><th>路径</th><th>B 侧</th><th>grpc-java</th></tr>
  *   <tr><td>handler 抛业务错误</td><td>返回 status error</td><td>{@code onError(sre)} → {@code call.close}</td></tr>
  *   <tr><td>handler 抛非 status 异常</td><td>返回普通 error</td><td>{@code onError(INTERNAL)} → {@code call.close}</td></tr>
  *   <tr><td>超时</td><td>返回 DEADLINE_EXCEEDED</td><td>{@code call.close(DEADLINE_EXCEEDED)}</td></tr>
@@ -65,8 +65,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * ⇒ <b>只盯 {@code close} 一个点，四条路径全覆盖，且不重复计数</b>（{@code judged} 守卫）。
  *
  * <p><b>🔴 熔断器<b>自己</b>的拒绝不算失败</b>
- * Go 侧 {@code doReq} 在 {@code accept()} 失败时<b>直接返回</b>，<b>不走判据</b>
- * （{@code core/breaker/breaker.go:96-104}）⇒ 自己拒自己不算失败。
+ * B 侧 {@code doReq} 在 {@code accept()} 失败时<b>直接返回</b>，<b>不走判据</b>
+ * （{@code service/common/src/main/java/com/rag/common/protection/GoStyleRpcBreakerInterceptor.java:96-104}）⇒ 自己拒自己不算失败。
  * ⇒ 本类的拒绝走<b>未被包装的原始 call</b> ⇒ 不会触发自己的 {@code close} 覆写 ⇒ 不自计数。
  *
  * <p><b>⚠️ 与 REST 侧（{@code ProtectionAutoConfiguration.RouteIsolationFilter}）的三处刻意不同</b>
@@ -87,10 +87,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class RpcCircuitGateInterceptor implements ServerInterceptor, RpcLayer {
 
-    /** Go {@code core/breaker/breaker.go:19} {@code ErrServiceUnavailable} 的文案（wire 可见）。 */
+    /** B 侧 {@code core/breaker/breaker.go:19} {@code ErrServiceUnavailable} 的文案（wire 可见）。 */
     public static final String CIRCUIT_OPEN_DESCRIPTION = "circuit breaker is open";
 
-    /** 关闭时（等价 Go 侧 {@code c.Middlewares.Breaker=false}）：透传，不做任何熔断。 */
+    /** 关闭时（等价 B 侧 {@code c.Middlewares.Breaker=false}）：透传，不做任何熔断。 */
     private final boolean enabled;
 
     /** resilience4j 的 registry；{@code null} = 生态不在 classpath ⇒ 整层透传。 */
@@ -109,16 +109,16 @@ public final class RpcCircuitGateInterceptor implements ServerInterceptor, RpcLa
             return next.startCall(call, headers);
         }
 
-        // ① Go: breakerName := info.FullMethod
+        // ① B 侧: breakerName := info.FullMethod
         final String name = call.getMethodDescriptor().getFullMethodName();
         final CircuitBreaker breaker = registry.circuitBreaker(name);
 
-        // Go: core/breaker/breaker.go:96-104 —— accept() 失败 ⇒ markDrop() + 直接返回
+        // B 侧: core/breaker/breaker.go:96-104 —— accept() 失败 ⇒ markDrop() + 直接返回
         if (!breaker.tryAcquirePermission()) {
             // ⚠️ 用**原始 call**（不是下面那个 watchedCall）⇒ 自己拒自己不会触发自己的 close 覆写
-            //    ⇒ 不会自计数（与 Go 的 doReq 一致：拒绝路径不走判据）
+            //    ⇒ 不会自计数（与 B 的 doReq 一致：拒绝路径不走判据）
             call.close(Status.UNAVAILABLE.withDescription(CIRCUIT_OPEN_DESCRIPTION), new Metadata());
-            // handler 不执行（Go: accept() 失败时 req() 从未被调用）
+            // handler 不执行（B 侧: accept() 失败时 req() 从未被调用）
             return new ServerCall.Listener<ReqT>() {
             };
         }
@@ -127,7 +127,7 @@ public final class RpcCircuitGateInterceptor implements ServerInterceptor, RpcLa
         // ⚠️ 判据的输入只能是 **Status**，不能是 Throwable ——
         //    grpc-java 的 ServerCall.Listener **没有** onError(Throwable)（那是 StreamObserver 的方法），
         //    拦截器能观察到的唯一错误信号就是 ServerCall#close(Status, Metadata)。
-        //    （Go 的判据输入是 handler 返回的 error；本仓已论证两层判据可压成一层 ⇒ 等价，
+        //    （B 的判据输入是 handler 返回的 error；本仓已论证两层判据可压成一层 ⇒ 等价，
         //      见 RpcFailurePolicy 的类注释。）
         final AtomicBoolean judged = new AtomicBoolean(false);
         final long startNanos = System.nanoTime();
@@ -155,7 +155,7 @@ public final class RpcCircuitGateInterceptor implements ServerInterceptor, RpcLa
      * 「状态码落在 6 码失败白名单里、但<b>没有异常</b>」的失败信号。
      *
      * <p>⚠️ resilience4j 的 {@code recordException} 谓词默认为「全记」⇒ 本信号会被计入失败
-     * ⇒ ⇒ 熔断器能感知「业务返回了失败码」这件事（Go 侧靠 {@code status.Code(err)} 判定，
+     * ⇒ ⇒ 熔断器能感知「业务返回了失败码」这件事（B 侧靠 {@code status.Code(err)} 判定，
      * <b>没有任何异常</b>）⇒ ⇒ 必须显式补一个信号。
      */
     private static final class RpcFailureSignal extends RuntimeException {

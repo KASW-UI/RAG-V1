@@ -14,8 +14,8 @@
   ⑤ 落点表分项求和 == 汇总数（防「补总数忘补分项」）
   ⑥ 包名有效性（文档里的 `com.rag.*` 包 → 磁盘上存在）
 
-⚠️ **本脚本只查 RAG-V1 侧**。A 列（Go）/ B 列（RAG）的路径有效性由
-   `check-mapping-coverage.py` 负责（它有 Go 仓 + RAG 仓的索引）。
+⚠️ **本脚本只查 RAG-V1 侧**。映射表 **B 列（RAG 仓）** 的路径有效性由
+   `check-mapping-coverage.py` 负责（它有 RAG 仓 + RAG-V1 两侧的索引）。
 
 用法：
     python3 tools/difftest/check-docs-vs-tree.py
@@ -25,6 +25,9 @@ import pathlib, re, subprocess, sys, tempfile, shutil, os
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MT   = ROOT / "docs/Mapping_Table"
+# ⚠️ **D16（2026-11-02）**：判定基准 = **B 侧（RAG 仓）是唯一真理** ⇒
+#    文档里的 `.java` 路径**两侧都合法**（C 侧落点 + B 侧出处）⇒ ③ 路径校验必须认两侧。
+B_REPO = pathlib.Path("/Users/pr/Documents/java&golang/RAG")
 FT   = ROOT / "docs/File_Tree"
 
 # 域 → (磁盘模块目录, Mapping_Table 文档, File_Tree 文档)
@@ -111,9 +114,15 @@ def check_file_tree_coverage():
             if p.name not in txt:
                 failures.append(f"① File_Tree 未覆盖 {dom}: {p.relative_to(ROOT)}")
     disk_names = {p.name for mod, _, _ in DOMAINS.values() for p in all_java_files(mod)}
+    # ⚠️ **D16**：File_Tree 的 javadoc 摘要会引用 **B 侧类名**（B 出处）⇒
+    #    「幽灵文件」只对**两侧都不存在**的类名报红。
+    b_names = set()
+    if B_REPO.exists():
+        b_names = {p.name for p in B_REPO.rglob("*.java")
+                   if ".git" not in p.parts and "target" not in p.parts}
     for md in FT.rglob("*.md"):
         for m in re.finditer(r"([A-Za-z0-9_]+\.java)", md.read_text(encoding="utf-8")):
-            if m.group(1) not in disk_names:
+            if m.group(1) not in disk_names and m.group(1) not in b_names:
                 failures.append(f"① File_Tree 幽灵文件 {md.name}: {m.group(1)}")
 
 
@@ -199,7 +208,7 @@ def check_paths():
                         continue
                     if "target/" in c:            # Maven 生成物
                         continue
-                    if "src/main/java" in c and not v1_exists(c):
+                    if "src/main/java" in c and not v1_exists(c) and not b_exists(c):
                         failures.append(f"③ 路径失效 {md.relative_to(ROOT)}:{i}  {c}")
 
 
@@ -308,6 +317,17 @@ def selftest():
         return 0 if ok == 4 else 1
     finally:
         shutil.rmtree(fake, ignore_errors=True)
+
+
+def b_exists(tok):
+    """B 侧（RAG 仓）磁盘上是否存在该路径 —— D16 后文档合法引用 B 侧出处。"""
+    tok = tok.strip().strip("/")
+    if not tok or not B_REPO.exists():
+        return False
+    try:
+        return (B_REPO / tok).exists()
+    except OSError:
+        return False
 
 
 def v1_exists_in(base, tok):

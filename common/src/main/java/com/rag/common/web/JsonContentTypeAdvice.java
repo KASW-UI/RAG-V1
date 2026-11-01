@@ -14,14 +14,14 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 
 /**
- * 🔴🔴 **T-6**：让 <b>JSON 响应</b>的 {@code Content-Type} 与 Go 一致地带上 {@code charset=utf-8}。
+ * 🔴🔴 **T-6**：让 <b>JSON 响应</b>的 {@code Content-Type} 与 B 侧 一致地带上 {@code charset=utf-8}。
  *
- * <h2>Go 出处（真源，逐行）</h2>
+ * <h2>B 出处（真源，逐行）</h2>
  * <pre>
- * go-zero@v1.10.2/rest/httpx/responses.go:175-193（doWriteJson）
+ * B 出处：service/common/src/test/java/com/rag/common/http/GoStyleJsonContentTypeCharsetTomcatTest.java:42:175-193（doWriteJson）
  *     w.Header().Set(ContentType, header.ContentTypeJson)   // ← 无条件覆盖
  *
- * go-zero@v1.10.2/rest/internal/header/headers.go:16-17
+ * B 出处：service/common/src/test/java/com/rag/common/http/GoStyleJsonContentTypeCharsetTomcatTest.java:51:16-17
  *     ContentType     = "Content-Type"
  *     ContentTypeJson = "application/json; charset=utf-8"     // ← 分号后**有空格**
  * </pre>
@@ -30,7 +30,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
  * <pre>
  * 修前：Content-Type: application/json          ← **连 charset 都没有**
  * 修后：Content-Type: application/json;charset=utf-8
- * Go  ：Content-Type: application/json; charset=utf-8
+ * B 侧  ：Content-Type: application/json; charset=utf-8
  * </pre>
  * <h2>⚠️ 为什么本类挂在 <b>ResponseBodyAdvice</b> 而不是转换器上</h2>
  * <ul>
@@ -42,7 +42,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
  *       ⇒ 无论最终是共享的转换器、Boot 的转换器、还是 task-api 自己那个 ⇒ 都生效。</li>
  * </ul>
  *
- * <h2>🔴🔴 写的值 = <b>Spring 自己会写的值</b>（不是 Go 的字面量）</h2>
+ * <h2>🔴🔴 写的值 = <b>Spring 自己会写的值</b>（不是 B 的字面量）</h2>
  * <p>本类写 <b>{@code application/json;charset=utf-8}（无空格）</b>，
  * 也就是 {@code MediaType.toString()} 对 {@code application/json + UTF-8} 的输出。
  * ⇒ 理由见 {@link #GO_JSON_CONTENT_TYPE} 的 javadoc（<b>MockMvc 路径零变化</b>是关键）。
@@ -66,7 +66,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
  * </pre>
  * ⇒ 容器把 Content-Type <b>拆成 (type/subtype, charset) 两份存</b>，写出去时<b>重新拼</b>
  * ⇒ 线上恒为 <b>{@code type/subtype;charset=xxx}</b>（<b>无空格</b>）
- * ⇒ ⇒ <b>应用层无法产出 Go 那个带空格的形态</b>（{@code setContentType} /
+ * ⇒ ⇒ <b>应用层无法产出 B 侧 那个带空格的形态</b>（{@code setContentType} /
  *      {@code setHeader} / {@code addHeader} 三条路都汇到同一处归一化）。
  * <p>⇒ 这条「差一个空格」的残余**属框架限制**（与 T-7「状态行缺 reason phrase」同族），
  * **已登记**在 global 台账，不在本类的职责内。
@@ -74,7 +74,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
  * <ol>
  *   <li>{@code RouterErrorResponses} 的类注释写着「直接写原始字符串是唯一能保证逐字节对上的做法」
  *       ⇒ <b>该结论已被实测证伪</b>（容器照样归一化）⇒ 那条注释已改写；</li>
- *   <li>🔴 <b>本类自己也踩过同一个坑</b>：初版写的是 Go 的<b>带空格</b>字面量
+ *   <li>🔴 <b>本类自己也踩过同一个坑</b>：初版写的是 B 的<b>带空格</b>字面量
  *       ⇒ 真 Tomcat 路径没事（照样归一化），但 <b>MockMvc 路径没有容器归一化</b>
  *       ⇒ 各域 {@code *MvcPipelineTest} 钉的「Spring 自己那个形态」就<b>被共享层改动打红</b>
  *       ⇒ 实测先打红的是 favorite-api（该域对 global <b>零写权</b> ⇒ 修法只能落在本类）⇒ 已改为无空格形态。</li>
@@ -92,7 +92,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
  * @see GoStyleJsonContentTypeCharsetTomcatTest 真 Tomcat 守门（裸 socket 逐字节比对）
  * <p>⚠️ <b>2026-10-30 · G4 lane：本类属 api 侧 rest 中间件 ⇒ 已挂 （D1 合并后已移除，见类注释）</b>
  * ⇒ ⇒ 此前「rpc 域不注册本类」的依据是<b>域侧不扫 {@code com.rag.common} 这道约定</b>（不是本类的条件）
- * ⇒ ⇒ 现由共享层自己兜住 ⇒ ⇒ Go 出处与语义等价论证见该注解。
+ * ⇒ ⇒ 现由共享层自己兜住 ⇒ ⇒ B 出处与语义等价论证见该注解。
  */
 /**
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/http/GoStyleJsonContentTypeAdvice.java}
@@ -117,14 +117,14 @@ public class JsonContentTypeAdvice implements ResponseBodyAdvice<Object> {
     /**
      * 本类写入的 {@code Content-Type} —— <b>与 Spring 转换器自己会写的值逐字节相同</b>。
      *
-     * <p>🔴🔴 <b>为什么不是 Go 的字面量</b>（Go 的是 {@code "application/json; charset=utf-8"}，<b>分号后有空格</b>）：
+     * <p>🔴🔴 <b>为什么不是 B 的字面量</b>（B 的是 {@code "application/json; charset=utf-8"}，<b>分号后有空格</b>）：
      * <ol>
      *   <li><b>真 Tomcat 路径</b>：Tomcat 11 把 Content-Type 拆成 {@code (type/subtype, charset)} 两份存、
      *       写出去时重新拼（{@code ";"} 后面<b>没有</b>空格）⇒ <b>写什么都会被归一化成同一个值</b>
      *       ⇒ 这里写哪个字面量都无所谓。</li>
      *   <li><b>MockMvc 路径</b>（各域的 {@code *MvcPipelineTest} 走这条）：<b>没有容器归一化</b>
      *       ⇒ 写什么就<b>原样</b>出现在响应头里。
-     *       ⇒ 若这里写 Go 的<b>带空格</b>字面量 ⇒ 各域 MockMvc 守门钉的
+     *       ⇒ 若这里写 B 的<b>带空格</b>字面量 ⇒ 各域 MockMvc 守门钉的
      *       {@code application/json;charset=utf-8}（Spring 转换器自己产出的形态）就<b>会红</b>
      *       ⇒ 🔴 <b>实测踩过</b>：favorite-api 的 {@code FavoriteApiMvcPipelineTest.responseContentTypeMatchesGoConstant}
      *       就是被这个带空格字面量打红的 ⇒ 而 favorite 域对 global <b>零写权</b> ⇒ 修法必须落在本类。
@@ -140,7 +140,7 @@ public class JsonContentTypeAdvice implements ResponseBodyAdvice<Object> {
      * ⇒ 守门（{@code GoStyleJsonContentTypeCharsetTomcatTest} 的第 4 条）用的就是
      * {@code MediaType.parseMediaType(...).toString()} 那一支。
      *
-     * <p>⚠️ 与 Go 的「差一个空格」属<b>框架限制</b>（与 T-7「状态行缺 reason phrase」同族）
+     * <p>⚠️ 与 B 的「差一个空格」属<b>框架限制</b>（与 T-7「状态行缺 reason phrase」同族）
      * ⇒ 已登记在 global 台账，不在本类的职责内。
      */
     public static final String GO_JSON_CONTENT_TYPE = "application/json;charset=utf-8";

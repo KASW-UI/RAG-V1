@@ -88,7 +88,7 @@ git worktree list
 
 - 检测在**该域自己的工作树里**跑（读的是那棵树的代码，不是主工作区的）。
 - 检测 Prompt 在**主仓**的 `/Users/pr/Documents/GitHub/RAG-V1/.agents/verification.md`（绝对路径 ⇒ 跨工作树可用）。
-- **来源只能是 RAG 的实际代码**（B 侧）+ Go 真源（L1 契约层）⇒ 不是「RAG-V1 自己写的实现当基准」（§3.1 自举陷阱）。
+- **来源只能是 RAG 的实际代码**（B 侧 · D16 后 L1/L2/L4 全部以 B 侧为准）⇒ 不是「RAG-V1 自己写的实现当基准」（§3.1 自举陷阱）。
 
 ### 3. 共享面只有两类
 
@@ -193,7 +193,7 @@ RAG 的 `docs/Worktree.md` 全文 1,263 行 / 194 KB ⇒ **本仓只搬了方法
 | 文件 | 是什么 |
 |---|---|
 | `AGENTS.md` §五 | 用户协作规则（每域一个 PR / 三档台账 / `global` 收口域 / 作用范围 / 基准分层 / review / 守门脚本 4 硬规则） |
-| `AGENTS.md` §四 | 实现组织（真理之源 = Go；每域独立 stop point） |
+| `AGENTS.md` §四 | 实现组织（真理之源 = B 侧；每域独立 stop point） |
 | `AGENTS.md` §3.3 | 框架机制必须验证实际生效（§3.3 的纪律与本手册的「回执后必须再查分支 tip」同族） |
 | `docs/Mapping_Table/` | 抄写路线图（§1.0c：B↔C 逐类对应） |
 | `.agents/verification.md` | **每域做完的收尾检测 Prompt**（§三·2） |

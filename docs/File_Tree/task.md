@@ -10,8 +10,8 @@
 | 模块路径 | `service/task` |
 | artifactId | `task-service` |
 | 根包 | `com.rag.task` |
-| Go 出处 | `service/task/` |
-| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = Go logic 用例的 `types.Xxx` 引用图 + 类型所在聚合） |
+| B 侧出处 | `service/task/` |
+| 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = B 侧 rpc 用例的 DTO 引用图 + 类型所在聚合） |
 
 ## 二、依赖
 
@@ -57,9 +57,9 @@
 │   │   │               │   ├── TaskApiProperties.java    # @ConfigurationProperties —— 聚合本域 HTTP 层配置。
 │   │   │               │   ├── TaskApiRawBodyConfig.java
 │   │   │               │   ├── TaskSinkProperties.java
-│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 替代 Go 的 rest.WithMiddlewares 绑定。
+│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 对齐 B 侧同名配置类的注册形态。
 │   │   │               ├── controller/
-│   │   │               │   └── TaskController.java    # ⚠️ L1 路由契约（Go 正推，勿凭直觉改）
+│   │   │               │   └── TaskController.java    # ⚠️ L1 路由契约（B 侧 正推，勿凭直觉改）
 │   │   │               ├── domain/
 │   │   │               │   ├── entity/
 │   │   │               │   │   ├── TaskProgressEntity.java
@@ -68,9 +68,9 @@
 │   │   │               │       └── TaskDomainService.java
 │   │   │               ├── dto/
 │   │   │               │   └── task/
-│   │   │               │       ├── GetTaskReq.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── GetTaskResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       └── TaskInfo.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── GetTaskReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── GetTaskResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       └── TaskInfo.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               ├── grpc/
 │   │   │               │   └── TaskGrpcService.java
 │   │   │               ├── mapper/
@@ -81,7 +81,7 @@
 │   │   │               │   ├── TaskArticleLikeProgressSink.java    # 文章获赞任务进度落库 —— 消费文章点赞进度、聚合文章计数、按 1 秒节拍 flush 到 Redis + PG。
 │   │   │               │   ├── TaskArticleProgressEvent.java    # 文章进度事件载荷。
 │   │   │               │   ├── TaskCountStore.java    # 计数存储 —— 点赞/文章计数的读写载体。
-│   │   │               │   ├── TaskGoCompatibleJson.java    # Go 兼容的 JSON 编解码 —— 字段名与数字/字符串形态逐字对齐 Go。
+│   │   │               │   ├── TaskGoCompatibleJson.java    # 上游兼容的 JSON 编解码 —— 字段名与数字/字符串形态逐字对齐上游。
 │   │   │               │   ├── TaskKafkaTopics.java
 │   │   │               │   ├── TaskLogEvent.java    # task 原始日志事件载荷。
 │   │   │               │   ├── TaskRawDiagnosticConsumer.java    # 原始诊断事件消费者 —— 只诊断不落业务。
@@ -116,10 +116,10 @@
 
 ## 四、特殊约定（L1 契约 · 勿凭直觉改）
 
-- **⚠️ 全部端点免鉴权**（Go 无 `WithJwt` 组）。
+- **⚠️ 全部端点免鉴权**（B 侧 `TaskController` 无鉴权组）。
 - **前缀是 `/taskcenter/v1`** —— 不是 `/task/v1`。
-- **Go 侧 task 没有错误码空间**（无 common 包）⇒ 本域**没有** `contract/` 包（不是漏搬）。
-- **`UserLikeCountEntity` 在 Go 侧位于 `internal/sink/like_sink.go`**（不在 `internal/model/`）⇒ 按目录盘点会漏。
+- **B 侧 task 没有错误码空间**（无 common 包）⇒ 本域**没有** `contract/` 包（不是漏搬）。
+- **`UserLikeCountEntity` 在 B 侧位于 `sink/` 目录**（不在 `model/`）⇒ 按目录盘点会漏。
 
 ## 五、状态
 
@@ -127,4 +127,4 @@
 |---|---|
 | 目录结构 | ✅ 已落地 |
 | 文件内容 | ⬜ **全部待填**（每个 Java 文件只有 package + 空类型 + TODO javadoc） |
-| Go ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |
+| B 侧 ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |

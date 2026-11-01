@@ -16,14 +16,14 @@ import org.springframework.context.annotation.Bean;
  * <p>两个拦截器类<b>早就实现好了</b>（批 1 落地）：
  * <ul>
  *   <li>{@link DeadlineQueryTimeoutInjector} —— 按线程上的 deadline 给每条 SQL 设 query timeout
- *       ⇒ <b>取消时刻 == deadline 时刻</b>（对齐 Go 的 ctx-aware 查询 ⇒ pgx CancelRequest）</li>
+ *       ⇒ <b>取消时刻 == deadline 时刻</b>（对齐 B 的 ctx-aware 查询 ⇒ pgx CancelRequest）</li>
  *   <li>{@link SqlTimeoutStatusTranslator} —— 把 pg 的 {@code 57014 query_canceled}
  *       翻成 gRPC {@code DEADLINE_EXCEEDED} ⇒ 域侧落业务码 <b>1015</b>（不是 DB 故障 5001）</li>
  * </ul>
  * <p>但<b>它们没有任何注册点</b> ⇒ MyBatis-Plus 收不到 ⇒ <b>整条链静默失效</b>：
  * <ul>
  *   <li>SQL <b>不带超时</b>（长查询不被取消）；</li>
- *   <li>pg 的取消被当「数据库故障」上报（5001 而非 Go 的 1015）。</li>
+ *   <li>pg 的取消被当「数据库故障」上报（5001 而非 B 的 1015）。</li>
  * </ul>
  * <p>⚠️ <b>RAG 侧为什么不需要这个类</b>：RAG 的注册义务在<b>域内</b> ——
  * 5 个 rpc 应用各自用 {@code @Bean} 声明这两个拦截器
@@ -61,12 +61,12 @@ import org.springframework.context.annotation.Bean;
  *       ⇒ 没有 MyBatis 的进程加载本类时<b>不碰</b> {@code Interceptor} 类型（避免 {@code NoClassDefFoundError}）。</li>
  * </ol>
  *
- * <p><b>Go 出处</b>（两个拦截器自己的 javadoc 已逐条标注，此处只指认<b>消费点</b>）：
+ * <p><b>B 出处</b>（两个拦截器自己的 javadoc 已逐条标注，此处只指认<b>消费点</b>）：
  * <pre>
  *   service/comment/rpc/internal/model/comment.go:36 / :166
  *       m.conn.WithContext(ctx).Transaction(...) / .Model(...)
  *   ⇒ database/sql 把 ctx 交给 driver ⇒ pgx 在 ctx 到点时向 PG 发 CancelRequest
- *   ⇒ Go 标准库 DB.conn(ctx, …) 在**取连接之前**就查 ctx.Err()
+ *   ⇒ B 侧 标准库 DB.conn(ctx, …) 在**取连接之前**就查 ctx.Err()
  *   ⇒ ctx 已过期 ⇒ 查询根本不会发到服务端 ⇒ 返回 context.DeadlineExceeded
  * </pre>
  *
@@ -92,7 +92,7 @@ public class PersistenceAutoConfiguration {
      * {@code 57014} → gRPC {@code DEADLINE_EXCEEDED} 的翻译器。
      *
      * <p>⚠️ <b>必须与 {@link DeadlineQueryTimeoutInjector} 成对</b> ——
-     * 少了前者则查询不取消；少了后者则超时被当成「数据库故障」（5001 而非 Go 的 1015）。
+     * 少了前者则查询不取消；少了后者则超时被当成「数据库故障」（5001 而非 B 的 1015）。
      */
     @Bean
     @ConditionalOnMissingBean

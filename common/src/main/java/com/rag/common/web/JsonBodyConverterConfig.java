@@ -3,10 +3,10 @@ package com.rag.common.web;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * <p><b>⚠️ K-02 · Go「何时才读请求体」的判据字面量（唯一真源）</b>。
+ * <p><b>⚠️ K-02 · B 侧「何时才读请求体」的判据字面量（唯一真源）</b>。
  *
- * <p><b>Go 出处</b>：go-zero {@code rest/httpx/parsing.go} 的 {@code ParseRequests}
- * ＋ {@code rest/httpx/util.go} 的 {@code ParseForm} 判定：
+ * <p><b>B 出处</b>：B 侧 {@code service/common/src/main/java/com/rag/common/http/GoStyleJsonBodyConverter.java:15}
+ * ＋ {@code service/common/src/main/java/com/rag/common/http/GoStyleFormValues.java:91-98} 的判定：
  * <pre>
  *   if r.ContentLength &gt; 0 &amp;&amp; strings.Contains(r.Header.Get("Content-Type"), "application/json") {
  *       // 才读 body
@@ -24,10 +24,10 @@ import jakarta.servlet.http.HttpServletRequest;
  *         且与 RAG 侧类注释的表述一致（RAG 写的是「<b>不</b>包含该子串」）
  *       ⇒ 而 {@code Application/JSON}（大写）<b>不</b>命中（大小写敏感）
  *       ⇒ ⚠️ <b>不可</b>改用 {@code MediaType.parseMediaType(...)}：那会把头值小写化
- *       ⇒ ⇒ 判定变成大小写<b>不</b>敏感 ⇒ 与 Go <b>相反</b>；</li>
+ *       ⇒ ⇒ 判定变成大小写<b>不</b>敏感 ⇒ 与 B 侧 <b>相反</b>；</li>
  *   <li><b>Content-Length 必须取 {@code getContentLengthLong()}</b>（int64）
  *       ⇒ ⚠️ {@code getContentLength()} 返回 int，超 2GiB 变 {@code -1}
- *       ⇒ ⇒ 与 Go 的 {@code r.ContentLength}（int64）<b>相反</b>；</li>
+ *       ⇒ ⇒ 与 B 的 {@code r.ContentLength}（int64）<b>相反</b>；</li>
  * </ol>
  *
  * <p><b>⚠️ 落点差异（§7「职责对不上 #5」的建议形态）</b>：RAG 侧这段判据是
@@ -45,15 +45,15 @@ import jakarta.servlet.http.HttpServletRequest;
  */
 public final class JsonBodyConverterConfig {
 
-    /** Go 的判据字面量，刻意不做媒体类型兼容判定。 */
+    /** B 的判据字面量，刻意不做媒体类型兼容判定。 */
     static final String GO_JSON_CONTENT_TYPE_MARK = "application/json";
 
     /**
-     * 对应 Go 版 {@code r.ContentLength > 0 && strings.Contains(Content-Type, "application/json")}。
+     * 对应 B 侧版 {@code r.ContentLength > 0 && strings.Contains(Content-Type, "application/json")}。
      *
      * @param contentType   <b>原始</b>头值（不可用 {@code MediaType} 解析后的值）
      * @param contentLength 原始长度（int64）
-     * @return Go 是否会读这个请求体
+     * @return B 侧 是否会读这个请求体
      */
     public static boolean goReadsBody(String contentType, long contentLength) {
         return contentLength > 0L
@@ -67,23 +67,23 @@ public final class JsonBodyConverterConfig {
      *
      * <p><b>⚠️ 取输入这一步才是真正的坑</b>：
      * <ul>
-     *   <li>取 {@code request.getContentType()} ⇒ <b>原始</b>头值 ⇒ 大小写敏感 ⇒ 与 Go 同形 ✔
+     *   <li>取 {@code request.getContentType()} ⇒ <b>原始</b>头值 ⇒ 大小写敏感 ⇒ 与 B 侧 同形 ✔
      *       （真 Tomcat 上逐行实测：{@code org/apache/catalina/connector/Request.java:1081-1083}
      *       → {@code org/apache/coyote/Request.java:694-700} → {@code MessageBytes.toStringType()}
      *       → <b>全链无小写化 / MIME 归一</b>）；</li>
      *   <li>取 {@code request.getHeader("Content-Type")} ⇒ 同样是原始头值 ✔；</li>
      *   <li>取 {@code MediaType.parseMediaType(...).toString()} ⇒ <b>已被小写化</b> ⇒ 判定变成
-     *       大小写<b>不</b>敏感 ⇒ 与 Go <b>相反</b> ❌。</li>
+     *       大小写<b>不</b>敏感 ⇒ 与 B 侧 <b>相反</b> ❌。</li>
      * </ul>
      *
      * <p><b>⚠️ 为什么用 {@code getContentLengthLong()} 而不是 {@code getContentLength()}</b>：
      * {@code org/apache/coyote/Request.java:664-671} 里 {@code getContentLength()} 是
      * {@code (int) getContentLengthLong()} ⇒ 超 2GiB 变 {@code -1}
-     * ⇒ 而 Go 的 {@code r.ContentLength} 是 <b>int64</b>，2GiB 以上仍是正数
+     * ⇒ 而 B 的 {@code r.ContentLength} 是 <b>int64</b>，2GiB 以上仍是正数
      * ⇒ ⇒ 必须取 {@code getContentLengthLong()}。
      *
      * @param request servlet 请求（{@code null} 视为「不读」）
-     * @return Go 是否会读这个请求体
+     * @return B 侧 是否会读这个请求体
      */
     public static boolean goReadsBody(HttpServletRequest request) {
         if (request == null) {

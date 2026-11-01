@@ -6,18 +6,18 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * 共享层的响应信封 —— 对应 Go 侧 {@code service/common/response/response.go}。
+ * 共享层的响应信封 —— 对应 B 侧 {@code service/common/src/main/java/com/rag/common/response/Response.java:14}。
  *
- * <p><b>Go 出处</b>：{@code service/common/response/response.go:3-7}
+ * <p><b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/response/Response.java:16:3-7}
  * （{@code type Response struct { Code int `json:"code"`; Msg string `json:"msg"`; Data interface{} `json:"data"` }}`）
- * ⇒ <b>三个 JSON 键与字段顺序逐条一致</b>（Go 的 struct tag 顺序 = Jackson 的字段声明顺序）
+ * ⇒ <b>三个 JSON 键与字段顺序逐条一致</b>（B 的 struct tag 顺序 = Jackson 的字段声明顺序）
  * ⇒ ⇒ <b>语义等价</b>（这是共享层里「逐条等价」的那一个包，见
  * {@code docs/DRIFT/common/alignment-2026-10-23.md} §六「response —— ✅ SEMANTICALLY EQUIVALENT」）。
  *
- * <p><b>⚠️ L1 契约层（三条硬约束 · 动它要走决策流程 · D13「L1 以 Go 为准」）</b>：
+ * <p><b>⚠️ L1 契约层（三条硬约束 · 动它要走决策流程 · D13「L1 以 B 侧 为准」）</b>：
  * <ol>
  *   <li><b>键名与顺序</b>：{@code code} → {@code msg} → {@code data}，逐条一致 ⇒ 不可调序、不可改名；</li>
- *   <li><b>无 {@code omitempty}</b>：Go 侧三个字段<b>都没有</b> {@code omitempty} ⇒
+ *   <li><b>无 {@code omitempty}</b>：B 侧三个字段<b>都没有</b> {@code omitempty} ⇒
  *       {@code data} 为 null 时<b>仍然出现</b>（{@code "data":null}）⇒ ⇒
  *       Java 侧<b>不得</b>给本类加 {@code @JsonInclude(NON_NULL)} / {@code @JsonInclude(NON_EMPTY)}
  *       ⇒ 否则 {@code data} 键会消失 ⇒ <b>可观察形状不等价</b>；</li>
@@ -32,7 +32,7 @@ import lombok.Setter;
  * （见 {@code docs/Mapping_Table/common.md} §1.3）。
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/response/Response.java}
- * （L1 契约层**以 Go 为准** · D13；RAG 侧本就是 Jackson 2 写法 ⇒ <b>零回改</b>）。
+ * （L1 契约层**以 B 侧 为准** · D13；RAG 侧本就是 Jackson 2 写法 ⇒ <b>零回改</b>）。
  */
 @Getter
 @Setter

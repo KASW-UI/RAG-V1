@@ -62,10 +62,10 @@ import java.util.concurrent.atomic.AtomicReference;
  * </table>
  *
  * ══════════════════════════════════════════════════════════════════════
- * <p><b>⚠️ HTTP 侧的固定属性（逐条照抄 Go）</b>
+ * <p><b>⚠️ HTTP 侧的固定属性（逐条照抄 B 侧）</b>
  * ══════════════════════════════════════════════════════════════════════
  * <pre>
- *   RAG HttpMiddleware#httpAttrs（照抄 Go service/common/observability/http.go）
+ *   RAG HttpMiddleware#httpAttrs（照抄 B 侧 service/common/observability/http.go）
  *       service.name     = 服务名（空 ⇒ "unknown-service"）
  *       http.route       = r.getRequestURI()        ← ⚠️ **原始 URI**，**不是**路由模板
  *       http.method      = r.getMethod()
@@ -75,7 +75,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * <b>匹配到的路由模板</b> ⇒ ⇒ 本类<b>自己写原始 URI</b>，不交给 Boot 默认值。
  *
  * ══════════════════════════════════════════════════════════════════════
- * <p><b>⚠️ gRPC 侧的固定属性与业务码集合（逐条照抄 Go / RAG）</b>
+ * <p><b>⚠️ gRPC 侧的固定属性与业务码集合（逐条照抄 B 侧 / RAG）</b>
  * ══════════════════════════════════════════════════════════════════════
  * <pre>
  *   rpc.system         = "grpc"
@@ -106,7 +106,7 @@ public class ObservabilityAutoConfiguration {
     /** gRPC 侧的观测名。 */
     public static final String GRPC_OBSERVATION_NAME = "rpc.server.requests";
 
-    // ⚠️ Go 的业务码集合（gRPC 侧「算 business 错误」的那 7 个码）**不在这里**：
+    // ⚠️ B 的业务码集合（gRPC 侧「算 business 错误」的那 7 个码）**不在这里**：
     // 2026-11-02（批次 E）已上收到 {@link ObservabilityCustomizer#BUSINESS_GRPC_CODES}
     // ⇒ 因为 gRPC 拦截器与 {@code RpcHandleRunner}（非 gRPC 路径）**两处**都要用同一组码
     // ⇒ ⇒ 留在本类会变成第二份副本 ⇒ ⇒ 判定统一走
@@ -245,7 +245,7 @@ public class ObservabilityAutoConfiguration {
                         }
                     };
 
-            // ⚠️ 超时：Go 的 rpc 超时由 zrpc 的 timeout 中间件执行 ⇒ 到点 ⇒ DEADLINE_EXCEEDED
+            // ⚠️ 超时：B 的 rpc 超时由 zrpc 的 timeout 中间件执行 ⇒ 到点 ⇒ DEADLINE_EXCEEDED
             ScheduledFuture<?> timeoutTask = scheduleTimeout(wrapped, timeout);
 
             ServerCall.Listener<ReqT> listener = next.startCall(wrapped, headers);
@@ -285,7 +285,7 @@ public class ObservabilityAutoConfiguration {
                 try {
                     observation.stop();
                 } catch (RuntimeException ignore) {
-                    // ⚠️ 观测收尾失败**不得**影响业务响应（Go 侧同理：观测层不参与业务判定）
+                    // ⚠️ 观测收尾失败**不得**影响业务响应（B 侧同理：观测层不参与业务判定）
                 }
             }
         }
@@ -321,7 +321,7 @@ public class ObservabilityAutoConfiguration {
     /**
      * gRPC 超时用的调度器（<b>守护线程</b> ⇒ 不阻止 JVM 退出）。
      *
-     * <p>⚠️ 静态单例 ⇒ 全进程一份（与 Go 的观测层进程级静态池同形）。
+     * <p>⚠️ 静态单例 ⇒ 全进程一份（与 B 的观测层进程级静态池同形）。
      * <p>⚠️ <b>2026-11-02（批次 E）：本池已上收到 {@link ObservabilityRuntime}</b>
      * ⇒ 因为它要与 {@code obs-rpc-worker} 池<b>一起</b>被关闭钩子回收
      * ⇒ ⇒ 而关闭钩子（{@code ObservabilityLifecycle}）在本仓的 {@code observability} 包
@@ -332,10 +332,10 @@ public class ObservabilityAutoConfiguration {
     }
 
     /**
-     * Go {@code status.Error(...).Error()} 的文本形状。
+     * B 侧 {@code status.Error(...).Error()} 的文本形状。
      *
      * <p>⚠️ <b>已知残留差异</b>：gRPC Java 的 {@code Code#name()} 返回全大写（{@code NOT_FOUND}），
-     * Go 的 {@code codes.Code.String()} 返回驼峰（{@code NotFound}）⇒
+     * B 的 {@code codes.Code.String()} 返回驼峰（{@code NotFound}）⇒
      * <b>语言常量表示不同，不做臆造映射</b>（照抄 RAG 的同一处取舍）。
      * <p>⚠️ <b>2026-11-02（批次 E）</b>：实现已上收到
      * {@link ObservabilityCustomizer#goStyleStatusMessage(String, String)}
@@ -346,7 +346,7 @@ public class ObservabilityAutoConfiguration {
                 status.getDescription());
     }
 
-    /** 超时异常：沿 Go 的语义用实际 status 拼，而不是硬编码文案。 */
+    /** 超时异常：沿 B 的语义用实际 status 拼，而不是硬编码文案。 */
     private static Throwable timeoutError(Status status) {
         return new java.util.concurrent.TimeoutException(goStyleStatusMessage(status));
     }

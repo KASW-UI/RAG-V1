@@ -19,9 +19,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * §3.3「机制可证」守门：<b>HTTP 中间件的三条拒绝路径真的按 Go 的形状走</b>。
+ * §3.3「机制可证」守门：<b>HTTP 中间件的三条拒绝路径真的按 B 的形状走</b>。
  *
- * <p>⚠️ <b>Go 出处</b>：{@code Sea-RideTheWind_golang/service/common/observability/http.go}
+ * <p>⚠️ <b>B 出处</b>：{@code service/common/src/main/java/com/rag/common/observability/HttpMiddleware.java}
  * <pre>
  *   case &lt;-ctx.Done():
  *       statusCode := http.StatusServiceUnavailable
@@ -60,7 +60,7 @@ class HttpMiddlewareTest {
         assertThat(response.getContentAsString()).isEqualTo("Request Timeout\n");
         assertThat(response.getContentType()).contains("text/plain");
         assertThat(response.getHeader("X-Content-Type-Options")).isEqualTo("nosniff");
-        // ⚠️ Go 的 http.Error → fmt.Fprintln ⇒ Content-Length = len("Request Timeout\n") = 16
+        // ⚠️ B 的 http.Error → fmt.Fprintln ⇒ Content-Length = len("Request Timeout\n") = 16
         //    （"Request Timeout" 15 字符 + '\n' 1 字节；RAG 侧注释写的「15」是笔误，代码是 +1）
         assertThat(response.getHeader("Content-Length")).isEqualTo("16");
 
@@ -173,7 +173,7 @@ class HttpMiddlewareTest {
     }
 
     @Test
-    @DisplayName("SSE / WebSocket ⇒ 跳过超时中间件（照抄 Go 的 shouldSkipHTTPTimeout）")
+    @DisplayName("SSE / WebSocket ⇒ 跳过超时中间件（照抄 B 的 shouldSkipHTTPTimeout）")
     void sseAndWebsocketSkipTimeout() throws Exception {
         AtomicReference<Observation.Context> captured = new AtomicReference<>();
         ObservationRegistry registry = registry(captured);

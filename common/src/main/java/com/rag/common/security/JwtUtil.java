@@ -18,10 +18,10 @@ import java.util.Date;
  * RAG 侧用的是 {@code io.jsonwebtoken.SignatureAlgorithm.HS256}（jjwt **0.x** 的枚举）；
  * 本仓的 {@code jjwt.version = 0.12.6}（见根 pom）⇒ 该枚举虽仍存在但已废弃 ⇒
  * ⇒ 改用新 API {@code Jwts.SIG.HS256}（类型 {@code SecureDigestAlgorithm}）。
- * ⇒ ⇒ <b>签名结果逐字节相同</b>（HS256 本身没变）⇒ 与 Go 的互通性不受影响。
+ * ⇒ ⇒ <b>签名结果逐字节相同</b>（HS256 本身没变）⇒ 与 B 的互通性不受影响。
  *
  * <p>⚠️ <b>签名算法必须钉死 HS256</b>：{@code signWith(Key) 单参重载会<b>照着 key 的 JCA 算法名</b>
- * 选算法 ⇒ 密钥长度漂移时 {@code header.alg} 会跟着漂 ⇒ Go 侧是
+ * 选算法 ⇒ 密钥长度漂移时 {@code header.alg} 会跟着漂 ⇒ B 侧是
  * {@code jwt.New(jwt.SigningMethodHS256)} 显式写死的 ⇒ ⇒ 这里两件事都钉死：
  * JCA 算法名 = {@code HmacSHA256} ＋ 签名算法 = {@code HS256}。
  */
@@ -35,7 +35,7 @@ public final class JwtUtil {
         // ⚠️ 不能用 Keys.hmacShaKeyFor(...) 返回的 key 直接 signWith(key)：
         // 该工厂在密钥 ≥48 字节时返回 HmacSHA384、≥64 字节时返回 HmacSHA512 的 SecretKeySpec，
         // 而 jjwt 的 signWith(Key) 单参重载**会照着 key 的 JCA 算法名选签名算法** ⇒ token 的
-        // header.alg 会随密钥长度漂移。Go 侧是 jwt.New(jwt.SigningMethodHS256) 显式写死的。
+        // header.alg 会随密钥长度漂移。B 侧是 jwt.New(jwt.SigningMethodHS256) 显式写死的。
         // 这里把两件事都钉死：JCA 算法名 = HmacSHA256，签名算法 = HS256。
         SecretKeySpec key = new SecretKeySpec(padToHmacKeySize(secretKey), "HmacSHA256");
         return Jwts.builder()
@@ -51,7 +51,7 @@ public final class JwtUtil {
      * 把 secret 字符串补齐到 ≥32 字节（HS256 要求 key ≥256 bits），供签发/验签共用。
      *
      * <p><b>为什么是 public</b>：jjwt 0.12 强制要求 key ≥ 256 bit，而 admin 侧的默认密钥
-     * <b>只有 15 字节</b>（真源出处：Go {@code service/user/admin/api/etc/admincenter.yaml:11}
+     * <b>只有 15 字节</b>（真源出处：B 侧 {@code service/user/admin/api/etc/admincenter.yaml:11}
      * 的 {@code AdminAuth.AccessSecret}；<b>此处只记「形状/长度」，不记明文</b> ——
      * 生产密钥不得进仓 ⇒ 2026-10-28 起本 javadoc 不再写出密钥值本身）。
      * 任一调用方（{@code JwtUtil.getToken} 签发、
@@ -62,7 +62,7 @@ public final class JwtUtil {
      *   <li>两侧各自实现 padding → 补齐长度不一致 → 一侧签的 token 另一侧验不过</li>
      * </ul>
      *
-     * <p><b>⚠️ 补零为什么「不会」破坏与 Go 的互通 —— 唯一的理由是 RFC 2104（2026-10-23 实测钉死）</b>
+     * <p><b>⚠️ 补零为什么「不会」破坏与 B 的互通 —— 唯一的理由是 RFC 2104（2026-10-23 实测钉死）</b>
      * <p>按密码学常识，15 字节密钥与「15 字节 + 17 个 0」的 32 字节密钥
      * <b>应当</b>算出不同的 HMAC。但实测<b>逐字节相同</b>：
      * <pre>
@@ -78,11 +78,11 @@ public final class JwtUtil {
      * 该等价性<b>与密钥取值无关</b>（任意短密钥都成立 ⇒ 夹具的实测结果同样成立）。
      * 原因是 <b>HMAC 自身就会把短于分组尺寸（64 字节）的密钥零填充</b>（RFC 2104 §2 第 2 步：
      * 密钥短于 B 时末尾补 0 到 B 字节）。两种写法补到 64 字节后<b>得到完全相同的 K′</b>。
-     * <p>Go 侧 {@code service/user/common/jwt/jwt.go:14} {@code token.SignedString([]byte(secretKey))}
+     * <p>B 侧 {@code service/users/users-common/src/main/java/com/rag/users/common/jwt/JwtUtil.java:63:14} {@code token.SignedString([]byte(secretKey))}
      * 用的是原始字节，因此两侧互通。
      * <p><b>实测交叉验签：15 / 32 / 36 / 47 / 48 / 64 字节共 6 档 × 双向 12 次，12/12 全通。</b>
      *
-     * <p><b>🔴 三条边界条件 —— 违反任何一条，admin（15 字节）的 token 会立刻与 Go 互验失败，
+     * <p><b>🔴 三条边界条件 —— 违反任何一条，admin（15 字节）的 token 会立刻与 B 侧 互验失败，
      * 且现有测试无一会红：</b>
      * <ol>
      *   <li><b>补的必须是零</b>。填非零字节会改变 K′ 的 ipad/opad 异或结果。</li>
