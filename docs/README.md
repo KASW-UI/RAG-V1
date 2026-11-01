@@ -75,4 +75,5 @@
 | 断言脚本 | ⬜ 待实现（A1–A4 已手工跑通） |
 | 台账 | ⬜ 三档已建索引 —— Intentional_Deviations 已有 **5** 条（like 2 · comment 2 · article 1）；**DRIFT 10 域仍为空**、Pitfalls **P-01~P-10**（实现开始后逐条填） |
 | **工具链** | ✅ **D14 已定并落地（2026-11-02）** —— **全项目 = Jackson 2 + Spring Boot 3.5**：Boot **3.5.11** · Jackson **2.19.4** · Spring Cloud **2025.0.3** · SCA **2025.0.0.0**（原生 nacos-client **3.0.3**）· Flyway **11.14.1** · Tomcat **10.1** · `jjwt-jackson` **可用** ⇒ **13 个 pom 已改造**，`mvn -o clean test-compile` **16/16 BUILD SUCCESS**；⚠️ **D12「全面 Jackson 3」已作废**（三份 Jackson 3 报告结论作废，文件留档） |
+| **lombok** | ✅ **已抄入（2026-11-02 用户定）** —— `common/` = **provided**、`service/users/` 聚合 = **optional**（RAG 同款落点），**注解处理器显式配 `annotationProcessorPaths`**（JDK 21+ 兜底）⇒ 字节码实测真生效；另补 `maven-enforcer-plugin` **构建期守门**（禁 `protobuf-java`/`javalite` ≤ 3.25.4，变异测试证明能红）—— 见 `决策记录.md` **D14 落地状态之三** |
 | 待拍板 | ⬜ P1–P7 + **P4-④**（P4-③ ✅ 已实施，见 `决策记录.md` D7 · `命名债与包形状.md`） |

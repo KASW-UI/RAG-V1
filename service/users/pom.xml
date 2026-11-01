@@ -18,4 +18,60 @@
         <module>user</module>
         <module>admin</module>
     </modules>
+
+    <dependencies>
+        <!--
+            抄 RAG `service/users/pom.xml`（L4 机制层 · §1.0c 档 ①）：**所有子模块共享**的 lombok。
+
+            ⚠️ **为什么是 `optional` 而不是 `provided`**：`optional` 只影响「**传递给下游**」，
+            **不影响**「父 → 子」的继承 ⇒ ⇒ 三个子模块（`users-common` / `user-service` /
+            `admin-service`）都能拿到 lombok，而 `users` 聚合本身不被别人当依赖 ⇒ 无泄漏路径。
+
+            ⚠️ **版本由 Boot BOM 管**（`spring-boot-starter-parent` → `spring-boot-dependencies`
+            的 `<lombok.version>` = 1.18.42）⇒ 本仓**不写** `<version>`（RAG 侧同样不写）。
+
+            ⚠️ **实测落点**：RAG 侧真正用到 lombok 的是 `service/users/admin/admin-rpc` 的
+            3 个实体类（`AdminEntity` / `AdminInviteEntity` / `UserEntity`）
+            ⇒ 对应本仓 `service/users/admin` 的 `domain/entity/`。
+        -->
+        <dependency>
+            <groupId>org.projectlombok</groupId><artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+                抄 RAG `service/common/pom.xml` 的同名插件（**同一机制，同一处纪律**）：
+                **显式声明注解处理器路径**。
+
+                ⚠️ **为什么必须显式写 `annotationProcessorPaths`**：JDK 21 起 javac 在
+                「classpath 上发现注解处理器」时会打印告警
+                （*"Annotation processing is enabled because one or more processors were found
+                on the class path. A future release of javac may disable annotation processing
+                unless the processors are explicitly requested by being listed in
+                the processor path option of javac"*），而 JDK 23+ **默认关闭**该行为
+                ⇒ ⇒ 只靠 classpath 上的 lombok 迟早会**静默失效**（lombok 注解不再生成方法
+                ⇒ 编译期才发现，或更糟：运行期 `NoSuchMethodError`）。
+                ⇒ ⇒ 显式列出 processor path ⇒ 行为与 JDK 版本解耦。
+
+                ⚠️ 本插件配在**聚合 pom** ⇒ `<build><plugins>` 会被**三个子模块继承**
+                ⇒ `service/users/admin` 的 lombok 实体类才能真正被处理。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

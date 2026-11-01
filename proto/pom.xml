@@ -49,6 +49,44 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <!--
+                抄 RAG 10 个 `*-proto/pom.xml` 的同名插件（**本仓因 D7 集中到根级 proto ⇒ 只改这 1 处**）：
+                **构建期守门** —— 禁掉 `protobuf-java` / `protobuf-javalite` 的低版本。
+
+                ⚠️ **为什么需要它**：本仓实测**不搬** `protobuf-javalite` / `grpc-protobuf-lite`
+                （RAG 生成的 proto 源码 0 处引用 lite 类）⇒ ⇒ 但「不搬」是**约定**，不是**机制**：
+                任何人加一条 lite 依赖、或某个上游把 protobuf 降到 ≤3.25.4，都会**静默**改变
+                运行时行为（lite 与 full 的 `GeneratedMessage` 家族不兼容 ⇒ 运行期
+                `ClassCastException` / `NoSuchMethodError`，不是编译期报错）。
+                ⇒ ⇒ 用 enforcer 把这条约定**变成构建期红**。
+
+                ⚠️ **规则语义**：`[,3.25.4]` = 版本区间「≤ 3.25.4」⇒ 被禁。
+                本仓 `protobuf.version` = **3.25.5** ⇒ 自身合规。
+                `searchTransitive=true` ⇒ **传递依赖**里的低版本也会被拦下（真正的守门点）。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>enforce-banned-dependencies</id>
+                        <goals><goal>enforce</goal></goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>com.google.protobuf:protobuf-javalite:[,3.25.4]</exclude>
+                                        <exclude>com.google.protobuf:protobuf-java:[,3.25.4]</exclude>
+                                    </excludes>
+                                    <searchTransitive>true</searchTransitive>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>

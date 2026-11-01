@@ -266,8 +266,17 @@
                         </execution>
                     </executions>
                 </plugin>
+                <!--
+                    跨平台 protoc 可执行文件探测（grpc-spring-boot-starter 的 protoc 配置需要）
+                    ⚠️ **groupId 必须是 `kr.motd.maven`** —— 抄 RAG 根 pom 的同名条目；
+                    `org.xolstice.maven.plugins` 下**不存在** os-maven-plugin（本地 m2 实测：
+                    只有 `kr/motd/maven/os-maven-plugin/1.7.1`）⇒ 写错则本条 pluginManagement 永远匹配不到。
+                    ⚠️ 但 **build extension 不继承 pluginManagement 的版本**（实测：省略 <version> 会报
+                    "Unresolveable build extension: Error resolving version for plugin
+                    'kr.motd.maven:os-maven-plugin'"）⇒ `proto/` 模块用 <extensions> 时仍须显式写版本。
+                -->
                 <plugin>
-                    <groupId>org.xolstice.maven.plugins</groupId>
+                    <groupId>kr.motd.maven</groupId>
                     <artifactId>os-maven-plugin</artifactId>
                     <version>1.7.1</version>
                 </plugin>

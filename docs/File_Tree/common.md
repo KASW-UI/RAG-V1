@@ -48,6 +48,7 @@
 - `net.devh:grpc-client-spring-boot-starter`
 - `io.opentelemetry:opentelemetry-sdk-testing`
 - `org.springframework:spring-test`
+- `org.projectlombok:lombok`
 
 ## 三、目录树
 
