@@ -23,9 +23,14 @@ import java.util.Objects;
  * <p>⇒ C 侧把「查哪张表 / 有没有 status 列」<b>下沉给查询端口</b>（{@link UserStatusLookup}），
  * 解析器的 5 个 sentinel 判定顺序与三元组产出<b>只有一份</b> ⇒
  * <b>两份实现分叉的根源被消解</b>（B 侧把「同一规则的第二份实现」列为缺陷来源）。
- * <p>⚠️ <b>admin 子域的适配契约</b>：admin 表<b>没有</b> status 列 ⇒ admin 侧实现
- * {@link UserStatusLookup} 时应返回 <b>present 且值为 0</b> 的记录
- * （⇒ 与 B 的 admin 版「不做 status 检查」<b>可观察行为一致</b>）。
+ * <p>⚠️ <b>admin 子域的适配契约（必读，踩了就是 admin 全域登录被拒）</b>：admin 表<b>没有</b> status 列
+ * ⇒ admin 侧实现 {@link UserStatusLookup} 时<b>必须</b>返回 <b>present 且值为 0</b> 的记录
+ * （{@code new UserStatusRecord(true, uid, 0L)}）⇒ 与 B 的 admin 版「不做 status 检查」<b>可观察行为一致</b>。
+ * <p>⚠️ <b>反例（务必避开）</b>：若 admin 适配器把「该 admin 存在」表达成 <b>status 缺失</b>
+ * （{@code status == null}）⇒ 本类会抛 {@link ErrStatusUnavailableException}（B 侧 admin **不会**）
+ * ⇒ <b>admin 登录被拒</b>。该坑已由 {@code IdentityResolverTest#adminAdapterMustNotReportAbsentStatus} 钉住。
+ * <p>⇒ 该适配器的<b>实现</b>落在 {@code service/users/admin}（另一条 lane）⇒ 本模块只负责
+ * <b>契约</b>（端口形状 ＋ 上述两条断言）。
  *
  * <h2>🔴 为什么「查 user」从 gRPC 换成查询端口（表达层差异，行为等价）</h2>
  * <p>B 侧 api 与 rpc 是<b>两个进程</b> ⇒ api 只能通过 gRPC 找 rpc 拿 status；

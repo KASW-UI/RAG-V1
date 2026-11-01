@@ -19,7 +19,7 @@
 | 仓库 | `/Users/pr/Documents/java&golang/RAG` | `/Users/pr/Documents/GitHub/RAG-V1.worktrees/users-common` |
 | 模块路径 | `service/users/users-common/` | `service/users/common/`（artifactId **`users-common`**） |
 | 包 | `com.rag.users.common.{cryptx,ddl,errmsg,http,jwt}` | `com.rag.users.common`（**单层压平**，D7） |
-| 源文件数 | **10 个类 + 4 份 SQL** | **5 个类 + 4 份 SQL**（本仓另在根 `common/` 承接 5 个类 · 删除 4 个类） |
+| 源文件数 | **11 个类 + 4 份 SQL** | **5 个类 + 4 份 SQL**（本仓另在根 `common/` 承接 5 个类 · 删除 4 个类） |
 | 域外同源副本 | `users/user/user-api/.../IdentityResolver.java` ＋ `users/admin/admin-api/.../IdentityResolver.java`（**B 的两份重复**） | `service/users/common/.../IdentityResolver.java`（**C 侧 1 份**） |
 | git commit | 冻结只读（未动） | 基线 `b973d61` · 实现 `3fb594b` |
 
@@ -86,6 +86,8 @@
 | U-27 | `:228-243` 5 个 sentinel 异常类 | 异常类型（Go sentinel error 形状） | 同款嵌套异常类 | 1:1 | 已实现 | ✅ 已验证 | `IdentityResolverTest`（各异常类型断言） |
 | U-28 | **admin-api `IdentityResolver.java`**（B 的第二份副本） | admin 版：不做 status 检查 ＋ `ErrAdminNotFound` ＋ 查 `getSelf` | C 侧**无第二份** ⇒ 「查哪张表 / 有无 status 列」下沉到 `UserStatusLookup` 端口 | N:1（**重复被消解**） | 已实现 | ⚠️ **已登记偏离** | 映射表 **F-1**（用户 2026-11-01 定：上收到域级共享层，只 1 份）⇒ 差异见 §11.5 **D-02** |
 | U-29 | B 的 `user-rpc` / `admin-rpc` `bootstrap/*SchemaBootstrap`（`UserSchemaBootstrap.java:51` / `AdminSchemaBootstrap.java:55`） | 启动时调 `SchemaInitializer.applyAll` | **执行器已在本 lane 交付**；**调用点在 `users/user` · `users/admin` 两个组件**（本 lane 无写权） | 跨 lane 承接 | 执行器 ✅ / 调用点 ⬜（他 lane） | ⚠️ **未验证（他 lane 未审）** | 见 §11.5 **D-10**（登记为跨 lane 依赖，不计本组件缺陷） |
+| U-30 | B 的 `resolveUser`（`user-api/.../IdentityResolver.java:176-217`）**对外返回面**（B 返回 proto `UserInfo`；`UserGetService.java:54` 在用） | 「解析身份」与「拿到用户数据」两件事，B 侧绑在一个方法里 | `IdentityResolver.resolveUser(request, lookup)`（返回已校验的 `UserStatusRecord`）＋ `verifyUser(uid, record)`（只做「取回之后」的判定） | 1:1（**返回形态改写**） | 已实现 | ✅ 已验证 | `IdentityResolverTest#resolveUserReturnsVerifiedRecord` / `#resolveUserSharesTheSameDecisionChain` / `#verifyUserChecksFetchedRecord`（3 例）—— ⚠️ **这一行是自查补上的**：初版只暴露了三元组 ⇒ 消费点拿不到用户 ⇒ 属**覆盖缺口**，已补 |
+| U-31 | B 的 `http/GoStyleStringInt64.java`（上提到 `common/web/StringInt64.java`） | `,string` int64 的 8 分支判定 | `common/web/StringInt64.parse`（**上提落点，根 `common/`**） | 1:1（上提） | 已实现（前序） | ✅ **已验证（本轮闭合）** | `StringInt64ParityTest`（**8 例** · 接受 4 类 / 拒绝 4 类 / 异常消息形状）⇒ 闭合了独立审核判定的 **NOT_VERIFIED**（原状：全仓 0 个测试调用 ⇒ 按协议 §九 不得用静态相似度替代运行验证） |
 
 ### C 侧新增件（**B 侧没有 ⇒ 每件都要有职责依据**）
 
@@ -175,37 +177,44 @@
 | **D-07** | 文件树的「状态」段 | — | `docs/File_Tree/users/common.md` §五「文件内容 ⬜ **全部待填**」 | — | 本模块**已填**（5 类 ＋ 4 脚本 ＋ 3 测试类） | 该状态行在 `tools/gen-file-tree.py:225-228` **硬编码**，对全部 14 份文档一律写「全部待填」 | 文档准确性 | 🟡 文档（**生成器级**，影响全仓 14 份） | **不改生成器**（跨域共享工具，且改动会波及其他 9 个域的文档）⇒ 登记 | `python3 tools/gen-file-tree.py`（本工作树限定）已重跑，`users/common.md` 的目录树与文件系统一致 |
 | **D-08** | `BearerTokenExtractor` 判定条件 | `jwt/BearerTokenExtractor.java:74-77`（`length() > 7`） | `common/security/BearerTokenExtractor.java`（`length() > BEARER_PREFIX.length() - 1` ⇒ `> 6`） | 「Bearer 」(7 字符)**不剥** | 「Bearer 」**剥成空串** | C 侧按 **Go** 的 `len(tok) > 6`（L1 以 Go 为准）⇒ **C ≠ B** | 畸形 `Authorization` 头的验签输入 | 🟡 **已登记偏离**（前序批次，非本轮引入） | **不修**（前序已定）⇒ 登记 | 两侧都让该畸形头**验签失败** ⇒ 无安全洞；差别只在传给验签器的串 |
 | **D-09** | 必填校验器被删除 | `http/GoStyleRequired*.java`（4 类） | **C 侧无** | 报 `field "uid" is not set` 形状的文案 | Bean Validation 文案 | **D5 已批准**（改用 Bean Validation）⇒ **L3 降级** | 请求体缺字段时的错误文案 | 🟡 **已批准降级**（`L3-降级清单.md` D-01；**P1 待拍板**只影响文案保真度口径，不影响本组件） | **不修** | 登记 |
+| **D-09b** | ⚠️ **D-01 的「影响面」登记偏窄**（独立审核提出） | 同上（`GoStyleRequired.explicitNull:67-71` / `field:32-36`） | `docs/L3-降级清单.md` **D-01** | 三态语义（**缺席**不报 / **显式 null** 报 / **空串**合法）＋ **map/集合/数组永不计必填** | Bean Validation **无等价表达**（`@NotNull` 会把「缺席的 map」也拒 ⇒ 比 B 多拒一类合法输入） | D5 已批准删除，但 D-01 只写了「仅错误文案」⇒ **实际删除的行为语义不在登记范围** | 所有 users 域请求体校验 | 🟡 **中**（台账口径） | ✅ **已扩写**（2026-11-02）：`docs/L3-降级清单.md` D-01 加 dated note，影响面订正为「错误文案 ＋ map/集合的必填判定 ＋ 空串合法性」⇒ **降级结论不变（仍接受），只把登记写准** | 本行 ＋ L3 清单的 dated note |
 | **D-10** | DDL 执行器的**调用点** | `user-rpc/.../UserSchemaBootstrap.java:51` · `admin-rpc/.../AdminSchemaBootstrap.java:55` | `service/users/user/.../wiring/UserSchemaBootstrap.java` · `service/users/admin/.../wiring/AdminSchemaBootstrap.java`（**他 lane，未实现**） | 启动即重放 DDL | **执行器已交付**；调用点空壳 | 写权在 `users-user` / `users-admin` 两条 lane | users 域启动时的建表 | 🟠 **跨 lane 依赖（未闭合）** | **登记 + 移交**（本 lane 无他域写权）⇒ 需两个 lane 各调 `SchemaInitializer.applyAll(conn, "<service>")` | 本组件侧已验：执行器 ＋ 脚本 ＋ 幂等 ＋ 4 表建成（真 PG） |
-| **D-11** | 遗留依赖 | — | `service/users/common/pom.xml`（`grpc-stub` ＋ `protobuf-java`） | B 侧经 gRPC 需要 | **C 侧代码已不用** | 本轮把「查 user」改成端口后，两条依赖失去使用者 | 构建体积（无行为影响） | ⚪ 卫生问题 | **本轮不动**（避免动既有 pom 契约；且清理由收口任务统一处理更安全）⇒ 登记 | 编译通过 ＋ 无 import 引用 |
+| **D-11** | 遗留依赖 | — | `service/users/common/pom.xml` | B 侧需 gRPC/JWT/bcrypt/Jackson | **C 侧代码已不用**（D3 上收到根 `common/` 后失去使用者） | 依赖面未随上收收敛 | 构建体积（无行为影响） | ⚪ 卫生问题 | ✅ **已清理**（2026-11-02）：删 `grpc-stub` · `protobuf-java` · `javax.annotation-api` · `jjwt-api` · `jjwt-jackson` · `jackson-databind` · `jackson-annotations` · `spring-security-crypto` 共 **8 条** ⇒ **逐条核实传递链完整**（jjwt/jackson/crypto/grpc 由根 `common` 提供 ⇒ 两个 app 各有 `com.rag:common` 依赖；protobuf 由根 `proto` 提供；`javax.annotation-api` 是 `provided` ⇒ 本就不传递）⇒ 本模块只留真需要的 **3 条**（`spring-jdbc` · `jakarta.servlet-api` · `slf4j-api`） | `grep` 归零 ＋ **全仓 `mvn -o -T1C clean verify`**：本模块 SUCCESS（失败项全是**空壳域**的 `repackage`，已用基线纯净副本同条件对照证为**主干自带**） |
+| **D-12** | **admin 半边的身份语义无承接**（独立审核提出） | `admin-api/.../IdentityResolver.java:112-139`（**不做** status 检查） | `service/users/common/.../IdentityResolver.java` ＋ **尚不存在**的 admin 版 `UserStatusLookup` | admin 解析不做 status presence/活跃检查 | 唯一实现是 user 版（**必做** status 检查）⇒ admin 若直接复用，会把 B 允许的 admin **拒掉** | 副本消解时把 admin 差异「下沉给端口」，但**适配器的实现落在 admin lane** | admin 子域鉴权链 | 🟠 **中**（跨 lane） | **契约已在本 lane 钉死**：javadoc 写明「admin 适配器必须返回 present 且 status=0」＋ 反例警告 ＋ 2 条断言（`adminSideAdapterContract` / `adminAdapterMustNotReportAbsentStatus`）⇒ **剩下的是 admin lane 的实现** | 真 PG 端到端 ＋ 契约断言 |
+| **D-13** | `StringInt64` 无运行证据（独立审核判 **NOT_VERIFIED**） | `http/GoStyleStringInt64.java:83-125` | `common/web/StringInt64.parse`（**上提落点**） | 8 分支判定 | 代码与 B **逐字节等价** | 上提时**测试资产未随迁** ⇒ 全仓 0 个测试调用 ⇒ 按协议 §九 不得以静态相似度替代运行验证 | 该类的行为证据等级 | 🟡 **低** | ✅ **已闭合**（2026-11-02）：新增 `StringInt64ParityTest`（**8 例**）落本模块（对根 `common` 用 **test 作用域**依赖；**根 `common/` 一字未改** ⇒ 不越权）⇒ **NOT_VERIFIED → 已验证** | `StringInt64ParityTest`（接受 4 类 / 拒绝 4 类 / 消息形状） |
+| **D-14** | 错误契约在 C 有**两个潜在落点**（独立审核提出） | B 的 `ErrorCode` 是 user/admin **共用一份** | C：`com.rag.users.common.ErrCodes/ErrMsg`（**已填**）＋ `com.rag.user.contract.ErrCodes/ErrMsg`（**空壳**）＋ admin **无** `contract/` 包 | 一份共用 | 两个位置都能写同一份契约 | D7 删 `*-contract` 子模块后，`contract/` 包只落在 user 子域 | 下一棒填 user/admin 域时的落点选择 | 🟡 **低（结构陷阱）** | **登记**：users 域错误契约**只留公共库这份**；`com.rag.user.contract.ErrCodes/ErrMsg` 应删除或改为**委托** ⇒ **不得**再填一份副本（那会制造「同一规则的第二份实现」） | 映射表 **F-2** ＋ 本台账 U-01~U-05 |
+| **D-15** | **继承自 B**（非 C 引入）：bcrypt 前缀接受面 | Go `x/crypto/bcrypt` 的 `decodeVersion` 用 `>` ⇒ 接受 `$0$`/`$1$`/`$2x$`；Spring 的 `BCRYPT_PATTERN` ⇒ 拒 | C 的 `PasswordUtil` 与 B **逐字节相同** ⇒ 同拒 | Go 接受 / B 拒 | 同 B | B 侧**已签字偏离** `SD-USERSCOMMON-001` | 口令比对 | 🟡 **低（继承 ＋ 台账缺口）** | **不修**（基线是 B）⚠️ 但 **C 仓 `docs/Intentional_Deviations/_INDEX.md` 未承接这条签字** ⇒ 且该类已上提到根 `common/` ⇒ **影响面从 users 域扩大到全 10 域** ⇒ 建议收口任务补登记 | B 侧台账 `RAG/docs/DRIFT/users/common.md` |
+| **D-16** | **继承自 B**（非 C 引入）：DDL 与 Go 的 9 处实质差异 | Go 的 `AutoMigrate`：`users_user.status` **nullable=YES** · 8 个时间列**无** `DEFAULT CURRENT_TIMESTAMP` · 索引集不同 | C 的 4 份 SQL 与 B **逐字节相同** ⇒ 同 | Go 与 B 不同 | 同 B | B 侧已知（`UNRESOLVED-USERSCOMMON-004`） | DDL 契约 | 🟡 **低（继承）** | **不修**（基线是 B）⇒ 登记，防对拍脚本误判 | C 侧 4 份 SQL 与 B 的 md5 一致 ⇒ 差异集相同 |
 
 ---
 
 ## 11.6 完成度统计（§十一·11.6）
 
-> **口径**：按 §11.2 表**逐行重数**（脚本重数：**承接行 29 条** ＝ 已实现且已验证 26 ＋ 已批准主动变更 1 ＋ 已登记偏离 1 ＋ 跨 lane 未闭合 1），非手填；**不用文件数 / 代码行数代表完成度**。
+> **口径**：按 §11.2 表**逐行重数**（脚本重数：**承接行 31 条** ＝ 已实现且已验证 **28** ＋ 已批准主动变更 **1** ＋ 已登记偏离 **1** ＋ 跨 lane 未闭合 **1**），非手填；**不用文件数 / 代码行数代表完成度**。
 
 | 档位 | 条数 | 说明（对应 §11.2 的行） |
 |---|---|---|
-| ✅ **已实现且已验证** | **26** | U-01~U-14（含 5 个上提落点的等价性核对）· U-16~U-19 · U-20~U-27 |
-| ⚠️ 已实现但未验证 | **0** | — |
+| ✅ **已实现且已验证** | **28** | U-01~U-14（含 5 个上提落点的等价性核对）· U-16~U-19 · U-20~U-27 · **U-30**（`resolveUser` 对外返回面）· **U-31**（`StringInt64` 运行对拍） |
+| ⚠️ 已实现但未验证 | **0** | —（U-31 已于本轮闭合） |
 | ❌ 尚未实现 | **0** | 本组件内无（U-29 的**执行器已实现**） |
-| 🔴 明确存在漂移（**C 引入**） | **0** | 无「C 引入」的行为漂移 |
+| 🔴 明确存在漂移（**C 引入**） | **0** | 无「C 引入」的**业务行为**漂移 |
 | 🟡 框架差异待验证 | **0** | §11.4 的 7 条全部有验证证据或判定为不适用 |
 | ⛔ 被外部条件阻塞 | **0** | 测试容器镜像 `postgres:16-alpine` **本地已有**；⚠️ `testcontainers/ryuk` 本机镜像源拉不动 ⇒ 跑 Testcontainers 需 `TESTCONTAINERS_RYUK_DISABLED=true`（**环境限制，非 C 侧缺陷**；C 侧代码不含该开关、**未**使用被禁的 `@EnabledIfDockerAvailable`） |
-| 🏷 **已批准的主动变更** | **1** | **U-15**（D5 删除 4 个必填校验器 · L3 降级 D-01） |
-| 🟡 **已实现 + 已登记偏离**（行为已验证，差异已登记） | **1** | **U-28**（B 的 admin 副本被消解 · D-02）—— 另 U-08 的前序登记偏离（D-08）已计入上面 26 条内 |
+| 🏷 **已批准的主动变更** | **1** | **U-15**（D5 删除 4 个必填校验器 · L3 D-01） |
+| 🟡 **已实现 + 已登记偏离**（行为已验证，差异已登记） | **1** | **U-28**（B 的 admin 副本被消解 · D-02）—— 另 U-08 的前序登记偏离（D-08）已计入上面 28 条内 |
 | 📌 **跨 lane 未闭合**（**不计入本组件**） | **1** | **U-29**（DDL 执行器的**调用点**在 `users-user` / `users-admin` 两条 lane ⇒ 见 D-10） |
-| 🟡 表达层 / 文档级**登记差异**（不改变承接结论） | **8** | D-01 · D-02 · D-03 · D-04 · D-05 · D-06 · D-07 · D-11 |
+| 🟡 表达层 / 文档级 / 卫生项**登记差异** | **17** | D-01 · D-02 · D-03 · D-04 · D-05 · D-06 · D-07 · D-08 · D-09 · D-09b · D-10 · D-11 · D-12 · D-13 · D-14 · D-15 · D-16（其中 **D-09b / D-11 / D-13 已在本轮闭合**） |
 
-**结论（§十四 · 逐条见 §11.7）**：`service/users/common/` 承接了 B 侧 `service/users/users-common/` 的**全部源职责**，**未发现 C 引入的行为漂移**；4 条非 PASS 性质的差异**全部是已登记的表达层 / 文档级 / 跨 lane 项**，无一条阻塞本组件。
+**结论（§十四 · 逐条见 §11.7）**：`service/users/common/` 承接了 B 侧 `service/users/users-common/` 的**全部源职责**，**未发现 C 引入的业务行为漂移**；非 PASS 性质的差异**全部是已登记的表达层 / 文档级 / 跨 lane 项**，无一条阻塞本组件。
+> ✅ **独立审核已跑**（见 §11.8）：结论 =「**组件内实现可判迁移完成**」；它提出的 **3 条本组件待办**（admin 适配器 / D5 降级登记范围 / `StringInt64` 未验证）**已全部闭合或降级为跨 lane 项**。
 
 ---
 
-## 11.7 §十四 的 14 个问题（逐条回答）
+## 11.7 §十四 的 12 个问题 ＋ 最终审核标准（逐条回答）
 
 | # | 问题 | 回答 |
 |---|---|---|
-| 1 | C 是否完整承接 B 的全部实际职责？ | **是**（本组件范围）：10 类 ＋ 4 SQL 逐条落位（§11.2 U-01~U-29）；B 的两份 `IdentityResolver` 副本**被消解为一份**且差异已下沉到端口（D-02） |
+| 1 | C 是否完整承接 B 的全部实际职责？ | **是**（本组件范围）：**11 类 ＋ 4 份 SQL** 逐条落位（§11.2 U-01~U-31）；B 的两份 `IdentityResolver` 副本**被消解为一份**且差异已下沉到端口（D-02）；⚠️ **2 处未承接均已定性并有归属**：① D5 必填校验族（**已批准删除**，但用户域 DTO 尚空壳 ⇒ 承接在 users-user lane，见 D-09/D-09b）② admin 侧适配器（**契约已钉死**，实现落在 admin lane，见 D-12） |
 | 2 | Mapping_Table 的 RAG→RAG-V1 映射是否与真实代码一致？ | **基本一致，有 1 处过期**：`ddl` 行仍写「C 侧无落点」⇒ 记 **D-06**（按 §2.1 记录不改表） |
 | 3 | File_Tree 规定的目标结构是否正确落地？ | **是**（目录树 + 职责注释均已重生成核对）；但 §五 的「文件内容 ⬜ 全部待填」是**生成器硬编码** ⇒ 记 **D-07** |
 | 4 | 多文件合并是否造成职责 / 分支 / 异常路径遗漏？ | **否**：B 的 4 个可执行面（`getCode`/`getMsg`/`of`/`getMsg(int)`）逐条落位（8.1）；无遗漏分支（未知码回落、5 sentinel、判定顺序均有断言） |
@@ -214,11 +223,52 @@
 | 7 | Common Starter 上收是否遗漏原有消费方？ | **否**：5 个上提落点均在根 `common/` 内、与 `users-common` **无依赖关系** ⇒ 消费方（users 两个 app）经根 `common/` 获取，链路完整（8.3） |
 | 8 | Boot 4 → 3.5 是否引入业务可观察行为变化？ | **否**（§11.4 ①~⑦ 逐条有证据或判定不适用） |
 | 9 | Tomcat / Jackson / Spring Framework 变化是否产生实际漂移？ | **否**：Jackson 3→2 的 6 项能力 API 同构；spring-jdbc 7→6 的 `ScriptUtils` 包名/语义未变且脚本无 `$$`；Tomcat 不适用 |
-| 10 | 哪些差异已证明安全？ | D-01 · D-02 · D-03 · D-05 · D-07 · D-08 · D-09 · D-11（各有对应证据列） |
-| 11 | 哪些差异仍无法确认？ | **无**（本组件内）；**唯一未闭合项**是 D-10（调用点在他 lane）⇒ 属**他组件**的未审范围 |
-| 12 | 当前 C 是否具备可靠的行为对拍条件？ | **是**：错误契约可逐条对拍（31 条冻结期望值）＋ 身份解析可对拍判定链 ＋ DDL 可在**真 PostgreSQL** 上对拍（Testcontainers，`postgres:16-alpine` 本地已有） |
-| 13 | — | （§十四 共 14 问，上表逐条对应） |
-| 14 | **最终审核标准** | **达标**：C 无需复制 B 的文件结构，但已完整承接 B 的全部实际职责与需保留的行为；框架实现不同处（Jackson 3→2 / gRPC→JDBC）均有等价论证与运行证据，**无未经批准的行为漂移** |
+| 10 | 哪些差异已证明安全？ | D-01 · D-02 · D-03 · D-04 · D-05 · D-07 · D-08 · D-09 · D-09b · D-11 · D-12 · D-13 · D-14（各有对应证据列；其中 **D-09b / D-11 / D-13 已在本轮闭合**） |
+| 11 | 哪些差异仍无法确认？ | **组件内无未确认项**（独立审核原先判的 `StringInt64` NOT_VERIFIED **已闭合**）；**剩余 2 条均在他 lane**：D-10（DDL 调用点）· D-12（admin 适配器实现）⇒ 属**他组件**的未审范围 |
+| 12 | 当前 C 是否具备可靠的行为对拍条件？ | **组件内：是**（错误契约 31 条冻结期望值 ＋ 身份判定链 ＋ `StringInt64` 8 分支 ＋ DDL 在**真 PostgreSQL** 上；Testcontainers `postgres:16-alpine` 本地已有）⇒ **跨组件：否**（两个消费域仍是空壳 ⇒ 端到端对拍条件未就绪） |
+| 13 | **最终审核标准**（协议 §十四 的最后一句） | **达标**：C 无需复制 B 的文件结构，但已完整承接 B 的全部实际职责与需保留的行为；框架实现不同处（Jackson 3→2 / gRPC→JDBC）均有等价论证与运行证据，**无未经批准的行为漂移** |
+
+---
+
+## 11.8 独立审核（按 `.agents/verification.md` 跑的第二遍）
+
+> **为什么要第二遍**：本仓 §三·2 要求「每域做完**必过** `.agents/verification.md` 检测」⇒
+> 除本 lane 自审外，另起**独立审核子代理**按同一协议重跑一遍（**只审不改**，全程只写 `/tmp` 副本）。
+> **审核基线**：实现 commit `3fb594b`（审核途中本 lane 追加了 `2dc0e6d` ⇒ 审核方**两个基线都实测**，结论一致）。
+
+### 独立审核的结论（原文摘要）
+
+> 「**该组件（`service/users/common/` + 5 个上提落点）可判『迁移完成』**，但带 3 条本组件内待办、1 条跨 lane 待办
+> —— 实现层**没有发现 C 引入的实质性行为漂移**；31 条错误契约、4 份 DDL、身份判定链、bcrypt/JWT/强转三条横切原语都逐条对上了 B。」
+
+### 独立审核提出的待办 → 本轮处置
+
+| 审核项 | 审核方的判定 | 本轮处置 | 现状 |
+|---|---|---|---|
+| **admin 半边身份语义无承接**（B 的 admin 版不做 status 检查） | **NOT_IMPLEMENTED**（本组件内唯一实质缺口） | 契约在本 lane 钉死：javadoc 写明「admin 适配器必须返回 present 且 status=0」＋ **反例警告** ＋ 2 条断言（`adminSideAdapterContract` / `adminAdapterMustNotReportAbsentStatus`） | ✅ **契约已闭合**；**实现**落在 admin lane（跨 lane 依赖，见 D-12） |
+| **D5 降级登记范围窄于实际删除范围**（D-01 写「仅文案」，实际还含「缺席 vs 显式 null」「map/集合不计必填」） | **中**（降级登记不完整） | `docs/L3-降级清单.md` **D-01** 加 dated note，影响面订正 ⇒ 降级结论不变、登记写准 | ✅ **已闭合**（D-09b） |
+| **`StringInt64` 无运行证据**（全仓 0 个测试调用 ⇒ 按协议 §九 不得以静态相似度替代） | **NOT_VERIFIED** | 新增 `StringInt64ParityTest`（**8 例**：接受 4 类 / 拒绝 4 类 / 消息形状）落本模块（对根 `common` **test 作用域**依赖；**根 `common/` 一字未改** ⇒ 不越权） | ✅ **已闭合**（D-13） |
+| **admin sentinel 文案措辞统一成 user 版** | FAIL（低，仅日志） | 不修：B 侧两副本消解是**已批准决策**（映射表 F-1）⇒ 归「已登记偏离」而非漂移；且消息**不进 wire**（B 两侧 handler 的响应体用 `ErrorCode.XXX.getMsg()` 固定文案） | ✅ **已定性**（D-03） |
+| **pom 残留 7 条未使用依赖** | 低（卫生） | 逐条核实传递链后**清理 8 条**（含 `javax.annotation-api`）⇒ 本模块只留真需要的 3 条 | ✅ **已闭合**（D-11） |
+| **错误契约两个潜在落点**（公共库已填 vs `com.rag.user.contract.*` 空壳） | 低（结构陷阱） | 登记：users 域错误契约**只留公共库这份**，user 子域那份应删除或改委托 | 🟡 **已登记**（D-14）⇒ 属 users-user lane 的落点选择 |
+| **DDL 执行器的调用点未实现** | 中（跨 lane） | 执行器已交付；调用点属 users-user / users-admin 两条 lane ⇒ 登记移交 | 🟠 **跨 lane 未闭合**（D-10） |
+| **继承自 B 的两条**（bcrypt 前缀接受面 / DDL 与 Go 的 9 处差异） | 低（继承，非 C 引入） | 不修（基线是 B）⇒ 登记防对拍脚本误判 | 🟡 **已登记**（D-15 / D-16） |
+
+### 变异实测汇总（**本 lane + 独立审核各做一轮，合计 14 次，全部变红**）
+
+| # | 变异点 | 期望 | 实测 |
+|---|---|---|---|
+| M1 | `ErrMsg.getMsg` 未知码回落改 `null` | 红 | 🔴 红（`unknownCodeFallsBackToFail`） |
+| M2 | `IdentityResolver` 活跃判定反向（`!=0` → `==0`） | 红 | 🔴 红（4 例，含端到端） |
+| M3 | `SchemaInitializer` advisory lock 键改值 | 红 | 🔴 红（`advisoryLockKeyIsFrozen`） |
+| M4 | `JdbcUserStatusLookup` 的「查无此人」判定破坏 | 红 | 🔴 红（2 例，含端到端） |
+| M5 | `IdentityResolver.CLAIM_ATTRIBUTE` 改值 | 红 | 🔴 红（`frozenConstants`） |
+| M6–M14 | 独立审核的 9 次（错误码值 / 回落 / status 判定 / 查无此人 / lock 键 / Bearer 判定 / 强转规则 / 密钥补零 / bcrypt catch 收窄） | 红 | 🔴 **9/9 红**（含「退回 B 形态」的 `>7` 变异） |
+
+> ⚠️ **诚实备注（本 lane 自查时踩到）**：本 lane 的首轮变异里**有 2 次「没变红」** ⇒ 复查发现是
+> **变异脚本的 `replace` 命中了 javadoc 里的同一串文本、没改到代码** ⇒ 属**变异无效**，不是测试假绿
+> ⇒ 改用**精确锚点**（整行代码）重跑后如期变红。
+> ⇒ 教训沿用仓内既有口径：**「变异没变红」先分清「断言没覆盖到」与「变异没生效」**（两者都会表现为「绿」）。
 
 ---
 
@@ -227,8 +277,8 @@
 ```bash
 cd /Users/pr/Documents/GitHub/RAG-V1.worktrees/users-common
 
-# 单元 + 真 PostgreSQL 集成（33 例 · skipped=0）
-TESTCONTAINERS_RYUK_DISABLED=true mvn -o -pl service/users/common test
+# 单元 + 真 PostgreSQL 集成（46 例 · skipped=0）
+TESTCONTAINERS_RYUK_DISABLED=true mvn -o -pl service/users/common -am test
 # ⚠️ 本机 Docker 镜像源拉不动 testcontainers/ryuk ⇒ 需上面的环境变量（环境限制，非代码问题）
 
 # 三方对照守门（C 列 624/624 · A 列 482/482 · B 列未覆盖 0）
@@ -243,5 +293,17 @@ python3 tools/gen-file-tree.py
 | 测试类 | 例数 | 覆盖 |
 |---|---|---|
 | `ErrContractParityTest` | 5 | 31 条码值 + 31 条文案**逐条**对拍 B · 文案表 key 集合 = 码值集合 · 未知码回落 · 中文文案保持 |
-| `IdentityResolverTest` | 17 | `claimedUID` 4 类失败 · `claimedUIDAllowNonPositive` 不拒非正 · **5 个 sentinel** · **判定顺序**（4 组「同时违反多条」）· 三元组 · 冻结常量 · `SubjectRef` 等价 |
+| `IdentityResolverTest` | 22 | `claimedUID` 4 类失败 · `claimedUIDAllowNonPositive` 不拒非正 · **5 个 sentinel** · **判定顺序**（4 组「同时违反多条」）· `resolveUser` 返回面 · `verifyUser` 复用点 · **admin 适配契约 2 例** · 三元组 · 冻结常量 · `SubjectRef` 等价 |
+| `StringInt64ParityTest` | 8 | 上提到 `common/web/` 的 `StringInt64.parse` 运行对拍（接受 4 类 / 拒绝 4 类 / 异常消息形状）—— 闭合独立审核判定的 NOT_VERIFIED |
 | `UsersSchemaAndStatusLookupTest` | 11 | **真 PG**：`applyAll` 连跑 **3 次**幂等 · 4 表建成 · 列类型（`text` / `timestamptz`）· 4 个索引 · `status` NOT NULL · presence 三态（0 / 非 0 / NULL）· 端到端（三元组 / inactive / not-found）· lock 键冻结 |
+| **合计** | **46** | `skipped=0` |
+
+### 全仓构建的同条件对照（⚠️ 必读）
+
+| 树 | `mvn -o -T1C clean verify` 结果 |
+|---|---|
+| **本工作树**（含本 lane 全部改动） | `common` ✅ · `proto` ✅ · **`users-common` ✅ SUCCESS** · `article`/`comment`/`favorite`/`follow`/`hot`/`like`/`message`/`task` **FAILURE**（`repackage: Unable to find main class`）· `user-service`/`admin-service` SKIPPED |
+| **基线纯净副本**（`git archive b973d61`，同条件同命令） | **完全相同的 8 个域 FAILURE** ⇒ **红是主干自带，不是本轮引入** |
+
+⇒ 失败根因：那些域的 `*ServiceApplication.java` 仍是 `TODO：职责待补` 的空壳（**没有 `main` 方法**）⇒
+`spring-boot-maven-plugin:repackage` 找不到主类 ⇒ **属那些 lane 的实现工作**（AGENTS.md §0：10 个业务域仍全为空壳）。

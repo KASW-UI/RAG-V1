@@ -220,6 +220,32 @@ class IdentityResolverTest {
                 () -> IdentityResolver.verifyUser(1001L, new IdentityResolver.UserStatusRecord(true, 1001L, 1L)));
     }
 
+    // ============== admin 侧适配契约（B 的 admin 副本消解后的承接方式） ==============
+
+    @Test
+    @DisplayName("admin 侧适配契约：adapter 返回「present 且 0」⇒ 解析成功（admin 表无 status 列）")
+    void adminSideAdapterContract() {
+        // B 的 admin 版 IdentityResolver **不做** status 检查（admin.proto 的 AdminInfo 没有 status 字段）
+        // ⇒ C 侧 admin 适配器必须把「该 admin 存在且可用」表达成 **present 且 status=0**
+        // ⇒ 判定链通过 ⇒ 产出三元组（与 B 的 admin 版**可观察行为一致**）
+        IdentityResolver.UserStatusLookup adminAdapter =
+                uid -> new IdentityResolver.UserStatusRecord(true, uid, 0L);
+        IdentityResolver.SubjectRef ref = IdentityResolver.resolveSubjectRef(requestWith(1001L), adminAdapter);
+        assertEquals("rtw.identity", ref.getAuthorityId());
+        assertEquals("platform", ref.getTenantId());
+        assertEquals("1001", ref.getSubjectId());
+    }
+
+    @Test
+    @DisplayName("⚠️ admin 适配器若返回「status 缺失」⇒ 会误抛 status-unavailable（⇒ 契约的坑，钉住）")
+    void adminAdapterMustNotReportAbsentStatus() {
+        // 这条断言的价值：把「admin 侧适配器写错 ⇒ admin 登录被拒」这个坑显式钉住
+        IdentityResolver.UserStatusLookup wrongAdapter =
+                uid -> new IdentityResolver.UserStatusRecord(true, uid, null);
+        assertThrows(IdentityResolver.ErrStatusUnavailableException.class,
+                () -> IdentityResolver.resolveSubjectRef(requestWith(1001L), wrongAdapter));
+    }
+
     // ============== 三元组 ==============
 
     @Test

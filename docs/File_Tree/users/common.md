@@ -15,14 +15,6 @@
 
 ## 二、依赖
 
-- `io.grpc:grpc-stub`
-- `com.google.protobuf:protobuf-java`
-- `javax.annotation:javax.annotation-api`
-- `io.jsonwebtoken:jjwt-api`
-- `io.jsonwebtoken:jjwt-jackson`
-- `com.fasterxml.jackson.core:jackson-databind`
-- `com.fasterxml.jackson.core:jackson-annotations`
-- `org.springframework.security:spring-security-crypto`
 - `org.springframework:spring-jdbc`
 - `jakarta.servlet:jakarta.servlet-api`
 - `org.slf4j:slf4j-api`
@@ -31,6 +23,7 @@
 - `org.testcontainers:postgresql`
 - `org.testcontainers:junit-jupiter`
 - `org.postgresql:postgresql`
+- `com.rag:common`
 
 ## 三、目录树
 
@@ -61,6 +54,7 @@
 │                       └── common/
 │                           ├── ErrContractParityTest.java    # users 域错误契约逐条对拍 B（码值集 + 文案映射 + 未知码回落）。
 │                           ├── IdentityResolverTest.java    # 身份解析器的 5 个 sentinel + 两套 uid 语义 + 三元组产出（对 B 逐条）。
+│                           ├── StringInt64ParityTest.java    # {@code common/web/StringInt64.parse} 的运行对拍（闭合迁移审核的 NOT_VERIFIED 项）。
 │                           └── UsersSchemaAndStatusLookupTest.java    # 真 PostgreSQL 上的 users 域 DDL 重放 + status presence 判定。
 └── pom.xml    # Maven 模块描述
 ```
