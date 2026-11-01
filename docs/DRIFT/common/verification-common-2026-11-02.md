@@ -43,6 +43,10 @@
 > ✅ **V09 收口**（登记）：HTTP 侧的熔断机制类型差异已扩写进 **D-02**，且**有效参数已实测并钉桩**（resilience4j 2.2.0 = COUNT_BASED / 100 / 100 / 50% / 60s / 10 ⇒ `HttpCircuitBreakerConfigPinTest` ⇒ 框架默认值变形 ⇒ 测试立刻红 ⇒ 逼着重登记）。
 > ✅ **V10 收口**（登记）：新立 **D-08**「HTTP 侧降载的可观察面」⇒ ⚠️ **定性订正**：HTTP 侧统计面缺失是 **B 侧原生缺口**（B 的 REST filter 也没接 `SheddingStat`）⇒ **C ≡ B ⇒ 不是 C 的迁移缺陷** ⇒ 本仓**不改**（改了反而是未经批准的漂移）⇒ 但**必须登记**（否则对拍脚本会把它误判成回归 ⇒ 触发静默「修回」）。
 > common 测试 **218 → 224 例**（新增 `CpuSheddingFilterTest` 4 例 ＋ `HttpCircuitBreakerConfigPinTest` 2 例），**变异实测 4 次每次都变红**（含「退回只看 CPU」这条**漂移形态**）。
+>
+> ✅ **批次 I（2026-11-02 · 同日）· 台账「状态自报 ≠ 现状」清理**：§11.5 的 14 条漂移条目**原先只在标题上挂严重度标记**，而 V01–V08 / V14 **早已修完**却仍顶着 🔴/🟠 ⇒ ⇒ 读者扫标题会以为还有 7 红 2 橙 ⇒ ⇒ **本轮给每条补「状态」行 + 把标题标记改成当前状态** ⇒ ⇒ 现状 = **✅ 已修 9 · ⚪ 已登记 4 · ⚪/🟠 治理待裁决 1（V11 域归属）· 🔴 0**。
+> ✅ 顺带**关闭 V08**：映射表 §7.4 #6 的 B 列「RAG 侧只有 6 个声明 `GrpcServerConfigurer`」**已过时**（实测：**10 个 rpc 应用全部**声明了）⇒ 且该行 C 列「全树 0 个」也已被批次 B 推翻 ⇒ ⇒ 已就地订正。
+> ✅ **V11 定性**：B 侧本来就把它放在**共享层** ⇒ **C ≡ B ⇒ 行为侧无漂移** ⇒ 只登记治理张力（🏷 候选，建议签），**不升级为拍板**、**不阻塞**本次迁移。
 
 ---
 
@@ -310,7 +314,9 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 > **状态**：🔴 = 必须在填域实现前处置；🟠 = 登记后放行；⚪ = 已登记沿用。
 > **纪律**（§13）：本报告**只记录证据与修复建议**，**未改任何代码**。
 
-### 🔴 DRIFT-COMMON-V01｜`redis/` 两个自动配置不在 `AutoConfiguration.imports` ⇒ 两项能力静默失效
+### ✅ DRIFT-COMMON-V01｜`redis/` 两个自动配置不在 `AutoConfiguration.imports` ⇒ 两项能力静默失效
+
+**状态**：**✅ 已修复**（2026-11-02 · 批次 A）⇒ 两个 redis auto-config 已登记进 `AutoConfiguration.imports` ⇒ 对拍：`RedisAutoConfigurationActivationTest`（3 例）。
 
 | 项 | 内容 |
 |---|---|
@@ -324,7 +330,9 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | **✅ 修法（2026-11-02 · 用户选定）** | ① 两行加进 `common/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`（清单 7 → **10 行**）；② **守门扫描范围同步扩大** —— `AutoConfigurationImportsTest` 的判据从「`autoconfigure/` 目录 == imports 清单」改成「**全模块每个 `@AutoConfiguration` 类都必须有激活路径**（清单登记 或 被某个 auto-config 的 `@Bean` 实例化）」⇒ 覆盖 `redis/` 等**别的包**下的 auto-config ⇒ **同类缺口当场变红** |
 | **验证方法（已落地）** | ① **行为真触发**：`RedisAutoConfigurationActivationTest`（3 例）—— 真调 customizer 断言 `DisconnectedBehavior == REJECT_COMMANDS` ＋ 断言 `RedisTemplate.getConnectionFactory()` 真的变成 `DeadlineConnectionFactory` ＋ 幂等（不二次包装）；② **注册真触发**：`AutoConfigurationImportsTest` 用 **Boot 真实的 `AutoConfigurationImportSelector`** 从 **classpath** 清单选出本模块 auto-config ⇒ 与源码清单逐条一致；③ **变异实测**：把这两行从 imports 摘掉 ⇒ 激活路径不变式**立刻变红**（实测 104 例 1 红） |
 
-### 🔴 DRIFT-COMMON-V02｜SQL 超时链路两个 MyBatis 拦截器零注册 ⇒ 整条链不生效
+### ✅ DRIFT-COMMON-V02｜SQL 超时链路两个 MyBatis 拦截器零注册 ⇒ 整条链不生效
+
+**状态**：**✅ 已修复**（2026-11-02 · 批次 A）⇒ 新增 `autoconfigure/PersistenceAutoConfiguration` 注册两个 MyBatis 拦截器 ⇒ 对拍：`PersistenceAutoConfigurationTest`（3 例，用**与 MP 同形**的 `ObjectProvider<Interceptor[]>` 注入点断言真的收到了它们）。
 
 | 项 | 内容 |
 |---|---|
@@ -338,7 +346,9 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | **✅ 修法（2026-11-02 · 用户选定）** | 新增 `common/src/main/java/com/rag/common/autoconfigure/PersistenceAutoConfiguration.java`（`@AutoConfiguration` ＋ `@ConditionalOnClass(name="org.apache.ibatis.plugin.Interceptor")` ＋ 两个带 `@ConditionalOnMissingBean` 的 `@Bean`）⇒ **注册义务从 B 侧的「域内 5 份 `@Bean`」上收到共享层 1 份**（D3 starter 化 ⇒ 10 个域一次全挂上）；**不**放回域内（那会回到 B 的老路） |
 | **验证方法（已落地）** | ① **机制取证**：`javap -c`（MP 3.5.17）⇒ `MybatisPlusAutoConfiguration` 构造器形参是 `ObjectProvider<Interceptor[]>` 且**构造器内即** `getIfAvailable()` ⇒ 注册成 Bean 即被收得到；② **真触发测试**：`PersistenceAutoConfigurationTest`（3 例）—— 用**与 MP 完全同形**的注入点断言**真的收到这两个拦截器**（不是「Bean 存在」这种弱证据）＋ 域内已有同类型时共享层让位；③ **变异实测**：把 `PersistenceAutoConfiguration` 从 imports 摘掉 ⇒ 激活路径不变式 + 「目录 ⊆ 清单」双红（实测 104 例 2 红） |
 
-### 🔴 DRIFT-COMMON-V03｜gRPC 服务端保护链 5 层全缺（recover / stat / prometheus / breaker / shedding）
+### ✅ DRIFT-COMMON-V03｜gRPC 服务端保护链 5 层全缺（recover / stat / prometheus / breaker / shedding）
+
+**状态**：**✅ 已修复**（2026-11-02 · 批次 B）⇒ 5 层链 + 客户端熔断 + 出向 deadline + Prometheus 写入面 + 6 码失败白名单 + 链序全部落地 ⇒ 对拍：`ProtectionAutoConfigurationWiringTest#chainLayerOrderMatchesGo`（**真的搭出链**逐层断言）+ `ClientProtectionAutoConfigurationTest`（devh **真实收集器**）。
 
 | 项 | 内容 |
 |---|---|
@@ -353,7 +363,9 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | **验证方法** | ① 造一个抛 `RuntimeException("boom")` 的 handler ⇒ 断言客户端收到 `INTERNAL` 且 description **以 `"panic: "` 开头**；② 断言 `compose(props).allLayerNames()` = `[recover, stat, prometheus, breaker, shedding]` |
 | **✅ 修复状态** | **2026-11-02 已修（批次 B）** —— ① **服务端 5 层**：`RpcRecoverInterceptor` / `RpcStatInterceptor` / `RpcPrometheusInterceptor` / `RpcCircuitGateInterceptor` / `RpcSheddingInterceptor`（全部抄写 RAG，L2 逐条保留）；② **链序**：`ProtectionAutoConfiguration` 的 `RPC_LAYER_*` 常量（0..4）＋ `RpcProtectionChain.compose` 显式嵌套 ⇒ 链序 = `[recover, stat, prometheus, breaker, shedding, business]`（Go 注册序，`business` = 业务观测层）；③ **失败判据**：`RpcFailurePolicy`（6 码白名单，**业务错误不参与熔断**）；④ **客户端侧**：`ClientCircuitGateInterceptor`（隔离 key 含下游服务身份）＋ `OutboundDeadlineInterceptor`（min 语义，per-service 上界是「覆盖」）；⑤ **装配**：`ClientProtectionAutoConfiguration`（starter 化，消费方零 `@Import`）。<br>**对拍**：`ProtectionAutoConfigurationWiringTest#chainLayerOrderMatchesGo`（真的搭出链逐层断言）、`RpcRecoverInterceptorTest`（4 例，锁 `"panic: "` 的 **L1 wire 契约**）、`RpcProtectionLayerTest`（8 例，锁降载拒绝形状 / 6 码白名单 / 客户端隔离 key / 出向 deadline 的 min 语义 / **降载双条件**）、`ClientProtectionAutoConfigurationTest`（2 例，锁 devh **真实收集器**收到两个拦截器）。<br>**变异实测**：把 `RPC_LAYER_BREAKER` 改成 0 ⇒ 链序断言**转红** ⇒ 判据活着。<br>⚠️ **伴随暴露的一个真实回归（已修）**：`ObservabilityAutoConfiguration.grpcObservationInterceptor` 的 `@ConditionalOnMissingBean` **按返回类型 `ServerInterceptor` 判缺失** ⇒ 新增 5 个 `ServerInterceptor` Bean 后**业务观测层被静默跳过**（零报错）⇒ 改按 **bean 名**判 ⇒ 教训登记 `docs/Pitfalls/`。<br>⚠️ **D4 代价（已登记 L3）**：Prometheus 写入面丢掉 RAG 的「接缝接口 ＋ 静态 holder」（改构造器注入 `MeterRegistry`）⇒ **指标桶布局不等价**（Go 显式 12 桶 vs Micrometer 默认 summary）；熔断器本体统一用 resilience4j ⇒ **机制类型**与 Go 的 googlebreaker 不同（挂 **D-02** 的 L3）。 |
 
-### 🔴 DRIFT-COMMON-V04｜HTTP 超时 / 客户端断连中间件缺失（503 + 499）
+### ✅ DRIFT-COMMON-V04｜HTTP 超时 / 客户端断连中间件缺失（503 + 499）
+
+**状态**：**✅ 已修复**（2026-11-02 · 批次 C）⇒ HTTP 超时 503 ＋ body `Request Timeout`（**16** 字节）＋ 断连 **499** ＋ **512** worker 池 ＋ 池饱和裸 503 ＋ `ClientDisconnectProbe` 4 态 ⇒ 对拍：`HttpMiddlewareTest`（11 例）；**4 次变异实测**每次都变红（其中一次「探针断连 499→500」最初**没变红** ⇒ 补了探针接缝后才变红 ⇒ 记 **P-12**「变异没变红 ＝ 没覆盖」）。
 
 | 项 | 内容 |
 |---|---|
@@ -367,7 +379,9 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | **修复建议** | 确认 L3 登记条目在 `docs/L3-降级清单.md` 里可检索；实现时 499 需自造（Tomcat 无此状态码 ⇒ 需确认容器是否允许自定义 4xx） |
 | **验证方法** | 真 Tomcat：`observability.http-timeout=100ms` + 慢端点 ⇒ 断言 503 + body `Request Timeout\n`；断连场景需真实 socket |
 
-### 🔴 DRIFT-COMMON-V05｜HTTP 熔断「模板取不到」的回落语义与 B 相反
+### ✅ DRIFT-COMMON-V05｜HTTP 熔断「模板取不到」的回落语义与 B 相反
+
+**状态**：**✅ 已修复**（2026-11-02 · 批次 A）⇒ 回落语义已与 B 一致：`UNKNOWN`（模板判不出来）⇒ **回落 raw URI 分桶、熔断仍生效**；`NOT_MATCHED` ⇒ 本层完全不参与 ⇒ 对拍：`RouteIsolationFilterTest`（6 例）。
 
 | 项 | 内容 |
 |---|---|
@@ -382,7 +396,9 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | **验证方法** | 构造一个 `RequestMappingHandlerMapping.getHandler` 抛异常 ⇒ 断言请求仍被 breaker 计数（而非直接放行） |
 | **✅ 修复状态** | **2026-11-02 已修（批次 A）** —— `RouteIsolationFilter` 改经窄接口 `RouteTemplateSource` 取三态；`UNKNOWN` ⇒ **回落 raw URI 分桶**（熔断仍生效）、`NOT_MATCHED` ⇒ 本层完全不参与。对拍：`RouteIsolationFilterTest` 6 例；**变异实测**：把回落改回「放行」⇒ **2 例红**（`unknownTemplateFallsBackToRawUriAndBreakerStillApplies` / `absentTemplateSourceFallsBackToRawUri`）|
 
-### 🔴 DRIFT-COMMON-V06｜三个「窄接口」是空类且零引用；模板解析职责断裂
+### ✅ DRIFT-COMMON-V06｜三个「窄接口」是空类且零引用；模板解析职责断裂
+
+**状态**：**✅ 已修复**（2026-11-02 · 批次 A）⇒ 三个窄接口落地为真实现（`RouteTemplateSource` / `RouteResolution` / `RouteTemplateResolver`）＋ 消费方改走窄接口 ⇒ 对拍：`RouteTemplateResolverTest`（5 例）。
 
 | 项 | 内容 |
 |---|---|
@@ -397,7 +413,9 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | **验证方法** | 修完后：断言 `RouteTemplateSource` 有 1 个实现 Bean；断言三态可区分 |
 | **✅ 修复状态** | **2026-11-02 部分修复（批次 A）** —— ① `RouteResolution` 落成三态 `record`（`Kind{TEMPLATE,NOT_MATCHED,UNKNOWN}`）；② `RouteTemplateSource` 落成 `@FunctionalInterface` 窄接口；③ **新增** `protection/RouteTemplateResolver.java`（实现类）+ `autoconfigure/RouteTemplateAutoConfiguration.java`（独立 auto-config，类级 `@ConditionalOnClass` ⇒ 不让 MVC 类型进 `ProtectionAutoConfiguration` 常量池）；④ `RouteIsolationFilter` **改为经窄接口取模板** ⇒ 职责断裂闭合。对拍：`RouteTemplateResolverTest` 5 例（三态全覆盖）+ `RouteIsolationFilterTest` 6 例。<br>⚠️ **仍未修**：`observability/ClientDisconnectProbe.java` 仍为空壳 ⇒ 归 **V04**（HTTP 断连 499）批次 C 处理，**Tomcat 10.1 反射链须重测（F-7）** |
 
-### 🟠 DRIFT-COMMON-V07｜空壳类实际 6 类，文档口径 3 类；`common/security/` 3 类上收了未实现
+### ✅ DRIFT-COMMON-V07｜空壳类实际 6 类，文档口径 3 类；`common/security/` 3 类上收了未实现
+
+**状态**：**✅ 已修复**（2026-11-02 · 批次 D）⇒ `common/security/` 3 类落地（JWT 签发验签 / Bearer 提取 / bcrypt 口令 · jjwt 0.12.6 适配）⇒ 对拍：`SecurityUtilTest`（7 例）；⚠️ 「空壳类实际 6 类 vs 文档口径 3 类」的**口径**也已订正（当前 **0 空壳**）。
 
 | 项 | 内容 |
 |---|---|
@@ -411,7 +429,9 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | **修复建议** | ① **改口径**：`AGENTS.md` §0/§2.3、`docs/README.md` 状态速查、`docs/Mapping_Table/common.md` §1.1~§1.11 的落点数 ⇒ 统一改成「**71 类中 65 已落地 · 6 空壳**」；② `ClientDisconnectProbe`/`RouteResolution`/`RouteTemplateSource` 若短期不实现 ⇒ 在映射表把 ✅ 改成 ⬜（§2.1 要求「映射表有记录、C 没实现」必须登记）；③ JWT 3 类随域实现推进 |
 | **验证方法** | 口径核对用 `find common/src/main -name '*.java' -exec sh -c '[ $(wc -l < "$1") -le 12 ] && echo "$1"' _ {} \;` 逐条列（**当前 6 条**） |
 
-### 🟠 DRIFT-COMMON-V08｜映射表 §7.4 #6 的 B 列实况已过时
+### ✅ DRIFT-COMMON-V08｜映射表 §7.4 #6 的 B 列实况已过时
+
+**状态**：**✅ 已修复**（2026-11-02 · 批次 H）⇒ 映射表 `docs/Mapping_Table/common.md` **§7.4 #6 的 B / C 两列实况已就地订正**：B 侧现在 **10 个 rpc 应用全部**声明了 `GrpcServerConfigurer`（原文「只有 6 个 ⇒ message / user / admin 静默失效」已过时）· C 侧批次 B 已修 ⇒ ⇒ 本条随之关闭。
 
 | 项 | 内容 |
 |---|---|
@@ -467,6 +487,12 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 
 ### ⚪ DRIFT-COMMON-V11｜`common/` 内 `communityfact/` 的**域归属**未裁决（AGENTS.md §2.3 已挂 🔴）
 
+**状态**：**⚪ 已登记**（行为对拍侧：**C ≡ B ⇒ 无漂移**）⇒ 🏷 **候选，建议签**。
+⚠️ **为什么行为侧可以直接判「无漂移」**：B 侧（RAG）本来就把它放在**共享层** `service/common/communityfact/`（7 个协议 DTO ＋ 行为类，comment / favorite / like 三域共用）⇒ ⇒ C 侧放 `common/communityfact/` **与 B 同构** ⇒ ⇒ 符合 §1.0c「L2 以 RAG 为基准」⇒ ⇒ **不是 C 引入的漂移**。
+⚠️ **剩下的是「治理口径」问题，不是行为问题**：AGENTS.md §2.3 的原则是「`common/` 只放无域归属能力」，而这 6 个**行为类**（`Dispatcher` / `EventDispatcher` / `EventSender` / `AuthorityHandler` / `ProcessLogger` / `Wire`）**携带 comment·favorite·like 三域归属** ⇒ ⇒ 与该原则**有张力**（⇒ 10 个 app 全依赖 `common/` ⇒ 改一行锁住 10 域）。
+⚠️ **按「登记类事项不升级为拍板」的纪律** ⇒ 本仓**只登记、不追拍板** ⇒ ⇒ 该张力**不阻塞**本次迁移（行为层已与 B 对齐）⇒ ⇒ 交由后续治理决策（域归属上收到 `service/<域>/common/` 还是维持共享层）。
+⇒ `common/communityfact/` 的 **7 个协议 DTO**（无域归属）＋ **6 个行为类**（`Dispatcher` / `EventDispatcher` / `EventSender` / `AuthorityHandler` / `ProcessLogger` / `Wire` · 携带 comment·favorite·like 三域归属）与 AGENTS.md §2.3「`common/` 只放无域归属能力」**有张力** ⇒ ⇒ 10 个 app 全依赖 `common/` ⇒ 改一行锁住 10 域 ⇒ ⇒ **填实现前必须裁决**（AGENTS.md §2.3 已挂 🔴）。⚠️ **本条不计入 §11.2 的 91 承接行**（它是**归属裁决**，不是某个 B 源类的承接状态）。
+
 | 项 | 内容 |
 |---|---|
 | **位置** | C：`common/src/main/java/com/rag/common/communityfact/`（13 类，其中 6 个**带域归属**的行为类：`Dispatcher`/`EventDispatcher`/`EventSender`/`ProcessLogger`/`ProcessMetadata`/`AuthorityHandler`） |
@@ -481,7 +507,9 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 C 侧同时存在 `web/GrpcStatusMapper.java` 与 `autoconfigure/GrpcExceptionMapperAutoConfiguration.java` ⇒ 两处都做「gRPC code → 业务码」⇒ 装配顺序不同 ⇒ 同一异常可能映射出**两个不同 code**。
 **状态**：**⚪ 已登记**（映射表 §7.4 #2「建议删 `web/GrpcStatusMapper.java`」）⇒ 本次只落不删（AGENTS.md 明令「不擅自删类」）。
 
-### 🔴 DRIFT-COMMON-V14｜C 侧 `common/` 缺 `grpc-core` ⇒ devh gRPC server auto-config 一出现就崩
+### ✅ DRIFT-COMMON-V14｜C 侧 `common/` 缺 `grpc-core` ⇒ devh gRPC server auto-config 一出现就崩
+
+**状态**：**✅ 已修复**（2026-11-02 · 批次 F）⇒ 本模块在两个 devh starter 上的 `<exclusion>` 把 `grpc-core` 一并切断了（Maven 的 exclusion 作用于**整棵传递子树** ⇒ `grpc-netty-shaded → grpc-core` 也被切断）⇒ classpath 上没有 `grpc-core` ⇒ 只要 devh 的 gRPC server auto-config 出现就炸 `NoClassDefFoundError: io/grpc/internal/ObjectPool` ⇒ ⇒ 已按**域模块同款口径**显式声明（**test scope** ⇒ 零下游影响）⇒ 对拍：`GoStyleOtelAgentTest` 的**真 Spring 上下文**用例（修前直接炸，修后通过）。
 
 | 项 | 内容 |
 |---|---|
