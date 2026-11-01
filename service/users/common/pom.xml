@@ -22,6 +22,38 @@
         <dependency>
             <groupId>javax.annotation</groupId><artifactId>javax.annotation-api</artifactId><scope>provided</scope>
         </dependency>
+        <!--
+            ══ 抄自 RAG 仓 `service/users/users-common/pom.xml` ══
+            ⚠️ **D14 · 工具链回退**：`jjwt-jackson`（Jackson 2）**恢复照抄** ⇒ 不再需要自写
+               `tools.jackson` `Serializer`（`IdentityResolver` / `common/security/JwtUtil.java` 直接用它）。
+        -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId><artifactId>jjwt-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId><artifactId>jjwt-jackson</artifactId><scope>runtime</scope>
+        </dependency>
+        <!--
+            Jackson 2 —— `IdentityResolver` 要解析 JWT claims。
+            版本由根 pom 的 `com.fasterxml.jackson:jackson-bom` 统一管（2.19.4，与 Boot 3.5.11 同版本）。
+        -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-annotations</artifactId>
+        </dependency>
+        <!--
+            口令散列（`PasswordUtil`）—— Spring Security 的 `BCryptPasswordEncoder`
+            ⇒ **不用**自己实现散列（§3.2「生态优先」）。
+        -->
+        <dependency>
+            <groupId>org.springframework.security</groupId><artifactId>spring-security-crypto</artifactId>
+        </dependency>
+        <!-- JDBC（`users-common` 要经 JDBC 读用户表做 status presence 检查） -->
+        <dependency>
+            <groupId>org.springframework</groupId><artifactId>spring-jdbc</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

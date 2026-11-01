@@ -10,7 +10,7 @@
 > | **C (RAG-V1, 本仓目标)** | `/Users/pr/Documents/GitHub/RAG-V1` | `service/follow/` |
 >
 > **规模基线（实测）**：A = **44 个手写 `.go`** + 2 个 protoc 生成 `.go` + 2 个 `.yaml` = **48 个文件**；
-> B = **48 个 `.java`**（不含测试）；C = **37 个 `.java`**（不含测试）。
+> B = **51 个 `.java`**（不含测试）；C = **37 个 `.java`**（不含测试）。
 >
 > ⚠️ **C 列目前全是空壳** —— 每个 `.java` 只有 `package` + 空类型 + TODO javadoc ⇒
 > **C 列写的是「这个位置该放什么职责」，不是「已经有什么」。**
@@ -26,11 +26,11 @@
 
 | A Go 文件 / 目录 | B RAG 文件 / 目录 | C RAG-V1 文件 / 目录 | 映射类型 | 备注 |
 |---|---|---|---|---|
-| `service/follow/api/`（25 个文件：24 `.go` + 1 `.yaml`） | `service/follow/follow-api/`（27 个 `.java`） | `service/follow/src/main/java/com/rag/follow/advice + service/follow/src/main/java/com/rag/follow/config + service/follow/src/main/java/com/rag/follow/controller + service/follow/src/main/java/com/rag/follow/dto + service/follow/src/main/java/com/rag/follow/interceptor + service/follow/src/main/java/com/rag/follow/metrics + service/follow/src/main/java/com/rag/follow/service`（17 个 `.java`） | 1:1 | **D1**：api 与 rpc 合并进同一 app ⇒ C 列的 `api/` 包只是**同一进程内的 HTTP 层**，不再是独立部署单元 |
-| `service/follow/rpc/`（22 个文件：20 `.go` + 2 `pb/*.go` + 1 `.yaml`） | `service/follow/follow-rpc/`（17 个 `.java`） | `service/follow/src/main/java/com/rag/follow/wiring + service/follow/src/main/java/com/rag/follow/client + service/follow/src/main/java/com/rag/follow/config + service/follow/src/main/java/com/rag/follow/domain/entity + service/follow/src/main/java/com/rag/follow/domain/service + service/follow/src/main/java/com/rag/follow/grpc + service/follow/src/main/java/com/rag/follow/mapper + service/follow/src/main/java/com/rag/follow/metrics + service/follow/src/main/java/com/rag/follow/service`（15 个 `.java`） | 1:1 | 同上；C 列的 `rpc/` 包 = **服务端能力层**（命名债，见《完全spring化的文件树》§5.2） |
+| `service/follow/api/`（25 个文件：24 `.go` + 1 `.yaml`） | `service/follow/follow-api/`（31 个 `.java`） | `service/follow/src/main/java/com/rag/follow/advice + service/follow/src/main/java/com/rag/follow/config + service/follow/src/main/java/com/rag/follow/controller + service/follow/src/main/java/com/rag/follow/dto + service/follow/src/main/java/com/rag/follow/interceptor + service/follow/src/main/java/com/rag/follow/metrics + service/follow/src/main/java/com/rag/follow/service`（17 个 `.java`） | 1:1 | **D1**：api 与 rpc 合并进同一 app ⇒ C 列的 `api/` 包只是**同一进程内的 HTTP 层**，不再是独立部署单元 |
+| `service/follow/rpc/`（22 个文件：20 `.go` + 2 `pb/*.go` + 1 `.yaml`） | `service/follow/follow-rpc/`（16 个 `.java`） | `service/follow/src/main/java/com/rag/follow/wiring + service/follow/src/main/java/com/rag/follow/client + service/follow/src/main/java/com/rag/follow/config + service/follow/src/main/java/com/rag/follow/domain/entity + service/follow/src/main/java/com/rag/follow/domain/service + service/follow/src/main/java/com/rag/follow/grpc + service/follow/src/main/java/com/rag/follow/mapper + service/follow/src/main/java/com/rag/follow/metrics + service/follow/src/main/java/com/rag/follow/service`（15 个 `.java`） | 1:1 | 同上；C 列的 `rpc/` 包 = **服务端能力层**（命名债，见《完全spring化的文件树》§5.2） |
 | `service/follow/common/`（1 个文件） | `service/follow/follow-common/`（4 个 `.java`） | `service/follow/src/main/java/com/rag/follow/contract/`（4 个 `.java`） | 1:1 | 模块改名 `follow-common` → 域内 `contract/` 包；包名 `com.rag.follow.follow.common.errmsg` → `com.rag.follow.contract` |
 | `service/follow/rpc/pb/`（protoc 生成物，2 个 `.go`） | `service/follow/follow-proto/`（`src/main/proto/follow.proto`） | `proto/src/main/proto/follow.proto` | 1:1 | `option go_package` 删、`java_package` 改；**message 名 / 字段名 / 字段号 / 类型 / rpc 签名 1:1 不变** |
-| —（Go 侧跨服务共享层 `service/common/`） | `service/common/`（51 个 `.java`，普通 jar） | `common/`（仓库根，47 个 `.java` + `autoconfigure/` 7 类，真 starter） | 1:1 | **D3**：共享层升级为 starter ⇒ 见 §4 |
+| —（Go 侧跨服务共享层 `service/common/`） | `service/common/`（88 个 `.java`，普通 jar） | `common/`（仓库根，47 个 `.java` + `autoconfigure/` 7 类，真 starter） | 1:1 | **D3**：共享层升级为 starter ⇒ 见 §4 |
 | —（Go 侧 follow 域**无** proto 独立模块） | `service/follow/follow-proto/`（proto 源在模块内） | 根级 `proto/src/main/proto/follow.proto`（**D7 后 10 域共用一个 proto 模块**；域内 `contract/` 包只放错误契约与事件 DTO） | 1:1 | Go 的 proto 源文件在**仓库根** `proto/follow.proto`，不在 `service/follow/` 下 ⇒ 属于 A 列域外的引用，登记于 §6.1 |
 
 > ⚠️ **Go 侧 follow 域没有 `cmd/` 独立进程** —— go-zero 的 follow 只有两个进程入口文件 `{advice,config,controller,dto,interceptor,metrics,service}/followcenter.go` 与 `{bootstrap,client,config,domain/entity,domain/service,grpc,mapper,metrics,service}/follow.go`（**不是** `cmd/` 布局）；RAG / RAG-V1 用 `follow-api` / `follow-rpc` / `follow-service` 模块表达 ⇒ **Go 侧无对应物，不补**（本条不占映射表行，故无映射类型）。
@@ -184,6 +184,16 @@
 
 **为什么换**：`forbidden_scope` 这条专属业务规则只存在于 2 个读用例（`getblocklist` / `getrecommendations`），若 8 个用例合成 1 个类，这条规则会埋进大块（《完全spring化的文件树》§5.4 判据 ⑤ 失败）⇒ 劈成「4 纯转发 / 4 带规则」两组是最小改动。
 ⚠️ **代价**：8 个 `route` 指标字面量（`/follow/v1/follow` …）**不会因为合并而减少** ⇒ 每个方法仍须携带自己的 `route` 常量，否则指标标签会串。
+
+### 1.6 🔴 RAG 侧新增类补录（1 条 · 覆盖 4 个 `.java`）
+
+> ⚠️ **本节是 2026-11-01 的增量**：RAG 在首版映射表之后新增了 `follow-api/…/auth/` 包（4 类）
+> ⇒ 首版 §1.2 的 **B 列漏了这 4 个 `.java`** ⇒ 本节逐个落到 C 侧；
+> 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
+
+| A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
+|---|---|---|---|---|
+| `api/internal/handler/routes.go` 的 `rest.WithJwt(...)` 绑定 | `follow-api/…/auth/FollowJwtAuthPaths.java` ＋ `follow-api/…/auth/FollowJwtSignatureVerifier.java` ＋ `follow-api/…/auth/FollowJwtVerificationResult.java` ＋ `follow-api/…/auth/GoStyleJwtAuthFilter.java` | `service/follow/src/main/java/com/rag/follow/interceptor/FollowJwtAuthInterceptor.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 1 个 `HandlerInterceptor`** ⇒ 🔴 **C 侧缺口**：要么补 1 个 `OncePerRequestFilter` 承载验签，要么显式登记为签字偏离。⚠️ **受保护路由表 ＋ public 前缀集合是 L1**；⚠️ follow 域另有 `FollowBlacklistInterceptor.java`（C 侧已列）⇒ **黑名单与验签是两个拦截器**，别合并 |
 
 ---
 
@@ -517,14 +527,14 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/follow" -name '*.java' \
 > **结果：48/48 = 100%**（44 手写 `.go` + 2 生成 `.go` + 2 `.yaml`），其中 **47 个有 C 列落点**、**1 个明确注明「Go 侧无对应物（原因）」**（`rpc/internal/model/vars.go`）。
 > ⚠️ Go 侧 `service/follow/` **零 `_test.go` 文件**（实测 `find -name '*_test.go'` = 0）⇒ 无测试文件需要登记。
 
-### 7.3 B 列可核（48 个 `.java`）
+### 7.3 B 列可核（51 个 `.java`）
 
 | B 列模块 | `.java` 数 | 本表出现的 B 列文件 |
 |---|---|---|
-| `follow-api` | 27 | `FollowApiApplication`、`GlobalExceptionHandler`、`GlobalResponseAdvice`、`FollowRpcClient`、`FollowApiProperties`、`FollowGoStyleCoercion`、`WebMvcConfig`、`FollowController`、`dto/`×6、`interceptor/`×2、`FollowApiMetrics`、`service/`×10（8 用例 + `FollowApiSupport` + `AbstractFollowApiService`） |
+| `follow-api` | 31 | `FollowApiApplication`、`GlobalExceptionHandler`、`GlobalResponseAdvice`、`FollowRpcClient`、`FollowApiProperties`、`FollowGoStyleCoercion`、`WebMvcConfig`、`FollowController`、`dto/`×6、`interceptor/`×2、`FollowApiMetrics`、`service/`×10（8 用例 + `FollowApiSupport` + `AbstractFollowApiService`） |
 | `follow-common` | 4 | `FollowCodeError`、`FollowErrorCode`、`FollowErrorMessages`、`FollowGrpcError` |
-| `follow-rpc` | 17 | `FollowRpcApplication`、`NacosRegistration`、`UserRpcClient`、`FollowRpcProperties`、`MybatisPlusOrderingBridgeAutoConfiguration`、`domain/`×2、`mapper/`×3、`FollowRpcMetrics`、`service/`×5、`service/impl/FollowServiceGrpcImpl` |
-| **合计** | **48** | **48/48 全部出现在 B 列** |
+| `follow-rpc` | 16 | `FollowRpcApplication`、`NacosRegistration`、`UserRpcClient`、`FollowRpcProperties`、`MybatisPlusOrderingBridgeAutoConfiguration`、`domain/`×2、`mapper/`×3、`FollowRpcMetrics`、`service/`×5、`service/impl/FollowServiceGrpcImpl` |
+| **合计** | **51** | **51/51 全部出现在 B 列**（2026-11-01 增量：`auth/` 4 类） |
 
 ### 7.4 映射类型分布（仅 4 种合法词）
 
@@ -532,11 +542,11 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/follow" -name '*.java' \
 |---|---|---|
 | `1:1` | **75** | 三列逐条对位（多数 DTO / Entity / Mapper / Metrics / Interceptor / config） |
 | `1:N` | **15** | 1 个 Go 文件 → 多个 Java 文件（`errmsg.go`→4 类、`data_model.go`→2 Entity、`model/follow.go`→3 mapper、8 个 handler→1 Controller 等） |
-| `N:1` | **23** | 多个 Go 文件 → 1 个 Java 文件（8 个 api logic→2 Service、8 个 rpc logic→1 `FollowDomainService`、8 个 handler→1 Controller 等） |
+| `N:1` | **24** | 多个 Go 文件 → 1 个 Java 文件（8 个 api logic→2 Service、8 个 rpc logic→1 `FollowDomainService`、8 个 handler→1 Controller 等） |
 | `C 新增` | **1** | `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java`（D2 的统一 gRPC 异常映射，A / B 两侧都没有对应物） |
-| **合计带映射类型的表行** | **114** | §0（6）+ §1.1（5）+ §1.2（27）+ §1.3（9）+ §1.4（20）+ §2（13）+ §3（17）+ §4（17） |
+| **合计带映射类型的表行** | **115** | §0（6）+ §1.1（5）+ §1.2（27）+ §1.3（9）+ §1.4（20）+ §1.6（1）+ §2（13）+ §3（17）+ §4（17） |
 
-> ⚠️ **无其它映射类型**（未出现 `N:M` / `1:1:1` 等自造词）；**114 行全部填了映射类型，无空缺**。
+> ⚠️ **无其它映射类型**（未出现 `N:M` / `1:1:1` 等自造词）；**115 行全部填了映射类型，无空缺**（核对日期 2026-11-01）。
 
 ### 7.5 本表**不回答**的问题（移交其它台账）
 

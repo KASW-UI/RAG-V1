@@ -33,9 +33,10 @@ docs/Intentional_Deviations/
 | 域 | 条目数 | 备注 |
 |---|---|---|
 | `common` | 0 | D1–D9 的结构性决策见 `../决策记录.md`，不进本档 |
+| `article` | **1** | [DEV-ARTICLE-AUDIT-001](article/content-audit-fail-loud.md) |
 | `like` | **2** | [DEV-LIKE-PROTO-001](like/_signed-deviations.md) · [DEV-LIKE-PROTO-002](like/_signed-deviations.md) |
 | `comment` | **2** | [DEV-COMMENT-PROTO-001](comment/_signed-deviations.md) · [DEV-COMMENT-PROTO-002](comment/_signed-deviations.md) |
-| 其余 8 域 | 0 | — |
+| 其余 7 域 | 0 | — |
 
 ### 已登记条目一览
 
@@ -45,6 +46,7 @@ docs/Intentional_Deviations/
 | `DEV-COMMENT-PROTO-001` | comment | **L1** | 🏷 **已签字** | proto `package`：`pb` → `comment`（gRPC 方法路径 `/pb.CommentService/*` → `/comment.CommentService/*`） |
 | `DEV-LIKE-PROTO-002` | like | L4 | ✅ **已落地，待确认** | `java_package`：`com.rag.like.contract.proto` → `com.rag.proto.like` |
 | `DEV-COMMENT-PROTO-002` | comment | L4 | ✅ **已落地，待确认** | `java_package`：`com.rag.comment.contract.proto` → `com.rag.proto.comment` |
+| `DEV-ARTICLE-AUDIT-001` | article | **L2** | 🏷 **候选，建议签** | 内容安全 / 图片广告检测**无对端**（`security` 域范围外）⇒ 审核链路**恒 fail-loud**（Go `article_consumer.go:153-156` 的 `SecurityRpc == nil ⇒ return error` 语义保留） |
 
 > ⚠️ **002 两条是 proto 集中化的机械后果**，不是独立设计选择 —— 它们随 `proto/` 模块的落地自动生效。
 > ✅ **2026-10-26 · D7：改动已落地** —— 10 个 proto 的 `option java_package` 全部改为 `com.rag.proto.<域>`（**实测**：根级 `proto/src/main/proto/*.proto` 的 option 块 + 生成物 `proto/target/generated-sources/protobuf/java/com/rag/proto/<域>/` 的 `package` 声明）。
@@ -52,5 +54,6 @@ docs/Intentional_Deviations/
 
 ### 待办
 
+- 🏷 **`DEV-ARTICLE-AUDIT-001` 建议签** —— 「两侧确实不同」的前提已逐行核对（Go `article_consumer.go:153-156` fail-loud · `:253` 图片检测 · Go 侧确有 `service/security/rpc/`）；登记本身是交付物，**不打包推给用户逐条拍板**。
 - ⬜ **002 两条待签字确认** —— 改动已实施（`java_package` 实测为 `com.rag.proto.<域>`），只需使用者确认登记内容与实际一致。
 - ⬜ **其余 8 域的 `java_package` 登记** —— 集中化是全 10 域动作（D7 已全部改完），其余 8 域的同类条目**待登记**（本档现只登记了 like / comment 两域）。

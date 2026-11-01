@@ -18,12 +18,12 @@
 | 列 | 仓库 | 角色 | 主代码文件数 |
 |---|---|---|---|
 | **A** | `Sea-RideTheWind_golang` | **真理之源**（冻结，只读） | **482** 个 `.go`（不含 `_test.go`） |
-| **B** | `RAG` | Go 部署形态版（api/rpc 分离） | **695** 个 `.java`（不含测试） |
-| **C** | `RAG-V1` | **Spring 惯用目标形态**（api/rpc 合并） | **548** 个 `.java`（不含测试） |
+| **B** | `RAG` | Go 部署形态版（api/rpc 分离） | **752** 个 `.java`（不含测试） |
+| **C** | `RAG-V1` | **Spring 惯用目标形态**（api/rpc 合并） | **549** 个 `.java`（不含测试） |
 
-> ⚠️ **三列不是 1:1 数量关系** —— C 比 B 少 147 个文件，主要来自：
+> ⚠️ **三列不是 1:1 数量关系** —— C 比 B 少 **203** 个文件，主要来自：
 > ① **api/rpc 合并**（D1）⇒ B 的 `*-api` + `*-rpc` 两套包收敛成一套；
-> ② **`service/common` → `common` starter**（D3）⇒ B 的 51 个手写类变 C 的 56 个（含 7 个 auto-config）；
+> ② **`service/common` → `common` starter**（D3）⇒ B 的 88 个手写类变 C 的 **69 个**（含 7 个 auto-config + 12 个包）；
 > ③ **生态替代**（D4）⇒ B 的手写熔断/日志/校验器被 resilience4j / SLF4J / Bean Validation 取代。
 >
 > ⇒ **映射类型里出现大量 `N:1` 与 `C 新增` 是正常的，不是缺陷。**

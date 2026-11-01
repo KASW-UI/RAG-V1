@@ -20,6 +20,14 @@
 - `org.springframework.boot:spring-boot-starter-actuator`
 - `io.micrometer:micrometer-registry-prometheus`
 - `com.alibaba.cloud:spring-cloud-starter-alibaba-nacos-discovery`
+- `org.flywaydb:flyway-core`
+- `org.flywaydb:flyway-database-postgresql`
+- `org.springframework.boot:spring-boot-starter-test`
+- `org.junit.jupiter:junit-jupiter`
+- `org.mockito:mockito-core`
+- `io.grpc:grpc-inprocess`
+- `org.testcontainers:postgresql`
+- `org.testcontainers:junit-jupiter`
 - `net.devh:grpc-server-spring-boot-starter`
 - `net.devh:grpc-client-spring-boot-starter`
 - `com.baomidou:mybatis-plus-spring-boot3-starter`
@@ -27,7 +35,7 @@
 - `com.rag:proto`
 - `com.rag:common`
 - `org.springframework.boot:spring-boot-starter-data-redis`
-- `org.springframework.boot:spring-boot-kafka`
+- `org.springframework.kafka:spring-kafka`
 
 ## 三、目录树
 
@@ -67,8 +75,18 @@
 │   │   │               │   ├── TaskProgressMapper.java
 │   │   │               │   └── UserLikeCountMapper.java
 │   │   │               ├── messaging/
+│   │   │               │   ├── TaskArticleCountConsumer.java    # 文章计数消费者 —— 消费点赞进度并累加文章计数。
+│   │   │               │   ├── TaskArticleLikeProgressSink.java    # 文章获赞任务进度落库 —— 消费文章点赞进度、聚合文章计数、按 1 秒节拍 flush 到 Redis + PG。
+│   │   │               │   ├── TaskArticleProgressEvent.java    # 文章进度事件载荷。
+│   │   │               │   ├── TaskCountStore.java    # 计数存储 —— 点赞/文章计数的读写载体。
+│   │   │               │   ├── TaskGoCompatibleJson.java    # Go 兼容的 JSON 编解码 —— 字段名与数字/字符串形态逐字对齐 Go。
 │   │   │               │   ├── TaskKafkaTopics.java
-│   │   │               │   └── TaskRewardPublisher.java
+│   │   │               │   ├── TaskLogEvent.java    # task 原始日志事件载荷。
+│   │   │               │   ├── TaskRawDiagnosticConsumer.java    # 原始诊断事件消费者 —— 只诊断不落业务。
+│   │   │               │   ├── TaskRawLogRouter.java    # 原始日志路由 —— 把 task.logs.filtered 事件路由到各 sink。
+│   │   │               │   ├── TaskRewardPublisher.java
+│   │   │               │   ├── TaskUserCountConsumer.java    # 用户计数消费者 —— 消费点赞进度并累加用户计数。
+│   │   │               │   └── TaskUserLikeProgressSink.java    # 用户点赞任务进度落库 —— 消费点赞进度事件、聚合用户计数、按 1 秒节拍 flush 到 Redis + PG。
 │   │   │               ├── service/
 │   │   │               │   ├── RedisPipelines.java
 │   │   │               │   ├── TaskApiService.java

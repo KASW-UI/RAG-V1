@@ -17,11 +17,11 @@ docs/Pitfalls/
 |---|---|---|
 | P-01 | **测试注入掩盖生产配置缺失** | `grpc.client.*.negotiation-type` 由 `@SpringBootTest(properties=...)` 在测试里注入 ⇒ 生产配置可以一直是错的 ⇒ 测试永远绿 ⇒ 没人发现 |
 | P-02 | **注解存在 ≠ 机制生效** | `RpcServerInterceptorFactory` 只产出 Bean，不挂到 `server.intercept` 上 ⇒ 整条拦截链静默失效 |
-| P-03 | **自动配置排序悬空** | Boot 4 挪了 `DataSourceAutoConfiguration` 的包名，MP 的 `@AutoConfigureAfter` 引用静默失效 ⇒ MP 自动配置不生效 |
+| P-03 | **自动配置排序悬空** | Boot 4 挪了 `DataSourceAutoConfiguration` 的包名，MP 的 `@AutoConfigureAfter` 引用静默失效 ⇒ MP 自动配置不生效。⚠️ **D14 后本仓是 Boot 3.5 ⇒ 不适用**（MP 的 Boot 3 变体引用 `org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration` ⇒ 引用有效）；**但「跨 jar 的自动配置排序要验」这条教训不变** |
 | P-04 | **`@Import` 与 auto-config 抢求值顺序** | `@Import` 那份按 user config 处理（更早求值）⇒ `@ConditionalOnMissingBean` 语义改变 |
 | P-05 | **复制模块模板 ⇒ 抄走错误接线** | 新 session 复制现有模块当模板，会连同那份 4~10 个 Bean 不等的 `@Import` 清单一起抄走 |
 | P-06 | **中断对阻塞 IO 无效** | Java 的 `Future.cancel(true)` 对 JDBC 驱动 / grpc-java 阻塞 stub / `java.net.http` 均不响应 ⇒ 必须走服务端取消（`setQueryTimeout` → pgjdbc CancelRequest） |
-| P-07 | **写错签名比不写好** | Spring Boot 4 / Jackson 3 的 `HttpMessageConverter.read` 签名已变 ⇒ 写错直接编译失败，反而比"照抄旧教程"安全 |
+| P-07 | **写错签名比不写好** | Spring Boot 4 / Jackson 3 的 `HttpMessageConverter.read` 签名已变 ⇒ 写错直接编译失败，反而比"照抄旧教程"安全。⚠️ **D14 后本仓是 Boot 3.5 + Jackson 2 ⇒ 签名与 Boot 3 一致**；**但「编译期能抓的错优于运行时静默」这条教训不变** |
 | P-08 | **「落地证据」没被机器复算 ⇒ 只是又一处沉默不变量** | 台账里写「三域各含 `wiring/<域>FactProcessLogging`」（原名 `bootstrap/`）⇒ **comment 域实际没有** ⇒ 零编译错误 + 零测试红灯 ⇒ 直到守门脚本首次实跑才暴露 ⇒ 一句没人复算的「证据」与「愿望」在字节层面完全一样 |
 | P-09 | **批量替换的三个静默失效** | macOS BSD `sed` **不支持 `\b`** ⇒ 替换零命中（文件名改了、类名没改）· perl 替换串里 `.` 是**字面点** ⇒ 产出 `web/.Xxx` 坏串 · 路径前缀写法不统一 ⇒ 漏网 ⇒ **三次全部零报错** ⇒ 批量改名必须自带「残留=0 / 文件名≡类名 / 引用表↔磁盘」三条守恒断言 |
 | P-10 | **断言的「自动消失」≠ 问题不存在** | `return na("契约 B 下不适用")` 看着是保护措施，**实为断言的死亡证明** —— 把「命题在另一形态下不成立」这个**未经论证的假设**写进了代码。A3（拦截链有没有真挂上）与进程形态无关，却被判 N/A ⇒ 连同它本该抓的缺陷一起从门禁里消失 ⇒ 判形态相关要看**命题**，不看**实现形态** |

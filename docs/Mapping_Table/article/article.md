@@ -35,7 +35,7 @@
 
 | A (Go 真理之源) | B (RAG, Go 形态版) | C (RAG-V1, Spring 目标) | 映射类型 | 备注 |
 |---|---|---|---|---|
-| `service/article/api/`（20 个非测试 `.go`） | `service/article/article-api/`（41 个 `.java`） | `service/article/` 的 `service/article/src/main/java/com/rag/article/advice + service/article/src/main/java/com/rag/article/config + service/article/src/main/java/com/rag/article/controller + service/article/src/main/java/com/rag/article/dto + service/article/src/main/java/com/rag/article/interceptor + service/article/src/main/java/com/rag/article/service` 包（21 个 `.java`） | 1:N | D1：api 进程并入单 app，HTTP 边界改由 `api/` 包承载 |
+| `service/article/api/`（20 个非测试 `.go`） | `service/article/article-api/`（43 个 `.java`） | `service/article/` 的 `service/article/src/main/java/com/rag/article/advice + service/article/src/main/java/com/rag/article/config + service/article/src/main/java/com/rag/article/controller + service/article/src/main/java/com/rag/article/dto + service/article/src/main/java/com/rag/article/interceptor + service/article/src/main/java/com/rag/article/service` 包（21 个 `.java`） | 1:N | D1：api 进程并入单 app，HTTP 边界改由 `api/` 包承载 |
 | `service/article/rpc/`（23 个非测试 `.go` + 2 个 `pb/` 生成物） | `service/article/article-rpc/`（39 个 `.java`） | `service/article/` 的 `service/article/src/main/java/com/rag/article/wiring + service/article/src/main/java/com/rag/article/client + service/article/src/main/java/com/rag/article/config + service/article/src/main/java/com/rag/article/domain/entity + service/article/src/main/java/com/rag/article/domain/service + service/article/src/main/java/com/rag/article/exception + service/article/src/main/java/com/rag/article/grpc + service/article/src/main/java/com/rag/article/mapper + service/article/src/main/java/com/rag/article/metrics` 包（25 个 `.java`） | 1:N | D1：rpc 进程并入单 app |
 | `service/article/common/errmsg/`（1 个 `.go`） | `service/article/article-common/`（1 个 `.java`） | `service/article/src/main/java/com/rag/article/contract/`（4 个 `.java`） | 1:N | C 把「错误契约」并入契约模块；Go 侧 `article/common` 只有 errmsg 一个包 |
 | `service/article/common/errmsg/errmsg.go`（`NewErrCode` / `NewErrCodeMsg`） | `article-rpc/.../exception/ArticleExceptions.java` | `service/article/src/main/java/com/rag/article/exception/ArticleExceptions.java` | 1:N | 业务异常工厂；⚠️ **本域与 like 域的错误模型相反** —— rpc 侧发**标准 gRPC 码**，业务码不上线（api 侧在 logic 里显式映射）⇒ 只承载 gRPC status，**不引** `article-common` 的 `ErrorCode`；与上一行**同源 Go 文件**（Go 侧 1 个 `errmsg.go` → C 侧 2 个类） |
@@ -131,9 +131,9 @@
 | `rpc/article.go`（`zrpc.MustNewServer` 的服务注册） | `article-rpc/…/bootstrap/NacosRegistration.java` | `service/article/src/main/java/com/rag/article/wiring/NacosRegistration.java` | 1:1 | 显式注册，不依赖自动注册 |
 | `rpc/internal/model/db.go`（`article_revision_immutable` 触发器启动门禁） | `article-rpc/…/bootstrap/ArticleSchemaGate.java` | `service/article/src/main/java/com/rag/article/wiring/ArticleSchemaGate.java` | 1:1 | 🔴 缺触发器必须 **fail-fast**（静默降级会让「不可变 revision」变成可写） |
 | `rpc/internal/svc/service_context.go`（`MessageRpc` 客户端） | `article-rpc/…/client/MessageRpcClient.java` | `service/article/src/main/java/com/rag/article/client/MessageRpcClient.java` | 1:1 | **唯一的跨域 gRPC 依赖**（D6） |
-| `rpc/internal/svc/service_context.go`（`MinioClient`） | `article-rpc/…/client/ArticleObjectStorageClient.java` | **无对应文件** | N:1 | ⚠️ **缺口 G-3**：C 侧只有 `MinioBucketBootstrap`，**没有对象存储客户端** ⇒ MinIO put/get 无载体 |
-| `rpc/internal/svc/service_context.go`（`SecurityRpc` = `SanitizeContent`） | `article-rpc/…/client/SecurityRpcClient.java`（+ `ContentSecurityPort.java` / `ContentSecurityAutoConfiguration.java` / `UnavailableContentSecurityClient.java`） | **无对应文件** | N:1 | ⚠️ **缺口 G-4**：C 侧无内容安全客户端 |
-| `rpc/internal/svc/service_context.go`（`ImageSecurityRpc` = `DetectImageAd`） | `article-rpc/…/client/ImageSecurityRpcClient.java` | **无对应文件** | N:1 | ⚠️ **缺口 G-4**（同上） |
+| `rpc/internal/svc/service_context.go`（`MinioClient`） | `article-rpc/…/client/ArticleObjectStorageClient.java` | `service/article/src/main/java/com/rag/article/client/ArticleObjectStorageClient.java` | 1:1 | ✅ **已落地（2026-11-01）**：C 侧 `client/` 包补上对象存储客户端 ⇒ **缺口 G-3 关闭**（MinIO put/get 有了载体）；⚠️ MinIO **必须排除 Jackson 2**（D12 · `docs/MinIO-Jackson2-Isolation-Experiment.md` 已实测可行） |
+| `rpc/internal/svc/service_context.go`（`SecurityRpc` = `SanitizeContent`） | `article-rpc/…/client/SecurityRpcClient.java`（+ `ContentSecurityPort.java` / `ContentSecurityAutoConfiguration.java` / `UnavailableContentSecurityClient.java`） | `service/article/src/main/java/com/rag/article/client/ContentAuditPort.java` + `service/article/src/main/java/com/rag/article/client/UnavailableContentAuditClient.java` + `service/article/src/main/java/com/rag/article/client/ContentAuditAutoConfiguration.java` | N:1 | ⚠️ **RAG-V1 迁移范围排除 `security` 域**（AGENTS.md §1.0）⇒ **不建 `SecurityRpcClient`**（无对端）；改为**端口 + 兜底实现 + 装配点**（`ContentSecurity*` → `ContentAudit*`，去 `Security` 域名含义）。⚠️ **fail-loud 语义必须保留**：Go `article_consumer.go:153-156` 是 `SecurityRpc == nil ⇒ return fmt.Errorf("content security client not initialized")` ⇒ `UnavailableContentAuditClient` **抛错而非放行**；⇒ **内容安全在 RAG-V1 恒不可用 ⇒ 审核链路恒 fail-loud** ⇒ 已登记为签字偏离（`docs/Intentional_Deviations/`） |
+| `rpc/internal/svc/service_context.go`（`ImageSecurityRpc` = `DetectImageAd`） | `article-rpc/…/client/ImageSecurityRpcClient.java` | **无对应文件** | 1:1 | ⚠️ **有意不建**：RAG-V1 迁移范围排除 `security` 域 ⇒ **无对端** ⇒ 不建跨域客户端（Go 侧 `article_consumer.go:253` 的 `DetectImageAd` 调用随之**无对端** ⇒ 图片广告检测这一腿在 RAG-V1 恒不可用 ⇒ 同属上面那条签字偏离） |
 | `rpc/internal/server/article_service_server.go`（6 个 gRPC 方法 → logic） | `article-rpc/…/service/impl/ArticleServiceGrpcImpl.java` | `service/article/src/main/java/com/rag/article/grpc/ArticleGrpcService.java` | 1:1 | `@GrpcService`；**proto 方法签名是 L1，一个字节都不改** |
 | `rpc/internal/logic/create_article_logic.go`（snowflake + MinIO put + insert REVIEWING + Kafka push） | `article-rpc/…/service/ArticleDomainService.java` | `service/article/src/main/java/com/rag/article/domain/service/ArticleDomainService.java` | N:1 | 6 个 logic 合 1 |
 | `rpc/internal/logic/update_article_logic.go`（三分支 + sha256 对象名 + `FOR UPDATE`） | `article-rpc/…/service/ArticleDomainService.java` + `article-rpc/…/service/ArticleAtomicService.java` | `service/article/src/main/java/com/rag/article/domain/service/ArticleDomainService.java` + `service/article/src/main/java/com/rag/article/domain/service/ArticleAtomicService.java` | N:1 | **多步事务必须独立 Bean**（`@Transactional` self-invocation 会失效） |
@@ -150,9 +150,9 @@
 | `rpc/internal/model/community_revision.go`（三个表的仓库方法） | `article-rpc/…/mapper/ArticleRevisionMapper.java` + `mapper/ArticlePublicationMapper.java` + `mapper/ArticleDomainOutboxMapper.java` | `service/article/src/main/java/com/rag/article/mapper/ArticleRevisionMapper.java` + `service/article/src/main/java/com/rag/article/mapper/ArticlePublicationMapper.java` + `service/article/src/main/java/com/rag/article/mapper/ArticleDomainOutboxMapper.java` | 1:N | `article_domain_outbox` 的 `UNIQUE(aggregate_id, aggregate_version)` 是事件顺序保证，**不可省** |
 | `rpc/internal/model/community_revision.go`（`WithArticleTx` 的 `FOR UPDATE`） | `article-rpc/…/service/ArticleAtomicService.java` | `service/article/src/main/java/com/rag/article/domain/service/ArticleAtomicService.java` | 1:1 | GORM 事务闭包 → `@Transactional` + Mapper `last("FOR UPDATE")` |
 | `rpc/internal/model/db.go`（连接池 + `AutoMigrate`） | `article-rpc/src/main/resources/db/migration/V8__create_article.sql` / `V9__create_article_sync_outbox.sql` / `V10__create_article_community_revision.sql` | `service/article/src/main/resources/db/migration/`（**仅 `.gitkeep`，DDL 未落地**） | 1:N | ⚠️ **缺口 G-5**：C 侧迁移目录为空 |
-| `rpc/internal/mqs/article_consumer.go`（审核消费者：四元组校验 + `SanitizeContent` + `DetectImageAd` + 幂等 + `FOR UPDATE` 写 outbox） | `article-rpc/…/mq/ArticleReviewConsumer.java` | **无对应文件** | N:1 | ⚠️ **缺口 G-1**：C 侧**没有 `mq/` 包** |
-| `rpc/internal/mqs/article_sync_result_consumer.go`（同步结果消费者：revision + publication + domain outbox + 一次性通知） | `article-rpc/…/mq/ArticleSyncResultConsumer.java` | **无对应文件** | N:1 | ⚠️ **缺口 G-1**（同上） |
-| `rpc/internal/mqs/article_sync_outbox_sender.go`（outbox relay：1s ticker，batch=100，单条失败不中断批次） | `article-rpc/…/mq/ArticleSyncOutboxRelay.java` | **无对应文件** | N:1 | ⚠️ **缺口 G-1**（同上） |
+| `rpc/internal/mqs/article_consumer.go`（审核消费者：四元组校验 + `SanitizeContent` + `DetectImageAd` + 幂等 + `FOR UPDATE` 写 outbox） | `article-rpc/…/mq/ArticleReviewConsumer.java` | `service/article/src/main/java/com/rag/article/messaging/ArticleReviewConsumer.java` | 1:1 | ✅ **已落地（2026-11-01）**：C 侧新建 `messaging/` 包 ⇒ **缺口 G-1 关闭**；⚠️ 其内部的内容安全调用走 `ContentAuditPort`（恒 fail-loud，见上） |
+| `rpc/internal/mqs/article_sync_result_consumer.go`（同步结果消费者：revision + publication + domain outbox + 一次性通知） | `article-rpc/…/mq/ArticleSyncResultConsumer.java` | `service/article/src/main/java/com/rag/article/messaging/ArticleSyncResultConsumer.java` | 1:1 | ✅ **已落地（2026-11-01）**：同上，落 `messaging/` |
+| `rpc/internal/mqs/article_sync_outbox_sender.go`（outbox relay：1s ticker，batch=100，单条失败不中断批次） | `article-rpc/…/mq/ArticleSyncOutboxRelay.java` | `service/article/src/main/java/com/rag/article/messaging/ArticleSyncOutboxRelay.java` | 1:1 | ✅ **已落地（2026-11-01）**：同上，落 `messaging/`；⚠️ `article_domain_outbox` 的 `UNIQUE(aggregate_id, aggregate_version)` 是事件顺序保证，**不可省** |
 | `rpc/internal/mqs/community_article_event.go`（`RetractPublicationTx`） | `article-rpc/…/service/ArticleAtomicService.java` | `service/article/src/main/java/com/rag/article/domain/service/ArticleAtomicService.java` | 1:1 | 事务载体（`FOR UPDATE` 取指针 + 写 retract 域事件，单事务） |
 | `rpc/metrics/metrics.go`（6 个 Prometheus 指标） | `article-rpc/…/metrics/ArticleRpcMetrics.java` | `service/article/src/main/java/com/rag/article/metrics/ArticleRpcMetrics.java` | 1:1 | 指标**完整名**带 `article_service_` 前缀（Go `Namespace`，见 §6）；`article_status_total` 只有 `reviewing` 有调用点，**不许补全** |
 
@@ -190,6 +190,17 @@
 | **G-6** | **`ArticleReviewMessage` / `ArticleSyncResult` 无载体** | `rpc/internal/mqs/article_sync_types.go` | `mq/ArticleSyncEventTypes.java` | 审核消息与同步结果两个 wire 载荷在 C 侧无处安放 |
 
 > 本节决策锁：**L-1 / L-2**（详见 §5）。
+
+### 1.6 🔴 RAG 侧新增类补录（2 条 · 覆盖 5 个 `.java`）
+
+> ⚠️ **本节是 2026-11-01 的增量**：RAG 在首版映射表之后新增了 `article-api/…/auth/` 包（4 类）与 `ArticleSpans`（1 类）
+> ⇒ 首版 §1.1 / §1.2 的 **B 列漏了这 5 个 `.java`** ⇒ 本节逐个落到 C 侧；
+> 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
+
+| A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
+|---|---|---|---|---|
+| `api/internal/handler/routes.go`（3 个 `AddRoutes` 块：JWT 组 / public 组 / upload 组）的 `rest.WithJwt(...)` 绑定 | `article-api/…/auth/ArticleJwtProtectedRoutes.java` ＋ `article-api/…/auth/ArticleJwtSignatureVerifier.java` ＋ `article-api/…/auth/ArticleJwtVerificationResult.java` ＋ `article-api/…/auth/GoStyleJwtAuthFilter.java` | `service/article/src/main/java/com/rag/article/interceptor/JwtAuthInterceptor.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 1 个 `HandlerInterceptor`** ⇒ 🔴 **C 侧缺口**：要么补 1 个 `OncePerRequestFilter` 承载验签，要么显式登记为签字偏离。⚠️ **受保护路由表 ＋ public 前缀集合是 L1**（逐条一致，不可凭直觉改） |
+| `rpc/metrics/metrics.go`（6 个 Prometheus 指标） | `article-rpc/…/service/ArticleSpans.java` | `service/article/src/main/java/com/rag/article/metrics/ArticleRpcMetrics.java` | 1:1 | B 侧把 span 名常量从指标类里**拆出** ⇒ C 侧并回 `ArticleRpcMetrics`；⚠️ 指标**完整名**带 `article_service_` 前缀（Go `Namespace`），`article_status_total` 只有 `reviewing` 有调用点，**不许补全** |
 
 ---
 
@@ -449,14 +460,15 @@ find "/Users/pr/Documents/java&golang/Sea-RideTheWind_golang/service/article" \
 
 | 映射类型 | §0 顶层 | §1 包结构 | 合计 | 占比 |
 |---|---|---|---|---|
-| `1:1` | 1 | 22 | **23** | 33.3% |
-| `1:N` | 3 | 18 | **21** | 30.4% |
-| `N:1` | 1 | 23 | **24** | 34.8% |
+| `1:1` | 1 | 23 | **24** | 33.3% |
+| `1:N` | 4 | 18 | **22** | 30.6% |
+| `N:1` | 1 | 24 | **25** | 34.7% |
 | `C 新增` | 1 | 0 | **1** | 1.4% |
-| **合计** | **6** | **63** | **69** | 100% |
+| **合计** | **7** | **65** | **72** | 100% |
 
 > 每行都填了映射类型，且只用 `1:1` / `1:N` / `N:1` / `C 新增` 四种词（未发明新词）。
-> ⇒ `N:1` 与 `1:N` 合计 **65/69（94%）** 是 article 域的常态：**Go 侧按 codegen 模板切成 45 个文件，RAG-V1 按职责收敛成 21 个**。
+> ⇒ `N:1` 与 `1:N` 合计 **47/72（65%）** 是 article 域的常态：**Go 侧按 codegen 模板切成 45 个文件，RAG-V1 按职责收敛成 21 个**。
+> ⚠️ **核对日期 2026-11-01**（§1.6 增量补录后重算；⚠️ §0 顶层原自报 6 行、实测 **7 行** ⇒ 一并订正）。
 
 ### 7.4 ⚠️ 三列之间「职责对不上」的地方（单独列出）
 

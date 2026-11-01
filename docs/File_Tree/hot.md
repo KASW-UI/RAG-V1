@@ -20,6 +20,11 @@
 - `org.springframework.boot:spring-boot-starter-actuator`
 - `io.micrometer:micrometer-registry-prometheus`
 - `com.alibaba.cloud:spring-cloud-starter-alibaba-nacos-discovery`
+- `org.springframework.boot:spring-boot-starter-test`
+- `org.junit.jupiter:junit-jupiter`
+- `org.mockito:mockito-core`
+- `io.grpc:grpc-inprocess`
+- `org.testcontainers:kafka`
 - `net.devh:grpc-server-spring-boot-starter`
 - `net.devh:grpc-client-spring-boot-starter`
 - `com.baomidou:mybatis-plus-spring-boot3-starter`
@@ -27,7 +32,7 @@
 - `com.rag:proto`
 - `com.rag:common`
 - `org.springframework.boot:spring-boot-starter-data-redis`
-- `org.springframework.boot:spring-boot-kafka`
+- `org.springframework.kafka:spring-kafka`
 
 ## 三、目录树
 
@@ -50,6 +55,7 @@
 │   │   │               │   ├── HotRpcProperties.java
 │   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 替代 Go 的 rest.WithMiddlewares 绑定。
 │   │   │               ├── contract/
+│   │   │               │   ├── ArticleHotEvent.java    # 热点域消费的文章事件载荷（article_id + type 两字段）。
 │   │   │               │   ├── CodeError.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               │   ├── ErrCodes.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
 │   │   │               │   ├── ErrMsg.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
@@ -66,6 +72,11 @@
 │   │   │               │       └── HotArticlesResp.java    # immutable record —— 替代 Go 的可变 struct（见《完全spring化的文件树》D5）。
 │   │   │               ├── grpc/
 │   │   │               │   └── HotGrpcService.java
+│   │   │               ├── messaging/
+│   │   │               │   ├── HotEventConsumer.java    # 热点事件消费者 —— 反序列化文章事件并更新热度。
+│   │   │               │   ├── HotMergeScheduler.java    # 热点合并调度器 —— 周期性把分片 sketch 合并成全局热点。
+│   │   │               │   ├── HotPartitionSketchRegistry.java    # 分片 sketch 注册表 —— 按分区维护热点草图。
+│   │   │               │   └── HotRedisSnapshotStore.java    # 热点快照存储 —— sketch 落 Redis。
 │   │   │               ├── metrics/
 │   │   │               │   ├── HotApiMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
 │   │   │               │   └── HotRpcMetrics.java

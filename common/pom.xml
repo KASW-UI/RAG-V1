@@ -38,18 +38,19 @@
             <optional>true</optional>
         </dependency>
         <!--
-            ⚠️ spring-boot-kafka **不可省**：Boot 4 把 Kafka 的自动配置拆成了独立模块，
-            spring-boot-autoconfigure 4.0.8 里 **Kafka 相关类为 0**。
-            只有 spring-kafka（底层库）时：
-              ① KafkaAutoConfiguration 类根本不存在 ⇒ @Import(KafkaAnnotationDrivenConfiguration) 不发生
-                 ⇒ KafkaListenerAnnotationBeanPostProcessor 永不注册 ⇒ @KafkaListener **静默不消费（零报错）**；
-              ② KafkaTemplate / ProducerFactory / ConsumerFactory Bean 不存在 ⇒ 任何注入点 → 硬启动失败。
-            两者症状不同但同源 —— 详见 docs/RAG-困境反哺.md §四 K-1。
+            ⚠️ **Kafka 自动配置不可省（D14）**：Boot 3.5 的 `KafkaAutoConfiguration` 在
+            `spring-boot-autoconfigure` 里 ⇒ **每个 app 经 `spring-boot-starter` 必然带上** ⇒ 只要引 `spring-kafka` 即可。
+            ⚠️ **Boot 3.5 没有 `spring-boot-starter-kafka` 这个 artifact**（Boot 4 才引入；Central 3.5.11 → 404 实测）
+            ⇒ Boot 3.x 的 Kafka 依赖就是 **`org.springframework.kafka:spring-kafka`**（版本由 Boot BOM 管）。
+            ⚠️ Boot 4 时代那个 `spring-boot-kafka` **独立模块在 Boot 3.5 也不存在** ⇒ 一并撤销。
+            ⚠️ **RAG-困境反哺 §四 K-1 的坑是 Boot 4 现象**（Boot 4 把 Kafka 自动配置拆成独立模块 ⇒ 只引底层库会
+            `@KafkaListener` **静默不消费**（零报错）/`KafkaTemplate` 注入点硬启动失败）；Boot 3.5 无此风险
+            ⇒ 但**「注解生效必须验证」的纪律不变**：用 `@KafkaListener` 必配装配层测试断言 listener 真进 registry。
             版本由 spring-boot-dependencies BOM 管理，不写 <version>。
         -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-kafka</artifactId>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
             <optional>true</optional>
         </dependency>
         <dependency>
@@ -73,8 +74,157 @@
         <dependency>
             <groupId>io.jsonwebtoken</groupId><artifactId>jjwt-impl</artifactId><scope>runtime</scope>
         </dependency>
+        <!--
+            ⚠️ **`jjwt-jackson` 恢复使用（D14 · 工具链回退）** —— 它依赖的正是 Jackson 2
+            ⇒ 与本仓工具链同代 ⇒ 直接可用。
+            （Jackson 3 工具链下它不可用 ⇒ 曾计划自写 `tools.jackson` `Serializer`；该计划**作废**。）
+
+            ⚠️ **Jackson 2 显式声明**（抄 RAG `service/common/pom.xml`）：
+            `com.fasterxml.jackson.core:jackson-databind` —— 共享层要写 `JsonBodyConverter` / `Coercion` / JWT 序列化
+            ⇒ 必须**直接**依赖，不能靠 `spring-boot-starter-web` 的 optional 传递（optional **不传递**给下游模块）。
+            `com.fasterxml.jackson.core:jackson-annotations` —— 契约类上的 `@JsonProperty` / `@JsonAutoDetect`
+            需要它在编译期可见（Boot 3.5 的 `spring-boot-starter-web` 已传递，但显式声明更稳）。
+            版本由根 pom 的 `com.fasterxml.jackson:jackson-bom` 统一管理 ⇒ 与 Boot 3.5.11 同版本（2.19.4）。
+        -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId><artifactId>jjwt-jackson</artifactId><scope>runtime</scope>
+        </dependency>
+
+        <!--
+            ══════════════════════════════════════════════════════════════════════
+            以下整段**抄自 RAG 仓 `service/common/pom.xml`**（RAG-V1 的 `common` 是它的打平升级版）。
+            ⚠️ **scope 语义照搬**（RAG 的纪律：**共享层不得把下游不需要的框架塞给下游**）：
+              · `optional=true` ⇒ 不传递给下游 ⇒ 只有 `common` 自己编译期可见；
+              · `provided`    ⇒ 不传递 + 运行期由宿主提供；
+              · 纯库模块（只需要一张错误码表的）不该被迫背上 Tomcat / Lettuce / MVC。
+            ⚠️ **D14 的改动**：RAG 侧的 Jackson 2（`com.fasterxml.jackson.core:jackson-databind`）**现在照抄**
+               （工具链回退到 Jackson 2）⇒ 但版本由**根 pom 的 jackson-bom 2.19.4** 统一管，不抄 RAG 的 2.22.3。
+            ══════════════════════════════════════════════════════════════════════
+        -->
+
+        <!-- ============ 日志门面 + 实现（替代 go-zero logx） ============ -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+
+        <!-- ============ OpenTelemetry：tracing + context propagation ============ -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-context</artifactId>
+        </dependency>
+        <!--
+            OTLP exporter **必须 compile（非 optional）** —— 装配点在本包内
+            ⇒ 任何依赖 `common` 的进程都会加载它 ⇒ optional 会让运行时 NoClassDefFoundError。
+        -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+
+        <!-- ============ MyBatis 本体（超时拦截器需要；**不要** mybatis-plus starter） ============ -->
+        <dependency>
+            <groupId>org.mybatis</groupId>
+            <artifactId>mybatis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.mybatis</groupId>
+            <artifactId>mybatis-spring</artifactId>
+        </dependency>
+
+        <!-- ============ Micrometer（Prometheus 写入面） ============ -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- ============ Servlet / Spring MVC / Lettuce（**provided**） ============ -->
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <!--
+            ⚠️ **D14**：Boot 4 的 `spring-boot-data-redis` **独立模块在 Boot 3.5 不存在**
+            ⇒ Boot 3.5 只有聚合 starter `spring-boot-starter-data-redis`
+            ⇒ 与上面那条 `optional` 的 starter **是同一个 artifact** ⇒ 此处不再重复声明（避免 Maven 重复声明告警）。
+        -->
+
+        <!-- ============ JSON Canonicalization（RFC 8785 / JCS · communityfact 的 CanonicalHash） ============ -->
+        <dependency>
+            <groupId>io.github.erdtman</groupId>
+            <artifactId>java-json-canonicalization</artifactId>
+        </dependency>
+
+        <!-- ============ Tomcat（optional 编译期；**排除 tomcat-annotations-api**） ============ -->
+        <dependency>
+            <groupId>org.apache.tomcat.embed</groupId>
+            <artifactId>tomcat-embed-core</artifactId>
+            <optional>true</optional>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.tomcat</groupId>
+                    <artifactId>tomcat-annotations-api</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!--
+            ⚠️ **D14**：Boot 4 的 `spring-boot-tomcat` **独立模块在 Boot 3.5 不存在**
+            ⇒ Boot 3.5 的 Tomcat 由 `spring-boot-starter-web`（上面已 optional 声明）带入
+            ⇒ 这里的 `tomcat-embed-core`（optional）已足够编译期可见。
+        -->
+
+        <!--
+            gRPC **client** 全局拦截器（Go zrpc client 熔断）——
+            optional（同 spring-web 的理由）：`common` 自己能编译，但不传递给下游。
+        -->
+        <dependency>
+            <groupId>net.devh</groupId>
+            <artifactId>grpc-client-spring-boot-starter</artifactId>
+            <optional>true</optional>
+            <exclusions>
+                <!-- devh 默认拖 grpc-core 1.63.0，版本统一由根 pom 的 grpc.version 管 -->
+                <exclusion>
+                    <groupId>io.grpc</groupId>
+                    <artifactId>grpc-core</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
 </project>

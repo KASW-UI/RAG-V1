@@ -5,7 +5,7 @@
 >
 > **A 列**：`/Users/pr/Documents/java&golang/Sea-RideTheWind_golang/service/common/`（真源，冻结，**11 个非测试 `.go`**）
 > **B 列**：`/Users/pr/Documents/java&golang/RAG/service/common/`（**51 个主代码类**）
-> **C 列**：`/Users/pr/Documents/GitHub/RAG-V1/common/`（**56 个主代码类**；`common` 在仓库根，不在 `service/` 下）
+> **C 列**：`/Users/pr/Documents/GitHub/RAG-V1/common/`（**69 个主代码类**；`common` 在仓库根，不在 `service/` 下）
 >
 > **格式契约**：[`README.MD`](README.MD) · **本目录其他子文档**：`users.md` / `article.md` / … 同格式
 
@@ -64,14 +64,14 @@
 
 | A (Go 真理之源) | B (RAG, Go 形态版) | C (RAG-V1, Spring 目标) | 映射类型 | 备注 |
 |---|---|---|---|---|
-| `service/common/`（5 个包 / 11 个非测试 `.go`） | `service/common/`（10 个包 / 51 个主代码类） | `common/`（**仓库根**，11 个包 / 56 个主代码类） | 1:1 | 包**路径**变（`service/common` → `common`），职责集合变 |
+| `service/common/`（5 个包 / 11 个非测试 `.go`） | `service/common/`（**12 个包 / 88 个主代码类**，2026-11-01 实测） | `common/`（**仓库根**，**12 个包 / 69 个主代码类**，2026-11-01 实测） | 1:1 | 包**路径**变（`service/common` → `common`），职责集合变；⚠️ C 侧第 **12** 个包 `redis/` 是 **2026-11-01 新建** |
 | `service/common/communityfact/`（4 `.go`） | `service/common/communityfact/`（4 类） | `common/src/main/java/com/rag/common/communityfact/`（**13 类**） | 1:N | Go 的「单文件多类型」被拆成 1 类型 1 文件（L1 wire 类型必须逐字段保真） |
 | `service/common/logger/`（1 `.go`） | `service/common/logger/`（6 类） | `common/src/main/java/com/rag/common/logger/`（4 类） | N:1 | B 的 `Logger` + `LoggerFactoryBean` 双轨 → C 单个 `GoStyleLogger implements slf4j.Logger` |
-| `service/common/observability/`（4 `.go`） | `service/common/observability/`（7 类）+ `spring/`（2 类） | `common/src/main/java/com/rag/common/observability/`（3 类） | N:1 | Micrometer Observation 承担（D-03 降级） |
+| `service/common/observability/`（4 `.go`） | `service/common/observability/`（7 类）+ `spring/`（2 类） | `common/src/main/java/com/rag/common/observability/`（**4 类**，2026-11-01 起） | N:1 | Micrometer Observation 承担（D-03 降级）；⚠️ 第 4 类 = `ClientDisconnectProbe`（探针式断连暴露，§1.12） |
 | `service/common/response/`（1 `.go`） | `service/common/response/`（1 类） | `common/src/main/java/com/rag/common/contract/`（1 类） | 1:1 | 类名 `Response` → `ApiResponse`，**信封形状 `{code,msg,data}` 是 L1**（K-06） |
 | `service/common/snowflake/`（1 `.go`） | `service/common/snowflake/`（1 类）+ `spring/`（2 类） | `common/src/main/java/com/rag/common/snowflake/`（1 类）+ `autoconfigure/`（1 类） | 1:N | epoch / 位段是业务契约（like 域游标依赖 `>>22`） |
-| **Go 侧无对应物** | `service/common/protection/`（**17 类**）+ `spring/`（3 类） | `common/src/main/java/com/rag/common/protection/`（**2 类**）+ `autoconfigure/`（2 类） | N:1 | go-zero 内置熔断/降载/限连接/限体积 ⇒ 生态吸收（D-04）；**gRPC 保护链的挂载点也在 `autoconfigure/`**（共享层 1 份 ⇒ 覆盖 10 个域，见 §7 #6） |
-| **Go 侧无对应物** | `service/common/http/`（3 类）+ 各域 api/http、users-common/http | `common/src/main/java/com/rag/common/web/`（**16 类**） | N:1 | Go 语义等价物**必须手写**（「何时读 body」「错误文案形状」都不是框架能力） |
+| **Go 侧无对应物** | `service/common/protection/`（**24 类**）+ `spring/`（9 类） | `common/src/main/java/com/rag/common/protection/`（**4 类**）+ `autoconfigure/`（2 类） | N:1 | go-zero 内置熔断/降载/限连接/限体积 ⇒ 生态吸收（D-04）；**gRPC 保护链的挂载点也在 `autoconfigure/`**（共享层 1 份 ⇒ 覆盖 10 个域，见 §7 #6） |
+| **Go 侧无对应物** | `service/common/http/`（3 类）+ 各域 api/http、users-common/http | `common/src/main/java/com/rag/common/web/`（**21 类**） | N:1 | Go 语义等价物**必须手写**（「何时读 body」「错误文案形状」都不是框架能力） |
 | **Go 侧无对应物** | `service/common/exception/`（2 类） | `common/src/main/java/com/rag/common/exception/`（2 类） | 1:1 | Go 用 `(resp, error)` 双返回 ⇒ 异常是 idiomatization |
 | **Go 侧无对应物** | 各 rpc 模块 `@Import` 清单（**10 份**）+ 9 份重复的 MP ordering bridge | `common/src/main/java/com/rag/common/autoconfigure/`（**7 类**）+ `AutoConfiguration.imports` | C 新增 | **D3 的载体**：消费方零 `@Import` 清单 |
 | **Go 侧无对应物**（Go 出处在 `service/user/common/`，不在本层） | `service/users/users-common/jwt/` + `cryptx/`（3 类） | `common/src/main/java/com/rag/common/security/`（3 类） | 1:1 | 从 users 域**提升为全局**（鉴权是安全边界，同一规则不该有第二份实现） |
@@ -94,7 +94,8 @@
 | `service/common/…/logger/` | `common/src/main/java/com/rag/common/logger/` | 直接压平 |
 | `service/common/…/observability/` | `common/src/main/java/com/rag/common/observability/` | 直接压平 |
 | `service/common/…/persistence/` | `common/src/main/java/com/rag/common/persistence/` | 直接压平 |
-| `service/common/…/protection/`（17 类） | `common/src/main/java/com/rag/common/protection/`（**2 类**）| ★ **D4 生态优先**：熔断 → resilience4j，降载/限体积各 1 个自研类 |
+| `service/common/…/redis/`（5 类） | `common/src/main/java/com/rag/common/redis/`（**5 类**）| ★ **C 侧第 12 个包，2026-11-01 新建**：断连行为收口 + 请求预算传播；**类名去 `Redis` 前缀**（包名已含 `redis`）|
+| `service/common/…/protection/`（24 类） | `common/src/main/java/com/rag/common/protection/`（**4 类**）| ★ **D4 生态优先**：熔断 → resilience4j，降载/限体积各 1 个自研类；⚠️ 第 3/4 类 `RouteResolution` + `RouteTemplateSource` 是 **2026-11-01 补的路由模板解析载体** |
 | `service/common/…/response/`（`Response`） | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | 压平 + **改名**（信封是 L1）|
 | `service/common/…/snowflake/` | `common/src/main/java/com/rag/common/snowflake/` | 直接压平 |
 | `service/common/…/spring/` | `common/src/main/java/com/rag/common/autoconfigure/` | 压平 + **改名**（`@Configuration` → `@AutoConfiguration`，D3）|
@@ -113,7 +114,7 @@
 | —（Go 侧无对应物：Go 无自动装配机制） | `spring/HttpMiddlewareFilter.java` + `spring/AuthorityHandlerFactory.java` | `common/src/main/java/com/rag/common/autoconfigure/WebAutoConfiguration.java` | N:1 | 注册 servlet filter + `ServletRegistrationBean`；⚠️ Boot 4 的 `addUrlMappings` API |
 | —（Go 侧无对应物） | `http/GoStyleJsonBodyConverterConfig.java` + `users-common/http/GoStyleCoercion.java` | `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java` | N:1 | 收编 Jackson `CoercionConfig`（K-01，**已是原生机制**）+ `JsonBodyConverter` 注册（K-02） |
 | —（Go 侧无对应物） | `spring/ObservabilityLifecycle.java` + `spring/ObservabilityProperties.java` + `observability/RpcInterceptor.java` + `observability/HttpMiddleware.java` + `observability/MqConsumer.java` + `observability/GoStyleRecoverInterceptor.java` + `spring/RpcServerInterceptorFactory.java` | `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | N:1 | ⚠️ **B 侧 `RpcServerInterceptorFactory` 曾经「Bean 在、没挂上」**（`DRIFT-COMMON-004`）⇒ C 侧必须断言真的进了 `server.intercept` |
-| —（Go 侧无对应物：go-zero 内置熔断/降载/限连接/限体积） | `protection/`（17 类）+ `protection/GoStyleProtectionConfiguration.java` + `protection/GoStyleProtectionProperties.java` + `spring/RpcServerInterceptorFactory.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java` | N:1 | resilience4j `CircuitBreaker` + Tomcat `max-connections` + 1 个 `MaxBytesFilter` + 1 个 CPU 指标（D-02 / D-04）**＋ `GrpcServerConfigurer`（gRPC 保护链的唯一挂载点，见 §7 #6 与设计文档 §5.5.2）** |
+| —（Go 侧无对应物：go-zero 内置熔断/降载/限连接/限体积） | `protection/`（24 类）+ `protection/GoStyleProtectionConfiguration.java` + `protection/GoStyleProtectionProperties.java` + `spring/RpcServerInterceptorFactory.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java` | N:1 | resilience4j `CircuitBreaker` + Tomcat `max-connections` + 1 个 `MaxBytesFilter` + 1 个 CPU 指标（D-02 / D-04）**＋ `GrpcServerConfigurer`（gRPC 保护链的唯一挂载点，见 §7 #6 与设计文档 §5.5.2）** |
 | —（Go 侧无对应物） | `spring/SnowflakeBean.java` + `spring/SnowflakeProperties.java` + `snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` | N:1 | ⚠️ 与各域 `wiring/SnowflakeBootstrap.java`（3 个域有）**落点重复**，见 §7「职责对不上 #4」 |
 | —（Go 侧无对应物） | 9 个 rpc 模块各一份 `MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | N:1 | **消掉 9 份重复**（Boot 4 下 MP 自动配置排序桥）；断言 A6 |
 | —（Go 侧无对应物：Go 在各域 `internal/logic` 里直接 `status.Error`） | `article-api/http/GoStyleGrpcStatusMapper.java` | `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java` | 1:1 | D2/D5 的统一错误模型：`BusinessException(code,msg)` → gRPC 边界 / HTTP 边界两个适配器 |
@@ -171,7 +172,7 @@
 | `logger/logger.go`（`Init` 全局单例） | `spring/LoggerFactoryBean.java`（369 行，与 `Logger` **零行为差异**） | （并入 `common/src/main/java/com/rag/common/logger/GoStyleLogger.java`） | N:1 | B 侧「静态轨 + Bean 轨」双轨并存 ⇒ C 合并为单轨 |
 | `logger/logger.go`（`getCallChain` + `isFiltered` 过滤框架帧） | `logger/Logger.java#getCallChain/isFiltered` | （并入 `common/src/main/java/com/rag/common/logger/GoStyleLogger.java`） | 1:1 | ⚠️ `call_chain` 是**行为契约**（SLF4J 无等价 ⇒ AGENTS.md §1.1c **G-4**）；过滤失效会让它变成不可读的栈转储 |
 
-### 1.6 `observability/` —— Observation + Deadline（C: 3 类）
+### 1.6 `observability/` —— Observation + Deadline（C: 4 类）
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
@@ -191,9 +192,9 @@
 | —（Go 侧无对应物：Go 侧 JSONB/JSON 字段由 GORM 直接读写） | 5 份 `JsonbTypeHandler.java`（`like-rpc` / `comment-rpc` / `favorite-rpc` / `admin-rpc` / `article-rpc` 各一份） | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | N:1 | **7 份副本合 1** |
 | —（Go 侧无对应物） | 2 份 `JsonTextTypeHandler.java`（`user-rpc` / `admin-rpc` 各一份） | `common/src/main/java/com/rag/common/persistence/JsonTextTypeHandler.java` | N:1 | **副本合 1** |
 
-### 1.8 `protection/` —— 请求保护链（C: 2 类）
+### 1.8 `protection/` —— 请求保护链（C: 4 类）
 
-> ⚠️ **B 侧 17 类 → C 侧 2 类**，是全表最大的形态变化。
+> ⚠️ **B 侧 24 类 → C 侧 4 类**（其中 2 类是 **2026-11-01 补的路由模板解析载体**），仍是全表最大的形态变化。
 > 根因：Go 侧这些能力**全是 go-zero 内置**（`rest/config.go` 的 `Middlewares.Breaker` / `CpuThreshold` / `MaxConns` / `MaxBytes`），
 > RAG 只能手写复刻；RAG-V1 按 **D4 生态优先**把它们交回生态。
 
@@ -226,9 +227,9 @@
 | `snowflake/snowflake.go`（41 时间 + 10 worker + 12 seq，epoch `1288834974657`） | `snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` | 1:1 | ⚠️ epoch / 位段是**业务契约**（like 域游标编码依赖 `>>22`） |
 | `snowflake/snowflake.go`（`Init` / `GetID` / `generateNodeId`） | `spring/SnowflakeBean.java` + `spring/SnowflakeProperties.java` | `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` | N:1 | `SNOWFLAKE_NODE_ID` 优先，parse 失败**继续走 hash 不报错**；否则 `sha256("SERVICE_NAME-PID")` 取前 2 字节大端 ⇒ `%1024` |
 
-### 1.11 `web/` —— Go 语义的 HTTP 层（C: 16 类）
+### 1.11 `web/` —— Go 语义的 HTTP 层（C: 21 类）
 
-> ⚠️ **B 侧 `service/common/http/` 只有 3 类，C 侧 `web/` 有 16 类** ⇒ **13 类是从各域 api 模块归位过来的**。
+> ⚠️ **B 侧 `service/common/http/` 现在 13 类**（原 3 类 ＋ 2026-10-25 第十四轮起新增的 10 类），C 侧 `web/` **21 类** ⇒ **两侧不是一对一**：C 侧 21 类 = B 侧 `common/http/` 的 5 类 ＋ **各域 api 模块归位的 11 类** ＋ **2026-11-01 补的 5 类**（`LimitMode` / `ValueLimitInterceptor` / `LimitExceededException` / `JsonContentTypeAdvice` / `TraceparentFilter`，见 §1.12）。
 > 根因（设计文档 §5.5）：Jackson 的 `CoercionConfig` 是原生机制，但**「何时才读请求体」与「错误文案 / 状态码形状」不是框架能力** ⇒ 必须手写。
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
@@ -246,11 +247,41 @@
 | —（Go 侧无对应物） | `article-api/http/GoStyleHttpErrorException.java` | `common/src/main/java/com/rag/common/web/HttpErrorException.java` | 1:1 | 归位 |
 | —（Go 侧无对应物） | `article-api/http/GoStylePlainTextErrors.java` | `common/src/main/java/com/rag/common/web/PlainTextErrors.java` | 1:1 | 归位；⚠️ **真 Tomcat 下 400 的 `Content-Type` / `nosniff`**（MockMvc 测不到） |
 | —（Go 侧无对应物） | `article-api/http/GoStyleGrpcStatusMapper.java` | `common/src/main/java/com/rag/common/web/GrpcStatusMapper.java` | 1:1 | ⚠️ **与 `GrpcExceptionMapperAutoConfiguration` 职责重叠**，见 §7「职责对不上 #2」 |
-| —（Go 侧无对应物） | `article-api/config/GoStyleGetFormValuesFilter.java` | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java` | 1:1 | 归位 |
+| —（Go 侧无对应物） | `common/http/GoStyleFormValues.java`（⚠️ **原 `GoStyleGetFormValuesFilter` 已被 RAG 收编进共享层，该类名在 RAG 侧已不存在**） | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java` | 1:1 | 归位；收编详情见 §1.12 第 1 行 |
 | —（Go 侧无对应物） | `article-api/config/GoStyleJsonBodyLimitFilter.java` | `common/src/main/java/com/rag/common/web/JsonBodyLimitFilter.java` | 1:1 | 归位；⚠️ 与 `protection/MaxBytesFilter.java` **语义相邻但不同**，别合并 |
 | —（Go 侧无对应物） | `article-api/config/GoStylePathNormalizingFilter.java` | `common/src/main/java/com/rag/common/web/PathNormalizingFilter.java` | 1:1 | 归位 |
 
-### 1.12 §1 决策锁
+### 1.12 🔴 RAG 侧 `service/common` 增量补录（17 条 · 覆盖 35 个 `.java`）
+
+> ⚠️ **本节是 2026-11-01 的增量**：RAG 仓在映射表首版之后继续生长
+> （`service/common` 从 3 个包长到 **12 个包**）⇒ 首版 §1.1–§1.11 的 **B 列漏了 35 个 `.java`**。
+> ⇒ 本节把它们**逐个落到 C 侧**；补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账（正反两向）归零**。
+>
+> **抄写纪律（D13）**：这 35 个类 **L2 以 RAG 为基准整段抄**；
+> 但**落点按 C 侧包结构重新归位** ⇒ 抄的是**行为**，不是**路径**。
+> ⚠️ 其中原 **9 行标「无对应文件」** ⇒ **2026-11-01 已补 7 行**（form 族 3 + `JsonContentTypeAdvice` + `TraceparentFilter` + `ClientDisconnectProbe` + `RouteResolution`/`RouteTemplateSource` + `redis/` 5 类）⇒ **余 2 行仍标「无对应文件」**：① `common/spring/HttpPoolLifecycle.java`（**D4 生态吸收** ⇒ Tomcat 自管连接池，零 Java 代码）② `common/web/ConditionalOnApiSide.java`（**D1 合并 api/rpc** ⇒ C 侧不存在「api 侧」这个维度）—— **两条都不是缺口**。
+
+| A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
+|---|---|---|---|---|
+| go-zero `rest/httpx/util.go` 的 `GetFormValues` ＋ Go `net/url.parseQuery`（query 解析 ＋ 10000 段上限） | `common/http/GoStyleFormValues.java` | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java` | 1:1 | ⚠️ **RAG 已把域内 `GoStyleGetFormValuesFilter`（2026-10-25 第十四轮）收编进共享层** ⇒ B 侧旧类名**已不存在**；本行即 §1.11 旧行的改写 |
+| go-zero `httpx.ParseForm` 的 `maxFormParamCount = 2048` ＋ 域级拒绝形状 | `common/http/GoStyleFormLimitMode.java` ＋ `common/http/GoStyleFormValueLimitInterceptor.java` ＋ `common/http/GoStyleFormLimitExceededException.java` | `common/src/main/java/com/rag/common/web/LimitMode.java` ＋ `common/src/main/java/com/rag/common/web/ValueLimitInterceptor.java` ＋ `common/src/main/java/com/rag/common/web/LimitExceededException.java` | 1:1 | ✅ **已落地（2026-11-01）**：三个类落 `common/web/`（**去 `Form` 前缀**，命名债 P4-④ 先例）。⚠️ **枚举在共享层、文案在域里**：`LimitMode` 只承载**拒绝形状**（RAW / ENVELOPE / OFF），**错误码与文案仍由各域 `advice/` 渲染** ⇒ 共享层不自带域级文案；闸门用 `HandlerInterceptor`（非 servlet `Filter`）才能把异常抛到 `@RestControllerAdvice` |
+| go-zero `httpx.Parse` 的 form 值计数上限（容器上限之外的第二道） | `common/http/GoStyleFormLimitWebMvcConfig.java` ＋ `common/http/GoStyleTomcatParameterLimitCustomizer.java` ＋ `common/http/GoStylePathNormalizingAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/WebAutoConfiguration.java` | N:1 | 3 个注册点归 **starter**（D3）；⚠️ 拦截器必须 `HIGHEST_PRECEDENCE` ⇒ 先于域鉴权（**与 Go 的中间件顺序相反**，属已登记差异） |
+| go-zero `httpx.doWriteJson` 的 `Content-Type: application/json; charset=utf-8` | `common/http/GoStyleJsonContentTypeAdvice.java` | `common/src/main/java/com/rag/common/web/JsonContentTypeAdvice.java` | 1:1 | ✅ **已落地（2026-11-01）**：落 `common/web/` —— 共享层 1 份 `@ResponseBodyAdvice`，给 `Content-Type` 补 `charset=utf-8`（对齐 go-zero `httpx.doWriteJson`）；⚠️ 各域 `advice/<Dom>ApiResponseAdvice.java` 的**信封与错误码**不受影响 |
+| W3C `traceparent` 头的透传 | `common/http/GoStyleTraceparentFilter.java` | `common/src/main/java/com/rag/common/web/TraceparentFilter.java` | 1:1 | ✅ **已落地（2026-11-01）**：落 `common/web/` —— servlet `Filter` 形态透传 `traceparent`；⚠️ 与 `common/observability/ObservabilityCustomizer.java`（Observation 侧）**分工不同**：前者是 HTTP 头透传，后者是埋点装配 |
+| Go 侧 OTel 的全局装配（tracer provider ＋ propagator） | `common/observability/GoStyleOtelAgent.java` ＋ `common/observability/GoStyleOtelAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | N:1 | ⚠️ `GoStyleOtelAgent` 是 **javaagent 形态**（`-javaagent:` 启动参数）⇒ 落到 auto-config 是**形态差** ⇒ 需登记为签字偏离 |
+| Go `Telemetry` 配置段（`service.name` / `endpoint` / `sampler` / `insecure`） | `common/observability/GoStyleOtelConfig.java` | `common/src/main/java/com/rag/common/observability/ObservabilityProperties.java` | 1:1 | 配置载体（C 侧 `ObservabilityProperties` 是唯一 `@ConfigurationProperties`） |
+| go-zero `zrpc` 的 `UnaryPrometheusInterceptor` ＋ `UnaryStatInterceptor` ＋ `core/stat` 聚合器 | `common/observability/GoStylePrometheusInterceptor.java` ＋ `common/observability/GoStyleStatInterceptor.java` ＋ `common/observability/GoStyleStatMetrics.java` ＋ `common/observability/GoStylePrometheusMetrics.java` | `common/src/main/java/com/rag/common/observability/ObservabilityCustomizer.java` | N:1 | Micrometer `Observation` ＋ `Timer` 承担（D4）；⚠️ B 侧 `GoStylePrometheusMetrics` 是**静态 holder** ⇒ C 侧 registry 是 **Bean** ⇒ **无静态 holder**（形态差，非行为差） |
+| Prometheus 写入面接缝（接口 ＋ Micrometer 实现 ＋ 装配点） | `common/observability/GoStylePrometheusSink.java` ＋ `common/observability/MicrometerPrometheusSink.java` ＋ `common/observability/GoStylePrometheusMeterRegistryBridge.java` | `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | N:1 | ⚠️ **D4 生态吸收**：C 侧 Boot 原生 `micrometer-registry-prometheus` ⇒ **不复制 RAG 的接缝接口**（零 Java 代码） |
+| gRPC 侧的 Stat ＋ Prometheus 指标面装配 | `common/observability/GoStyleRpcMetricsConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | 1:1 | 指标名 / 标签 / 调用点是**业务定义** ⇒ 由各域 `metrics/<Dom>RpcMetrics.java` 承载（见各域表） |
+| 客户端断连的主动探测（往 socket 写 1xx 探针） | `common/observability/GoStyleClientDisconnectProbe.java` | `common/src/main/java/com/rag/common/observability/ClientDisconnectProbe.java` | 1:1 | ✅ **已落地（2026-11-01）**：落 `common/observability/` —— 往 socket 写 1xx 探针，把客户端断连**提前暴露**出来（探针式断连暴露在 Java 侧终于有载体） |
+| 共享层 HTTP 熔断器的**注册期路由模板** ＋ gRPC client 熔断 ＋ 出向 deadline 传播 | `common/protection/GoStyleBreakerRouteTemplateAutoConfiguration.java` ＋ `common/protection/GoStyleRouteTemplateResolver.java` ＋ `common/protection/GoStyleGrpcClientBreakerConfiguration.java` ＋ `common/protection/GoStyleOutboundDeadlineConfiguration.java` ＋ `common/protection/GoStyleOutboundDeadlineInterceptor.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java` | N:1 | resilience4j `CircuitBreakerRegistry`（D-02）；隔离 key 仍是 `METHOD://path` ⇒ **路由模板解析不能省** |
+| 路由模板解析的**三态结果** ＋ 「注册期路由模板」窄接口 | `common/protection/GoStyleRouteResolution.java` ＋ `common/protection/GoStyleRouteTemplateSource.java` | `common/src/main/java/com/rag/common/protection/RouteResolution.java` ＋ `common/src/main/java/com/rag/common/protection/RouteTemplateSource.java` | 1:1 | ✅ **已落地（2026-11-01）**：落 `common/protection/` ⇒ C 侧 `protection/` 由 2 类扩到 **4 类**；⚠️ 隔离 key 仍是 `METHOD://path`（resilience4j `CircuitBreakerRegistry`）⇒ **路由模板解析不能省**这条前提已被载体兑现 |
+| Lettuce 客户端的**断连行为**收口（`ClientOptions.DisconnectedBehavior`） | `common/redis/GoStyleRedisClientAutoConfiguration.java` | `common/src/main/java/com/rag/common/redis/ClientAutoConfiguration.java` | 1:1 | ✅ **已落地（2026-11-01）**：C 侧新建 **`common/redis/`**（= `common/` 第 **12** 个包）⇒ 断连行为收口（`ClientOptions.DisconnectedBehavior`，对齐 Go 侧 fail-open 语义）；⚠️ **去 `Redis` 前缀**（包名已含 `redis`，类名再带前缀即冗余）；⚠️ RAG 已把域内 5 份 `RedisDisconnectedBehaviorConfig` 收进本类（**B 侧旧类名已不存在**） |
+| 请求预算耗尽 ⇒ 不再下发 Redis 命令 | `common/redis/GoStyleRedisDeadline.java` ＋ `common/redis/GoStyleRedisDeadlineAutoConfiguration.java` ＋ `common/redis/GoStyleRedisDeadlineConnection.java` ＋ `common/redis/GoStyleRedisDeadlineConnectionFactory.java` | `common/src/main/java/com/rag/common/redis/Deadline.java` ＋ `common/src/main/java/com/rag/common/redis/DeadlineAutoConfiguration.java` ＋ `common/src/main/java/com/rag/common/redis/DeadlineConnection.java` ＋ `common/src/main/java/com/rag/common/redis/DeadlineConnectionFactory.java` | 1:1 | ✅ **已落地（2026-11-01）**：4 个类落 `common/redis/`（**去 `Redis` 前缀**）；请求预算耗尽 ⇒ 不再下发 Redis 命令；⚠️ 与 `common/persistence/DeadlineQueryTimeoutInjector.java` **语义相邻但不同**（一个拦 SQL，一个拦 Redis 命令）⇒ 两个载体都要在 |
+| Go 侧 HTTP 中间件池由**进程生命周期**托管 | `common/spring/HttpPoolLifecycle.java` | **无对应文件** | 1:1 | ⚠️ **D4 生态吸收**：C 侧 Tomcat 自管连接池 ⇒ **零 Java 代码**（Go 侧亦无显式关闭 ⇒ 语义等价） |
+| 「本类属 api 侧 rest 中间件 ⇒ 只在 api 侧注册」的单一真源条件注解 | `common/web/ConditionalOnApiSide.java` | **无对应文件** | 1:1 | ⚠️ **D1 合并 api/rpc** ⇒ C 侧**不存在「api 侧」这个维度** ⇒ 条件注解无对应物（**不是缺口**） |
+
+### 1.13 §1 决策锁
 
 **换 starter 装配形态（D3 · 19 处同时改）**：
 1. 删 10 个 rpc 模块入口类上的 `@Import({...})` 清单（`LikeRpcApplication` / `CommentRpcApplication` / `FollowRpcApplication` / `MessageRpcApplication` / `FavoriteRpcApplication` / `AdminRpcApplication` / `UserRpcApplication` / `TaskRpcApplication` / `HotRpcApplication` / `ArticleRpcApplication`）；
@@ -469,7 +500,7 @@ Micrometer 的观察模型与它**不是一对一映射**（D-03）⇒ 用生态
 | # | 换什么 | N 处同时改 | 为什么换 | 关联决策 / 降级项 |
 |---|---|---|---|---|
 | L-1 | **共享层 → starter 装配** | **19**（10 份 `@Import` 清单 + 9 份 MP bridge 副本） | Spring 生态里共享能力层的标准形态是 starter，不是「普通 jar + 手写清单」 | **D3** · 断言 A5/A6 |
-| L-2 | **手写保护层 → 生态** | **15**（`protection/` 17 类 → 2 类） | go-zero 内置能力是白送的；生态无等价物只有 2 处（G-1 / G-4） | **D4** · D-02 / D-04 · P2 |
+| L-2 | **手写保护层 → 生态** | **15**（`protection/` 24 类 → 2 类） | go-zero 内置能力是白送的；生态无等价物只有 2 处（G-1 / G-4） | **D4** · D-02 / D-04 · P2 |
 | L-3 | **日志 → SLF4J 适配器** | **3**（`Logger`→`GoStyleLogger`、`LoggerFactoryBean` 合并、`With*` 合并） | 格式（`call_chain`）是行为契约，但**要接进 SLF4J 生态** ⇒ 自研 `implements org.slf4j.Logger` | **D4** · K-04 · G-4 · 断言 A8 |
 | L-4 | **观测 → Micrometer Observation** | **4** | Micrometer 的观察模型与 go-zero 的中间件链不是一对一映射 | **D4** · **D-03** |
 | L-5 | **限连接 → Tomcat 原生** | **2**（删 filter + 改 yml） | `MaxConns` 是 Tomcat 原生项 ⇒ 零 Java 代码 | **D4** · `DRIFT-HOTAPI-030` 仍未决 |
@@ -517,7 +548,7 @@ Micrometer 的观察模型与它**不是一对一映射**（D-03）⇒ 用生态
 
 ## 7. 覆盖度自查
 
-### 7.1 C 列零遗漏（56/56 = 100%）
+### 7.1 C 列零遗漏（69/69 = 100%）
 
 自查命令：
 
@@ -533,31 +564,33 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 | `contract/` | 1 | 1 | 0 |
 | `exception/` | 2 | 2 | 0 |
 | `logger/` | 4 | 4 | 0 |
-| `observability/` | 3 | 3 | 0 |
+| `observability/` | 4 | 4 | 0 |
 | `persistence/` | 4 | 4 | 0 |
-| `protection/` | 2 | 2 | 0 |
+| `protection/` | 4 | 4 | 0 |
+| `redis/` | 5 | 5 | 0 |
 | `security/` | 3 | 3 | 0 |
 | `snowflake/` | 1 | 1 | 0 |
-| `web/` | 16 | 16 | 0 |
-| **合计** | **56** | **56** | **0** |
+| `web/` | 21 | 21 | 0 |
+| **合计** | **69** | **69** | **0** |
 
-> C 列逐条清单（按子包）：
+> C 列逐条清单（按子包，C 侧**真实类名**）：
 > `autoconfigure/`：GrpcExceptionMapperAutoConfiguration · JsonBodyConverterAutoConfiguration · MybatisPlusOrderingBridgeAutoConfiguration ·
 > ObservabilityAutoConfiguration · ProtectionAutoConfiguration · SnowflakeAutoConfiguration · WebAutoConfiguration
-> `communityfact/`：AuthorityFact · AuthorityHandler · CanonicalHash · DeliveryStatus · Dispatcher · Event · EventDispatcher ·
-> EventSender · ProcessLogger · ProcessMetadata · SubjectRef · TechnicalReceipt · Wire
+> `communityfact/`：AuthorityFact · AuthorityHandler · CanonicalHash · DeliveryStatus · Dispatcher · Event · EventDispatcher · EventSender ·
+> ProcessLogger · ProcessMetadata · SubjectRef · TechnicalReceipt · Wire
 > `contract/`：ApiResponse
 > `exception/`：AuthenticationException · BusinessException
 > `logger/`：FatalError · GoStyleLogger · LogOption · LogOptions
-> `observability/`：GoStyleRequestDeadline · ObservabilityCustomizer · ObservabilityProperties
+> `observability/`：ClientDisconnectProbe · GoStyleRequestDeadline · ObservabilityCustomizer · ObservabilityProperties
 > `persistence/`：DeadlineQueryTimeoutInjector · JsonTextTypeHandler · JsonbTypeHandler · SqlTimeoutStatusTranslator
-> `protection/`：CpuThresholdHealthIndicator · MaxBytesFilter
+> `protection/`：CpuThresholdHealthIndicator · MaxBytesFilter · RouteResolution · RouteTemplateSource
+> `redis/`：ClientAutoConfiguration · Deadline · DeadlineAutoConfiguration · DeadlineConnection · DeadlineConnectionFactory
 > `security/`：BearerTokenExtractor · JwtUtil · PasswordUtil
 > `snowflake/`：Snowflake
-> `web/`：GoStyleBadRequestException · GoStyleCoercion · GoStyleFloat64Deserializer · GoStyleGetFormValuesFilter ·
-> GoStyleGrpcStatusMapper · GoStyleHttpErrorException · GoStyleJsonBodyConverter · GoStyleJsonBodyConverterConfig ·
-> GoStyleJsonBodyLimitFilter · GoStyleMapStringValueDeserializer · GoStylePathNormalizingFilter · GoStylePlainTextErrors ·
-> GoStyleRawStringListDeserializer · GoStyleRouterErrorResponses · GoStyleStringFields · GoStyleStringInt64
+> `web/`：BadRequestException · Coercion · Float64Deserializer · GetFormValuesFilter · GrpcStatusMapper · HttpErrorException · JsonBodyConverter ·
+> JsonBodyConverterConfig · JsonBodyLimitFilter · JsonContentTypeAdvice · LimitExceededException · LimitMode · MapStringValueDeserializer ·
+> PathNormalizingFilter · PlainTextErrors · RawStringListDeserializer · RouterErrorResponses · StringFields · StringInt64 · TraceparentFilter ·
+> ValueLimitInterceptor
 
 ### 7.2 A 列不遗漏职责（11/11 = 100%）
 
@@ -585,24 +618,28 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 
 ### 7.3 映射类型分布
 
-> **统计口径**：本表所有 5 列对照表（§0 + §1.1 – §1.11）里**填了映射类型的行** = **80 行**，全部落在 4 种合法词内。
+> **统计口径**：本表所有 5 列对照表（§0 + §1.1 – §1.13）里**填了映射类型的行** = **97 行**，全部落在 4 种合法词内。
 > 统计脚本：`awk -F'|' '/^\|/ && NF==7 {print $5}' common.md | sort | uniq -c`。
+> ⚠️ **核对日期 2026-11-01**（§1.12 增量补录后重算；口径不变，只是行数与分布变了）。
 
 | 映射类型 | 行数 | 主要集中在 |
 |---|---|---|
-| **1:1** | **43** | `web/` 15 个（13 个从各域 api 归位 + 2 个来自 `common/http`）、`logger/` 5 个、`communityfact/` 4 个、`security/` 3 个、`observability/` 3 个、`persistence/` 2 个、`exception/` 2 个、`protection/` 2 个、§0 顶层 4 个、`contract` / `snowflake` 各 1 个、`autoconfigure/` 1 个 |
-| **1:N** | **11** | 全部集中在 `communityfact/` 的 wire 类型拆分（`Event` / `TechnicalReceipt` / `SubjectRef` / `AuthorityFact` / `DeliveryStatus` / `CanonicalHash` / `EventSender` / `EventDispatcher` / `ProcessMetadata`）+ §0 顶层 2 个 |
-| **N:1** | **25** | `autoconfigure/` 6 个、`protection/` 5 个、`observability/` 3 个、`logger/` 2 个、`persistence/` 2 个、§0 顶层 5 个、`web/` 1 个（`GoStyleStringInt64` 合 2 份） |
+| **1:1** | **52** | `web/` 15 个（13 个从各域 api 归位 + 2 个来自 `common/http`）、`logger/` 5 个、`communityfact/` 4 个、`security/` 3 个、`observability/` 3 个、`persistence/` 2 个、`exception/` 2 个、`protection/` 2 个、§0 顶层 4 个、`contract` / `snowflake` 各 1 个、`autoconfigure/` 1 个、**§1.12 增量 9 个** |
+| **1:N** | **14** | 9 个在 `communityfact/` 的 wire 类型拆分（`Event` / `TechnicalReceipt` / `SubjectRef` / `AuthorityFact` / `DeliveryStatus` / `CanonicalHash` / `EventSender` / `EventDispatcher` / `ProcessMetadata`）+ §0 顶层 2 个 + **§1.12 的 form 上限族 / Redis 期限族 / 路由模板三态 3 个** |
+| **N:1** | **30** | `autoconfigure/` 6 个、`protection/` 5 个、`observability/` 3 个、`logger/` 2 个、`persistence/` 2 个、§0 顶层 5 个、`web/` 1 个（`GoStyleStringInt64` 合 2 份）、**§1.12 增量 5 个**（3 个注册点合 `WebAutoConfiguration` ＋ 2 个 OTel 装配合 `ObservabilityAutoConfiguration`） |
 | **C 新增** | **1** | §0 顶层的 `autoconfigure/`（A 侧无源形态；其余 6 个 auto-config 因 B 侧有落点故记 `N:1`） |
-| **合计** | **80** | — |
+| **合计** | **97** | — |
 
-> ⚠️ **分布读法**：`N:1` 偏多（25 行，占 31%）**不是缺陷** —— 它正是 D3（starter 化）与 D4（生态替代）的直接账单：
+> ⚠️ **分布读法**：`N:1` 偏多（30 行，占 31%）**不是缺陷** —— 它正是 D3（starter 化）与 D4（生态替代）的直接账单：
 > Go 的 11 个 `.go` 里，**6 个文件的能力在 Go 侧是「框架内置」**（熔断 / 降载 / 限连接 / 限体积 / HTTP 解析 / 错误形状），
-> RAG 手写复刻（RAG 侧 51 类，其中 `protection/` 一个包就占 17 类），
+> RAG 手写复刻（RAG 侧 `service/common` 88 类，其中 `protection/` 一个包就占 24 类），
 > RAG-V1 再交回生态或合流 ⇒ **C 列 56 类里有相当一部分是「形态」而非「能力」的重新分配**。
 >
-> ⚠️ **反过来说**：`1:N` 只有 11 行且**全部在 `communityfact`** ⇒ **本层的形态变化集中在「合流 + 生态替代」，不在「拆细」**。
-> 这与《完全spring化的文件树》§6.1 的结论一致：`common` 几乎没降（51 → 56），**收益不在文件数，在消除 `@Import` 清单与拿到生态红利**。
+> ⚠️ **反过来说**：`1:N` 只有 14 行（**9 行在 `communityfact/`** ＋ 2 行在 §0 顶层 ＋ 3 行在 §1.12 的 form/Redis/路由模板族）⇒ **本层的形态变化集中在「合流 + 生态替代」，不在「拆细」**。
+> 这与《完全spring化的文件树》§6.1 的结论一致：`common` **反而变大**（B 88 → C 69，**C 侧比 B 少 19**），**收益不在文件数，在消除 `@Import` 清单与拿到生态红利**。
+>
+> ⚠️ **§1.12 带来的新事实**：B 侧 `service/common` 现有 **12 个包 / 88 个主代码类**，而 C 侧 `common/` 是 **12 个包 / 69 个类**（2026-11-01 实测）
+> ⇒ **缺口不是「C 侧漏建」，而是「C 侧有意收窄」**（生态吸收 ＋ starter 化）；§1.12 原先标「无对应文件」的 9 行里 **7 行已于 2026-11-01 补齐**（`web` 5 类 + `observability` 1 类 + `protection` 2 类 + `redis` 5 类）⇒ **余 2 行是「有意不建」**（`HttpPoolLifecycle` = D4 生态吸收 · `ConditionalOnApiSide` = D1 合并 api/rpc）⇒ **本域已无未裁决的落点缺口**。
 
 ### 7.4 🔴 三列职责对不上的地方（6 条，均需在实现前定死）
 
@@ -640,7 +677,7 @@ RAG-V1 的 `common/` 里**仍保留 18 个 `GoStyle*` 命名的类**（实测 `f
 |---|---|
 | `Sea-RideTheWind_golang/service/common/`（11 个非测试 `.go`） | **A 列唯一真源**；逐文件读过 `wire.go` / `process.go` / `authority_http.go` / `logging.go` / `logger.go` / `observability.go` / `http.go` / `rpc.go` / `mq.go` / `response.go` / `snowflake.go` |
 | `RAG/service/common/`（51 个主代码类） | **B 列落点**；逐文件核过文件名与包结构 |
-| `RAG-V1/common/`（56 个主代码类） | **C 列清单**（实测 `find`，非估算） |
+| `RAG-V1/common/`（69 个主代码类） | **C 列清单**（实测 `find`，非估算） |
 | `RAG/docs/FileTree/common.md` | A↔B 的现成职责映射（`§12.4` 职责→Java 映射表、`§12.7` 不通过项 #1–#12） |
 | `RAG/docs/DRIFT/common/alignment-2026-10-23.md` | B 列的漂移事实（§三 日志 KV 丢失 · §四 communityfact 消费者不一致 · §五 14 条未修 · §十二 27 条编号 + 5 项未编号） |
 | `RAG-V1/docs/完全spring化的文件树.md` | C 列的推导依据（§4.5 共享层映射表 · §5.5 目标结构 · §6 文件变化表） |

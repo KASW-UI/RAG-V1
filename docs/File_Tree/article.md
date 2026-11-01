@@ -20,13 +20,23 @@
 - `org.springframework.boot:spring-boot-starter-actuator`
 - `io.micrometer:micrometer-registry-prometheus`
 - `com.alibaba.cloud:spring-cloud-starter-alibaba-nacos-discovery`
+- `org.flywaydb:flyway-core`
+- `org.flywaydb:flyway-database-postgresql`
+- `io.minio:minio`
+- `org.springframework.boot:spring-boot-starter-test`
+- `org.junit.jupiter:junit-jupiter`
+- `org.mockito:mockito-core`
+- `io.grpc:grpc-inprocess`
+- `org.testcontainers:postgresql`
+- `org.testcontainers:junit-jupiter`
+- `org.testcontainers:kafka`
 - `net.devh:grpc-server-spring-boot-starter`
 - `net.devh:grpc-client-spring-boot-starter`
 - `com.baomidou:mybatis-plus-spring-boot3-starter`
 - `org.postgresql:postgresql`
 - `com.rag:proto`
 - `com.rag:common`
-- `org.springframework.boot:spring-boot-kafka`
+- `org.springframework.kafka:spring-kafka`
 
 ## 三、目录树
 
@@ -41,7 +51,11 @@
 │   │   │               │   ├── ArticleApiExceptionHandler.java
 │   │   │               │   └── ArticleApiResponseAdvice.java
 │   │   │               ├── client/
-│   │   │               │   └── MessageRpcClient.java    # 跨域 gRPC 客户端 —— 域内调用已直连，此处只保留跨域依赖。
+│   │   │               │   ├── ArticleObjectStorageClient.java    # 对象存储客户端 —— MinIO put/get（Go 侧 ArticleRpc 的对象存储腿）。
+│   │   │               │   ├── ContentAuditAutoConfiguration.java    # 内容审计端口的兜底注册 —— 容器里没有实现时落 Unavailable。
+│   │   │               │   ├── ContentAuditPort.java    # 内容安全审计端口 —— RAG-V1 不迁移 security 域，此端口是审核链路唯一的审计入口。
+│   │   │               │   ├── MessageRpcClient.java    # 跨域 gRPC 客户端 —— 域内调用已直连，此处只保留跨域依赖。
+│   │   │               │   └── UnavailableContentAuditClient.java    # 内容安全不可用时的默认实现 —— fail-loud（复刻 Go 侧 SecurityRpc == nil 分支）。
 │   │   │               ├── config/
 │   │   │               │   ├── ArticleApiProperties.java    # @ConfigurationProperties —— 聚合本域 HTTP 层配置。
 │   │   │               │   ├── ArticleKafkaChannelValidator.java
@@ -95,6 +109,10 @@
 │   │   │               │   ├── ArticlePublicationMapper.java
 │   │   │               │   ├── ArticleRevisionMapper.java
 │   │   │               │   └── ArticleSyncOutboxMapper.java
+│   │   │               ├── messaging/
+│   │   │               │   ├── ArticleReviewConsumer.java    # 文章审核消费者 —— 四元组校验 + 内容安全 + 幂等 + FOR UPDATE 写 outbox。
+│   │   │               │   ├── ArticleSyncOutboxRelay.java    # 文章同步 outbox 中继 —— 1s ticker、batch=100、单条失败不中断批次。
+│   │   │               │   └── ArticleSyncResultConsumer.java    # 同步结果消费者 —— revision + publication + domain outbox + 一次性通知。
 │   │   │               ├── metrics/
 │   │   │               │   └── ArticleRpcMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
 │   │   │               ├── service/

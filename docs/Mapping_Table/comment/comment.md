@@ -46,7 +46,7 @@
 
 | A Go 目录 | B RAG 目录 | C RAG-V1 目录 | 映射类型 | 备注 |
 |---|---|---|---|---|
-| `service/comment/api/`（20 个 `.go` + 1 个 yaml） | `service/comment/comment-api/`（33 个 `.java`） | `service/comment/`（api 部分：`service/comment/src/main/java/com/rag/comment/{advice,config,controller,dto,interceptor,service}/**`） | 1:1 | **D1**：api 与 rpc 合并进 `comment-service` 单 app ⇒ C 的 api 侧不再独立进程 |
+| `service/comment/api/`（20 个 `.go` + 1 个 yaml） | `service/comment/comment-api/`（37 个 `.java`） | `service/comment/`（api 部分：`service/comment/src/main/java/com/rag/comment/{advice,config,controller,dto,interceptor,service}/**`） | 1:1 | **D1**：api 与 rpc 合并进 `comment-service` 单 app ⇒ C 的 api 侧不再独立进程 |
 | `service/comment/rpc/`（37 个 `.go`，含 3 个生成物） | `service/comment/comment-rpc/`（42 个 `.java`） | `service/comment/`（rpc 部分：`service/comment/src/main/java/com/rag/comment/{wiring,client,config,domain/entity,domain/service,exception,grpc,mapper,messaging,metrics,service}/**`） | 1:1 | 同上 |
 | `service/comment/common/errmsg/`（1 个 `.go`） | `service/comment/comment-common/`（4 个 `.java`） | `service/comment/src/main/java/com/rag/comment/contract/`（5 个 `.java`） | 1:1 | ⚠️ C 把错误契约放进 **contract 模块**（合并后 api/rpc 同进程共享，且与 proto 同模块）；命名从 `errmsg` → `contract` |
 | `proto/comment.proto`（仓库根，245 行） | `service/comment/comment-proto/src/main/proto/comment.proto` | `proto/src/main/proto/comment.proto` | 1:1 | 模块名 `comment-proto` → 根级 `proto` |
@@ -240,6 +240,17 @@
 **为什么换**：MyBatis-Plus 的 `LambdaQueryWrapper` 比 GORM 链式调用更直观；显式迁移脚本可管 schema 历史。
 ⚠️ **代价**：Go 的 `AutoMigrate` 是「表与进程同生共死」，Flyway 引入了 Go 没有的新失败模式 ⇒ 必须补 `CommentSchemaGate`。
 
+### 1.6 🔴 RAG 侧新增类补录（2 条 · 覆盖 5 个 `.java`）
+
+> ⚠️ **本节是 2026-11-01 的增量**：RAG 在首版映射表之后新增了 `comment-api/…/auth/` 包（4 类）与 `CommentSpans`（1 类）
+> ⇒ 首版 §1.2 / §1.4 的 **B 列漏了这 5 个 `.java`** ⇒ 本节逐个落到 C 侧；
+> 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
+
+| A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
+|---|---|---|---|---|
+| `api/internal/handler/routes.go` 的 `rest.WithJwt(...)` 绑定 | `comment-api/…/auth/CommentJwtAuthPaths.java` ＋ `comment-api/…/auth/CommentJwtSignatureVerifier.java` ＋ `comment-api/…/auth/CommentJwtVerificationResult.java` ＋ `comment-api/…/auth/GoStyleJwtAuthFilter.java` | `service/comment/src/main/java/com/rag/comment/interceptor/CommentJwtAuthInterceptor.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 1 个 `HandlerInterceptor`** ⇒ 🔴 **C 侧缺口**：要么补 1 个 `OncePerRequestFilter` 承载验签，要么显式登记为签字偏离。⚠️ **受保护路由表 ＋ public 前缀集合是 L1** |
+| `rpc/metrics/metrics.go`（指标名与标签） | `comment-rpc/…/service/CommentSpans.java` | `service/comment/src/main/java/com/rag/comment/metrics/CommentRpcMetrics.java` | 1:1 | B 侧把 span 名常量从指标类里**拆出** ⇒ C 侧并回 `CommentRpcMetrics`；⚠️ 指标**完整名**带 `comment_service_` 前缀，**不许补全** |
+
 ---
 
 ## 2. 持久层差异
@@ -428,18 +439,19 @@ find "/Users/pr/Documents/java&golang/Sea-RideTheWind_golang/service/comment" \
 
 ### 7.3 映射类型分布
 
-> 统计口径：全文所有带「映射类型」列的表格行（§0 顶层模块 7 行 + §1 包结构 61 行（§1.1 8 / §1.2 14 / §1.3 11 / §1.4 17 / §1.5 11）+ §4 公共模块 14 行 = **82 行**）。
+> 统计口径：全文所有带「映射类型」列的表格行（§0 顶层模块 7 行 + §1 包结构 63 行（§1.1 8 / §1.2 14 / §1.3 11 / §1.4 17 / §1.5 11 / §1.6 2）+ §4 公共模块 14 行 = **84 行**）。
+> ⚠️ **核对日期 2026-11-01**（§1.6 增量补录后重算）。
 
 | 映射类型 | 行数 | 占比 | 主要来源 |
 |---|---|---|---|
-| `1:1` | 65 | 79% | 绝大多数 Go 文件 1:1 落到 1 个 C 类（7 个 Entity、7 个 Mapper、13 个 rpc 协作者、16 个 DTO…） |
+| `1:1` | 66 | 79% | 绝大多数 Go 文件 1:1 落到 1 个 C 类（7 个 Entity、7 个 Mapper、13 个 rpc 协作者、16 个 DTO…） |
 | `1:N` | 10 | 12% | Go 1 个文件 → Spring 多类：`errmsg.go` 拆 4 类、`data_model.go` 拆 7 Entity + 7 Mapper、`types.go` 拆 16 个 DTO、`fact_delivery.go` 拆 2 类、`config.go` 拆 2 个 `@ConfigurationProperties`、`model/comment.go` 拆 3 个 Service |
-| `N:1` | 5 | 6% | goctl 的「一用例一文件」被合并：7 handler → 1 `CommentController`、7 api logic → 1 `CommentApiService`、7 rpc logic → 1 `CommentDomainService`、6 cache 文件 → 1 `CommentCacheService`、protection 17 类 → 2 类（§4） |
+| `N:1` | 6 | 7% | goctl 的「一用例一文件」被合并：7 handler → 1 `CommentController`、7 api logic → 1 `CommentApiService`、7 rpc logic → 1 `CommentDomainService`、6 cache 文件 → 1 `CommentCacheService`、protection 17 类 → 2 类（§4） |
 | `C 新增` | 2 | 2% | `NacosRegistration`（Go 用 etcd）、C 的 contract 包行（Go 侧无独立契约模块） |
-| **合计** | **82 行** | **100%** | — |
+| **合计** | **84 行** | **100%** | — |
 
 > ⚠️ **词表合规**：全文只出现 `1:1` / `1:N` / `N:1` / `C 新增` 四种，未发明新词（`N:M` / `1:1:1` 等一律未出现）。
-> ⚠️ **数量不等不是缺陷**（README §一）：C 比 B 少 10 个 `.java`（79 → 69），主要来自 D1 合并（少 2 个 Application / 少 7 个 api Service / 少 1 个 client）
+> ⚠️ **数量不等不是缺陷**（README §一）：C 比 B 少 **14** 个 `.java`（83 → 69），主要来自 D1 合并（少 2 个 Application / 少 7 个 api Service / 少 1 个 client）
 > 与 D3/D4（少 `CommentGoStyleCoercion` / `Jackson2ObjectMapperConfiguration` / `MybatisPlusOrderingBridgeAutoConfiguration` / `JsonbTypeHandler` 4 个域内副本）。
 
 ### 7.4 ⚠️ 三列之间「职责对不上」清单（本表产出的待订正项）
@@ -467,6 +479,6 @@ find "/Users/pr/Documents/java&golang/Sea-RideTheWind_golang/service/comment" \
 ## 附：一句话总览
 
 **A 列 Go** = 3 进程 / 58 个 `.go` / goctl 生成形态（一用例一 logic、一 handler 一文件、16 个 DTO 结构体混在一个 `types.go`）；
-**B 列 RAG** = 2 进程 / 79 个 `.java` / Spring 复刻（api/rpc 分离、用例仍按 codegen 拆、`common` 是普通 jar）；
-**C 列 RAG-V1** = 1 进程 / 68 个 `.java` / Spring 惯用形态（api+rpc 合并、用例内聚、`common` 是真 starter、契约落在域内 `contract/` 包（proto 在根级 `proto/`））。
+**B 列 RAG** = 2 进程 / 83 个 `.java` / Spring 复刻（api/rpc 分离、用例仍按 codegen 拆、`common` 是普通 jar）；
+**C 列 RAG-V1** = 1 进程 / 69 个 `.java` / Spring 惯用形态（api+rpc 合并、用例内聚、`common` 是真 starter、契约落在域内 `contract/` 包（proto 在根级 `proto/`））。
 ⇒ **文件名与职责逐条对应；行为一律以 A 列 Go 源码为准；本表不下对齐结论。**

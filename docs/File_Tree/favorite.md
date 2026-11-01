@@ -20,6 +20,14 @@
 - `org.springframework.boot:spring-boot-starter-actuator`
 - `io.micrometer:micrometer-registry-prometheus`
 - `com.alibaba.cloud:spring-cloud-starter-alibaba-nacos-discovery`
+- `org.flywaydb:flyway-core`
+- `org.flywaydb:flyway-database-postgresql`
+- `org.springframework.boot:spring-boot-starter-test`
+- `org.junit.jupiter:junit-jupiter`
+- `org.mockito:mockito-core`
+- `io.grpc:grpc-inprocess`
+- `org.testcontainers:postgresql`
+- `org.testcontainers:junit-jupiter`
 - `net.devh:grpc-server-spring-boot-starter`
 - `net.devh:grpc-client-spring-boot-starter`
 - `com.baomidou:mybatis-plus-spring-boot3-starter`
@@ -27,7 +35,7 @@
 - `com.rag:proto`
 - `com.rag:common`
 - `org.springframework.boot:spring-boot-starter-data-redis`
-- `org.springframework.boot:spring-boot-kafka`
+- `org.springframework.kafka:spring-kafka`
 
 ## 三、目录树
 
@@ -89,7 +97,8 @@
 │   │   │               ├── grpc/
 │   │   │               │   └── FavoriteGrpcService.java
 │   │   │               ├── interceptor/
-│   │   │               │   └── FavoriteJwtAuthInterceptor.java
+│   │   │               │   ├── FavoriteJwtAuthInterceptor.java
+│   │   │               │   └── QueryLimitInterceptor.java    # Go 语义的 query 判据闸门 —— 逐字复刻 httpx.GetFormValues + net/url.parseQuery。
 │   │   │               ├── mapper/
 │   │   │               │   ├── FavoriteFactOutboxMapper.java
 │   │   │               │   ├── FavoriteFolderMapper.java

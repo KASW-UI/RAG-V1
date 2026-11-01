@@ -25,9 +25,60 @@
         <dependency>
             <groupId>io.micrometer</groupId><artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
+        <!--
+            ⚠️ **Nacos 3.0.3 单一真源（D14）** —— 版本由**根 pom 的 `dependencyManagement`** 统一管
+            （`nacos.version` = 3.0.3 = spring-cloud-alibaba 2025.0.0.0 的原生版本 ⇒ 无需覆盖）。
+            ⚠️ **不再排除 Jackson 2**（D14 工具链回退）：nacos-client 3.0.3 内部**依赖** Jackson 2
+            ⇒ 排除即客户端启动即 NoClassDefFoundError。
+        -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
+        <!-- ============ Flyway（DDL 迁移；**账本表名逐域独立** —— 见 docs/决策记录.md） ============ -->
+        <!--
+            ⚠️ **D14**：Boot 4 的 `spring-boot-flyway` **独立模块在 Boot 3.5 不存在**
+            ⇒ Boot 3.5 的 `FlywayAutoConfiguration` 在 `spring-boot-autoconfigure` 里
+            ⇒ 只需 `flyway-core` + `flyway-database-postgresql`（版本由根 pom 统一管）。
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+        <!-- ============ 测试基础设施（抄 RAG；test 作用域**不传递给下游**） ============ -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-inprocess</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>net.devh</groupId><artifactId>grpc-server-spring-boot-starter</artifactId>

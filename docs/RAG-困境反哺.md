@@ -217,6 +217,11 @@ MockMvc **测不到**「响应已 committed 后 `setHeader` 被静默忽略」�
 
 ### 🔴 K-1 · Boot 4 把 Kafka 自动配置拆出 `spring-boot-autoconfigure` ⇒ RAG-V1 的 7 个模块命中
 
+> ⚠️ **D14 订正（2026-11-02 · 工具链回退到 Boot 3.5.11）** —— 本条描述的是 **Boot 4 专属**的坑：
+> **Boot 3.5 的 `KafkaAutoConfiguration` 在 `spring-boot-autoconfigure` 里**（每个 app 经 `spring-boot-starter` 必然带上）⇒ **本仓不再有「拆模块缺口」**。
+> ⇒ 依赖写法：**`org.springframework.kafka:spring-kafka`**（版本由 Boot BOM 管）—— ⚠️ **`spring-boot-starter-kafka` 在 Boot 3.5 不存在**（Boot 4 才引入，Central 3.5.11 → 404 实测）；`spring-boot-kafka` 独立模块同样不存在 ⇒ 一并撤销。
+> ⇒ **纪律不变**：「`@KafkaListener` 注解存在 ≠ 生效」这条通用教训仍然成立 ⇒ 用 `@KafkaListener` 必配**装配层**测试断言 listener 真进 registry（§3.3.3）。
+
 **RAG 的两份台账在这里互相矛盾，本节给出实测结论。**
 
 | RAG 的说法 | 出处 | 实测判定 |
@@ -279,11 +284,11 @@ unzip -l ~/.m2/.../spring-kafka-4.0.7.jar | grep KafkaListenerAnnotationBeanPost
 
 1. ✅ **`common/` starter 统一声明 `spring-boot-kafka`（`<optional>true</optional>`，版本由 Boot BOM 管理，不写 `<version>`）** ⇒ 7 个域一次性拿到 `KafkaTemplate` + listener BPP，且**只有一处**（这正是 D3 的价值）。
    *落地*：`common/pom.xml` 新增该依赖 + 注释写明因果链。
-2. ✅ **7 个 service 模块的 `spring-kafka` 裸依赖改为 `spring-boot-kafka`**（`spring-boot-kafka` 传递依赖 `spring-kafka`）。
+2. ✅ **7 个 service 模块的 `spring-kafka` 裸依赖** —— ⚠️ **D14 订正**：Boot 4 时代改成了 `spring-boot-kafka`；**该 artifact 在 Boot 3.5 不存在** ⇒ **本仓改为 `org.springframework.kafka:spring-kafka`**（Boot 3.5 的 `KafkaAutoConfiguration` 在 `spring-boot-autoconfigure` 里 ⇒ 裸依赖即可）。
    *落地*：`like` · `comment` · `message` · `favorite` · `task` · `hot` · `article` 各 1 行。
-3. ✅ **加进 §六 检查清单**：「引入任何 `spring-*-starter` 能力前，先确认它在 **Boot 4 下仍在 `spring-boot-autoconfigure` 里**；已被拆走的必须显式补对应模块」—— **每次都要查，不能凭记忆**。
-   *落地*：`../AGENTS.md` §1.3-6 + §六 检查清单。
-4. ⬜ **加一条断言**（进 `check-arch-invariants.py`）：「凡 classpath 有 `spring-kafka` ⇒ 必须同时有 `spring-boot-kafka`」。
+3. ✅ **加进检查清单**：「引入任何 `spring-*-starter` 能力前，先确认它在 **Boot 3.5 下仍带 `spring-boot-autoconfigure`**；已被拆走的必须显式补对应模块」—— **每次都要查，不能凭记忆**。
+   *落地*：`../AGENTS.md` §3.3.3 + §八 检查清单（**D14 已按 Boot 3.5 改写**）。
+4. ⬜ **加一条断言**（进 `check-arch-invariants.py`）：「凡 classpath 有 `spring-kafka` ⇒ 必须同时有 Kafka 自动配置模块」—— ⚠️ **D14 订正**：Boot 3.5 的判据改为「`spring-boot-autoconfigure` 在 classpath 上」（Boot 4 的 `spring-boot-kafka` 独立模块判据**不适用**）。
 
 **✅ 验证（2026-10-25 实测）**：
 

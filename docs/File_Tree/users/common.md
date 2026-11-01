@@ -18,6 +18,12 @@
 - `io.grpc:grpc-stub`
 - `com.google.protobuf:protobuf-java`
 - `javax.annotation:javax.annotation-api`
+- `io.jsonwebtoken:jjwt-api`
+- `io.jsonwebtoken:jjwt-jackson`
+- `com.fasterxml.jackson.core:jackson-databind`
+- `com.fasterxml.jackson.core:jackson-annotations`
+- `org.springframework.security:spring-security-crypto`
+- `org.springframework:spring-jdbc`
 
 ## 三、目录树
 
@@ -30,7 +36,8 @@
 │                   └── users/
 │                       └── common/
 │                           ├── ErrCodes.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│                           └── ErrMsg.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
+│                           ├── ErrMsg.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
+│                           └── IdentityResolver.java    # 权威身份解析器 —— ClaimedUID → GetUser → status presence 检查 → SubjectRef（user/admin 两子域共用）。
 └── pom.xml    # Maven 模块描述
 ```
 

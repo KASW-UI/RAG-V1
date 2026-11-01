@@ -109,7 +109,7 @@ api 模块                                     rpc 模块
 | `GoStyleJsonBodyConverter` | `common/http/` | 请求体读取判据 |
 | `GoStyleCoercion` | `users/common/http/` | Jackson 强转配置（**已是原生机制**） |
 | `GoStyleRequest` + `GoStyleRequiredFields` | `users/common/http/` | 必填校验（自研） |
-| `MybatisPlusOrderingBridgeAutoConfiguration` | **9 个 rpc 模块各一份** | Boot 4 下 MP 自动配置排序桥 |
+| `MybatisPlusOrderingBridgeAutoConfiguration` | **9 个 rpc 模块各一份** | MP 自动配置排序桥（⚠️ **D14 后本仓 Boot 3.5 ⇒ MP 的 `@AutoConfigureAfter` 引用有效 ⇒ 本桥非必需，待裁决**） |
 
 ### 已确认的框架机制（RAG 已实测生效）
 
@@ -123,7 +123,7 @@ api 模块                                     rpc 模块
 | `grpc-server-spring-boot-starter`（devh） | 10 个 rpc 模块 |
 | `grpc-netty-shaded` + `protobuf-maven-plugin` | 10 个 proto 模块 |
 | MyBatis-Plus `BaseMapper` + `MybatisPlusInterceptor` | 持久化 |
-| Boot 4 模块化迁移修复（`Jackson2ObjectMapperConfiguration`、`MybatisPlusOrderingBridgeAutoConfiguration`） | 已实测 |
+| Boot 4 模块化迁移修复（`Jackson2ObjectMapperConfiguration`、`MybatisPlusOrderingBridgeAutoConfiguration`） | 已实测（⚠️ **D14 后本仓 Boot 3.5 + Jackson 2 ⇒ 两项的前提均已变化**，见 `决策记录.md` D14） |
 
 ### 当前 RAG 完全**没有**用到的 Spring 生态能力（= "完全 Spring 化"的增量空间）
 
@@ -319,7 +319,7 @@ service/message/
 
 ```
 RAG-V1/
-├── pom.xml                                     # 父 pom：Boot 4 + Spring Cloud Alibaba + MyBatis-Plus
+├── pom.xml                                     # 父 pom：Boot 3.5 + Spring Cloud Alibaba + MyBatis-Plus
 │                                               #   + resilience4j + spring-cloud-stream + spring-retry
 ├── common/                                     # ★ 由 service/common 升级为 starter（artifactId = common）
 │   └── src/main/
@@ -337,13 +337,24 @@ RAG-V1/
 │       │   ├── web/                            # ★ Go 的 JSON / 表单 / 错误形状兼容层（原 common/http）
 │       │   │   ├── JsonBodyConverter.java
 │       │   │   ├── JsonBodyConverterConfig.java
-│       │   │   └── RouterErrorResponses.java
+│       │   │   ├── RouterErrorResponses.java
+│       │   │   ├── LimitMode.java              # ★ 2026-11-01：form 值上限的拒绝形状
+│       │   │   ├── ValueLimitInterceptor.java  # ★ 2026-11-01
+│       │   │   ├── LimitExceededException.java # ★ 2026-11-01
+│       │   │   ├── JsonContentTypeAdvice.java  # ★ 2026-11-01
+│       │   │   └── TraceparentFilter.java      # ★ 2026-11-01
 │       │   ├── communityfact/                  # 跨服务事件协议（comment·favorite·like 三域共用）
 │       │   ├── exception/                      # BusinessException / AuthenticationException
 │       │   ├── logger/                         # ★ 瘦身：实现 SLF4J（GoStyleLogger）
 │       │   ├── observability/                  # ★ 瘦身
 │       │   ├── persistence/                    # JsonbTypeHandler / JsonTextTypeHandler / 超时注入 / 状态翻译
-│       │   ├── protection/                     # ★ 17 类 → 2 类
+│       │   ├── protection/                     # ★ 17 类 → 4 类（2026-11-01 补 RouteResolution / RouteTemplateSource）
+│       │   ├── redis/                          # ★ 2026-11-01 新建：common 的第 12 个包
+│       │   │   ├── ClientAutoConfiguration.java #   Lettuce 断连行为收口
+│       │   │   ├── Deadline.java                #   请求预算耗尽即拒发
+│       │   │   ├── DeadlineAutoConfiguration.java
+│       │   │   ├── DeadlineConnection.java
+│       │   │   └── DeadlineConnectionFactory.java
 │       │   ├── security/                       # JwtUtil / PasswordUtil / BearerTokenExtractor
 │       │   └── snowflake/
 │       └── resources/META-INF/spring/
@@ -531,15 +542,16 @@ common/
     ├── java/com/rag/common/
     │   ├── autoconfigure/                       # ★ 7 类（starter 的全部装配入口）
     │   ├── contract/                             # 1 类（全局信封）
-    │   ├── web/                                  # ★ 17 类（见下方修正说明）
-    │   ├── observability/                        # 3 类（Observation + Deadline）
-    │   ├── protection/                           # 2 类（CPU 降载指标 + MaxBytes filter）
+    │   ├── web/                                  # ★ 21 类（见下方修正说明）
+    │   ├── observability/                        # 4 类（Observation + Deadline + 断连探针）
+    │   ├── protection/                           # 4 类（CPU 降载指标 + MaxBytes filter + 路由模板解析）
     │   ├── logger/                               # 4 类（SLF4J 适配器 + 日志选项）
     │   ├── security/                             # 3 类（JWT + 密码）
     │   ├── exception/                            # 2 类（业务异常 + 认证异常）
     │   ├── persistence/                          # 4 类（Deadline 注入 + JSONB TypeHandler）
     │   ├── snowflake/                            # 1 类
-    │   └── communityfact/                        # 4 类（保留，业务特有）
+    │   ├── redis/                                # ★ 5 类（2026-11-01 新建：common 的第 12 个包）
+    │   └── communityfact/                        # 13 类（保留，业务特有）
     └── resources/META-INF/spring/
         └── org.springframework.boot.autoconfigure.AutoConfiguration.imports
 ```
@@ -555,6 +567,8 @@ common/
 > 另有两个原表未列的包：`security/`（3 类，来自 `users-common/jwt` + `cryptx`）、`exception/`（2 类，来自 `common/exception`）。
 >
 > ⇒ **真实缩减是 51 → 47（−8%），不是 −57%。** 缩减幅度远小于原估算，因为**生态吸收主要发生在 `protection`（17 → 2），而 `web/` 这一层的 Go 语义等价物必须手写**（Jackson 的 `CoercionConfig` 是原生机制，但"何时读 body"与"错误文案形状"不是）。
+>
+> ⚠️ **2026-11-01 增量**（`find` 实测）：C 侧 `common/` = **12 个包 / 69 个类**（上表的「47 类」是 2026-10-25 的实测值）⇒ ① **新增第 12 个包 `redis/`**（5 类：断连行为收口 + 请求预算传播）；② `web/` 16 → **21**（form 值上限闸门 3 类 + `JsonContentTypeAdvice` + `TraceparentFilter`）；③ `observability/` 3 → **4**（`ClientDisconnectProbe`）；④ `protection/` 2 → **4**（`RouteResolution` + `RouteTemplateSource`）。⇒ **相对 B 侧 `service/common` 的 12 包 / 88 类，C 侧是 12 包 / 69 类（少 19 类）**。
 
 #### 5.5.1 七个 `@AutoConfiguration` 的职责契约（2026-10-26 钉死）
 
@@ -568,7 +582,7 @@ common/
 | `ObservabilityAutoConfiguration` | `spring/ObservabilityLifecycle` + `spring/ObservabilityProperties` + `observability/RpcInterceptor` + `observability/HttpMiddleware` + `observability/MqConsumer` + `observability/GoStyleRecoverInterceptor` + `spring/RpcServerInterceptorFactory` | Micrometer `Observation` + **业务观测 `ServerInterceptor`**（`ServerInterceptor` bean，7 个业务 gRPC code 集）+ recover 拦截器 | `observability/rpc.go` + `observability/http.go` + `observability/mq.go` |
 | `ProtectionAutoConfiguration` | `protection/GoStyleProtectionConfiguration` + `GoStyleProtectionProperties` + 熔断/降载/限连接/限体积族 | resilience4j `CircuitBreaker` + Tomcat `max-connections` + `MaxBytesFilter` + CPU 指标 **＋ `GrpcServerConfigurer`（gRPC 保护链的唯一挂载点，见 §5.5.2）** | go-zero `zrpc` 内置熔断/降载 + `rest` 内置 `MaxConns`/`MaxBytes`/`CpuThreshold` |
 | `SnowflakeAutoConfiguration` | `spring/SnowflakeBean` + `spring/SnowflakeProperties` + `snowflake/Snowflake` | 唯一的 `Snowflake` Bean（`@ConditionalOnMissingBean` ⇒ 容器内**有且仅有 1 个**） | `common/snowflake/snowflake.go`（`Init` / `GetID` / `generateNodeId`） |
-| `MybatisPlusOrderingBridgeAutoConfiguration` | **9 个 rpc 模块各一份**的 `MybatisPlusOrderingBridgeAutoConfiguration` | Boot 4 下 MP 自动配置排序桥（**消掉 9 份重复**） | ——（Boot 4 迁移产物） |
+| `MybatisPlusOrderingBridgeAutoConfiguration` | **9 个 rpc 模块各一份**的 `MybatisPlusOrderingBridgeAutoConfiguration` | MP 自动配置排序桥（**消掉 9 份重复**） | ——（⚠️ Boot 4 迁移产物；**D14 后 Boot 3.5 下 MP 的 `@AutoConfigureAfter` 引用有效 ⇒ 本桥非必需，待裁决**） |
 | `GrpcExceptionMapperAutoConfiguration` | `article-api/http/GoStyleGrpcStatusMapper` | gRPC code → 业务码的**统一错误模型**（§5.3） | `errmsg.NewGrpcErr(code,msg)` → `status.Error` |
 
 #### 5.5.2 gRPC 保护链的挂载点 —— **合并形态下只需 1 份**（2026-10-26 新增）

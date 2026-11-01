@@ -20,6 +20,14 @@
 - `org.springframework.boot:spring-boot-starter-actuator`
 - `io.micrometer:micrometer-registry-prometheus`
 - `com.alibaba.cloud:spring-cloud-starter-alibaba-nacos-discovery`
+- `org.flywaydb:flyway-core`
+- `org.flywaydb:flyway-database-postgresql`
+- `org.springframework.boot:spring-boot-starter-test`
+- `org.junit.jupiter:junit-jupiter`
+- `org.mockito:mockito-core`
+- `io.grpc:grpc-inprocess`
+- `org.testcontainers:postgresql`
+- `org.testcontainers:junit-jupiter`
 - `net.devh:grpc-server-spring-boot-starter`
 - `net.devh:grpc-client-spring-boot-starter`
 - `com.baomidou:mybatis-plus-spring-boot3-starter`
@@ -27,7 +35,7 @@
 - `com.rag:proto`
 - `com.rag:common`
 - `org.springframework.boot:spring-boot-starter-data-redis`
-- `org.springframework.boot:spring-boot-kafka`
+- `org.springframework.kafka:spring-kafka`
 
 ## 三、目录树
 
@@ -100,8 +108,10 @@
 │   │   │               │   ├── LikeOutboxEventMapper.java
 │   │   │               │   └── LikeRecordMapper.java
 │   │   │               ├── messaging/
+│   │   │               │   ├── LikeHotEventOutboxRelay.java    # 点赞域的发件箱中继 —— 推 article-hot-events，单条失败不中断批次。
 │   │   │               │   ├── LikeKafkaTopics.java
-│   │   │               │   └── LikeTaskProgressPublisher.java
+│   │   │               │   ├── LikeTaskProgressPublisher.java
+│   │   │               │   └── LikeUpdateKafkaListener.java    # 点赞变更的 Kafka 消费入口 —— 验签 + 校验 + 写 inbox/outbox（单事务）。
 │   │   │               ├── metrics/
 │   │   │               │   ├── LikeApiMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
 │   │   │               │   ├── LikeMqMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）

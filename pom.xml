@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.0.8</version>
+        <version>3.5.11</version>
         <relativePath/>
     </parent>
 
@@ -23,8 +23,15 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <spring-cloud.version>2025.1.0</spring-cloud.version>
-        <spring-cloud-alibaba.version>2025.1.0.0</spring-cloud-alibaba.version>
+        <!--
+            ⚠️ **Spring Cloud 2025.0.x ↔ Boot 3.5.x**（2025.1.x 对应 Boot 4.0 ⇒ 本仓走 3.5 线）
+        -->
+        <spring-cloud.version>2025.0.3</spring-cloud.version>
+        <!--
+            ⚠️ **Spring Cloud Alibaba 2025.0.0.0 ↔ Boot 3.5.x** —— 它原生带 `nacos-client` **3.0.3**
+            ⇒ 本仓**不需要**再手动覆盖 nacos 版本（回到官方配套矩阵）。
+        -->
+        <spring-cloud-alibaba.version>2025.0.0.0</spring-cloud-alibaba.version>
         <mybatis-plus.version>3.5.17</mybatis-plus.version>
         <grpc.version>1.63.0</grpc.version>
         <grpc-spring-boot-starter.version>3.1.0.RELEASE</grpc-spring-boot-starter.version>
@@ -32,6 +39,29 @@
         <protobuf.version>3.25.5</protobuf.version>
         <protobuf-maven-plugin.version>0.6.1</protobuf-maven-plugin.version>
         <javax-annotation.version>1.3.2</javax-annotation.version>
+        <!--
+            ⚠️ **Jackson 2 单一真源（D14 · 工具链回退）** —— 与 Boot 3.5.11 自带的
+            `com.fasterxml.jackson:jackson-bom:2.19.4` 同版本（实测一致 ⇒ 无冲突）。
+            显式声明是为了「一条工具链」可验证，不靠隐式继承。
+        -->
+        <jackson2.version>2.19.4</jackson2.version>
+        <!--
+            ⚠️ **Nacos 3.0.3 单一真源（D14）** —— 就是 spring-cloud-alibaba 2025.0.0.0 的原生版本
+            ⇒ **不需要**版本覆盖。（Boot 4 线上曾覆盖到 3.3.0，那是为了 Jackson 3 的 JSON Adapter 层；
+            回退到 Jackson 2 后该层无意义 ⇒ 回到**官方配套矩阵**。）
+        -->
+        <nacos.version>3.0.3</nacos.version>
+        <nacos.logback-adapter.version>1.1.5</nacos.logback-adapter.version>
+        <!--
+            以下 6 个版本**抄自 RAG 仓**（`service/common/pom.xml` + 根 pom 的属性口径）⇒ 与 RAG 同版本。
+            ⚠️ 目的不是「抄版本」，而是**锁住版本** —— 让「同一条 classpath 上不出现两个版本」可验证。
+        -->
+        <opentelemetry.version>1.44.0</opentelemetry.version>
+        <java-json-canonicalization.version>1.1</java-json-canonicalization.version>
+        <minio.version>8.5.17</minio.version>
+        <flyway.version>11.14.1</flyway.version>
+        <mybatis.version>3.5.19</mybatis.version>
+        <mybatis-spring.version>4.0.0</mybatis-spring.version>
     </properties>
 
     <modules>
@@ -42,6 +72,110 @@
 
     <dependencyManagement>
         <dependencies>
+            <!--
+                ⚠️ **Jackson 2 单一真源（D14 · 工具链回退）** —— 业务代码只用 `com.fasterxml.jackson.*`。
+                显式 import `com.fasterxml.jackson:jackson-bom` ⇒ 所有 Jackson 2 artifact 的版本由**这一处**决定。
+                与 Boot 3.5.11 自带的 jackson-bom **2.19.4** 同版本（实测一致 ⇒ 不产生冲突）。
+                ⚠️ 这条 BOM 同时管住 `jackson-annotations`（`com.fasterxml.jackson.core`）⇒ 无需单独声明版本。
+            -->
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson2.version}</version>
+                <type>pom</type><scope>import</scope>
+            </dependency>
+            <!--
+                ⚠️ **Nacos 3.0.3 单一真源（D14 · 工具链回退）** —— 版本 = spring-cloud-alibaba 2025.0.0.0 的原生版本。
+
+                ⚠️ **不再排除 Jackson 2**：nacos-client 3.0.3 内部**依赖** Jackson 2
+                （`PreInitUtils` 的**静态初始化块**就调 `JacksonUtils.createEmptyJsonNode()`）
+                ⇒ 排除即客户端**启动即 NoClassDefFoundError**。
+                ⇒ 「排除 Jackson 2」只在「Jackson 3 工具链」下才成立；本仓已回退到 Jackson 2 ⇒ **排除全部撤销**。
+            -->
+            <dependency>
+                <groupId>com.alibaba.nacos</groupId>
+                <artifactId>nacos-client</artifactId>
+                <version>${nacos.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.nacos</groupId>
+                <artifactId>nacos-client-basic</artifactId>
+                <version>${nacos.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.nacos</groupId>
+                <artifactId>nacos-encryption-plugin</artifactId>
+                <version>${nacos.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.nacos</groupId>
+                <artifactId>nacos-logback-adapter-12</artifactId>
+                <version>${nacos.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.nacos</groupId>
+                <artifactId>nacos-log4j2-adapter</artifactId>
+                <version>${nacos.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.nacos</groupId>
+                <artifactId>logback-adapter</artifactId>
+                <version>${nacos.logback-adapter.version}</version>
+            </dependency>
+            <!--
+                ⚠️ **OpenTelemetry 单一真源**（抄 RAG `service/common/pom.xml`）——
+                RAG 侧踩过「api 1.62.0 + context 1.44.0 ⇒ `NoSuchMethodError: TextMapGetter.getAll`」
+                ⇒ 全家必须同版本 ⇒ 由**一个 BOM** 管，谁都不许手写版本号。
+            -->
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-bom</artifactId>
+                <version>${opentelemetry.version}</version>
+                <type>pom</type><scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.github.erdtman</groupId>
+                <artifactId>java-json-canonicalization</artifactId>
+                <version>${java-json-canonicalization.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.minio</groupId>
+                <artifactId>minio</artifactId>
+                <version>${minio.version}</version>
+                <!--
+                    ⚠️ **不再排除 Jackson 2**（D14 · 工具链回退）：minio 8.5.17 传递的
+                    `com.fasterxml.jackson.core:jackson-databind:2.x` 与本仓工具链**同代** ⇒ 无需排除。
+                    （此前排除的实验记录 docs/MinIO-Jackson2-Isolation-Experiment.md —— 结论已作废，保留作历史。）
+                -->
+            </dependency>
+            <dependency>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-core</artifactId>
+                <version>${flyway.version}</version>
+                <!--
+                    ⚠️ **D14 · 工具链回退的意外收益** —— 此前（Jackson 3 工具链）Flyway 是**排不掉的第三方黑盒**：
+                    它有 13 个 class 引用 Jackson 2，且 `extensibility/Plugin` / `ConfigurationExtension` 的
+                    **公开 API 签名**里就带 `ObjectMapper` ⇒ 排除即 NoClassDefFoundError。
+                    回退到 Jackson 2 后，Flyway 的 Jackson 2 依赖**变成同代原生依赖** ⇒ 该例外条款整体撤销。
+                    ⚠️ 版本 **11.14.1**（Boot 3.5.11 原生 Flyway 11 线；RAG 侧是 10.22.0
+                       ⇒ 属 **L4 版本重选**，理由：与 Boot 3.5 的 FlywayAutoConfiguration 同代 ⇒ 排除 API 不匹配风险）。
+                -->
+            </dependency>
+            <dependency>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-database-postgresql</artifactId>
+                <version>${flyway.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mybatis</groupId>
+                <artifactId>mybatis</artifactId>
+                <version>${mybatis.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mybatis</groupId>
+                <artifactId>mybatis-spring</artifactId>
+                <version>${mybatis-spring.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>
@@ -70,6 +204,9 @@
                 <groupId>io.grpc</groupId><artifactId>grpc-netty-shaded</artifactId><version>${grpc.version}</version>
             </dependency>
             <dependency>
+                <groupId>io.grpc</groupId><artifactId>grpc-inprocess</artifactId><version>${grpc.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>net.devh</groupId>
                 <artifactId>grpc-server-spring-boot-starter</artifactId>
                 <version>${grpc-spring-boot-starter.version}</version>
@@ -85,6 +222,11 @@
             <dependency>
                 <groupId>io.jsonwebtoken</groupId><artifactId>jjwt-impl</artifactId><version>${jjwt.version}</version>
             </dependency>
+            <!--
+                ⚠️ **D14 · 工具链回退的意外收益** —— `jjwt-jackson` **恢复使用**：
+                它依赖的正是 Jackson 2 ⇒ 与本仓工具链同代 ⇒ 直接可用。
+                （Jackson 3 工具链下它不可用 ⇒ 曾计划自写 `tools.jackson` `Serializer`；该计划**作废**。）
+            -->
             <dependency>
                 <groupId>io.jsonwebtoken</groupId><artifactId>jjwt-jackson</artifactId><version>${jjwt.version}</version>
             </dependency>

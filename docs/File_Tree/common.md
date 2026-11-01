@@ -20,14 +20,32 @@
 - `org.springframework.boot:spring-boot-starter-actuator`
 - `io.micrometer:micrometer-registry-prometheus`
 - `org.springframework.boot:spring-boot-starter-data-redis`
-- `org.springframework.boot:spring-boot-kafka`
+- `org.springframework.kafka:spring-kafka`
 - `com.baomidou:mybatis-plus-spring-boot3-starter`
 - `io.github.resilience4j:resilience4j-spring-boot3`
 - `io.grpc:grpc-stub`
 - `io.grpc:grpc-protobuf`
 - `io.jsonwebtoken:jjwt-api`
 - `io.jsonwebtoken:jjwt-impl`
+- `com.fasterxml.jackson.core:jackson-databind`
+- `com.fasterxml.jackson.core:jackson-annotations`
 - `io.jsonwebtoken:jjwt-jackson`
+- `org.slf4j:slf4j-api`
+- `ch.qos.logback:logback-classic`
+- `io.opentelemetry:opentelemetry-api`
+- `io.opentelemetry:opentelemetry-sdk`
+- `io.opentelemetry:opentelemetry-context`
+- `io.opentelemetry:opentelemetry-exporter-otlp`
+- `org.mybatis:mybatis`
+- `org.mybatis:mybatis-spring`
+- `io.micrometer:micrometer-core`
+- `jakarta.servlet:jakarta.servlet-api`
+- `org.springframework:spring-web`
+- `org.springframework:spring-webmvc`
+- `io.lettuce:lettuce-core`
+- `io.github.erdtman:java-json-canonicalization`
+- `org.apache.tomcat.embed:tomcat-embed-core`
+- `net.devh:grpc-client-spring-boot-starter`
 
 ## 三、目录树
 
@@ -71,6 +89,7 @@
 │       │               │   ├── LogOption.java
 │       │               │   └── LogOptions.java
 │       │               ├── observability/
+│       │               │   ├── ClientDisconnectProbe.java    # 客户端断连的主动探测 —— 往 socket 写 1xx 探针，把断连提前暴露出来。
 │       │               │   ├── GoStyleRequestDeadline.java
 │       │               │   ├── ObservabilityCustomizer.java
 │       │               │   └── ObservabilityProperties.java
@@ -81,7 +100,15 @@
 │       │               │   └── SqlTimeoutStatusTranslator.java
 │       │               ├── protection/
 │       │               │   ├── CpuThresholdHealthIndicator.java
-│       │               │   └── MaxBytesFilter.java
+│       │               │   ├── MaxBytesFilter.java
+│       │               │   ├── RouteResolution.java    # 路由模板解析的三态结果。
+│       │               │   └── RouteTemplateSource.java    # 「注册期路由模板」解析能力的窄接口。
+│       │               ├── redis/
+│       │               │   ├── ClientAutoConfiguration.java    # Lettuce 断连行为收口 —— 断连期立即拒单（对齐 Go 侧 fail-open 语义）。
+│       │               │   ├── Deadline.java    # 共享层的 Redis 期限感知入口 —— 请求预算耗尽即拒发。
+│       │               │   ├── DeadlineAutoConfiguration.java    # 把 Redis 期限感知接到各域的 RedisTemplate 上。
+│       │               │   ├── DeadlineConnection.java    # 预算耗尽则不再下发 Redis 命令的连接包装。
+│       │               │   └── DeadlineConnectionFactory.java    # 把请求预算接到 RedisConnectionFactory 上（域侧零改动的那一环）。
 │       │               ├── security/
 │       │               │   ├── BearerTokenExtractor.java
 │       │               │   ├── JwtUtil.java
@@ -98,13 +125,18 @@
 │       │                   ├── JsonBodyConverter.java
 │       │                   ├── JsonBodyConverterConfig.java
 │       │                   ├── JsonBodyLimitFilter.java
+│       │                   ├── JsonContentTypeAdvice.java    # JSON 响应的 Content-Type 统一带 charset=utf-8（对齐 go-zero httpx.doWriteJson）。
+│       │                   ├── LimitExceededException.java    # 按 Go 语义「这个 query 该被拒」 —— 由各域兜底 handler 渲染成该域错误出口。
+│       │                   ├── LimitMode.java    # form 值上限闸门的拒绝形状（RAW / ENVELOPE / OFF），由各域配置段给出。
 │       │                   ├── MapStringValueDeserializer.java
 │       │                   ├── PathNormalizingFilter.java
 │       │                   ├── PlainTextErrors.java
 │       │                   ├── RawStringListDeserializer.java
 │       │                   ├── RouterErrorResponses.java
 │       │                   ├── StringFields.java
-│       │                   └── StringInt64.java
+│       │                   ├── StringInt64.java
+│       │                   ├── TraceparentFilter.java    # W3C traceparent 头的透传 Filter。
+│       │                   └── ValueLimitInterceptor.java    # Go 语义的 form 值上限闸门 —— 须是 HandlerInterceptor 才能把异常抛到域的 advice。
 │       └── resources/
 │           └── META-INF/
 │               └── spring/

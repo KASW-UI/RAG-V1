@@ -127,7 +127,7 @@
 8. B 的 9 份 `MybatisPlusOrderingBridgeAutoConfiguration` → C 的 1 份 `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java`
 
 **为什么换**：Spring Cloud 的部署单元是「可部署服务」而不是「api 层 / rpc 层」（D1）；共享能力的标准形态是 starter 而不是「普通 jar + 每个消费者手写 `@Import`」（D3）；Java 生态的数据契约形态是 immutable record + Bean Validation（D5）。
-⇒ **代价**：C 侧 B 的 141 个 `.java` 收敛成 103 个，且**「有对应」不等于「行为等价」** —— 本表只记文件名与职责的对应关系。
+⇒ **代价**：C 侧 B 的 145 个 `.java` 收敛成 103 个，且**「有对应」不等于「行为等价」** —— 本表只记文件名与职责的对应关系。
 
 ---
 
@@ -388,7 +388,7 @@ find "service/users" -name '*.java' -not -path '*/src/test/*' -not -path '*/targ
 
 | # | 发现 | 影响面 | 建议落点 |
 |---|---|---|---|
-| **F-1** | 🔴 **Go 的身份解析器在 C 侧无承载**。`service/user/user/identity/resolve.go`（权威解析器：`ClaimedUID` → `GetUser` → status presence 检查 → `SubjectRef`；`AuthorityID="rtw.identity"` / `PlatformTenantID="platform"`；5 个 sentinel 错误 `ErrInvalidClaim` / `ErrUserNotFound` / `ErrIdentityMismatch` / `ErrUserInactive` / `ErrStatusUnavailable`）在 B 侧有 `IdentityResolver.java`（user-api 与 admin-api **各一份，共两份重复**），在 **C 侧零文件**（全仓 grep `IdentityResolver` / `rtw.identity` / `AuthorityID` 在 `service/users/**` 下**零命中**） | L1（`AuthorityID` / `PlatformTenantID` / `SubjectRef` 形状）+ L2（5 个错误的判定顺序） | C 侧需补一个身份解析落点（建议：user 域一份权威实现 + admin 域复用，**不要像 B 那样复制两份**）；落点应在 `user-service` 的 `api/service/` 或 `rpc/service/` |
+| **F-1** | ✅ **已关闭（2026-11-01）—— Go 的身份解析器在 C 侧已有承载**。`service/user/user/identity/resolve.go`（权威解析器：`ClaimedUID` → `GetUser` → status presence 检查 → `SubjectRef`；`AuthorityID="rtw.identity"` / `PlatformTenantID="platform"`；5 个 sentinel 错误 `ErrInvalidClaim` / `ErrUserNotFound` / `ErrIdentityMismatch` / `ErrUserInactive` / `ErrStatusUnavailable`）在 B 侧有 `IdentityResolver.java`（user-api 与 admin-api **各一份，共两份重复**）⇒ C 侧落 **`service/users/common/src/main/java/com/rag/users/common/IdentityResolver.java`（只 1 份，上收到域级共享层）** ⇒ **B 侧两份重复在 C 侧被消解**（用户 2026-11-01 定；`users-common` 已被 user / admin 依赖 ⇒ **不动 pom**） | L1（`AuthorityID` / `PlatformTenantID` / `SubjectRef` 形状）+ L2（5 个错误的判定顺序） | ✅ 落点已定并落地：域级共享层 `service/users/common/` ⇒ user / admin 两子域**共用**同一份权威实现，**不复制两份** |
 | **F-2** | 🟠 **错误契约在两个子域间仍然不对称（2026-10-26 D7 后收敛为「admin 无 `contract/` 包」）**。C 侧 `service/users/user/src/main/java/com/rag/user/contract/` 有 `ErrCodes.java` + `ErrMsg.java`；**admin 侧根本没有 `contract/` 包**（`admin-contract` 模块已随 D7 删除）。而 Go 侧 `service/user/common/errmsg/errmsg.go` 是 **user / admin 四方共用**的一份；RAG-V1 把它落在**公共库** `service/users/common/src/main/java/com/rag/users/common/`（`ErrCodes.java` + `ErrMsg.java`，artifactId `users-common`） | 若 admin 域要独立引用错误契约，须显式取公共库那份（`users-common` 是 admin 的 pom 依赖，**已接上**）；但 admin 源码**当前零引用** `ErrCodes` / `ErrMsg` | 明确 admin 域的错误码取「公共库 `users-common` 那份」还是「user 子域私有那份」；取前者则**不要**在 admin 侧复制一份（逐域隔离 ≠ 逐子域复制）。⚠️ **时点标注**：本条原文写的是「`admin/contract/` 一份都没有（该模块只有 `admin.proto`）」—— 那是 D7 之前的状态 |
 | **F-3** | 🔴 **幂等 DDL 重放机制在 C 侧无执行器、无脚本**。B 侧有 `users-common/.../ddl/SchemaInitializer.java` + `db/01..04_*.sql`；C 侧 `common/` **无 `SchemaInitializer`**，两个 `*-service` 的 `resources/db/migration/` **只有 `.gitkeep`** ⇒ `UserSchemaBootstrap` / `AdminSchemaBootstrap` 无处可重放 | Go 的 `AutoMigrate` 是**无状态幂等**的（L2 语义：谁先启动都行） | C 侧需补执行器（建议归 `common/src/main/java/com/rag/common/persistence/`）+ 4 个幂等 SQL 脚本（`CREATE TABLE IF NOT EXISTS`） |
 | **F-4** | 🟡 **表名在 A 与 B/C 之间不同**。Go 的 GORM `TableName()` 是 `users` / `user_avatar_history` / `admins` / `admin_invites`；B/C 用 `users_user` / `users_user_avatar_history` / `admin_admin` / `admin_invite` | 表名是 L1 级可见面（客户端直查、报表、运维脚本都依赖） | 本表**不判**行为；该差异的现状与证据看 `RAG/docs/DRIFT/users/`。若 RAG-V1 要保留 B 的表名，需在 `users-common/ErrMsg` 之外**单独留档**（否则下一棒会把它当成"Go 就长这样"） |
@@ -402,9 +402,9 @@ find "service/users" -name '*.java' -not -path '*/src/test/*' -not -path '*/targ
 ## 8. 一句话总结
 
 **A 列 Go**（`service/user/`，114 个非测试 `.go`）= 单一真源；
-**B 列 RAG**（`service/users/`，141 个 `.java`）= Go 部署拓扑（api/rpc 分离）的 Spring 复刻；
+**B 列 RAG**（`service/users/`，145 个 `.java`）= Go 部署拓扑（api/rpc 分离）的 Spring 复刻；
 **C 列 RAG-V1**（`service/users/`，103 个 `.java`）= Spring 惯用目标形态（一域一 app）。
 
-⇒ **C 列 103/103 覆盖（85 个唯一文件名零遗漏）、A 列 114/114 覆盖（67 个唯一文件名零遗漏）、映射类型 1:1 ×43 / 1:N ×15 / N:1 ×69 / C 新增 ×0（共 127 行）。**
+⇒ **C 列 103/103 覆盖（85 个唯一文件名零遗漏）、A 列 114/114 覆盖（67 个唯一文件名零遗漏）、映射类型 1:1 ×43 / 1:N ×15 / N:1 ×71 / C 新增 ×0（共 129 行）。**
 ⇒ **文件名与职责已逐条对应；行为是否一致，一律以 A 列 Go 源码为准，状态看 `RAG/docs/DRIFT/users/`。**
 ⇒ **本表发现的 8 条职责缺口（F-1 ~ F-8）** 里，**F-1（身份解析器无落点）** 与 **F-3（DDL 重放无执行器/脚本）** 是硬缺口，填实现前应先补。

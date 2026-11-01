@@ -111,7 +111,7 @@
 | `api/internal/logic/message/<8>.go` | `message-api/.../service/Message<Case>Service.java` × 8 + `service/AbstractMessageApiService.java` | `service/message/src/main/java/com/rag/message/service/MessageApiService.java` | N:1 | 13 用例内聚为 1 个 Service（判据见《完全spring化的文件树》§5.4，五条全中） |
 | `api/internal/logic/messageadmin/<5>.go` | `message-api/.../service/MessageAdmin<Case>Service.java` × 5 | `service/message/src/main/java/com/rag/message/service/MessageApiService.java` | N:1 | 同上；**user 组硬编码 `SenderRole.USER`、admin 组硬编码 `SenderRole.ADMIN`** 的分工要保留 |
 | `api/internal/logic/shared/helper.go` | `message-api/.../service/MessageApiSupport.java` | `service/message/src/main/java/com/rag/message/service/MessageApiSupport.java` | 1:1 | 9 个函数：`UserIDFromContext`（claim `userId`）+ `RPCError` + 6 个 `To*Resp` 投影 + `AdminNotificationKind` |
-| （Go 侧无独立文件；`rest.WithJwt` 内置于 go-zero） | `message-api/.../interceptor/AbstractMessageJwtAuthInterceptor.java` | `—（C 侧无对应文件）` | N:1 | ⚠️ **C 侧缺口**：B 用抽象基类收敛两份 JWT 逻辑（防两份安全边界各自演化），C 只有两个独立拦截器类，共享逻辑暂无落点 |
+| （Go 侧无独立文件；`rest.WithJwt` 内置于 go-zero） | `message-api/.../interceptor/AbstractMessageJwtAuthInterceptor.java` | `service/message/src/main/java/com/rag/message/interceptor/AbstractMessageJwtAuthInterceptor.java` | 1:1 | ✅ **已落地（2026-11-01）**：C 侧补上**抽象基类** ⇒ B 用基类收敛两份 JWT 逻辑的意图**在 C 侧兑现**（防两份安全边界各自演化）；⚠️ 两个子类 `MessageJwtAuthInterceptor` / `MessageAdminJwtAuthInterceptor` 仍须**继承**它（否则基类形同虚设） |
 
 #### 1.2.2 DTO（Go `types.go` 的 17 个 struct ⇒ C 17 个 immutable record）
 
@@ -233,6 +233,16 @@
 | `service/common/snowflake/snowflake.go` | `service/common/.../snowflake/` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration.java` | 1:1 | epoch / 位段是业务契约 |
 | `service/common/errmsg` / `xcode`（跨域共享信封与码） | `service/common/.../errmsg/` + `xcode/` | `common/src/main/java/com/rag/common/contract/ApiResponse.java` + `common/src/main/java/com/rag/common/exception/BusinessException.java` + `common/src/main/java/com/rag/common/exception/AuthenticationException.java` | N:1 | C 侧全局信封与业务异常基类在**根级 common**，**message 域不得反向定义** |
 
+### 1.6 🔴 RAG 侧新增类补录（1 条 · 覆盖 2 个 `.java`）
+
+> ⚠️ **本节是 2026-11-01 的增量**：RAG 在首版映射表之后新增了 `message-api/…/auth/` 包（2 类）
+> ⇒ 首版 §1.1 / §1.2 的 **B 列漏了这 2 个 `.java`** ⇒ 本节逐个落到 C 侧；
+> 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
+
+| A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
+|---|---|---|---|---|
+| `api/internal/handler/routes.go:60-61`（两段 `rest.WithJwt(secret)`：user 组 ＋ admin 组） | `message-api/…/auth/MessageJwtAuthFilter.java` ＋ `message-api/…/auth/MessageJwtSignatureVerifier.java` | `service/message/src/main/java/com/rag/message/interceptor/MessageJwtAuthInterceptor.java` ＋ `service/message/src/main/java/com/rag/message/interceptor/MessageAdminJwtAuthInterceptor.java` | 1:N | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-MESSAGEAPI-009②`）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 2 个 `HandlerInterceptor`**（user / admin 各一）⇒ 🔴 **C 侧缺口**：要么补 Filter 承载验签，要么显式登记为签字偏离。⚠️ **两把 key（`UserAuth.AccessSecret` / `AdminAuth.AccessSecret`）＋ 两段路由表是 L1**；⚠️ user 拦截器必须 `excludePathPatterns("/message/v1/admin/**")`，否则 admin token 会被 user key 先拒一遍 |
+
 ---
 
 ## 2. 持久层差异
@@ -284,7 +294,7 @@
 | Service 分层 | Handler → Logic（13 个）→ gRPC → rpc logic | Controller → 13 个 `*Service` → `MessageRpcClient`（gRPC） | Controller → `MessageApiService` → `MessageDomainService`（**直连**） | D2：域内不再自我 gRPC 往返 |
 | 错误表达 | `httpx.Error` ⇒ **HTTP 恒 200** + `{code,msg,data}` 信封（`messagecenter.go` 的 `SetErrorHandler`） | `GlobalResponseAdvice` + `GlobalExceptionHandler` | `MessageApiResponseAdvice` + `MessageApiExceptionHandler` | ⚠️ **不是 text/plain**：go-zero 路由级错误（404 / 框架层）才是 text/plain，业务错误恒 200 + 信封 |
 | 统一错误模型 | api 层把 gRPC status 映射回业务码（`shared.RPCError` + `BizCodeFromError`） | 同款映射（`MessageGrpcError`） | `BusinessException(code,msg)` + 2 个边界适配器（HTTP advice / gRPC mapper） | D2 附带的统一错误模型（§5.3） |
-| JWT 校验 | `rest.WithJwt(secret)`（go-zero 内置，验签 + 解析 claims 写 ctx） | `AbstractMessageJwtAuthInterceptor` + 2 个子类 | `MessageJwtAuthInterceptor` + `MessageAdminJwtAuthInterceptor`（**无抽象基类**） | ⚠️ claim 取值判定属业务层（`UserIDFromContext` 失败 ⇒ 业务码 5004 + HTTP 200），**不是 401** |
+| JWT 校验 | `rest.WithJwt(secret)`（go-zero 内置，验签 + 解析 claims 写 ctx） | `AbstractMessageJwtAuthInterceptor` + 2 个子类 | `AbstractMessageJwtAuthInterceptor` + `MessageJwtAuthInterceptor` + `MessageAdminJwtAuthInterceptor`（✅ **抽象基类已于 2026-11-01 补齐**） | ⚠️ claim 取值判定属业务层（`UserIDFromContext` 失败 ⇒ 业务码 5004 + HTTP 200），**不是 401** |
 | claim 名称 | `"userId"`（`api/internal/logic/shared/helper.go:14` `ctx.Value("userId").(json.Number)`） | 同 | 待填 | 小写 u、驼峰式，**不能写成 `user_id`** |
 | 配置绑定 | `conf.MustLoad(*configFile, &c)` 强转进 `config.Config` struct | `@ConfigurationProperties`（`message-api` / `message` 两个前缀） | 同 B | 类型安全 + IDE 补全 |
 | 装配根 | `svc.NewServiceContext(c)`（static 风格 struct） | Spring DI（`@Component` / `@Bean`），**无 ServiceContext 类** | 同 B | go-zero 的 `ServiceContext` 被 DI 容器吸收 |
@@ -544,10 +554,10 @@ find "/Users/pr/Documents/java&golang/Sea-RideTheWind_golang/service/message" \
 | 映射类型 | 行数 | 主要落在哪 |
 |---|---|---|
 | `1:1` | 44 | 入口 / 配置 / Metrics / Entity / Mapper（4 个）/ DTO（17 个 struct 逐条）/ proto / 错误契约 / `MessageApiSupport` / `MessageRpcSupport` / `MessageAtomicService` / 3 个 `Entity` |
-| `1:N` | 15 | ① **一组路由 → 两组 JWT**（§1.1）；② 13 个 handler → 2 个 Controller（2 行）；③ Go `types.go` → 17 个 record（1 行文件级）；④ Go `errmsg.go` → 4 个契约类 + `CodeError` + `GrpcErrorMapper`（4 行）；⑤ Go `model/message.go` → 4 Mapper + `MessageAtomicService`；⑥ Go `model/db.go` → 3 Mapper + DDL；⑦ Go api `config.go` → Properties + yaml；⑧ Go rpc `config.go` → Properties；⑨ Go rpc `svc/servicecontext.go` → 2 个跨域 client；⑩ Go `message.go` → 入口 + Nacos；⑪ Go `messagecenter.go` → 2 个 advice；⑫ B 侧 `MessageGoStyleCoercion` → `common/src/main/java/com/rag/common/web/Coercion` + `JsonBodyConverterAutoConfiguration` |
-| `N:1` | 7 | ① 8 个 user logic → `MessageApiService`；② 5 个 admin logic → `MessageApiService`；③ 9 个 rpc logic → `MessageDomainService`；④ Go `messageservice.go` stub → C 侧无手写文件；⑤ B 侧 `AbstractMessageJwtAuthInterceptor` → C 侧无对应文件；⑥ B 侧 `AbstractMessageApiService` → `MessageApiService`；⑦ Go `service/common`（跨域共享信封 + 异常基类）→ C 根级 `common/` 4 个类 |
+| `1:N` | 16 | ① **一组路由 → 两组 JWT**（§1.1）；② 13 个 handler → 2 个 Controller（2 行）；③ Go `types.go` → 17 个 record（1 行文件级）；④ Go `errmsg.go` → 4 个契约类 + `CodeError` + `GrpcErrorMapper`（4 行）；⑤ Go `model/message.go` → 4 Mapper + `MessageAtomicService`；⑥ Go `model/db.go` → 3 Mapper + DDL；⑦ Go api `config.go` → Properties + yaml；⑧ Go rpc `config.go` → Properties；⑨ Go rpc `svc/servicecontext.go` → 2 个跨域 client；⑩ Go `message.go` → 入口 + Nacos；⑪ Go `messagecenter.go` → 2 个 advice；⑫ B 侧 `MessageGoStyleCoercion` → `common/src/main/java/com/rag/common/web/Coercion` + `JsonBodyConverterAutoConfiguration` |
+| `N:1` | 7 | ① 8 个 user logic → `MessageApiService`；② 5 个 admin logic → `MessageApiService`；③ 9 个 rpc logic → `MessageDomainService`；④ Go `messageservice.go` stub → C 侧无手写文件；⑤ B 侧 `AbstractMessageJwtAuthInterceptor` → `service/message/src/main/java/com/rag/message/interceptor/AbstractMessageJwtAuthInterceptor.java`（✅ 2026-11-01 补齐）；⑥ B 侧 `AbstractMessageApiService` → `MessageApiService`；⑦ Go `service/common`（跨域共享信封 + 异常基类）→ C 根级 `common/` 4 个类 |
 | `C 新增` | 2 | ① `rpc/metrics/MessageMetrics.java`（与 `MessageRpcMetrics` 重叠的空壳）；② `rpc/exception/MessageExceptions.java`（B 侧同名同职责，C 侧作为独立类保留） |
-| **合计** | **68** | §1 全部映射行均填了映射类型，且只用 4 种合法词（机器核对：`illegal types = ∅`） |
+| **合计** | **69** | §1 全部映射行均填了映射类型，且只用 4 种合法词（机器核对：`illegal types = ∅`；核对日期 2026-11-01） |
 
 ### 7.4 三列之间「职责对不上」的清单（供实现前处理）
 
@@ -556,7 +566,7 @@ find "/Users/pr/Documents/java&golang/Sea-RideTheWind_golang/service/message" \
 | # | 位置 | 现象 | 影响面 |
 |---|---|---|---|
 | 1 | C 侧 `api/controller/MessageController.java` + `MessageAdminController.java` 的 javadoc | 路由清单写成 `/message/v1/conversation/list`、`/notification/read/all`、`/unread/summary`、`/chat/send`，并把 admin 的 `conversation/list` 与 `conversation/messages` 标成 `GET`；**A 列 Go 是复数 `/conversations/*`、`/notifications/*`，`/unread` 是 GET，admin 组 5 个端点全是 POST** | **L1 路由契约**；若照 javadoc 实现即产生 wire 漂移 |
-| 2 | C 侧 `api/interceptor/` | B 侧的 `AbstractMessageJwtAuthInterceptor`（两份 JWT 逻辑的共享基类）在 C 侧**没有落点**，只剩两个独立拦截器类 | 安全边界可能各自演化（DRIFT-010 同款形态） |
+| 2 | C 侧 `api/interceptor/` | ✅ **已关闭（2026-11-01）**：B 侧的 `AbstractMessageJwtAuthInterceptor`（两份 JWT 逻辑的共享基类）在 C 侧**已有落点** `service/message/src/main/java/com/rag/message/interceptor/AbstractMessageJwtAuthInterceptor.java` | 安全边界各自演化的风险已消除（⚠️ 实现时两个子类**必须继承**它，否则基类空转） |
 | 3 | C 侧 `rpc/metrics/` | `MessageMetrics.java`（空壳）与 `MessageRpcMetrics.java`（已列全 5 个指标）职责重叠 | 指标名可能双份定义、漂移 |
 | 4 | C 侧 `wiring/` | 设计文档 §5.2 要求的 `MessageSchemaInitializer.java`（幂等 DDL 重放）**不存在**；`resources/db/migration/` 只有 `.gitkeep` | 3 张表没有建表来源 ⇒ 服务起不来（Go 的 `AutoMigrate` 职责无对应物） |
 | 5 | C 侧 `rpc/service/` | `MessageDomainService` 的 9 个用例**尚未与 `api/service/MessageApiService` 划清边界**（谁做业务规则、谁做编排） | 合并后职责边界易糊 |

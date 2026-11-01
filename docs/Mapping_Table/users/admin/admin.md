@@ -155,11 +155,21 @@
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
-| —（Go 侧无对应物：go-zero redis 客户端内置断连行为） | `user-api/.../config/RedisDisconnectedBehaviorConfig.java` | `service/users/user/src/main/java/com/rag/user/config/RedisDisconnectedBehaviorConfig.java` | 1:1 | Go 侧无对应物（原因）：B 为修 RAG 漂移（`DRIFT-USERAPI-009②`）引入的 **Lettuce 断连行为**定制（Go 侧 fail-open / RAG 侧 503）；C 原样保留 ⇒ **该差异在 C 侧仍然存在** |
+| —（Go 侧无对应物：go-zero redis 客户端内置断连行为） | `service/common/.../redis/GoStyleRedisClientAutoConfiguration.java`（⚠️ 原 `user-api/.../config/RedisDisconnectedBehaviorConfig` 已被 RAG **删除并上移**进共享层，该类名在 RAG 侧已不存在） | `service/users/user/src/main/java/com/rag/user/config/RedisDisconnectedBehaviorConfig.java` | 1:1 | Go 侧无对应物（原因）：B 为修 RAG 漂移（**`DRIFT-USERAPI-014`**）引入的 **Lettuce 断连行为**定制（Go 侧 fail-open / RAG 侧 503）；C 原样保留 ⇒ **该差异在 C 侧仍然存在**。⚠️ RAG 已把域内 5 份副本**全删**并收进共享层 ⇒ **C 侧也要走共享层**（落点见 `common.md` §1.12） |
 | —（Go 侧无对应物：Go 侧靠 `httpx.OkJson` 手动包信封 + `LogicResult` 双返回） | `user-api/.../advice/GlobalResponseAdvice.java` + `admin-api/.../advice/GlobalResponseAdvice.java` | `service/users/user/src/main/java/com/rag/user/advice/UserApiResponseAdvice.java` + `service/users/admin/src/main/java/com/rag/admin/advice/AdminApiResponseAdvice.java` | 1:N | Go 侧无对应物（原因）：`@RestControllerAdvice` + `ResponseBodyAdvice` 把任意返回值包成 `{code,msg,data}`（统一信封是 L1） |
 | —（Go 侧无对应物） | `user-api/.../advice/GlobalExceptionHandler.java` + `admin-api/.../advice/GlobalExceptionHandler.java` | `service/users/user/src/main/java/com/rag/user/advice/UserApiExceptionHandler.java` + `service/users/admin/src/main/java/com/rag/admin/advice/AdminApiExceptionHandler.java` | 1:N | Go 侧无对应物（原因）：`@RestControllerAdvice` 异常出口；**D2 合并后不再需要「gRPC code → 业务码」这一层映射**（业务层直接抛 `BusinessException`） |
 | —（Go 侧无对应物：admin-api 无独立 helper 文件，helper 分散在 13 个 logic 里） | `admin-api/.../service/AdminApiSupport.java` | `service/users/admin/src/main/java/com/rag/admin/service/AdminApiSupport.java` | 1:1 | Go 侧无对应物（原因）：uid 解析（`parseUid`）+ proto→DTO 转换（`AdminInfo` / `UserInfo`）的聚合点；对应 user 侧的 `UserApiSupport` |
 | —（Go 侧无对应物：MP 3.5.14 的 `@AutoConfigureAfter` 指向 Boot 3 的包名） | `user-rpc/.../config/MybatisPlusOrderingBridgeAutoConfiguration.java` + `admin-rpc/.../config/MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | 1:1 | Go 侧无对应物（原因）：**Boot 4 专用的 MP 自动配置排序桥**（Boot 4 挪了 `DataSourceAutoConfiguration` 的包 ⇒ MP 排序引用悬空 ⇒ `SqlSessionFactory` 不产出）。D3：RAG 的 **9 份副本**收进 starter 的 **1 份**；**归属见 `common.md`** |
+
+### 1.3 🔴 RAG 侧新增类补录（1 条 · 覆盖 4 个 `.java`）
+
+> ⚠️ **本节是 2026-11-01 的增量**：RAG 在首版映射表之后新增了 `admin-api/…/auth/` 包（4 类）
+> ⇒ 首版 §1.2.2 的 **B 列漏了这 4 个 `.java`** ⇒ 本节逐个落到 C 侧；
+> 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
+
+| A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
+|---|---|---|---|---|
+| `api/internal/handler/routes.go` 的 `rest.WithJwt(...)` 绑定 | `admin-api/…/auth/AdminJwtAuthPaths.java` ＋ `admin-api/…/auth/AdminJwtSignatureVerifier.java` ＋ `admin-api/…/auth/AdminJwtVerificationResult.java` ＋ `admin-api/…/auth/GoStyleJwtAuthFilter.java` | `service/users/admin/src/main/java/com/rag/admin/interceptor/AdminJwtAuthInterceptor.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 1 个 `HandlerInterceptor`** ⇒ 🔴 **C 侧缺口**：要么补 1 个 `OncePerRequestFilter` 承载验签，要么显式登记为签字偏离。⚠️ **受保护路由表 ＋ public 前缀集合是 L1**；⚠️ admin 的 secret 与 user 域**不同** ⇒ **不可复用 user 域拦截器** |
 
 ---
 
@@ -250,9 +260,9 @@ find "service/users/admin" -name '*.java' -not -path '*/src/test/*' -not -path '
 |---|---|---|
 | `1:1` | **17** | 单文件对单文件（多数是「B 改名 / C 归位 / C 补 DTO」）；其中 **3 行** A 列为「Go 侧无对应物」（B 引入的横切件） |
 | `1:N` | **8** | Go 单文件拆成多个 C 文件（其中 **2 行** A 列为「Go 侧无对应物」） |
-| `N:1` | **41** | Go 多文件合进 1 个 C 文件（**D1/D2 的主因**：admin-api 13+13、admin-rpc 13 个 logic → 各 1 个 Service） |
+| `N:1` | **42** | Go 多文件合进 1 个 C 文件（**D1/D2 的主因**：admin-api 13+13、admin-rpc 13 个 logic → 各 1 个 Service） |
 | `C 新增` | **0** | 本子域每个 C 文件都能在 B 列找到前身 ⇒ RAG-V1 在本子域是**重组**而非新增能力 |
-| **合计** | **66** | — |
+| **合计** | **67** | — |
 
 > 统计命令（可复跑）：
 > ```bash

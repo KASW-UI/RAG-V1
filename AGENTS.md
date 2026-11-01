@@ -14,26 +14,27 @@
 
 **形态：完整空文件树已落地，实现待填**。
 
-> **📌 往哪写** —— 本文件只放**政策与索引**，且必须**全文可进上下文（预算 32 KB）**：逐条漂移 ⇒ `docs/DRIFT/<域>/<组件>.md`；踩坑 ⇒ `docs/Pitfalls/`；签字偏离 ⇒ `docs/Intentional_Deviations/`。**只留结论 + 一行指针。超预算 = 没走这条约定。**
+> **📌 往哪写** —— 只放**政策与索引**，**全文可进上下文（预算 32 KB）**：逐条漂移 ⇒ `docs/DRIFT/<域>/<组件>.md`；踩坑 ⇒ `docs/Pitfalls/`；签字偏离 ⇒ `docs/Intentional_Deviations/`。**只留结论 + 一行指针。超预算 = 没走这条约定。**
 
-> **核对日期 2026-10-26**（`find` 实测）
+> **核对日期 2026-11-01**（`find` 实测）
 
 | 项 | 数 |
 |---|---|
-| Java 文件 | **559**（549 主代码 + 10 测试骨架）—— **每个文件只有 package + 空类型 + TODO javadoc**；`service/` 503 + `common` 56 |
-| Maven 模块 | **16** 个 pom = **13 叶子** + **2 聚合**（`service` / `users`）+ 1 根 pom —— **D7 打平**：每域**一个** jar 模块（`service/<域>/`）；**artifactId 保持长名唯一**（`<域>-service` / `users-common` / `proto` / `common`）⇒ 依赖声明零改动 |
+| Java 文件 | **599**（589 主代码 + 10 测试骨架）—— **每个文件只有 package + 空类型 + TODO javadoc**；`service/` 520 + `common` 69 |
+| Maven 模块 | **16** pom = **13 叶子** + **2 聚合**（`service`/`users`）+ 1 根 —— **D7 打平**：每域**一个** jar 模块（`service/<域>/`）；artifactId 保持长名唯一（`<域>-service`/`users-common`/`proto`/`common`）⇒ 依赖声明零改动 |
 | proto / `application.yml` | **10 / 10**（10 个 `.proto` 集中在**根级 `proto/` 模块**，pb 包名 `com.rag.proto.<域>`；内容与 Go 侧逐字节一致，仅 `java_package` 属表达层） |
 | `AutoConfiguration.imports` | **1**（`common/`，7 个 auto-config） |
-| `docs/File_Tree/` · 三方对照 | **14 份 + `_INDEX.md`** 文件树 · **13 份**域文档（C 列 **549/549**、A 列 **482/482** 覆盖 **100%**；**76 条落点缺口** 🔴13） |
-| 三档台账 | DRIFT **10 域全部未建立**（实现开始后逐条填）· Intentional_Deviations **4 条**（like/comment 各 2）· Pitfalls **P-01~P-10** |
+| `docs/File_Tree/` · 三方对照 | **14 份 + `_INDEX.md`** 文件树 · **13 份**域文档（C **589/589**、A **482/482** 覆盖 **100%**；**90 条落点缺口** 🔴11） |
+| 三档台账 | DRIFT **10 域未建立** · Intentional_Deviations **4 条**（like/comment 各 2）· Pitfalls **P-01~P-10** |
 
-**已完成**：树结构、pom、proto、application.yml、断言清单、三方对照、**GitHub 仓**。**未完成**：全部实现（⇒ §1.0c 从 RAG 抄）。
+**已完成**：树结构、pom、proto、application.yml、断言清单、三方对照、**GitHub 仓**、**工具链（Jackson 2 + Boot 3.5）**。**未完成**：全部实现（⇒ §1.0c 抄 RAG）。
 
 ✅ **2026-10-26 · D7/D10/D11**（proto 集中+模块打平+包压平 / `bootstrap`→`wiring` / `dto/` 拆业务对象子包）⇒ [`docs/决策记录.md`](docs/决策记录.md)；**§1.0c**：RAG 实现可作抄写来源。
+✅ **2026-11-01 · D13**（L2 以 RAG 为基准不回 Go 逐行复核）· **2026-11-02 · D14**（**全项目工具链 = Jackson 2 + Boot 3.5**）⇒ [`docs/决策记录.md`](docs/决策记录.md)；**§1.0d**：工具链口径。
 
-> 📌 **RAG 的 158 份台账留在 RAG 仓库** ⇒ RAG-V1 的 `docs/DRIFT/` 从零开始填；**但其「证据强度」分级方法论值得借鉴**（§1.0c 约束 3）；教训已蒸馏到 [`RAG-困境反哺.md`](docs/RAG-困境反哺.md)。
+> 📌 **RAG 的 158 份台账留在 RAG 仓** ⇒ 本仓 `docs/DRIFT/` 从零填；其**「证据强度」分级方法论可借鉴**（§1.0c 约束 3）；教训见 [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)。
 
-> ⚠️ **「已落地」≠「已实现」；「源码级对照」≠「双侧活体对拍」** ⇒ 台账里的 ✅ 一律读作「**在该证据强度下一致**」，不是已闭环。**证据强度以该域台账的「证据强度」列为准**（口径见 `docs/DRIFT/_INDEX.md` 末节）。
+> ⚠️ **「已落地」≠「已实现」；「源码级对照」≠「双侧活体对拍」** ⇒ 台账里的 ✅ 一律读作「**在该证据强度下一致**」，不是已闭环。**证据强度以该域台账的「证据强度」列为准**（见 `docs/DRIFT/_INDEX.md` 末节）。
 
 ## 一、项目身份与目的
 
@@ -47,11 +48,11 @@ RAG-V1 仓库路径：`/Users/pr/Documents/GitHub/RAG-V1`。
 |---|---|
 | 产品 | **识海**社区后端 —— **内容 + 互动 + 任务 + 用户体系**一体化服务端；配套推荐系统 `BreakTheWaves` 与前端仓不在范围内 |
 | Go 真源 | `Sea-RideTheWind_golang`（**已冻结 · 只读**，绝对路径见 §1.0b）|
-| 迁移范围 | **10 个业务域**：article · comment · favorite · follow · hot · like · message · task · users（拆 `user` + `admin`）＝ **10 个 app** + 1 个 `common` starter + 1 个根级 `proto` 模块；**范围外**：`knowledge`/`points`/`security`（依据见 [`决策记录.md`](docs/决策记录.md)） |
+| 迁移范围 | **10 个业务域**：article · comment · favorite · follow · hot · like · message · task · users（拆 `user`+`admin`）= **10 个 app** + 1 个 `common` starter + 1 个根级 `proto` 模块；**范围外**：`knowledge`/`points`/`security`（依据见 [`决策记录.md`](docs/决策记录.md)） |
 | 基础设施 | Go 侧 PostgreSQL · Redis · Kafka · MinIO · Milvus · Neo4j · etcd；**Java 侧已接** PostgreSQL + Redis + Nacos |
 
 1. **行为层 —— 严格复刻。** Go 是唯一 oracle。RAG-V1 必须在 **L1 契约 + L2 业务语义**上与 Go 等价；L3 可按已登记降级项降级，L4 可重选；**L1/L2 不可省、不可"顺手优化"**。
-2. **认知层 —— 借复刻吃透 Java 生态。** Go 侧 README 自己写的：*"通过亲自复刻、深入实现和持续打磨，真正理解系统设计背后的取舍逻辑与工程方法。"* Java 侧同理：**目的不是把 Go 翻译成 Java，而是借同一套业务逼出每个 Spring 组件的职责边界** —— 谁负责什么、换成生态等价物后语义变了什么、哪些语义生态给不了（G-1~G-4）。
+2. **认知层 —— 借复刻吃透 Java 生态。** 目的不是把 Go 翻译成 Java，而是借同一套业务逼出每个 Spring 组件的**职责边界** —— 谁负责什么、换成生态等价物后语义变了什么、哪些语义生态给不了（G-1~G-4）。
 
 > ⚠️ **两层的调和规则**：认知层只允许体现在**注释与文档**；**行为层不允许被认知层改写**。看到"更地道的 Java 写法"想动 L1/L2 ⇒ 停，走决策流程。
 
@@ -63,7 +64,7 @@ RAG-V1 仓库路径：`/Users/pr/Documents/GitHub/RAG-V1`。
 | 仓库 | 路径 | 角色 |
 |---|---|---|
 | **Sea-RideTheWind_golang** | `/Users/pr/Documents/java&golang/Sea-RideTheWind_golang` | **唯一真源** —— 已冻结，所有行为的唯一判定标准（go-zero + GORM） |
-| **RAG**（第一版） | `/Users/pr/Documents/java&golang/RAG`（分支 `do-my-own-gh`） | ⚠️ **不是行为基准**（五域 `NOT EQUIVALENT`）—— 却是**实现复用的主力来源**（951 文件 / 157K 行实现 + 数百测试 + 逐条 DRIFT 台账）⇒ **抄实现，回 Go 复核语义**（§1.0c） |
+| **RAG**（第一版） | `/Users/pr/Documents/java&golang/RAG`（`do-my-own-gh`） | ⚠️ **不是行为基准**（五域 `NOT EQUIVALENT`）—— 但是**实现复用主力来源**（951 文件/157K 行 + 数百测试 + 逐条台账）⇒ **抄实现**（§1.0c） |
 | **RAG-V1**（本仓库） | 本地 `/Users/pr/Documents/GitHub/RAG-V1` · GitHub `github.com/KASW-UI/RAG-V1` | **Spring Boot 惯用形态的重做** —— Go 行为用 Spring 生态重新组织（MP 分层 + starter 化 + api/rpc 合并压平，D1 + D7） |
 
 ⚠️ **禁止把 RAG 的实现当 Go 的替身**（§3.1 对照陷阱）—— RAG 自身就有 11 处已坐实的回归。**但这不等于「不可抄」** ⇒ 见 §1.0c。
@@ -77,26 +78,34 @@ RAG-V1 仓库路径：`/Users/pr/Documents/GitHub/RAG-V1`。
 
 | 档 | 内容 | 从哪取 | 纪律 |
 |---|---|---|---|
-| **① L4 机制层**（Jackson 强转 / Redis key / 雪花 ID / 错误码工厂 / 响应信封） | 可**近乎直抄** | RAG B 列同类 | 回 Go 复核 + §3.2 标注 Go 出处 |
-| **② L2 业务语义层**（Lua / 事务边界 / outbox 双信封 / 事实投递） | **只抄骨架**，业务规则回 Go 逐行核对 | RAG B 列 + Go A 列 | RAG 已坐实漂移主要落这层（like 域 8 条编号漂移） |
+| **① L4 机制层**（Jackson 强转 / Redis key / 雪花 ID / 错误码工厂 / 响应信封） | 可**近乎直抄** | RAG B 列同类 | §3.2 标注 Go 出处（**注释级**，不回 Go 跑） |
+| **② L2 业务语义层**（Lua / 事务边界 / outbox 双信封 / 事实投递） | **以 RAG 为基准整段抄**（D13） | RAG B 列 | ⚠️ 继承 RAG 已知漂移（like 域 8 条编号漂移）⇒ 登记为签字偏离；**发现与 Go 冲突才回 Go** |
 | **③ L1 契约层**（proto / 错误码值 / HTTP path / JWT claims） | **不可抄** | 只从 Go A 列取 | RAG 侧仅作**反例参考** |
 
-**测试资产单独一档**：RAG 侧 `*WireTest` / `*GoAlignmentTest` / `*RealTomcatTest` 等**测试形态可直接借**（满足 §3.3）⇒ **但期望值必须回 Go 重算**。
+**测试资产单独一档**：RAG 侧 `*WireTest` / `*GoAlignmentTest` / `*RealTomcatTest` 等**测试形态可直接借**（满足 §3.3）⇒ **期望值沿用 RAG**（D13）⇒ ⚠️ **Tomcat 10.1 ≠ 11**（D14 回退）⇒ HTTP 层断言（`Content-Type`/`nosniff`/状态行）要**重跑重校**。
 
-⚠️ **四条硬约束**：① **不整域搬**（RAG 侧 api/rpc 分离 + `Global*` 共享 + `*ServiceGrpcImpl` 命名，与本仓结构不兼容）② **不抄 RAG 的 `common/communityfact`**（其台账自陈 5 个可比包**3 个 NOT EQUIVALENT**）③ **RAG 台账比代码更值钱** —— 其「证据强度」分级（源码级对照 / 双侧活体对拍 / 变异验证）本仓尚未建立 ⇒ 借鉴方法论 ④ **仍以 Go 为唯一行为基准** —— 抄 RAG 只是**加速**，与 Go 冲突**以 Go 改**。
+⚠️ **四条硬约束**：① **不整域搬**（RAG 侧 api/rpc 分离 + `Global*` + `*ServiceGrpcImpl` 命名与本仓不兼容）② **不抄 RAG 的 `common/communityfact`**（其台账自陈 5 个可比包**3 个 NOT EQUIVALENT**）③ **RAG 台账比代码更值钱**（其「证据强度」分级本仓尚未建立 ⇒ 借鉴方法论）④ **分层定基准**（D13）：**L1 契约层**（proto / 错误码值 / JWT claims / HTTP path / Kafka topic / 表结构）**以 Go 为准**；**L2/L4 以 RAG 为基准** ⇒ 与 Go 冲突**以 Go 改**。
+
+### 1.0d 工具链口径：**全项目 = Jackson 2 + Boot 3.5**（D14 · 2026-11-02 用户定）
+
+> **全项目适配这条线**：框架 · 驱动 · 中间件客户端 · 测试栈 · 第三方 SDK **全部**在 Jackson 2 + Boot 3.5 上 ⇒ **任何**新代码/新依赖都必须落在这条线上。
+> **只 Jackson 2**：业务代码只用 `com.fasterxml.jackson.*`（**2.19.4**）⇒ 与 RAG 仓 187 文件写法一致 ⇒ 抄写零改写。
+> **零排除**：Nacos 3.0.3 / MinIO / `jjwt-jackson` / Flyway 都**原生依赖** Jackson 2 ⇒ pom 里**不排除**任何 Jackson 2 · **0 处** `tools.jackson` 引用。
+> **版本**：Boot **3.5.11** · Spring Cloud **2025.0.3** · SCA **2025.0.0.0**（原生 nacos-client **3.0.3**）· Flyway **11.14.1** · Tomcat **10.1** · `jjwt-jackson` **可用**。
+> **Boot 4 专有 artifact 在 Boot 3.5 不存在**：`spring-boot-kafka`→`org.springframework.kafka:spring-kafka`；`spring-boot-flyway`/`spring-boot-data-redis`/`spring-boot-tomcat` → 撤（Testcontainers 坐标改名见 D14）。
+> ⚠️ **D12「全面 Jackson 3」已作废**（保留作历史）⇒ 3 份 Jackson 3 报告结论作废。
+> 详细规则与证据 ⇒ [`docs/决策记录.md`](docs/决策记录.md) **D14**（含已知代价）。
 
 ### 1.1 三次真理之源切换的结论
 
-> 📦 **RAG 仓库历史存档**（2026-10-20 决策，RAG-V1 沿用其结论）
+> 📦 **RAG 仓历史存档**（2026-10-20）：真源三切 ⇒ **只留一个源**。依据：审计实测 **Go 0 缺陷 / RAG 11 处回归**（全在「把 Java 写法换成更地道 Spring 写法」处）⇒ 多一跳 = 多一层无声漂移处。蒸馏 ⇒ [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)
 
-真源三次切换（10-18 前 Go → 10-18~10-20 Java 镜像 → **10-20 起回到 Go**）。依据：2026-10-20 行为一致性审计实测 —— **Go 0 缺陷，RAG 11 处回归**，且 11 处**全部**集中在「把 Java 写法换成更地道的 Spring 写法」的位置。
-⇒ **教训**：多一跳的代价不是「多一次翻译」，而是多一整层可以无声漂移的地方 ⇒ 政策结论：**只留一个源**（行为判定只留 Go；实现可抄 RAG，§1.0c）。逐条清单 ⇒ RAG 仓 `docs/DRIFT/_cross/truth-source-switches.md` ／ 蒸馏见 [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)
 
 ## 二、模块阅读指南与目录形状
 
 ### 2.1 模块阅读指南
 
-> ⚠️ **RAG-V1 没有 `HUMAN_ONLY.MD`**（RAG 仓产物），**对应物**是 [`docs/File_Tree/`](docs/File_Tree/_INDEX.md) —— **14 份逐模块文件树 + `_INDEX.md`**，由 `gen-file-tree.py` **按实际文件系统生成** ⇒ 不与代码漂。每份含：① 每个文件的**职责注释**（从 javadoc 抽取）② 该模块的**「特殊约定（L1 契约 · 勿凭直觉改）」**。
+> ⚠️ RAG-V1 无 `HUMAN_ONLY.MD`（RAG 仓产物），**对应物**是 [`docs/File_Tree/`](docs/File_Tree/_INDEX.md) —— **14 份文件树 + `_INDEX.md`**，由 `gen-file-tree.py` **按实际文件系统生成** ⇒ 不与代码漂；每份含 ① 职责注释（javadoc 抽取）② 该模块**「特殊约定（L1 契约 · 勿凭直觉改）」**。
 > ⇒ 改完目录结构**必跑** `python3 tools/gen-file-tree.py`。
 
 RAG-V1 的目标架构（落地以 `docs/File_Tree/` 为准）：
@@ -115,26 +124,25 @@ RAG-V1 的目标架构（落地以 `docs/File_Tree/` 为准）：
 | **包/代码组织层** | ✅ **接近惯例** —— 域内**单层**技术角色包树（包名见 §2.1）⇒ **不再按传输协议纵向切** |
 
 **三个「不是 Spring 惯例」的具体点**（新增目录/包前必问）：
-1. **没有 `repository` 层** —— 用 `mapper`（MP `BaseMapper`）+ `domain/entity` ⇒ COLA/DDD 分层；社区默认是 `repository`。
-2. **`contract/` 是域内包、不是独立模块** —— 域错误契约（`ErrCodes`/`ErrMsg`）+ 事件 DTO；proto 另在**根级 `proto/` 模块**（pb 包名 `com.rag.proto.<域>`）。
-3. **D1 把 api+rpc 合并进同一进程** —— 一个 app 同起 Tomcat 与 gRPC ⇒ 异常处理**必须分两套**：`advice`（`@RestControllerAdvice`）vs `exception` + `GrpcExceptionMapperAutoConfiguration`（§3.5）。
+1. **没有 `repository` 层** —— 用 `mapper`（MP `BaseMapper`）+ `domain/entity` ⇒ COLA/DDD 分层；社区默认 `repository`。
+2. **`contract/` 是域内包、非独立模块** —— 域错误契约（`ErrCodes`/`ErrMsg`）+ 事件 DTO；proto 另在**根级 `proto/`**（pb 包名 `com.rag.proto.<域>`）。
+3. **D1 把 api+rpc 合进同一进程** —— 一个 app 同起 Tomcat 与 gRPC ⇒ 异常处理**必须分两套**：`advice`（`@RestControllerAdvice`）vs `exception` + `GrpcExceptionMapperAutoConfiguration`（§3.5）。
 
 ⚠️ **artifactId 未对齐生态惯例**：`common` / `proto` / `users-common` / `*-service`，而非 `xxx-spring-boot-starter` 形态 —— 属 **L4 实现机制，可重选**，**未拍板**。
-> ⚠️ **物理目录 ≠ artifactId** —— 目录 `service/users/user/` 的 artifactId 是 `user-service`（reactor 内须唯一 ⇒ 改目录不改坐标）。**不要用目录名反推 artifactId**。**形状债已清零（P4-③ · D7）**；**命名债 P4-④ 余 6**（`Rag*` 已清）⇒ [`docs/命名债与包形状.md`](docs/命名债与包形状.md)。
+> ⚠️ **物理目录 ≠ artifactId** —— 目录 `service/users/user/` 的 artifactId 是 `user-service`（reactor 内须唯一 ⇒ 改目录不改坐标）⇒ **别用目录名反推 artifactId**。**形状债已清零（P4-③ · D7）**；**命名债 P4-④ 余 6**（`Rag*` 已清）⇒ [`docs/命名债与包形状.md`](docs/命名债与包形状.md)。
 
 ### 2.3 `common/` 的准入（实测 · 有待裁决项）
 
-`common/` 共 **56** 个主代码类，按包：`web` 16 · `communityfact` 13 · `autoconfigure` 7 · `persistence` 4 · `logger` 4 · `security` 3 · `observability` 3 · `protection` 2 · `exception` 2 · `contract` 1 · `snowflake` 1。
+`common/` 共 **69** 个主代码类 / **12 个包**，按包：`web` 21 · `communityfact` 13 · `autoconfigure` 7 · `redis` 5 · `persistence` 4 · `logger` 4 · `protection` 4 · `observability` 4 · `security` 3 · `exception` 2 · `contract` 1 · `snowflake` 1。
 
-🔴 **待裁决**：`communityfact/` 13 类 = **7 个协议 DTO** ＋ **6 个行为类**（`Dispatcher`/`EventDispatcher`/`EventSender`/`AuthorityHandler`/`ProcessLogger`/`Wire`）。**行为类带域归属**（comment·favorite·like 三域共享）⇒ 与 §五.3 R1「`common/` 只放跨域共用**且无域归属**的能力」**存在张力**；**10 个 app 全直接依赖 `common/`** ⇒ 改一行锁住全部 10 域构建。
-⇒ **填实现前必须裁决**：这 6 个行为类归 `common/` 还是域内？（另：G-2 的 `CanonicalHash` 在此 —— JCS 指纹不一致 ⇒ 幂等失效）
+🔴 **待裁决**：`communityfact/` 13 类 = **7 个协议 DTO** ＋ **6 个行为类**（`Dispatcher`/`EventDispatcher`/`EventSender`/`AuthorityHandler`/`ProcessLogger`/`Wire`）。行为类**带域归属**（comment·favorite·like 共享）⇒ 与 §五.3 R1「`common/` 只放无域归属能力」**有张力**；10 个 app 全依赖 `common/` ⇒ 改一行锁住 10 域。⇒ **填实现前必须裁决**这 6 类归 `common/` 还是域内（另：G-2 `CanonicalHash` 在此 —— JCS 指纹不一致 ⇒ 幂等失效）
 
 ## 三、语义对齐纪律（Spring idiomatization 的唯一防线）
 RAG-V1 与 Go 的差异只允许出现在**表达层**。
 
 ### 3.1 Go ↔ RAG-V1 对照（强制）
 
-任何行为一致性审查必须**以 Go 为唯一基准**核对 RAG-V1。Go 已冻结，行为漂移只可能从 RAG-V1 一侧发生 ⇒ 两方对照足以发现所有行为问题。
+行为一致性审查**按层定基准**（D13）：**L1 契约层**以 Go 为准；**L2/L4 以 RAG 为基准** ⇒ 差异按层判定，不再全量回 Go。
 **审查方式**：对每一个行为决策点，读 Go 对应位置的源文件 → 与 RAG-V1 端对应实现**逐字对照**。
 
 **对照必须覆盖**（不限于）：proto 字段号 / message 名 / 错误码语义；JWT claim 名与必需字段（`userId`、`status` 的 presence 语义）；表结构 / 索引 / 唯一约束 / NOT NULL / DEFAULT；行级悲观锁与事务边界；字符串解析失败行为；HTTP 路径与方法。
@@ -165,7 +173,7 @@ RAG-V1 每次选择「用更地道的 Spring 写法」时，必须能回答：**
 
 **3.3.1（2026-10-22，全仓适用）「配置里没写」≠「没开」，也≠「没做」**
 
-Go 侧大量行为的默认值**藏在 struct tag 里**而不是 yaml 里；反之，Java 侧大量行为**藏在框架里**而不是注解里。只看配置文件/注解名称双向推断，两头都会错。
+Go 侧默认值**藏在 struct tag 里**（不在 yaml），Java 侧**藏在框架里**（不在注解）⇒ 只看配置/注解名双向推断，两头都会错。
 
 ⇒ **强制要求**：
 1. 判断某个 Go 默认行为是否生效，**必须读到消费该 tag 的那段控制流**，只贴 struct 定义行不算证据；
@@ -176,17 +184,16 @@ Go 侧大量行为的默认值**藏在 struct tag 里**而不是 yaml 里；反�
 
 #### 3.3.3 原有纪律（2026-10-20 起）
 
-**不得凭注解名称断定机制已启用。** Spring Boot 的隐式机制（`@Transactional` AOP 代理、`@ResponseBodyAdvice`、MP 的 typeHandler）全部是运行期动态装配，出错时**不报错**（四类静默失效的实证 ⇒ RAG 仓库 `docs/Pitfalls/`）。
-**规则**：凡引入新的框架机制，必须配一条**能真正触发该机制**的测试。纯 Mockito mock 数据层的单测**不算**——它不执行 SQL、不装配 Spring 上下文，天然测不到本节三类问题。
+**不得凭注解名称断定机制已启用。** Spring Boot 隐式机制（`@Transactional` AOP 代理、`@ResponseBodyAdvice`、MP typeHandler）皆运行期动态装配，出错**不报错**（四类静默失效实证 ⇒ RAG 仓 `docs/Pitfalls/`）⇒ 引入新框架机制必须配一条**能真正触发它**的测试；纯 Mockito 单测**不算**（不执行 SQL、不装配上下文）。
 
-**两条补充规则（2026-10-21~22 坐实）**：① 判断「一个注入/开关有没有真生效」**不能看启动日志** —— 注入点的 echo 照打、jar 照起、日志零告警，效果却是零 ⇒ 唯一可靠的判据是**运行时证据**；② **断言「Bean 存在」≠ 断言「机制生效」**（H2 假绿）；**「脚本批量改 N 处」必须配守恒断言**。
+**两条补充（2026-10-21~22 坐实）**：① 判断注入/开关**真没生效不能看启动日志**（echo 照打、零告警，效果却是零）⇒ 唯一可靠判据 = **运行时证据**；② **「Bean 存在」≠「机制生效」**（H2 假绿）·「脚本批量改 N 处」**必须配守恒断言**。
 
-**强制三条**：① 论证里的每个 Go 事实都必须带 `文件:行号`，**不许只写结论**；② 凡写「与 Go 一致」，必须有**两侧同时跑的探针**（不是只跑 RAG-V1）—— Go 侧直接调用真源的解析包，RAG-V1 侧用项目**真实的** mapper；③ 修复漂移时**先改/删错误断言，再改实现** —— 否则会先撞上「测试红了」而误以为自己改错了。
+**强制三条**：① 每个 Go 事实带 `文件:行号`，**不许只写结论**；② 凡写「与 Go 一致」必须有**两侧同时跑的探针**（Go 侧调真源解析包，本仓用**真实** mapper）；③ 修漂移**先改/删错误断言，再改实现**（否则会误以为是自己改错）。
 
-⚠️ **「只跑 RAG-V1 的探针」同样不算数**：它证明的只是「代码写成了这样」，证明不了「Go 是这样」。变异测试是同一问题的另一半 —— 能证明测试**不是假绿**，但**不能证明测试的期望值是对的**。两者缺一不可。
+⚠️ **「只跑本仓探针」不算数**：它只证明「代码写成了这样」，证不了「Go 是这样」。变异测试是另一半 —— 能证测试**不是假绿**，**证不了期望值对**。两者缺一不可。
 
-**Boot 4 补充（2026-10-22）** —— Boot 4 把 Kafka 自动配置拆到独立模块 ⇒ **`@KafkaListener` 会静默不消费**（listener 永不扫描 ⇒ 零报错零消费），或注入点缺 `KafkaTemplate` ⇒ 硬启动失败。⇒ **强制**：① 凡用 `@KafkaListener`，必配一条**装配层**测试断言 listener 真进了容器 registry；② **不得**把「编译通过 / 上下文能启动」当作「注解已生效」的证据（另见 §八）。
-⇒ RAG-V1 已修（`common` + 7 个域统一 `spring-boot-kafka`）→ [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md) §四 K-1；全部 7 条已蒸馏坑 ⇒ [`docs/Pitfalls/_INDEX.md`](docs/Pitfalls/_INDEX.md) P-01~P-10
+**Kafka 自动配置补充（2026-10-22 · D14 订正）** —— 「只引底层 `spring-kafka` ⇒ `@KafkaListener` **静默不消费**（零报错）/ 缺 `KafkaTemplate` **硬启动失败**」这条坑**是 Boot 4 现象**（Boot 4 把 Kafka 自动配置拆成独立模块 `spring-boot-kafka`）⇒ **Boot 3.5 无此风险**（`KafkaAutoConfiguration` 在 `spring-boot-autoconfigure` 里）；**但纪律不变**：用 `@KafkaListener` 必配**装配层**测试断言 listener 真进 registry，**不得**拿「编译通过/能启动」当「注解已生效」证据（§八）。见 `docs/RAG-困境反哺.md` §四 K-1。
+⇒ RAG-V1 已修（`common` + 7 个域统一 `org.springframework.kafka:spring-kafka`）→ [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md) §四 K-1；全部 7 条已蒸馏坑 ⇒ [`docs/Pitfalls/_INDEX.md`](docs/Pitfalls/_INDEX.md) P-01~P-10
 
 ### 3.4 proto 是**复制粘贴**，不是翻译（2026-10-25 实测 · 2026-10-26 集中化）
 
@@ -194,7 +201,7 @@ RAG-V1 侧 10 个 `*.proto` **全部从 Go 侧复制**，非翻译。改动**严
 **message 名 / 字段名 / 字段号 / 类型 / 枚举值 10/10 逐条一致 = 行为层。**
 ⚠️ **D7 后**：10 个 `.proto` 集中在**根级 `proto/` 模块**（pb 包名 `com.rag.proto.<域>`）；**域内 `contract/` 包**承载该域错误契约与事件 DTO（`task` 域**故意没有** —— Go 侧 task 无错误码空间）。
 
-⚠️ **效力边界（三条，越界即失效）**：① **复制忠实 ≠ 消费方式已验** —— 只证明 `.proto` **文件本身**两侧一致，**不证明 RAG-V1 侧使用生成代码的方式**与 Go 一致（`optional` presence 语义、字段号是否被硬编码覆盖、Jackson/protobuf 配置差异）；② **不外推到域内组件** —— proto 一致 **推不出** wire 行为一致；③ **不覆盖范围外的 3 个 proto**（`knowledge`/`points`/`security`）—— **不是待办**。
+⚠️ **效力边界（三条，越界即失效）**：① **复制忠实 ≠ 消费方式已验**（只证 `.proto` 一致，**不证**本仓用生成代码的方式同 Go：`optional` presence · 字段号硬编码 · Jackson/protobuf 配置差异）；② **不外推到域内组件**（proto 一致 **推不出** wire 行为一致）；③ **不覆盖范围外的 3 个 proto**（**不是待办**）。
 ⇒ 逐条对照见 [`docs/Mapping_Table/`](docs/Mapping_Table/_INDEX.md)（**抄写路线图** §1.0c）与 [`docs/File_Tree/`](docs/File_Tree/_INDEX.md)。
 
 ### 3.5 审查范围：RAG-V1 的形态（2026-10-26 · 10 域 / 10 app）
@@ -202,11 +209,11 @@ RAG-V1 侧 10 个 `*.proto` **全部从 Go 侧复制**，非翻译。改动**严
 **审查粒度 = 组件级**，不是微服务级。**contract / common 不是「可选项」**（同域对照的默认公理：共享 DTO、错误码契约、wire 契约）—— 少审它们 = **拿一面没人校过的镜子照自己**。
 
 **RAG-V1 的组件清单（权威，审查任务按此拆分）** —— **10 个 app / 16 个模块**：
-应用 **10**（`article`·`comment`·`favorite`·`follow`·`hot`·`like`·`message`·`task`·`users/user`·`users/admin` —— **每域一进程，api + rpc 合并压平，D1 + D7**）· 契约 **1**（**根级 `proto/` 模块** —— 10 个 `.proto`；错误契约与事件 DTO 落域内 `contract/` 包）· 共享 **2**（`common` starter + `users/users-common`）。
+应用 **10**（`article`·`comment`·`favorite`·`follow`·`hot`·`like`·`message`·`task`·`users/user`·`users/admin` —— **每域一进程，api+rpc 压平，D1+D7**）· 契约 **1**（**根级 `proto/`** —— 10 个 `.proto`；错误契约与事件 DTO 落域内 `contract/`）· 共享 **2**（`common` starter + `users/users-common`）。
 
-⚠️ **落地 ≠ 已对照** ⇒ 逐组件状态见 [`docs/DRIFT/_INDEX.md`](docs/DRIFT/_INDEX.md)（**当前全部「⬜ 未建立」**）。**为什么不能退到微服务粒度**：域粒度下 `hot` 与 `article` 都会被打成 ✅ —— **那是假绿灯**。
+⚠️ **落地 ≠ 已对照** ⇒ 逐组件状态见 [`docs/DRIFT/_INDEX.md`](docs/DRIFT/_INDEX.md)（**当前全「⬜ 未建立」**）。**为何不能退到微服务粒度**：域粒度下 `hot` 与 `article` 都会打成 ✅ —— **假绿灯**。
 
-📦 **`global` 收口域（RAG 首创，RAG-V1 沿用）** —— **不是第 11 个微服务域，是「收口域」**：修法落在共享层、或影响多个域的搁置漂移全部归它（§五.3）。
+📦 **`global` 收口域（RAG 首创，沿用）** —— **不是第 11 个域，是「收口域」**：修法落共享层、或影响多域的搁置漂移全归它（§五.3）。
 
 ## 四、实现组织（真理之源 = Go）
 
@@ -228,51 +235,50 @@ RAG-V1 侧 10 个 `*.proto` **全部从 Go 侧复制**，非翻译。改动**严
 
 | 阶段 | 内容 | 完成信号 |
 |---|---|---|
-| **按域填实现** | 每域：**先按 Mapping_Table B↔C 抄 RAG 实现**（§1.0c 三档）→ 回 Go 复核业务规则 → 填各技术角色包 → 建该域 DRIFT 台账 | 该域能**独立启动** + 关键路径有**真触发**测试（§3.3）+ 台账写回 |
+| **按域填实现** | 每域：**先按 Mapping_Table B↔C 抄 RAG 实现**（§1.0c 三档）→ L2 以 RAG 为基准（D13）→ 填各技术角色包 → 建该域 DRIFT 台账 | 该域能**独立启动** + 关键路径有**真触发**测试（§3.3）+ 台账写回 |
 | **全量收口** | `mvn -o -T1C clean verify` + A1–A12 断言脚本绿 + 对拍脚本绿 | 绿且 `skipped=0`（§五.8 守门四规则） |
 
 每域独立 stop point：跑绿后停下等用户 review，再决定继续。
 
 ### 4.3 用户问答原话
 
-> 📖 RAG 仓库的原话存档 ⇒ `docs/DRIFT/_cross/user-qa-verbatim.md`（**在 RAG 仓库里，不在 RAG-V1**）；RAG-V1 自己的拍板记录 ⇒ [`docs/决策记录.md`](docs/决策记录.md)（**D1–D11** 已定 + P1–P6 待拍板）。
+> 📖 RAG 仓库的原话存档 ⇒ `docs/DRIFT/_cross/user-qa-verbatim.md`（**在 RAG 仓库里，不在 RAG-V1**）；RAG-V1 自己的拍板记录 ⇒ [`docs/决策记录.md`](docs/决策记录.md)（**D1–D14** 已定 + P1–P7 待拍板）。
 
 ## 五、用户协作规则（精简）
 
 1. **每域一个 PR**，PR 自带 spec（提交前已落仓）；issue 在 PR 之前，PR body 引用 issue。⚠️ **RAG-V1 已 `git init`**（2026-10-26，`main`）⇒ PR / 分支 / worktree 适用；**别照抄 RAG 的 git 流程**。
-2. **三档台账：每域必读 + 必写**（2026-10-23 用户定）—— 开工前**必读** `docs/DRIFT/` + `docs/Intentional_Deviations/` + `docs/Pitfalls/` 的**本域子目录 + `_cross/`**（否则会重复已修项、误把签字偏离当新漂移「顺手修回」）；产出**必写回** `<台账>/<域>/<组件>.md`。⚠️ **只写自己域，三个 `_INDEX.md` 合并后统一更新**；台账按 **RAG-V1 组件名**重建（组件 = 域的 `*-service` / `proto` / `common`）。
-3. **`global` 收口域（2026-10-25 用户定）** —— 跨微服务 + `common/` 影响的搁置漂移**全部归它**（§3.5）⇒ **`common/**` 只有收口任务能写**，别的域只读；修法同时涉及 `common/` 与别的域代码时**必须同一次提交**。
-4. **作用范围**：仅限 RAG-V1 仓库。`Sea-RideTheWind_golang` 已冻结只读；`RAG` 仓库**只读参考**（不反向同步、不写入）—— 但其**实现可抄进本仓**（§1.0c）；其他非 Spring Boot 的 Java 实现不在范围内。
-5. **Go 是真理之源**（全子模块适用）。proto 字段号、错误码、JWT claims、表结构、HTTP path、Kafka topic 一律以 Go 对应子模块为准；差异**只允许出现在表达层**，出现行为差异默认判 **RAG-V1 错**。
+2. **三档台账：每域必读 + 必写**（2026-10-23 用户定）—— 开工前**必读** `docs/DRIFT/` + `docs/Intentional_Deviations/` + `docs/Pitfalls/` 的**本域子目录 + `_cross/`**（否则重复已修项 / 误把签字偏离当新漂移「顺手修回」）；产出**必写回** `<台账>/<域>/<组件>.md`。⚠️ **只写自己域**；三个 `_INDEX.md` 合并后统一更新。
+3. **`global` 收口域** —— 跨域 + `common/**` 的搁置漂移**全归它**（§3.5）⇒ **`common/**` 只有收口任务能写**，别的域只读；修法同时涉及 `common/` 与别域代码时**必须同一次提交**。
+4. **作用范围**：仅限本仓。`Sea-RideTheWind_golang` 已冻结只读；`RAG` 仓**只读参考**（不反写）—— 其**实现可抄进来**（§1.0c）；其他非 Spring Boot 的 Java 实现不在范围内。
+5. **基准分层**（D13）。**L1 契约层**（proto 字段号、错误码、JWT claims、表结构、HTTP path、Kafka topic）一律以 Go 对应子模块为准，差异默认判 **RAG-V1 错**；**L2/L4 以 RAG 为基准**，与 Go 冲突以 Go 改。
 6. **session 语言**：用户用中文；技术术语、代码、文件路径保留英文。
-7. **review**：每域走完 `mvn -pl <module> -am package` + 全量 `mvn -o clean verify` 后等 review，**且必须含 Go ↔ RAG-V1 对照**。
-8. **守门脚本 4 硬规则**（RAG 实测反哺）：① 计数只取**回归日志的模块级汇总**（**不取** `surefire-reports/*.xml` 求和 —— 陈旧孤儿报告虚高）② 报「0 failures」须**同时断言 `skipped=0`** ③ **禁止 `@EnabledIfDockerAvailable`** ④ 排除项用**前缀/类别匹配**，不逐个枚举。
+7. **review**：每域走完 `mvn -pl <module> -am package` + 全量 `mvn -o clean verify` 后等 review，**且必须含 RAG ↔ RAG-V1 对照**（L1 契约层另加 Go ↔ RAG-V1）。
+8. **守门脚本 4 硬规则**（RAG 反哺）：① 计数只取**回归日志的模块级汇总**（**不取** `surefire-reports/*.xml` 求和 —— 孤儿报告虚高）② 报「0 failures」须**同断 `skipped=0`** ③ **禁 `@EnabledIfDockerAvailable`** ④ 排除项用**前缀/类别匹配**。
 
 ## 六、架构决策与其他留档
 
 > **状态表纪律（2026-10-21）**：任何「已修 / 未修」断言必须带**核对日期**，否则按 `UNKNOWN` 处理。
 
-> ⚠️ **本节记的是 RAG 仓库的决策过程**（📦 存档）—— **RAG-V1 自己的架构决策在 [`docs/决策记录.md`](docs/决策记录.md)**（**D1–D11** + P1–P6）。**冲突以其为准**。
+> ⚠️ **本节记的是 RAG 仓库的决策过程**（📦 存档）—— **RAG-V1 自己的架构决策在 [`docs/决策记录.md`](docs/决策记录.md)**（**D1–D14** + P1–P7）。**冲突以其为准**。
 > **RAG 的四条结论（📦）**：① 丢掉 Flyway 改幂等重放 ② `admin-rpc` 不转发、直连（沿用 ✅）③ 拦截器注册用 `@Import` ⇒ ⚠️ **RAG-V1 不用**（D3）④ Flyway 账本撞号 ⇒ 见下。
 
-🔴 **Flyway 账本撞号 —— RAG-V1 尚未决策**：`flyway_schema_history` 是 **schema 级**账本 ⇒ 同库同 schema 只能一本账；10 个 `*-service` **都有 `db/migration/`** ⇒ 若共用一个 schema，**任一 app 先启动，其他 app 的表就永远建不出来**。
-⇒ **填实现前必须先拍板**（独立账本表名 / 独立 schema / 独立库）。RAG 的定案是每模块独立账本表名。
+🔴 **Flyway 账本撞号 —— 尚未决策**：`flyway_schema_history` 是 **schema 级**账本 ⇒ 同库同 schema 只能一本；10 个 `*-service` **都有 `db/migration/`** ⇒ 共用 schema 时**任一 app 先启动，其他 app 的表就永远建不出来**。⇒ **填实现前必须拍板**（独立表名 / 独立 schema / 独立库）；RAG 的定案 = 每模块独立账本表名。
 
 ## 七、引用清单
 
 > 📖 **完整索引（文档分工 + 阅读路线 + 状态速查）在 [`docs/README.md`](docs/README.md)**；工具清单在 [`tools/README.md`](tools/README.md)。本节只列**必读**。
 ### 7.1 真理之源（判定行为）
 
-Go 真源仓库路径见 §1.0b（**已冻结**，不接受写入）。RAG-V1 不是从 Go「推测」行为，而是**逐字对照 Go 源码**（§3.1）。
-> 📖 锚点表（路由 / 事务 / 行锁 / 身份 / JWT / 建表）⇒ RAG 仓 `docs/DRIFT/_cross/go-anchors.md` —— **参考资料，非政策**
+Go 真源路径见 §1.0b（**已冻结**，不接受写入）。RAG-V1 不是从 Go「推测」行为，而是**逐字对照 Go 源码**（§3.1）。
+> 📖 锚点表（路由/事务/行锁/身份/JWT/建表）⇒ RAG 仓 `docs/DRIFT/_cross/go-anchors.md` —— **参考资料，非政策**
 
 ### 7.2 动手前必读的 5 份
 
-- **[`docs/决策记录.md`](docs/决策记录.md)** —— **D1–D11** + P1–P6 + 关系图 ⇒ 动结构前必读
-- **[`docs/Mapping_Table/`](docs/Mapping_Table/_INDEX.md)** —— **抄写路线图**（§1.0c）：B 列 RAG ↔ C 列 RAG-V1 的逐类对应 + 各域 **§0.5 B→C 结构映射速查表** ⇒ **填实现前必读**
-- **[`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)** —— RAG 的坑 → RAG-V1 的处置 ⇒ **填实现前先读**
+- **[`docs/决策记录.md`](docs/决策记录.md)** —— **D1–D14** + P1–P6 + 关系图 ⇒ 动结构前必读
+- **[`docs/Mapping_Table/`](docs/Mapping_Table/_INDEX.md)** —— **抄写路线图**（§1.0c：B↔C 逐类对应 + 各域 §0.5 速查表）⇒ 填实现前必读
+- **[`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)** —— RAG 的坑 → 本仓处置 ⇒ 填实现前先读
 - **[`docs/架构符合性断言.md`](docs/架构符合性断言.md)** —— A1–A12 ⇒ 写测试 / 接框架时
-- **[`docs/GORM-MP-语义对照.md`](docs/GORM-MP-语义对照.md)** —— GORM → MP 对照表 ⇒ **写 Mapper / Entity / 事务代码时**
+- **[`docs/GORM-MP-语义对照.md`](docs/GORM-MP-语义对照.md)** —— GORM → MP ⇒ 写 Mapper / Entity / 事务时
 
 **三档台账**（§五.3）：[`docs/DRIFT/`](docs/DRIFT/_INDEX.md) · [`docs/Pitfalls/`](docs/Pitfalls/_INDEX.md)（P-01~P-10）· [`docs/Intentional_Deviations/`](docs/Intentional_Deviations/_INDEX.md)
 **结构产物**：[`docs/File_Tree/`](docs/File_Tree/_INDEX.md) · [`docs/L3-降级清单.md`](docs/L3-降级清单.md) · [`docs/第二轮深挖-契约盘点.md`](docs/第二轮深挖-契约盘点.md)（G-1~G-4）
@@ -281,10 +287,7 @@ Go 真源仓库路径见 §1.0b（**已冻结**，不接受写入）。RAG-V1 �
 
 完整工具清单见 [`tools/README.md`](tools/README.md) 与 [`tools/difftest/README.md`](tools/difftest/README.md)。**改完目录结构必跑** `python3 tools/gen-file-tree.py`（按实际文件系统生成 14 份文件树 + `_INDEX.md` ⇒ 不会与代码漂）。
 
-- `tools/check-mapping-coverage.py` —— 三方对照文档八重校验（A/B/C 列覆盖率 · `_INDEX.md` 对账 · 映射行计数）
-- `tools/difftest/check-arch-invariants.py` —— **架构符合性 A1–A12**；`--contract A|B` · `--self-test` 自证 **12/12 判据能红** · 空壳类报 `PENDING`（**不算 PASS**）
-- `tools/difftest/check-docs-vs-tree.py` —— **`docs/` ↔ 文件树对账**（File_Tree 双向+幂等 · 路径引用 · 落点计数与分项守恒 · 包名）；`--self-test` 自证 **4/4 判据能红**
-- ⬜ 待实现：`check-proto-static.sh`（proto 对照）· `check-ddl-static.py`（DDL 列级对照）· `run-parity.sh`（双侧语义探针）
+- **三道守门** —— `check-mapping-coverage.py`（三方对照八重校验）· `check-arch-invariants.py`（**A1–A12**，`--self-test` 自证 **12/12 判据能红**，空壳类 `PENDING` **不算 PASS**）· `check-docs-vs-tree.py`（docs ↔ 文件树对账）· ⬜ 待实现 3 个
 
 > ⚠️ **RAG 仓库有 4 个已跑通的守门脚本 RAG-V1 还没有**：`semantic-probe/` · `errmsg-probe/` · `check-plaintext400-headers.sh` · `check-{grpc-interceptor-wiring,jar-executable,tomcat-limits}.py` ⇒ **移植清单见 [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)**。
 
@@ -292,24 +295,25 @@ Go 真源仓库路径见 §1.0b（**已冻结**，不接受写入）。RAG-V1 �
 
 ## 八、新增组件检查清单
 
-> 每次新增一个域、一个模块或一个共享能力，**逐条过**。RAG-V1 独有（承接自 RAG-V1 原政策文件）。
+> 每次新增域 / 模块 / 共享能力，**逐条过**。RAG-V1 独有。
 
-- [ ] **职责有据** —— 新文件的存在理由来自实际职责，不是"Go 里有这个文件"
-- [ ] **形状有据** —— 新增目录/包前问：这是 **Spring 生态惯例**，还是 **go-zero 二分的惯性投影**？（§2.2）· 新增 `common/` 类前问：是**协议 DTO**（无域归属）还是**行为类**（带域归属）？后者需裁决（§2.3 · R1）
-- [ ] **Go 正推** —— 职责清单来自**读 Go 源码**，不从已有实现反推（§3.1）· **抄 RAG 实现时（§1.0c）**：业务规则仍回 Go 逐行核对，RAG 只提供骨架
-- [ ] **逐域读** —— 同名文件在不同域内容可能完全不同 ⇒ 不得用一个域的结论推及另一域
-- [ ] **L1 未变** —— 若动了 proto / 路由 / method / 错误码值 / 错误文案 / MQ 消息字段 ⇒ 停，走决策流程
+- [ ] **职责有据** —— 存在理由来自实际职责，不是"Go 里有这个文件"
+- [ ] **形状有据** —— 新增目录/包前问：是 **Spring 生态惯例**还是 **go-zero 二分惯性投影**？（§2.2）· 新增 `common/` 类前问：**协议 DTO**（无域归属）还是**行为类**（带域归属）？后者需裁决（§2.3 · R1）
+- [ ] **Go 正推** —— 职责清单来自**读 Go 源码**，不从已有实现反推（§3.1）· **抄 RAG 实现时（§1.0c / D13）**：L2 **以 RAG 为基准整段抄**（不逐行回 Go）；L1 契约层仍以 Go 为准
+- [ ] **逐域读** —— 同名文件在不同域内容可能完全不同 ⇒ 不得跨域推论
+- [ ] **L1 未变** —— 动了 proto / 路由 / method / 错误码值 / 文案 / MQ 字段 ⇒ 停，走决策流程
 - [ ] **未统一化** —— 错误码值/文案/语言/method/前缀**逐域隔离**，禁止提取共享基座
 - [ ] **L2 已归位** —— 每项业务规则都有明确承载位置
 - [ ] **生态优先** —— 先问"Spring/生态是否已提供"，再考虑自研（D4）
 - [ ] **starter 优先** —— 共享能力进 `common` 且用 `@AutoConfiguration`，**不写 `@Import` 清单**（D3）
 - [ ] **机制可证** —— 引入的新框架机制配一条**真正触发它**的测试（§3.3）
-- [ ] **Boot 4 未拆走** —— 引入 `spring-*-starter` 前，确认它在 Boot 4 下仍在 `spring-boot-autoconfigure` 里
+- [ ] **starter 带自动配置** —— 引入 `spring-*-starter` 前确认它在 Boot 3.5 下仍带 `spring-boot-autoconfigure`（Kafka/Redis/Flyway 自动配置在此）
 - [ ] **写路径形态已知** —— `updateById(entity)` 还是 `update(null, wrapper)`？两者修法不同
 - [ ] **HTTP 断言走真 Tomcat** —— 断言 `Content-Type`/`nosniff`/状态行时不用 MockMvc
 - [ ] **守门脚本合规** —— 计数取回归日志汇总 + 断言 `skipped=0` + 排除项用前缀匹配（§五.8）
 - [ ] **断言仍绿** —— `check-arch-invariants.py`（A1–A12）+ `check-docs-vs-tree.py`（docs ↔ 文件树）
+- [ ] **工具链 = Jackson 2 + Boot 3.5**（D14）—— 只用 `com.fasterxml.jackson.*`（Jackson 2）· pom 里**零** Jackson 2 排除项 · `jjwt-jackson` 可用 · **不引 Boot 4 专有 artifact**
 - [ ] **台账已写** —— 偏离写 Intentional_Deviations，踩坑写 Pitfalls，漂移写 DRIFT
 - [ ] **文档已更新** —— 「已修/未修」断言必须带**核对日期**，否则按 `UNKNOWN` 处理
 
-> 📖 L1–L4 定义 ⇒ `docs/完全spring化的文件树.md` §0.1 · D1–D11 ⇒ `docs/决策记录.md`
+> 📖 L1–L4 定义 ⇒ `docs/完全spring化的文件树.md` §0.1 · D1–D13 ⇒ `docs/决策记录.md`

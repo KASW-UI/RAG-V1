@@ -131,7 +131,7 @@
 | `service/user/user/api/internal/logic/user/avatarhelpers.go` | `user-api/.../service/UserApiSupport.java` | `service/users/user/src/main/java/com/rag/user/service/UserApiSupport.java` | 1:1 | api 侧**镜像**（rpc 侧 `AvatarDomainService` 才是权威实现）；另含 uid 解析与 proto→DTO 转换 |
 | `service/user/user/api/internal/types/types.go` | `user-api/.../dto/`：**`AvatarHistoryItem.java`**、**`CreateUserReq.java`**、**`CreateUserResp.java`**、**`DeleteUserReq.java`**、**`DeleteUserResp.java`**、**`GetAvatarHistoryResp.java`**、**`GetUserReq.java`**、**`GetUserResp.java`**、**`LoginReq.java`**、**`LoginResp.java`**、**`LogoutReq.java`**、**`LogoutResp.java`**、**`RegisterReq.java`**、**`RegisterResp.java`**、**`SelectAvatarReq.java`**、**`SelectAvatarResp.java`**、**`UpdateUserReq.java`**、**`UpdateUserResp.java`**、**`UploadAvatarReq.java`**、**`UploadAvatarResp.java`**、**`UserInfo.java`**（B 侧 `dto/` 共 19 个文件） | `service/users/user/src/main/java/com/rag/user/dto`：**`AvatarHistoryItem.java`**、**`CreateUserReq.java`**、**`CreateUserResp.java`**、**`DeleteUserReq.java`**、**`DeleteUserResp.java`**、**`GetAvatarHistoryResp.java`**、**`GetUserReq.java`**、**`GetUserResp.java`**、**`LoginReq.java`**、**`LoginResp.java`**、**`LogoutReq.java`**、**`LogoutResp.java`**、**`SelectAvatarReq.java`**、**`SelectAvatarResp.java`**、**`UpdateUserReq.java`**、**`UpdateUserResp.java`**、**`UploadAvatarReq.java`**、**`UploadAvatarResp.java`**、**`UserInfo.java`**（**19** 个） | 1:N | Go `.api` 的 **19** 个 type → 19 个 immutable record（D5）；B 的 `RegisterReq`/`RegisterResp` 在 C 改名 `CreateUserReq`/`CreateUserResp`（回到 Go `.api` 名）；⚠️ Go 的 `AvatarHistoryResp` 在 B/C 是 `GetAvatarHistoryResp`（取 proto 名）⇒ 见 §7.4 F-5 |
 | `service/user/user/api/internal/middleware/checkblacklistmiddleware.go` | `user-api/.../interceptor/JwtAuthInterceptor.java` | `service/users/user/src/main/java/com/rag/user/interceptor/JwtAuthInterceptor.java` | 1:1 | go-zero `rest.WithJwt` + blacklist 中间件 → `HandlerInterceptor`（能访问 `HandlerMethod`） |
-| `service/user/user/api/internal/identity/resolve.go` | `user-api/.../service/IdentityResolver.java` | **（无对应物）** | 1:1 | ⚠️ Go 侧无对应物（原因见备注）：C 侧**无承载文件** —— 5 个 sentinel 错误 + `AuthorityID` / `PlatformTenantID` 在 C 侧**没有落点**（见 §7.4 F-1） |
+| `service/user/user/api/internal/identity/resolve.go` | `user-api/.../service/IdentityResolver.java` | `service/users/common/src/main/java/com/rag/users/common/IdentityResolver.java` | 1:1 | ✅ **已落地（2026-11-01）**：5 个 sentinel 错误 + `AuthorityID` / `PlatformTenantID` **有了承载文件**；⚠️ **上收到 `service/users/common/`（只 1 份）**（用户 2026-11-01 定）⇒ user / admin 两子域共用，`users-common` 已被两者依赖 ⇒ **不动 pom**（见 §7.4 F-1） |
 | `service/user/user/api/internal/metrics/metrics.go` | `user-api/.../metrics/UserApiMetrics.java` | `service/users/user/src/main/java/com/rag/user/metrics/UserApiMetrics.java` | 1:1 | 指标完整名 L1：`user_api_intercept_total` |
 | `service/user/user/api/internal/svc/servicecontext.go` | `user-api/.../client/UserRpcClient.java` + `user-api/.../config/UserApiProperties.java` + `user-api/.../config/WebMvcConfig.java` | `service/users/user/src/main/java/com/rag/user/config/UserApiProperties.java` + `service/users/user/src/main/java/com/rag/user/config/WebMvcConfig.java` | 1:N | D2：域内调用直连 ⇒ **C 侧无 `api/client/`**（全仓 `api/client` 目录 0 个） |
 
@@ -139,7 +139,17 @@
 
 | A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|---|
-| `service/user/user/identity/resolve.go` | `user-api/.../service/IdentityResolver.java` + `admin-api/.../service/IdentityResolver.java`（**两份重复**） | **（无对应物）** | 1:1 | ⚠️ Go 侧无对应物（原因见备注）：Go 的**权威**身份解析器（`ClaimedUID` → `GetUser` → status presence 检查 → `SubjectRef`；`AuthorityID="rtw.identity"` / `PlatformTenantID="platform"`；5 个 sentinel 错误）在 C 侧**无任何文件承载**（见 §7.4 F-1） |
+| `service/user/user/identity/resolve.go` | `user-api/.../service/IdentityResolver.java` + `admin-api/.../service/IdentityResolver.java`（**两份重复**） | `service/users/common/src/main/java/com/rag/users/common/IdentityResolver.java`（**C 侧只 1 份**，上收到域级共享层） | 1:1 | ✅ **已落地（2026-11-01）**：Go 的**权威**身份解析器（`ClaimedUID` → `GetUser` → status presence 检查 → `SubjectRef`；`AuthorityID="rtw.identity"` / `PlatformTenantID="platform"`；5 个 sentinel 错误）在 C 侧**有了唯一承载文件** ⇒ B 侧两份重复**在 C 侧被消解**（见 §7.4 F-1） |
+
+### 1.2 🔴 RAG 侧新增类补录（1 条 · 覆盖 4 个 `.java`）
+
+> ⚠️ **本节是 2026-11-01 的增量**：RAG 在首版映射表之后新增了 `user-api/…/auth/` 包（4 类）
+> ⇒ 首版 §1.1.2 的 **B 列漏了这 4 个 `.java`** ⇒ 本节逐个落到 C 侧；
+> 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
+
+| A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
+|---|---|---|---|---|
+| `api/internal/handler/routes.go` 的 `rest.WithJwt(...)` 绑定 | `user-api/…/auth/JwtAuthPaths.java` ＋ `user-api/…/auth/JwtSignatureVerifier.java` ＋ `user-api/…/auth/JwtVerificationResult.java` ＋ `user-api/…/auth/GoStyleJwtAuthFilter.java` | `service/users/user/src/main/java/com/rag/user/interceptor/JwtAuthInterceptor.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的**首发域**）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 1 个 `HandlerInterceptor`** ⇒ 🔴 **C 侧缺口**：要么补 1 个 `OncePerRequestFilter` 承载验签，要么显式登记为签字偏离。⚠️ **受保护路由表 ＋ public 前缀集合是 L1**；⚠️ 本域的 claim 名 `userId`（小写 u ＋ 驼峰）是 **L1**，不可写成 `user_id` |
 
 ---
 
@@ -205,7 +215,7 @@ find "service/users/user" -name '*.java' -not -path '*/src/test/*' -not -path '*
 | C 模块 | `.java` 数 | 出现在本表 C 列的位置 | 覆盖 |
 |---|---|---|---|
 | `service/users/user/src/main/java/com/rag/user/contract/` | 2 | §1.3 第 1 行（`ErrCodes.java` / `ErrMsg.java`，见 [`../users-common.md`](../users-common.md) §1） | ✅ 2/2 |
-| `service/users/user/src/main/java/com/rag/user/` | 43 | §1.1.1（user-rpc 侧）+ §1.1.2（user-api 侧）+ §1.2 补充行（`UserApiResponseAdvice` / `UserApiExceptionHandler` / `RedisDisconnectedBehaviorConfig`，见 [`../admin/admin.md`](../admin/admin.md) §1） | ✅ 43/43 |
+| `service/users/user/src/main/java/com/rag/user/` | 43 | §1.1.1（user-rpc 侧）+ §1.1.2（user-api 侧）+ §1.1.2 补充行（`UserApiResponseAdvice` / `UserApiExceptionHandler` / `RedisDisconnectedBehaviorConfig`，见 [`../admin/admin.md`](../admin/admin.md) §1.2.2） | ✅ 43/43 |
 | **合计** | **45** | — | ✅ **45/45** |
 
 ### 7.2 A 列覆盖率 —— **51 / 51 = 100%**（user 子域）
@@ -225,9 +235,9 @@ find "service/users/user" -name '*.java' -not -path '*/src/test/*' -not -path '*
 |---|---|---|
 | `1:1` | **17** | 单文件对单文件（多数是「B 改名 / C 归位 / C 补 DTO」） |
 | `1:N` | **6** | Go 单文件拆成多个 C 文件 |
-| `N:1` | **28** | Go 多文件合进 1 个 C 文件（**D1/D2 的主因**：user-api 9+9、user-rpc 9 个 logic → 各 1 个 Service） |
+| `N:1` | **29** | Go 多文件合进 1 个 C 文件（**D1/D2 的主因**：user-api 9+9、user-rpc 9 个 logic → 各 1 个 Service） |
 | `C 新增` | **0** | 本子域每个 C 文件都能在 B 列找到前身 ⇒ RAG-V1 在本子域是**重组**而非新增能力 |
-| **合计** | **51** | — |
+| **合计** | **52** | — |
 
 > 统计命令（可复跑）：
 > ```bash

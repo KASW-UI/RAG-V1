@@ -227,6 +227,18 @@
 
 **为什么换**：Go 的目录结构是 goctl codegen 的产物（13 个 logic 文件是因为 codegen，不是职责边界）；Spring 侧的「一域一 app」要求 HTTP 边界（`advice + config + controller + dto + interceptor + service`）与服务端能力层（`wiring + client + config + domain/entity + domain/model + domain/service + exception + grpc + mapper + metrics + service`）在同一进程内**用包区分**而不是用进程区分。⚠️ **代价**：`rpc.*` 这层命名债已登记（决策 P4，本次不改）。
 
+### 1.8 🔴 RAG 侧新增类补录（3 条 · 覆盖 6 个 `.java`）
+
+> ⚠️ **本节是 2026-11-01 的增量**：RAG 在首版映射表之后新增了 `favorite-api/…/auth/` 包（4 类）、`FavoriteGoQueryLimitInterceptor`（1 类）与 `FavoriteSpans`（1 类）
+> ⇒ 首版 §1.2 / §1.3 的 **B 列漏了这 6 个 `.java`** ⇒ 本节逐个落到 C 侧；
+> 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
+
+| A Go 文件 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
+|---|---|---|---|---|
+| `api/internal/handler/routes.go` 的 `rest.WithJwt(...)` 绑定 | `favorite-api/…/auth/FavoriteJwtAuthPaths.java` ＋ `favorite-api/…/auth/FavoriteJwtSignatureVerifier.java` ＋ `favorite-api/…/auth/FavoriteJwtVerificationResult.java` ＋ `favorite-api/…/auth/GoStyleJwtAuthFilter.java` | `service/favorite/src/main/java/com/rag/favorite/interceptor/FavoriteJwtAuthInterceptor.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 1 个 `HandlerInterceptor`** ⇒ 🔴 **C 侧缺口**：要么补 1 个 `OncePerRequestFilter` 承载验签，要么显式登记为签字偏离。⚠️ **受保护路由表 ＋ public 前缀集合是 L1** |
+| go-zero `rest/httpx` 的 `GetFormValues` ＋ Go `net/url.parseQuery`（7/7 端点第一行都是 `httpx.Parse`） | `favorite-api/…/interceptor/FavoriteGoQueryLimitInterceptor.java` | `service/favorite/src/main/java/com/rag/favorite/interceptor/QueryLimitInterceptor.java` | 1:1 | ✅ **已落地（2026-11-01）**：C 侧新建 `interceptor/QueryLimitInterceptor.java`（**去 `Go` 前缀**，用户 2026-11-01 定）⇒ **这一层不再靠 Tomcat `server.tomcat.max-parameters` 兜底**；⚠️ 「总参数个数 vs 非空值个数」的口径差异（`DRIFT-HOTAPI-030`）**仍未决** ⇒ 移植实现时**必须先定口径**，否则 favorite 域会出现「Go 拒 / C 不拒」 |
+| `rpc/metrics/metrics.go`（指标名与标签） | `favorite-common/…/span/FavoriteSpans.java` | `service/favorite/src/main/java/com/rag/favorite/metrics/FavoriteRpcMetrics.java` | 1:1 | B 侧把 span 名常量从指标类里**拆出**（且落在 `favorite-common`）⇒ C 侧并回 `FavoriteRpcMetrics`；⚠️ 指标**完整名**带 `favorite_service_` 前缀，**不许补全** |
+
 ---
 
 ## 2. 持久层差异
@@ -465,18 +477,18 @@ cd "/Users/pr/Documents/java&golang/Sea-RideTheWind_golang/service/favorite" \
 
 ### 7.3 映射类型分布
 
-> 统计口径：**本表内 6 张映射表**（§0 / §1.2 / §1.3 / §1.4 / §1.5 / §1.6）的数据行，共 **84 行**；
+> 统计口径：**本表内 7 张映射表**（§0 / §1.2 / §1.3 / §1.4 / §1.5 / §1.6 / §1.8）的数据行，共 **87 行**；
 > 每行的映射类型单元格必填且只用 4 种合法词（`1:1` / `1:N` / `N:1` / `C 新增`）。
 
 | 映射类型 | 行数 | 占比 | 说明 |
 |---|---|---|---|
-| `1:1` | 41 | 48.8% | 「Go 1 文件 ↔ Java 1 文件」的直接对应（含 B→C 1:1 而 A 侧无 Go 对应物的 2 行） |
-| `1:N` | 22 | 26.2% | Go 单文件拆成多个 Java（`favorite_fact.go` → 5 个、`favorite_delivery.go` → 3 个、`types.go` 逐 struct、3 个 `cmd/*` 的部分落点） |
-| `N:1` | 20 | 23.8% | 多文件合 1（7 个 api logic → `FavoriteApiService`、7 个 rpc logic → `FavoriteDomainService`、2 份 yaml → 1 份 `application.yml`、2 个 main → 1 个 `FavoriteServiceApplication`、3 段 `common/errmsg.go` → 3 个 contract 类） |
-| `C 新增` | 1 | 1.2% | `GetFavoriteFoldersReq.java`（Go 侧空 struct，B 侧未建 DTO） |
+| `1:1` | 43 | 49.4% | 「Go 1 文件 ↔ Java 1 文件」的直接对应（含 B→C 1:1 而 A 侧无 Go 对应物的 2 行） |
+| `1:N` | 22 | 25.3% | Go 单文件拆成多个 Java（`favorite_fact.go` → 5 个、`favorite_delivery.go` → 3 个、`types.go` 逐 struct、3 个 `cmd/*` 的部分落点） |
+| `N:1` | 21 | 24.1% | 多文件合 1（7 个 api logic → `FavoriteApiService`、7 个 rpc logic → `FavoriteDomainService`、2 份 yaml → 1 份 `application.yml`、2 个 main → 1 个 `FavoriteServiceApplication`、3 段 `common/errmsg.go` → 3 个 contract 类） |
+| `C 新增` | 1 | 1.1% | `GetFavoriteFoldersReq.java`（Go 侧空 struct，B 侧未建 DTO） |
 
 > ✅ **合法词校验**：全文仅出现 `1:1` / `1:N` / `N:1` / `C 新增` 四种，**无 `N:M` / `1:1:1` 等自造词**；
-> 84 行数据行**无一空缺**（校验脚本：`按 markdown 表块解析，定位表头中 `映射类型` 所在列，逐行断言 ∈ 4 词集合`）。
+> 87 行数据行**无一空缺**（校验脚本：`按 markdown 表块解析，定位表头中 `映射类型` 所在列，逐行断言 ∈ 4 词集合`；核对日期 2026-11-01）。
 
 ### 7.4 🔴 三列之间「职责对不上」的地方（逐条登记）
 
