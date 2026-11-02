@@ -52,7 +52,7 @@
 |---|---|---|
 | `users/user/api/`（`UserApiApplication`） | `service/users/user/` → `com.rag.user`（`UserServiceApplication.java`） | 入口类合并（D1）|
 | `users/user/api/advice/` | `advice/` | 直接压平（`GlobalResponseAdvice` → `UserApiResponseAdvice`）|
-| `users/user/api/auth/`（4 个 JWT 验签类） | `interceptor/` | 直接压平（D2：只留 1 个 `HandlerInterceptor`）|
+| `users/user/api/auth/`（4 个 JWT 验签类） | `interceptor/` | 直接压平（D2：**5 个类** —— 验签 Filter ＋ 路径判据 ＋ 验签器 ＋ 结果载体 ＋ HandlerInterceptor） |
 | `users/user/api/client/`（`UserRpcClient`） | **—（D2 域内直连 ⇒ 删除）** | 域内自我 gRPC 往返取消 |
 | `users/user/api/config/` | `config/` | 与 rpc 侧合并 |
 | `users/user/api/controller/` | `controller/` | 直接压平 |
@@ -141,15 +141,27 @@
 |---|---|---|---|
 | `user-api/.../service/IdentityResolver.java` + `admin-api/.../service/IdentityResolver.java`（**两份重复**） | `service/users/common/src/main/java/com/rag/users/common/IdentityResolver.java`（**C 侧只 1 份**，上收到域级共享层） | 1:1 | ✅ **已落地（2026-11-01）**：B 侧的**权威**身份解析器（`ClaimedUID` → `GetUser` → status presence 检查 → `SubjectRef`；`AuthorityID="rtw.identity"` / `PlatformTenantID="platform"`；5 个 sentinel 错误）在 C 侧**有了唯一承载文件** ⇒ B 侧两份重复**在 C 侧被消解**（见 §7.3 F-1） |
 
-### 1.2 🔴 RAG 侧新增类补录（1 条 · 覆盖 4 个 `.java`）
+### 1.2 🔴 RAG 侧新增类补录（4 条 · 覆盖 4 个 `.java`）
 
 > ⚠️ **本节是 2026-11-01 的增量**：RAG 在首版映射表之后新增了 `user-api/…/auth/` 包（4 类）
 > ⇒ 首版 §1.1.2 的 **B 列漏了这 4 个 `.java`** ⇒ 本节逐个落到 C 侧；
 > 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
+>
+> ✅ **2026-11-02 · user 域 lane 已落地（4 条全部 1:1）** —— 首版把 B 侧这 4 个文件**合并成 1 个
+> `JwtAuthInterceptor`**（N:1），并在备注里留了一个 🔴 缺口：「**要么补 1 个 `OncePerRequestFilter`
+> 承载验签，要么显式登记为签字偏离**」。
+> ⇒ 本域选了**第一个选项**（补 Filter）⇒ ⇒ 本节改为 **4 条 1:1**，
+> B 侧 4 个类**逐个**落到 C 侧（`GoStyleJwtAuthFilter` → `JwtAuthFilter`，**类改名**）。
+> ⇒ 缺口已闭合（见本域 DRIFT 台账 `docs/DRIFT/users/verification-users-user-2026-11-02.md`）。
+>
+> ℹ️ **验签结果的消费方**（C 侧 `JwtAuthInterceptor`）的登记在 §1.1.2（`user-api/.../interceptor/JwtAuthInterceptor.java` → C 侧同名类，1:1）⇒ **不在本节重复登记**。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|
-| `user-api/…/auth/JwtAuthPaths.java` ＋ `user-api/…/auth/JwtSignatureVerifier.java` ＋ `user-api/…/auth/JwtVerificationResult.java` ＋ `user-api/…/auth/GoStyleJwtAuthFilter.java` | `service/users/user/src/main/java/com/rag/user/interceptor/JwtAuthInterceptor.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的**首发域**）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 1 个 `HandlerInterceptor`** ⇒ 🔴 **C 侧缺口**：要么补 1 个 `OncePerRequestFilter` 承载验签，要么显式登记为签字偏离。⚠️ **受保护路由表 ＋ public 前缀集合是 L1**；⚠️ 本域的 claim 名 `userId`（小写 u ＋ 驼峰）是 **L1**，不可写成 `user_id` |
+| `user-api/…/auth/JwtAuthPaths.java` | `service/users/user/src/main/java/com/rag/user/interceptor/JwtAuthPaths.java` | 1:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的**首发域**）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ **路径判据必须只有一份**（Filter 与 Interceptor 共用）⇒ 少一份就会出现「Filter 判受保护、Interceptor 判放行」的**鉴权绕过**缝隙。⚠️ **受保护路由表 ＋ public 前缀集合是 L1** |
+| `user-api/…/auth/JwtSignatureVerifier.java` | `service/users/user/src/main/java/com/rag/user/interceptor/JwtSignatureVerifier.java` | 1:1 | 只做「解析 ＋ 验签名 ＋ 取 claim」，**不写响应、不查 Redis**；⚠️ **畸形 claim 不在鉴权层拒绝**（B 侧 `DRIFT-USERAPI-001` 已修）⇒ 交给业务层 `IdentityResolver.claimedUID` ⇒ 200 ＋ 1006。⚠️ 本域的 claim 名 `userId`（小写 u ＋ 驼峰）是 **L1**，不可写成 `user_id` |
+| `user-api/…/auth/JwtVerificationResult.java` | `service/users/user/src/main/java/com/rag/user/interceptor/JwtVerificationResult.java` | 1:1 | 验签结果载体（Filter 写、Interceptor 读）；⚠️ 载体带**验签来源**标记（`filter` / `inline`）⇒ 供守门测试断言「验签确实在 Filter 里做」（B 侧 `DRIFT-USERAPI-009②` 是否闭环） |
+| `user-api/…/auth/GoStyleJwtAuthFilter.java` | `service/users/user/src/main/java/com/rag/user/interceptor/JwtAuthFilter.java` | 1:1 | ⚠️ **类改名**（去 `GoStyle` 前缀）⇒ 职责不变：把验签搬出 3s 预算。🔴 **本 Filter 绝不写响应** ⇒ 401 仍由 Interceptor 抛 ⇒ 「**413 压过 401**」这条语义不漂 |
 
 ---
 
@@ -201,7 +213,13 @@
 
 ## 7. 覆盖度自查（本子域）
 
-### 7.1 C 列覆盖率 —— **45 / 45 = 100%**（user 子域）
+### 7.1 C 列覆盖率 —— **48 / 48 = 100%**（user 子域）
+
+> ✅ **2026-11-02 · user 域 lane 已落地** —— 骨架 45 个 → 现 **48** 个：
+> **+4**（`interceptor/` 下 `JwtAuthFilter` / `JwtAuthPaths` / `JwtSignatureVerifier` / `JwtVerificationResult`
+> —— 闭合 §1.2 的 🔴 缺口「补 1 个 `OncePerRequestFilter` 承载验签」）
+> **−1**（`config/RedisDisconnectedBehaviorConfig.java` —— B 侧已删并上移共享层 `common/redis/ClientAutoConfiguration`，
+> C 侧照抄 ⇒ 域内副本删除，见本域 DRIFT 台账）。
 
 自查命令（`RAG-V1` 仓根）：
 
@@ -215,8 +233,8 @@ find "service/users/user" -name '*.java' -not -path '*/src/test/*' -not -path '*
 | C 模块 | `.java` 数 | 出现在本表 C 列的位置 | 覆盖 |
 |---|---|---|---|
 | `service/users/user/src/main/java/com/rag/user/contract/` | 2 | §1.3 补充说明（`ErrCodes.java` / `ErrMsg.java`，见 [`../users-common.md` §4](../users-common.md#4-公共模块对照与本库相关行) 的「错误码 / 文案」行） | ✅ 2/2 |
-| `service/users/user/src/main/java/com/rag/user/` | 43 | §1.1.1（user-rpc 侧）+ §1.1.2（user-api 侧）+ §1.1.3（`IdentityResolver`）+ §1.2 补充行（`UserApiResponseAdvice` / `UserApiExceptionHandler` / `RedisDisconnectedBehaviorConfig`，见 [`../admin/admin.md`](../admin/admin.md) §1.2.2） | ✅ 43/43 |
-| **合计** | **45** | — | ✅ **45/45** |
+| `service/users/user/src/main/java/com/rag/user/` | 46 | §1.1.1（user-rpc 侧）+ §1.1.2（user-api 侧）+ §1.1.3（`IdentityResolver`）+ §1.2（`interceptor/` 5 个类）+ §1.1.2 补充行（`UserApiResponseAdvice` / `UserApiExceptionHandler`，见 [`../admin/admin.md`](../admin/admin.md) §1.2.2） | ✅ 46/46 |
+| **合计** | **48** | — | ✅ **48/48** |
 
 **B 列（RAG 侧 `service/users/user/`）覆盖率 —— 58 / 58 = 100%**（抄写路线图 §1.0c 的 B↔C 依据）
 
@@ -234,27 +252,31 @@ find "service/users/user" -name '*.java' -not -path '*/src/test/*' -not -path '*
 
 | 映射类型 | 行数 | 说明 |
 |---|---|---|
-| `1:1` | **17** | 单文件对单文件（多数是「B 改名 / C 归位 / C 补 DTO」） |
+| `1:1` | **21** | 单文件对单文件（多数是「B 改名 / C 归位 / C 补 DTO」；**2026-11-02 起 +4**：§1.2 的 4 个 `auth/` 类逐个落到 C 侧） |
 | `1:N` | **6** | B 的单文件拆成多个 C 文件 |
-| `N:1` | **29** | B 的多文件合进 1 个 C 文件（**D1/D2 的主因**：user-api 9+9、user-rpc 9 个 logic → 各 1 个 Service） |
+| `N:1` | **28** | B 的多文件合进 1 个 C 文件（**D1/D2 的主因**：user-api 9+9、user-rpc 9 个 logic → 各 1 个 Service） |
 | `C 新增` | **0** | 本子域每个 C 文件都能在 B 列找到前身 ⇒ RAG-V1 在本子域是**重组**而非新增能力 |
-| **合计** | **52** | — |
+| **合计** | **55** | — |
 
 > 统计命令（可复跑）：
 > ```bash
 > awk '/^## 1\. 包结构对照/{f=1} /^## 2\. 持久层差异/{f=0} f' docs/Mapping_Table/users/user/user.md \
 >   | awk -F'|' '/^\|/{t=$4; gsub(/^ +| +$/,"",t); if(t=="1:1"||t=="1:N"||t=="N:1"||t=="C 新增") print t}' \
 >   | sort | uniq -c
-> # ⇒ 17 1:1 / 6 1:N / 29 N:1
+> # ⇒ 21 1:1 / 6 1:N / 28 N:1
 > ```
-> ⚠️ **旧自报数（`1:1` 17 / `1:N` 6 / `N:1` 28 / 合计 51）与表内实际不符** —— 本次按上表实测值订正为 **29 N:1 / 合计 52**；删列不改行数，变的只是统计口径（原命令取第 5 格，删除旧基准列后类型列已前移到第 4 格）。
+> ⚠️ **历史自报数（`1:1` 17 / `1:N` 6 / `N:1` 29 / 合计 52）已随 §1.2 拆分而变** ——
+> 2026-11-02 · user 域 lane 把 §1.2 的 1 条 `N:1` 拆成 **5 条 `1:1`**（闭合「补 1 个 Filter 承载验签」的缺口）
+> ⇒ ⇒ 实测值为 **21 / 6 / 28 / 合计 55**（上表即按此命令实测，不是估算）。
 
 ---
 
 ## 8. 一句话总结（user 子域）
 
 **B 列 RAG**（`service/users/user/`，58 个 `.java`）= **唯一真理之源**（api/rpc 分离的部署形态）；
-**C 列 RAG-V1**（`service/users/user/`，45 个 `.java`）= Spring 惯用目标形态（一域一 app）。
+**C 列 RAG-V1**（`service/users/user/`，**48** 个 `.java`）= Spring 惯用目标形态（一域一 app）。
 
-⇒ **user 子域 C 列 45/45 覆盖、B 列 58/58 覆盖（3 个由兄弟文档承载）、映射类型 1:1 ×17 / 1:N ×6 / N:1 ×29 / C 新增 ×0（共 52 行）。**
+⇒ **user 子域 C 列 48/48 覆盖、B 列 58/58 覆盖（3 个由兄弟文档承载）、映射类型 1:1 ×21 / 1:N ×6 / N:1 ×28 / C 新增 ×0（共 55 行）。**
 ⇒ **文件名与职责已逐条对应；行为是否一致，一律以 B 列（RAG 侧）源码为准，状态看 `RAG/docs/DRIFT/users/`。**
+⇒ **2026-11-02 · user 域 lane 已落地**：C 列 48 个文件**全部有实现**（不再是空壳）；
+行为层结论见本域 DRIFT 台账 [`docs/DRIFT/users/verification-users-user-2026-11-02.md`](../../../../DRIFT/users/verification-users-user-2026-11-02.md)。

@@ -426,6 +426,22 @@ def check_a3(root: pathlib.Path, contract: str) -> Result:
         return Result(FAIL, f"gRPC 拦截链挂载点不合规（{len(viol)} 项）", viol)
     return ok("common/ 声明了 `GrpcServerConfigurer` 且真调 `server.intercept(...)`；域内 0 重复")
 
+def strip_java_comments(src: str) -> str:
+    """去掉 Java 块注释与行注释，只留**真代码**。
+
+    ⚠️ **A4 修 bug（2026-11-02）**：原判据用 `re.findall` 扫**全文**找 `@GrpcClient("X")`
+    ⇒ javadoc 里**引述**该注解的说明文字也被当成真注入点
+    （实测命中 `service/users/user/.../wiring/NacosRegistration.java:40` —— 那是引 B 侧
+    admin-api 注释的一段说明，**不是注入点**；而 D1 合并 api+rpc 后 users 域确实无跨域
+    gRPC 调用 ⇒ yml `grpc.client: {}` 是**对的**）⇒ **假阳性**。
+    ⇒ 修法：先剥注释再匹配 ⇒ **只认真注解**，判据强度不变（真注入点仍必红）。
+    """
+    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)   # 块注释
+    src = re.sub(r"//[^\n]*", "", src)                   # 行注释
+    return src
+
+
+
 
 # ---------------------------------------------------------------------------
 # A4 · 双向交叉引用（devh 默认 TLS，B 侧 zrpc 侧是明文 gRPC）
@@ -447,7 +463,7 @@ def check_a4(root: pathlib.Path, contract: str) -> Result:
         clients = parse_grpc_clients(yml.read_text(encoding="utf-8")) if yml.exists() else {}
         n_cfg += len(clients)
         for f in module_java(root, module):
-            src = f.read_text(encoding="utf-8")
+            src = strip_java_comments(f.read_text(encoding="utf-8"))
             for name in re.findall(r'@GrpcClient\s*\(\s*"([^"]+)"', src):
                 n_code += 1
                 if clients.get(name, {}).get("negotiation-type") != "plaintext":
