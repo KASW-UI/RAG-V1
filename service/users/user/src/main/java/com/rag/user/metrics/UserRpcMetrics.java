@@ -1,6 +1,7 @@
 package com.rag.user.metrics;
 
 import io.micrometer.core.instrument.Counter;
+import lombok.Getter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 
@@ -28,7 +29,32 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>框架职责</b>：Micrometer {@code Counter} ＋ {@code MeterRegistry}；
  * 8 个具名 Counter，每个自带 {@code tag("result", ...)}（与 B 侧 label 一致）。
+ *
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <pre>{@code
+ * public class UserRpcMetrics {
+ *     private final Counter registerSuccess;
+ *     private final Counter registerFailExists;
+ *     private final Counter registerDbError;
+ *     private final Counter registerInternalError;
+ *     private final Counter loginSuccess;
+ *     private final Counter loginUserNotFound;
+ *     private final Counter loginDbError;
+ *     private final Counter loginInternalError;
+ *
+ *     public Counter getRegisterSuccess() { return registerSuccess; }
+ *     public Counter getRegisterFailExists() { return registerFailExists; }
+ *     public Counter getRegisterDbError() { return registerDbError; }
+ *     public Counter getRegisterInternalError() { return registerInternalError; }
+ *     public Counter getLoginSuccess() { return loginSuccess; }
+ *     public Counter getLoginUserNotFound() { return loginUserNotFound; }
+ *     public Counter getLoginDbError() { return loginDbError; }
+ *     public Counter getLoginInternalError() { return loginInternalError; }
+ * }
+ * }</pre>
+
  */
+@Getter
 @Component
 public class UserRpcMetrics {
 
@@ -78,35 +104,4 @@ public class UserRpcMetrics {
                 .register(registry);
     }
 
-    public Counter getRegisterSuccess() {
-        return registerSuccess;
-    }
-
-    public Counter getRegisterFailExists() {
-        return registerFailExists;
-    }
-
-    public Counter getRegisterDbError() {
-        return registerDbError;
-    }
-
-    public Counter getRegisterInternalError() {
-        return registerInternalError;
-    }
-
-    public Counter getLoginSuccess() {
-        return loginSuccess;
-    }
-
-    public Counter getLoginUserNotFound() {
-        return loginUserNotFound;
-    }
-
-    public Counter getLoginDbError() {
-        return loginDbError;
-    }
-
-    public Counter getLoginInternalError() {
-        return loginInternalError;
-    }
 }

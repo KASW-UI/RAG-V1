@@ -1,6 +1,8 @@
 package com.rag.admin.config;
 
 import jakarta.annotation.PostConstruct;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
@@ -41,7 +43,22 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
  *   <li>{@link AdminAuth#getAccessExpire()} = B 侧 AdminAuth.AccessExpire = 2592000（30 天，与 user-rpc UserAuth 对齐）</li>
  *   <li>{@link System#getDefaultPassword()} = B 侧 System.DefaultPassword = "123456"（重置<b>普通用户</b>密码用）</li>
  * </ul>
+ *
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <pre>{@code
+ * public class AdminRpcProperties {
+ *     private AdminAuth adminAuth;
+ *     private System system;
+ *
+ *     public AdminAuth getAdminAuth() { return adminAuth; }
+ *     public void setAdminAuth(AdminAuth adminAuth) { this.adminAuth = adminAuth; }
+ *     public System getSystem() { return system; }
+ *     public void setSystem(System system) { this.system = system; }
+ * }
+ * }</pre>
  */
+@Getter
+@Setter
 @ConfigurationProperties(prefix = "admin-rpc")
 public class AdminRpcProperties {
 
@@ -50,11 +67,6 @@ public class AdminRpcProperties {
 
     @NestedConfigurationProperty
     private System system = new System();
-
-    public AdminAuth getAdminAuth() { return adminAuth; }
-    public void setAdminAuth(AdminAuth adminAuth) { this.adminAuth = adminAuth; }
-    public System getSystem() { return system; }
-    public void setSystem(System system) { this.system = system; }
 
     /**
      * 🔴 <b>启动期强制：验签密钥不得为空、不得是未解析的占位符</b>（2026-10-29 · G1 阶段 1 · P0 #8）。
@@ -105,15 +117,25 @@ public class AdminRpcProperties {
      *   AccessSecret = B 侧 AdminAuth.AccessSecret（15 字节口令，B 侧 etc/admin.yaml:28；
      *     RAG 侧改由环境变量注入，**本仓不再持有该明文**）
      *   AccessExpire = 2592000   // 30 天，与 user-rpc UserAuth 对齐
+     *
+     * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+     * <pre>{@code
+     * public static class AdminAuth {
+     *     private String accessSecret;
+     *     private long accessExpire;
+     *
+     *     public String getAccessSecret() { return accessSecret; }
+     *     public void setAccessSecret(String accessSecret) { this.accessSecret = accessSecret; }
+     *     public long getAccessExpire() { return accessExpire; }
+     *     public void setAccessExpire(long accessExpire) { this.accessExpire = accessExpire; }
+     * }
+     * }</pre>
      */
+    @Getter
+    @Setter
     public static class AdminAuth {
         private String accessSecret;
         private long accessExpire;
-
-        public String getAccessSecret() { return accessSecret; }
-        public void setAccessSecret(String accessSecret) { this.accessSecret = accessSecret; }
-        public long getAccessExpire() { return accessExpire; }
-        public void setAccessExpire(long accessExpire) { this.accessExpire = accessExpire; }
     }
 
     /**
@@ -122,11 +144,20 @@ public class AdminRpcProperties {
      *
      * <p>⚠️ <b>不是</b>默认 admin 账号的密码 —— 后者是硬编码常量 {@code admin}
      * （见 {@code wiring/AdminSeederBootstrap} 与 B 侧的 DRIFT-001 修法）。
+     *
+     * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+     * <pre>{@code
+     * public static class System {
+     *     private String defaultPassword;
+     *
+     *     public String getDefaultPassword() { return defaultPassword; }
+     *     public void setDefaultPassword(String defaultPassword) { this.defaultPassword = defaultPassword; }
+     * }
+     * }</pre>
      */
+    @Getter
+    @Setter
     public static class System {
         private String defaultPassword;
-
-        public String getDefaultPassword() { return defaultPassword; }
-        public void setDefaultPassword(String defaultPassword) { this.defaultPassword = defaultPassword; }
     }
 }

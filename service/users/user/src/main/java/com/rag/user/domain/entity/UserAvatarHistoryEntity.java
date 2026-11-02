@@ -1,6 +1,8 @@
 package com.rag.user.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import lombok.Getter;
+import lombok.Setter;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -21,7 +23,44 @@ import java.time.OffsetDateTime;
  * </ul>
  *
  * <p><b>L1 表名</b>：{@code users_user_avatar_history}（B 出处：Go 侧 {@code model.InitDB} 的活体建表语句）。
+ *
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <pre>{@code
+ * public class UserAvatarHistoryEntity {
+ *     private Long id;
+ *     private String historyId;
+ *     private Long uid;
+ *     private String avatarUrl;
+ *     private String contentType;
+ *     private Long sizeBytes;
+ *     private Boolean isCurrent;
+ *     private OffsetDateTime createTime;
+ *     private OffsetDateTime updateTime;
+ *
+ *     public Long getId() { return id; }
+ *     public void setId(Long id) { this.id = id; }
+ *     public String getHistoryId() { return historyId; }
+ *     public void setHistoryId(String historyId) { this.historyId = historyId; }
+ *     public Long getUid() { return uid; }
+ *     public void setUid(Long uid) { this.uid = uid; }
+ *     public String getAvatarUrl() { return avatarUrl; }
+ *     public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
+ *     public String getContentType() { return contentType; }
+ *     public void setContentType(String contentType) { this.contentType = contentType; }
+ *     public Long getSizeBytes() { return sizeBytes; }
+ *     public void setSizeBytes(Long sizeBytes) { this.sizeBytes = sizeBytes; }
+ *     public Boolean getIsCurrent() { return isCurrent; }
+ *     public void setIsCurrent(Boolean isCurrent) { this.isCurrent = isCurrent; }
+ *     public OffsetDateTime getCreateTime() { return createTime; }
+ *     public void setCreateTime(OffsetDateTime createTime) { this.createTime = createTime; }
+ *     public OffsetDateTime getUpdateTime() { return updateTime; }
+ *     public void setUpdateTime(OffsetDateTime updateTime) { this.updateTime = updateTime; }
+ * }
+ * }</pre>
+
  */
+@Getter
+@Setter
 @TableName("users_user_avatar_history")
 public class UserAvatarHistoryEntity {
 
@@ -73,75 +112,4 @@ public class UserAvatarHistoryEntity {
     @TableField("update_time")
     private OffsetDateTime updateTime;
 
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getHistoryId() {
-        return historyId;
-    }
-
-    public void setHistoryId(String historyId) {
-        this.historyId = historyId;
-    }
-
-    public Long getUid() {
-        return uid;
-    }
-
-    public void setUid(Long uid) {
-        this.uid = uid;
-    }
-
-    public String getAvatarUrl() {
-        return avatarUrl;
-    }
-
-    public void setAvatarUrl(String avatarUrl) {
-        this.avatarUrl = avatarUrl;
-    }
-
-    public String getContentType() {
-        return contentType;
-    }
-
-    public void setContentType(String contentType) {
-        this.contentType = contentType;
-    }
-
-    public Long getSizeBytes() {
-        return sizeBytes;
-    }
-
-    public void setSizeBytes(Long sizeBytes) {
-        this.sizeBytes = sizeBytes;
-    }
-
-    public Boolean getIsCurrent() {
-        return isCurrent;
-    }
-
-    public void setIsCurrent(Boolean isCurrent) {
-        this.isCurrent = isCurrent;
-    }
-
-    public OffsetDateTime getCreateTime() {
-        return createTime;
-    }
-
-    public void setCreateTime(OffsetDateTime createTime) {
-        this.createTime = createTime;
-    }
-
-    public OffsetDateTime getUpdateTime() {
-        return updateTime;
-    }
-
-    public void setUpdateTime(OffsetDateTime updateTime) {
-        this.updateTime = updateTime;
-    }
 }

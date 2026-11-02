@@ -1,6 +1,8 @@
 package com.rag.user.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import lombok.Getter;
+import lombok.Setter;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -36,7 +38,47 @@ import java.util.Map;
  * <p>⚠️ <b>2026-10-23（B 侧 DRIFT-USERRPC-V-003）：{@code extra_info} 列是 <b>text</b>，不是 jsonb</b>
  * （与 Go 侧 {@code serializer:json} 建出来的列类型一致）⇒ 原注释里「MP 的 JacksonTypeHandler 会被 jsonb 列拒收」
  * 的理由<b>已随列类型一起失效</b>。
+ *
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <pre>{@code
+ * public class UserEntity {
+ *     private Long id;
+ *     private Long uid;
+ *     private String username;
+ *     private String password;
+ *     private String email;
+ *     private Long status;
+ *     private Integer score;
+ *     private Map<String, String> extraInfo;
+ *     private OffsetDateTime createTime;
+ *     private OffsetDateTime updateTime;
+ *
+ *     public Long getId() { return id; }
+ *     public void setId(Long id) { this.id = id; }
+ *     public Long getUid() { return uid; }
+ *     public void setUid(Long uid) { this.uid = uid; }
+ *     public String getUsername() { return username; }
+ *     public void setUsername(String username) { this.username = username; }
+ *     public String getPassword() { return password; }
+ *     public void setPassword(String password) { this.password = password; }
+ *     public String getEmail() { return email; }
+ *     public void setEmail(String email) { this.email = email; }
+ *     public Long getStatus() { return status; }
+ *     public void setStatus(Long status) { this.status = status; }
+ *     public Integer getScore() { return score; }
+ *     public void setScore(Integer score) { this.score = score; }
+ *     public Map<String, String> getExtraInfo() { return extraInfo; }
+ *     public void setExtraInfo(Map<String, String> extraInfo) { this.extraInfo = extraInfo; }
+ *     public OffsetDateTime getCreateTime() { return createTime; }
+ *     public void setCreateTime(OffsetDateTime createTime) { this.createTime = createTime; }
+ *     public OffsetDateTime getUpdateTime() { return updateTime; }
+ *     public void setUpdateTime(OffsetDateTime updateTime) { this.updateTime = updateTime; }
+ * }
+ * }</pre>
+
  */
+@Getter
+@Setter
 @TableName(value = "users_user", autoResultMap = true)
 public class UserEntity {
 
@@ -114,83 +156,4 @@ public class UserEntity {
     @TableField("update_time")
     private OffsetDateTime updateTime;
 
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public Long getUid() {
-        return uid;
-    }
-
-    public void setUid(Long uid) {
-        this.uid = uid;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public void setUsername(String username) {
-        this.username = username;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
-    public Long getStatus() {
-        return status;
-    }
-
-    public void setStatus(Long status) {
-        this.status = status;
-    }
-
-    public Integer getScore() {
-        return score;
-    }
-
-    public void setScore(Integer score) {
-        this.score = score;
-    }
-
-    public Map<String, String> getExtraInfo() {
-        return extraInfo;
-    }
-
-    public void setExtraInfo(Map<String, String> extraInfo) {
-        this.extraInfo = extraInfo;
-    }
-
-    public OffsetDateTime getCreateTime() {
-        return createTime;
-    }
-
-    public void setCreateTime(OffsetDateTime createTime) {
-        this.createTime = createTime;
-    }
-
-    public OffsetDateTime getUpdateTime() {
-        return updateTime;
-    }
-
-    public void setUpdateTime(OffsetDateTime updateTime) {
-        this.updateTime = updateTime;
-    }
 }

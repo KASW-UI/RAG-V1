@@ -1,6 +1,8 @@
 package com.rag.admin.config;
 
 import jakarta.annotation.PostConstruct;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
@@ -33,15 +35,24 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
  *
  * <p>关键：JWT secret 必须与 admin-rpc 进程共享同一份密钥 —— 否则跨进程 JWT 校验会失败。
  * secret 来自 application.yml 的 {@code admin-api.admin-auth.access-secret}（env: {@code ADMIN_JWT_SECRET}）。
+ *
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <pre>{@code
+ * public class AdminApiProperties {
+ *     private AdminAuth adminAuth;
+ *
+ *     public AdminAuth getAdminAuth() { return adminAuth; }
+ *     public void setAdminAuth(AdminAuth adminAuth) { this.adminAuth = adminAuth; }
+ * }
+ * }</pre>
  */
+@Getter
+@Setter
 @ConfigurationProperties(prefix = "admin-api")
 public class AdminApiProperties {
 
     @NestedConfigurationProperty
     private AdminAuth adminAuth = new AdminAuth();
-
-    public AdminAuth getAdminAuth() { return adminAuth; }
-    public void setAdminAuth(AdminAuth adminAuth) { this.adminAuth = adminAuth; }
 
     /**
      * 🔴 <b>启动期强制：签名/验签密钥不得为空、不得是未解析的占位符</b>（2026-10-29 · G1 阶段 1 · P0 #8）。
@@ -94,14 +105,24 @@ public class AdminApiProperties {
      *   AccessSecret = B 侧 AdminAuth.AccessSecret（15 字节口令，B 侧 etc/admincenter.yaml:11；
      *     RAG 侧改由环境变量注入，**本仓不再持有该明文**）
      *   AccessExpire = 2592000   // 30 天
+     *
+     * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+     * <pre>{@code
+     * public static class AdminAuth {
+     *     private String accessSecret;
+     *     private long accessExpire;
+     *
+     *     public String getAccessSecret() { return accessSecret; }
+     *     public void setAccessSecret(String accessSecret) { this.accessSecret = accessSecret; }
+     *     public long getAccessExpire() { return accessExpire; }
+     *     public void setAccessExpire(long accessExpire) { this.accessExpire = accessExpire; }
+     * }
+     * }</pre>
      */
+    @Getter
+    @Setter
     public static class AdminAuth {
         private String accessSecret;
         private long accessExpire;
-
-        public String getAccessSecret() { return accessSecret; }
-        public void setAccessSecret(String accessSecret) { this.accessSecret = accessSecret; }
-        public long getAccessExpire() { return accessExpire; }
-        public void setAccessExpire(long accessExpire) { this.accessExpire = accessExpire; }
     }
 }

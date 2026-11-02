@@ -1,6 +1,7 @@
 package com.rag.admin.metrics;
 
 import io.micrometer.core.instrument.Counter;
+import lombok.Getter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 
@@ -65,7 +66,48 @@ import org.springframework.stereotype.Component;
  * <p>⚠️ <b>increment 点在业务层，不在拦截器</b>：B 侧 16 个 Counter 的 {@code increment()}
  * 全部落在 {@code api/service/Admin*Service} 里 ⇒ ⇒ 本域同样落在
  * {@code service/AdminApiService}（本类的 getter 就是那些调用点的入口）。
+ *
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <pre>{@code
+ * public class AdminApiMetrics {
+ *     private final Counter loginRpcError;
+ *     private final Counter loginInternalError;
+ *     private final Counter loginSuccess;
+ *     private final Counter banRpcError;
+ *     private final Counter banSuccess;
+ *     private final Counter unbanRpcError;
+ *     private final Counter unbanSuccess;
+ *     private final Counter deleteRpcError;
+ *     private final Counter deleteSuccess;
+ *     private final Counter resetRpcError;
+ *     private final Counter resetSuccess;
+ *     private final Counter updateDbError;
+ *     private final Counter updateSuccess;
+ *     private final Counter inviteTokenInvalid;
+ *     private final Counter inviteRpcError;
+ *     private final Counter inviteSuccess;
+ *
+ *     public Counter getLoginRpcError() { return loginRpcError; }
+ *     public Counter getLoginInternalError() { return loginInternalError; }
+ *     public Counter getLoginSuccess() { return loginSuccess; }
+ *     public Counter getBanRpcError() { return banRpcError; }
+ *     public Counter getBanSuccess() { return banSuccess; }
+ *     public Counter getUnbanRpcError() { return unbanRpcError; }
+ *     public Counter getUnbanSuccess() { return unbanSuccess; }
+ *     public Counter getDeleteRpcError() { return deleteRpcError; }
+ *     public Counter getDeleteSuccess() { return deleteSuccess; }
+ *     public Counter getResetRpcError() { return resetRpcError; }
+ *     public Counter getResetSuccess() { return resetSuccess; }
+ *     public Counter getUpdateDbError() { return updateDbError; }
+ *     public Counter getUpdateSuccess() { return updateSuccess; }
+ *     public Counter getInviteTokenInvalid() { return inviteTokenInvalid; }
+ *     public Counter getInviteRpcError() { return inviteRpcError; }
+ *     public Counter getInviteSuccess() { return inviteSuccess; }
+ * }
+ * }</pre>
+
  */
+@Getter
 @Component
 public class AdminApiMetrics {
 
@@ -139,26 +181,4 @@ public class AdminApiMetrics {
                 .register(registry);
     }
 
-    public Counter getLoginRpcError() { return loginRpcError; }
-    public Counter getLoginInternalError() { return loginInternalError; }
-    public Counter getLoginSuccess() { return loginSuccess; }
-
-    public Counter getBanRpcError() { return banRpcError; }
-    public Counter getBanSuccess() { return banSuccess; }
-
-    public Counter getUnbanRpcError() { return unbanRpcError; }
-    public Counter getUnbanSuccess() { return unbanSuccess; }
-
-    public Counter getDeleteRpcError() { return deleteRpcError; }
-    public Counter getDeleteSuccess() { return deleteSuccess; }
-
-    public Counter getResetRpcError() { return resetRpcError; }
-    public Counter getResetSuccess() { return resetSuccess; }
-
-    public Counter getUpdateDbError() { return updateDbError; }
-    public Counter getUpdateSuccess() { return updateSuccess; }
-
-    public Counter getInviteTokenInvalid() { return inviteTokenInvalid; }
-    public Counter getInviteRpcError() { return inviteRpcError; }
-    public Counter getInviteSuccess() { return inviteSuccess; }
 }

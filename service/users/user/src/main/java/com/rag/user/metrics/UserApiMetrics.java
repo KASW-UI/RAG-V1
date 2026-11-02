@@ -1,6 +1,7 @@
 package com.rag.user.metrics;
 
 import io.micrometer.core.instrument.Counter;
+import lombok.Getter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 
@@ -25,7 +26,30 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>框架职责</b>：Micrometer {@code Counter} ＋ {@code MeterRegistry}；
  * 暴露端点 = Spring Boot Actuator {@code /actuator/prometheus}。
+ *
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <pre>{@code
+ * public class UserApiMetrics {
+ *     private final Counter loginRpcError;
+ *     private final Counter loginWrongPassword;
+ *     private final Counter loginUserBanned;
+ *     private final Counter loginTokenError;
+ *     private final Counter loginSuccess;
+ *     private final Counter registerRpcError;
+ *     private final Counter registerSuccess;
+ *
+ *     public Counter getLoginRpcError() { return loginRpcError; }
+ *     public Counter getLoginWrongPassword() { return loginWrongPassword; }
+ *     public Counter getLoginUserBanned() { return loginUserBanned; }
+ *     public Counter getLoginTokenError() { return loginTokenError; }
+ *     public Counter getLoginSuccess() { return loginSuccess; }
+ *     public Counter getRegisterRpcError() { return registerRpcError; }
+ *     public Counter getRegisterSuccess() { return registerSuccess; }
+ * }
+ * }</pre>
+
  */
+@Getter
 @Component
 public class UserApiMetrics {
 
@@ -77,31 +101,4 @@ public class UserApiMetrics {
                 .register(registry);
     }
 
-    public Counter getLoginRpcError() {
-        return loginRpcError;
-    }
-
-    public Counter getLoginWrongPassword() {
-        return loginWrongPassword;
-    }
-
-    public Counter getLoginUserBanned() {
-        return loginUserBanned;
-    }
-
-    public Counter getLoginTokenError() {
-        return loginTokenError;
-    }
-
-    public Counter getLoginSuccess() {
-        return loginSuccess;
-    }
-
-    public Counter getRegisterRpcError() {
-        return registerRpcError;
-    }
-
-    public Counter getRegisterSuccess() {
-        return registerSuccess;
-    }
 }

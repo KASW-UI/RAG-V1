@@ -1,6 +1,7 @@
 package com.rag.admin.metrics;
 
 import io.micrometer.core.instrument.Counter;
+import lombok.Getter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 
@@ -76,7 +77,66 @@ import org.springframework.stereotype.Component;
  * <p>覆盖 B 侧埋点的 7 个 Logic：Login / CreateInviteCode / UpdateUser / DeleteUser /
  * ResetUserPassword / BanUser / UnBanUser。GetSelf / UpdateSelf / GetUser / GetUserList / Logout /
  * CreateAdmin 在 B 侧*不埋点*（D-016），所以本类不为其建 Counter。
+ *
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <pre>{@code
+ * public class AdminRpcMetrics {
+ *     private final Counter loginUserNotFound;
+ *     private final Counter loginDbError;
+ *     private final Counter loginWrongAnswer;
+ *     private final Counter loginSuccess;
+ *     private final Counter createInviteUserNotFound;
+ *     private final Counter createInviteDbError;
+ *     private final Counter createInviteInternalError;
+ *     private final Counter createInviteSuccess;
+ *     private final Counter updateUserUserNotFound;
+ *     private final Counter updateUserDbError;
+ *     private final Counter updateUserInternalError;
+ *     private final Counter updateUserSuccess;
+ *     private final Counter deleteUserUserNotFound;
+ *     private final Counter deleteUserDbError;
+ *     private final Counter deleteUserSuccess;
+ *     private final Counter resetPasswordUserNotFound;
+ *     private final Counter resetPasswordDbError;
+ *     private final Counter resetPasswordInternalError;
+ *     private final Counter resetPasswordSuccess;
+ *     private final Counter banUserNotFound;
+ *     private final Counter banDbError;
+ *     private final Counter banSuccess;
+ *     private final Counter unbanUserNotFound;
+ *     private final Counter unbanDbError;
+ *     private final Counter unbanSuccess;
+ *
+ *     public Counter getLoginUserNotFound() { return loginUserNotFound; }
+ *     public Counter getLoginDbError() { return loginDbError; }
+ *     public Counter getLoginWrongAnswer() { return loginWrongAnswer; }
+ *     public Counter getLoginSuccess() { return loginSuccess; }
+ *     public Counter getCreateInviteUserNotFound() { return createInviteUserNotFound; }
+ *     public Counter getCreateInviteDbError() { return createInviteDbError; }
+ *     public Counter getCreateInviteInternalError() { return createInviteInternalError; }
+ *     public Counter getCreateInviteSuccess() { return createInviteSuccess; }
+ *     public Counter getUpdateUserUserNotFound() { return updateUserUserNotFound; }
+ *     public Counter getUpdateUserDbError() { return updateUserDbError; }
+ *     public Counter getUpdateUserInternalError() { return updateUserInternalError; }
+ *     public Counter getUpdateUserSuccess() { return updateUserSuccess; }
+ *     public Counter getDeleteUserUserNotFound() { return deleteUserUserNotFound; }
+ *     public Counter getDeleteUserDbError() { return deleteUserDbError; }
+ *     public Counter getDeleteUserSuccess() { return deleteUserSuccess; }
+ *     public Counter getResetPasswordUserNotFound() { return resetPasswordUserNotFound; }
+ *     public Counter getResetPasswordDbError() { return resetPasswordDbError; }
+ *     public Counter getResetPasswordInternalError() { return resetPasswordInternalError; }
+ *     public Counter getResetPasswordSuccess() { return resetPasswordSuccess; }
+ *     public Counter getBanUserNotFound() { return banUserNotFound; }
+ *     public Counter getBanDbError() { return banDbError; }
+ *     public Counter getBanSuccess() { return banSuccess; }
+ *     public Counter getUnbanUserNotFound() { return unbanUserNotFound; }
+ *     public Counter getUnbanDbError() { return unbanDbError; }
+ *     public Counter getUnbanSuccess() { return unbanSuccess; }
+ * }
+ * }</pre>
+
  */
+@Getter
 @Component
 public class AdminRpcMetrics {
 
@@ -180,35 +240,4 @@ public class AdminRpcMetrics {
                 .register(registry);
     }
 
-    public Counter getLoginUserNotFound() { return loginUserNotFound; }
-    public Counter getLoginDbError() { return loginDbError; }
-    public Counter getLoginWrongAnswer() { return loginWrongAnswer; }
-    public Counter getLoginSuccess() { return loginSuccess; }
-
-    public Counter getCreateInviteUserNotFound() { return createInviteUserNotFound; }
-    public Counter getCreateInviteDbError() { return createInviteDbError; }
-    public Counter getCreateInviteInternalError() { return createInviteInternalError; }
-    public Counter getCreateInviteSuccess() { return createInviteSuccess; }
-
-    public Counter getUpdateUserUserNotFound() { return updateUserUserNotFound; }
-    public Counter getUpdateUserDbError() { return updateUserDbError; }
-    public Counter getUpdateUserInternalError() { return updateUserInternalError; }
-    public Counter getUpdateUserSuccess() { return updateUserSuccess; }
-
-    public Counter getDeleteUserUserNotFound() { return deleteUserUserNotFound; }
-    public Counter getDeleteUserDbError() { return deleteUserDbError; }
-    public Counter getDeleteUserSuccess() { return deleteUserSuccess; }
-
-    public Counter getResetPasswordUserNotFound() { return resetPasswordUserNotFound; }
-    public Counter getResetPasswordDbError() { return resetPasswordDbError; }
-    public Counter getResetPasswordInternalError() { return resetPasswordInternalError; }
-    public Counter getResetPasswordSuccess() { return resetPasswordSuccess; }
-
-    public Counter getBanUserNotFound() { return banUserNotFound; }
-    public Counter getBanDbError() { return banDbError; }
-    public Counter getBanSuccess() { return banSuccess; }
-
-    public Counter getUnbanUserNotFound() { return unbanUserNotFound; }
-    public Counter getUnbanDbError() { return unbanDbError; }
-    public Counter getUnbanSuccess() { return unbanSuccess; }
 }

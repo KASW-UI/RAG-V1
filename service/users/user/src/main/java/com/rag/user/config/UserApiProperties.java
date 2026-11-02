@@ -1,6 +1,8 @@
 package com.rag.user.config;
 
 import jakarta.annotation.PostConstruct;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
@@ -34,7 +36,22 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
  *
  * <p>⚠️ <b>Go 侧对照（§3.1）</b>：Go 侧写的是<b>字面量</b>（公开在仓里）⇒ ⇒ 本条属 <b>RAG 侧更严</b>的一侧
  * ⇒ ⇒ 登记为<b>有意偏离</b>（不是「RAG 抄错了 Go」）。
+ *
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <pre>{@code
+ * public class UserApiProperties {
+ *     private String name;
+ *     private UserAuth userAuth;
+ *
+ *     public String getName() { return name; }
+ *     public void setName(String name) { this.name = name; }
+ *     public UserAuth getUserAuth() { return userAuth; }
+ *     public void setUserAuth(UserAuth userAuth) { this.userAuth = userAuth; }
+ * }
+ * }</pre>
  */
+@Getter
+@Setter
 @ConfigurationProperties(prefix = "user-api")
 public class UserApiProperties {
 
@@ -42,22 +59,6 @@ public class UserApiProperties {
 
     @NestedConfigurationProperty
     private UserAuth userAuth = new UserAuth();
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public UserAuth getUserAuth() {
-        return userAuth;
-    }
-
-    public void setUserAuth(UserAuth userAuth) {
-        this.userAuth = userAuth;
-    }
 
     /**
      * 🔴 <b>启动期强制：验签/签名密钥不得为空、不得是未解析的占位符</b>。
@@ -82,26 +83,27 @@ public class UserApiProperties {
         }
     }
 
-    /** {@code user-api.user-auth} 段。 */
+    /**
+     * {@code user-api.user-auth} 段。
+     *
+     * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+     * <pre>{@code
+     * public static class UserAuth {
+     *     private String accessSecret;
+     *     private long accessExpire;
+     *
+     *     public String getAccessSecret() { return accessSecret; }
+     *     public void setAccessSecret(String accessSecret) { this.accessSecret = accessSecret; }
+     *     public long getAccessExpire() { return accessExpire; }
+     *     public void setAccessExpire(long accessExpire) { this.accessExpire = accessExpire; }
+     * }
+     * }</pre>
+     */
+    @Getter
+    @Setter
     public static class UserAuth {
 
         private String accessSecret;
         private long accessExpire;
-
-        public String getAccessSecret() {
-            return accessSecret;
-        }
-
-        public void setAccessSecret(String accessSecret) {
-            this.accessSecret = accessSecret;
-        }
-
-        public long getAccessExpire() {
-            return accessExpire;
-        }
-
-        public void setAccessExpire(long accessExpire) {
-            this.accessExpire = accessExpire;
-        }
     }
 }
