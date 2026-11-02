@@ -119,7 +119,7 @@
 |---|---|---|---|
 | `admin-api/.../AdminApiApplication.java` | `service/users/admin/src/main/java/com/rag/admin/AdminServiceApplication.java`（与 admin-rpc **共用**） | N:1 | D1 合并 |
 | `admin-api/.../config/AdminApiProperties.java` | `service/users/admin/src/main/java/com/rag/admin/config/AdminApiProperties.java` | 1:1 |  |
-| `admin-api/.../controller/AdminController.java` + `admin-api/.../config/WebMvcConfig.java` | `service/users/admin/src/main/java/com/rag/admin/controller/AdminController.java` + `service/users/admin/src/main/java/com/rag/admin/config/WebMvcConfig.java` | 1:N | 同 user-api；路由前缀 B `/admin/v1` ⇒ C `/admin/v1`（**一致**）；⚠️ C 的 javadoc 端点清单与 B 侧不一致（F-6 / F-7） |
+| `admin-api/.../controller/AdminController.java` + `admin-api/.../config/WebMvcConfig.java` | `service/users/admin/src/main/java/com/rag/admin/controller/AdminController.java` + `service/users/admin/src/main/java/com/rag/admin/config/WebMvcConfig.java` | 1:N | 同 user-api；路由前缀 B `/admin/v1` ⇒ C `/admin/v1`（**一致**）；✅ **F-6 / F-7 已闭合（2026-11-02）**：C 侧 javadoc 原写「PUT / GET 混合」且只列 12 个端点 ⇒ 已按 §6.1 重写为 **13 个全 POST** |
 | `admin-api/.../service/AdminCreateService.java` | `service/users/admin/src/main/java/com/rag/admin/service/AdminApiService.java` | N:1 | handler + logic 合并；C 侧 13 个用例合 1 个 `AdminApiService` |
 | `admin-api/.../service/AdminLoginService.java` | 同上 | N:1 | 同上 |
 | `admin-api/.../service/AdminLogoutService.java` | 同上 | N:1 | 同上 |
@@ -146,7 +146,7 @@
 | `admin-api/.../service/AdminBanUserService.java` | 同上 | N:1 | 同上 |
 | `admin-api/.../service/AdminUnBanUserService.java` | 同上 | N:1 | 同上 |
 | `admin-api/.../service/AdminCreateInviteCodeService.java` | 同上 | N:1 | 同上 |
-| `admin-api/.../dto/`：**`AdminInfo.java`**、**`BanUserReq.java`**、**`BanUserResp.java`**、**`CreateAdminReq.java`**、**`CreateAdminResp.java`**、**`CreateInviteCodeReq.java`**、**`CreateInviteCodeResp.java`**、**`DeleteUserReq.java`**、**`DeleteUserResp.java`**、**`GetSelfReq.java`**、**`GetSelfResp.java`**、**`GetUserListReq.java`**、**`GetUserListResp.java`**、**`GetUserReq.java`**、**`GetUserResp.java`**、**`LoginReq.java`**、**`LoginResp.java`**、**`LogoutReq.java`**、**`LogoutResp.java`**、**`ResetUserPasswordReq.java`**、**`ResetUserPasswordResp.java`**、**`UnBanUserReq.java`**、**`UnBanUserResp.java`**、**`UpdateSelfReq.java`**、**`UpdateSelfResp.java`**、**`UpdateUserReq.java`**、**`UpdateUserResp.java`**、**`UserInfo.java`**（**28** 个） | `service/users/admin/src/main/java/com/rag/admin/dto`：**`AdminInfo.java`**、**`BanUserReq.java`**、**`BanUserResp.java`**、**`CreateAdminReq.java`**、**`CreateAdminResp.java`**、**`CreateInviteReq.java`**、**`CreateInviteResp.java`**、**`DeleteUserReq.java`**、**`DeleteUserResp.java`**、**`GetSelfReq.java`**、**`GetSelfResp.java`**、**`GetUserListReq.java`**、**`GetUserListResp.java`**、**`GetUserReq.java`**、**`GetUserResp.java`**、**`LoginReq.java`**、**`LoginResp.java`**、**`LogoutReq.java`**、**`LogoutResp.java`**、**`ResetUserPasswordReq.java`**、**`ResetUserPasswordResp.java`**、**`UnBanUserReq.java`**、**`UnBanUserResp.java`**、**`UpdateSelfReq.java`**、**`UpdateSelfResp.java`**、**`UpdateUserReq.java`**、**`UpdateUserResp.java`**、**`UserInfo.java`**（**28** 个） | 1:N | B 侧的 **28** 个 DTO → 28 个 immutable record（D5）；⚠️ **C↔B 命名分叉**：C 把 B 的 `CreateInviteCodeReq/Resp` 改名 `CreateInviteReq/Resp`（B 的 `dto/` 侧与 proto 侧同名 `CreateInviteCode*`）⇒ 见 §7.3 F-5 |
+| `admin-api/.../dto/`：**`AdminInfo.java`**、**`BanUserReq.java`**、**`BanUserResp.java`**、**`CreateAdminReq.java`**、**`CreateAdminResp.java`**、**`CreateInviteCodeReq.java`**、**`CreateInviteCodeResp.java`**、**`DeleteUserReq.java`**、**`DeleteUserResp.java`**、**`GetSelfReq.java`**、**`GetSelfResp.java`**、**`GetUserListReq.java`**、**`GetUserListResp.java`**、**`GetUserReq.java`**、**`GetUserResp.java`**、**`LoginReq.java`**、**`LoginResp.java`**、**`LogoutReq.java`**、**`LogoutResp.java`**、**`ResetUserPasswordReq.java`**、**`ResetUserPasswordResp.java`**、**`UnBanUserReq.java`**、**`UnBanUserResp.java`**、**`UpdateSelfReq.java`**、**`UpdateSelfResp.java`**、**`UpdateUserReq.java`**、**`UpdateUserResp.java`**、**`UserInfo.java`**（**28** 个） | `service/users/admin/src/main/java/com/rag/admin/dto`：**`AdminInfo.java`**、**`BanUserReq.java`**、**`BanUserResp.java`**、**`CreateAdminReq.java`**、**`CreateAdminResp.java`**、**`CreateInviteCodeReq.java`**、**`CreateInviteCodeResp.java`**、**`DeleteUserReq.java`**、**`DeleteUserResp.java`**、**`GetSelfReq.java`**、**`GetSelfResp.java`**、**`GetUserListReq.java`**、**`GetUserListResp.java`**、**`GetUserReq.java`**、**`GetUserResp.java`**、**`LoginReq.java`**、**`LoginResp.java`**、**`LogoutReq.java`**、**`LogoutResp.java`**、**`ResetUserPasswordReq.java`**、**`ResetUserPasswordResp.java`**、**`UnBanUserReq.java`**、**`UnBanUserResp.java`**、**`UpdateSelfReq.java`**、**`UpdateSelfResp.java`**、**`UpdateUserReq.java`**、**`UpdateUserResp.java`**、**`UserInfo.java`**（**28** 个） | 1:N | B 侧的 **28** 个 DTO → 28 个 immutable record（D5）；✅ **F-5 已闭合（2026-11-02）**：C 侧原先把 B 的 `CreateInviteCodeReq/Resp` 改名 `CreateInviteReq/Resp` ⇒ **D16 下 B 是基准**（且 B 的 proto message 本身同名 `CreateInviteCode*`）⇒ ⇒ **已改回 B 的名**（`git mv`，非新建）⇒ 命名分叉消除 |
 | `admin-api/.../interceptor/AdminJwtAuthInterceptor.java` | `service/users/admin/src/main/java/com/rag/admin/interceptor/AdminJwtAuthInterceptor.java` | 1:1 | blacklist key 前缀与 user 侧区分（`admin:jwt_blacklist:` vs `user:jwt_blacklist:`） |
 | `admin-api/.../metrics/AdminApiMetrics.java` | `service/users/admin/src/main/java/com/rag/admin/metrics/AdminApiMetrics.java` | 1:1 | 指标完整名 L1：`admin_api_intercept_total` |
 | `admin-api/.../client/AdminRpcClient.java` + `admin-api/.../config/AdminApiProperties.java` + `admin-api/.../config/WebMvcConfig.java` | `service/users/admin/src/main/java/com/rag/admin/config/AdminApiProperties.java` + `service/users/admin/src/main/java/com/rag/admin/config/WebMvcConfig.java` | 1:N | D2 域内直连 ⇒ C 侧无 `api/client/` |
@@ -157,8 +157,8 @@
 |---|---|---|---|
 | `service/common/.../redis/GoStyleRedisClientAutoConfiguration.java`（⚠️ 原 `user-api/.../config/RedisDisconnectedBehaviorConfig` 已被 RAG **删除并上移**进共享层，该类名在 RAG 侧已不存在） | `common/src/main/java/com/rag/common/redis/ClientAutoConfiguration.java`（**断连行为已收口进共享层**；域内副本 `service/users/user/src/main/java/com/rag/user/config/RedisDisconnectedBehaviorConfig.java` **已于 2026-11-02 · users-user lane 按 B 侧删除** ⇒ 域内无此文件） | 1:1 | B 为修自身漂移（**`DRIFT-USERAPI-014`**）引入的 **Lettuce 断连行为**定制（**旧行为 fail-open ⇒ B 侧改为 fail-fast 503**）；C 原样保留 ⇒ **该行为差异在 C 侧仍然存在**。⚠️ B 已把域内 5 份副本**全删**并收进共享层 ⇒ **C 侧也要走共享层**（落点见 `common.md` §1.12） |
 | `user-api/.../advice/GlobalResponseAdvice.java` + `admin-api/.../advice/GlobalResponseAdvice.java` | `service/users/user/src/main/java/com/rag/user/advice/UserApiResponseAdvice.java` + `service/users/admin/src/main/java/com/rag/admin/advice/AdminApiResponseAdvice.java` | 1:N | `@RestControllerAdvice` + `ResponseBodyAdvice` 把任意返回值包成 `{code,msg,data}`（统一信封是 L1）⇒ B/C 同构，仅类名域内化 |
-| `user-api/.../advice/GlobalExceptionHandler.java` + `admin-api/.../advice/GlobalExceptionHandler.java` | `service/users/user/src/main/java/com/rag/user/advice/UserApiExceptionHandler.java` + `service/users/admin/src/main/java/com/rag/admin/advice/AdminApiExceptionHandler.java` | 1:N | `@RestControllerAdvice` 异常出口；**D2 合并后不再需要「gRPC code → 业务码」这一层映射**（业务层直接抛 `BusinessException`） |
-| `admin-api/.../service/AdminApiSupport.java` | `service/users/admin/src/main/java/com/rag/admin/service/AdminApiSupport.java` | 1:1 | uid 解析（`parseUid`）+ proto→DTO 转换（`AdminInfo` / `UserInfo`）的聚合点；对应 user 侧的 `UserApiSupport` ⇒ B/C 同构 |
+| `user-api/.../advice/GlobalExceptionHandler.java` + `admin-api/.../advice/GlobalExceptionHandler.java` | `service/users/user/src/main/java/com/rag/user/advice/UserApiExceptionHandler.java` + `service/users/admin/src/main/java/com/rag/admin/advice/AdminApiExceptionHandler.java` | 1:N | `@RestControllerAdvice` 异常出口；🔴 **逐端点映射保留在 api 层**（B 侧 13 个 api service **各有各的** `catch (StatusRuntimeException e)` switch ⇒ 其中 **4 处与通用表不同**：`login` 的 UNAUTHENTICATED⇒**1002**（通用表 1006）、`updateSelf`/`unBanUser`/`resetUserPassword` 的 INTERNAL⇒**5003**（通用表 5001））⇒ C 侧**逐条照抄**进 `service/AdminApiService.java`，本类的 `mapRPCStatusToCode` **降为兜底表**（承接 B 侧 `getSelf` 那种「原样 rethrow」的端点）⇒ 见 `docs/DRIFT/users/admin/verification-admin-2026-11-02.md` §5-① |
+| `admin-api/.../service/AdminApiSupport.java` | `service/users/admin/src/main/java/com/rag/admin/service/AdminApiSupport.java` | 1:1 | uid 解析（`parseUid`）+ **entity→DTO 直转**（`fromEntity(AdminEntity)` / `fromEntity(UserEntity)`）的聚合点；对应 user 侧的 `UserApiSupport` ⇒ B/C 同构；🔴 **2026-11-02 改**：原 `fromProto` 是**死代码**（D2 后 B 侧的 proto 中转链已消失 ⇒ 本仓无调用者）⇒ 已删 ⇒ 转换规则收敛到 `fromEntity` **单一真源**（逐字段等价表见类 javadoc）⇒ 见台账 §5-② |
 | `service/common/.../persistence/MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | 1:1 | B 侧的 **MP 自动配置排序桥**（Boot 4 挪了 `DataSourceAutoConfiguration` 的包 ⇒ MP 排序引用悬空 ⇒ `SqlSessionFactory` 不产出）；B 侧已收进共享层 `service/common/`（**1 份**），C 侧同样 1 份 ⇒ **归属见 `common.md`** |
 
 ### 1.3 🔴 RAG 侧新增类补录（1 条 · 覆盖 4 个 `.java`）
@@ -169,7 +169,7 @@
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|---|
-| `admin-api/…/auth/AdminJwtAuthPaths.java` ＋ `admin-api/…/auth/AdminJwtSignatureVerifier.java` ＋ `admin-api/…/auth/AdminJwtVerificationResult.java` ＋ `admin-api/…/auth/GoStyleJwtAuthFilter.java` | `service/users/admin/src/main/java/com/rag/admin/interceptor/AdminJwtAuthInterceptor.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 1 个 `HandlerInterceptor`** ⇒ 🔴 **C 侧缺口**：要么补 1 个 `OncePerRequestFilter` 承载验签，要么显式登记为签字偏离。⚠️ **受保护路由表 ＋ public 前缀集合是 L1**；⚠️ admin 的 secret 与 user 域**不同** ⇒ **不可复用 user 域拦截器** |
+| `admin-api/…/auth/AdminJwtAuthPaths.java` ＋ `admin-api/…/auth/AdminJwtSignatureVerifier.java` ＋ `admin-api/…/auth/AdminJwtVerificationResult.java` ＋ `admin-api/…/auth/GoStyleJwtAuthFilter.java` | `service/users/admin/src/main/java/com/rag/admin/interceptor/AdminJwtAuthInterceptor.java` ＋ `interceptor/AdminJwtSignatureFilter.java` ＋ `interceptor/AdminJwtSignatureVerifier.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ ✅ **2026-11-02 已补**（选「补」而非「登记偏离」）：C 侧 **3 个类** = `AdminJwtAuthInterceptor`（验签结果消费 + 黑名单）＋ `AdminJwtSignatureFilter`（`OncePerRequestFilter`，承载验签，**绝不写响应**）＋ `AdminJwtSignatureVerifier`（只验签、不写响应、不查 Redis）。⚠️ **受保护路径集合 ＋ public 集合是 L1**（C 侧已从「URL 前缀」改成**显式 11 条路径集合**，与 B 侧「JWT 挂在 route 上」同构）；⚠️ admin 的 secret 与 user 域**不同** ⇒ **不可复用 user 域拦截器** |
 
 ---
 
@@ -225,7 +225,11 @@
 
 ## 7. 覆盖度自查（本子域）
 
-### 7.1 C 列覆盖率 —— **56 / 56 = 100%**（admin 子域）
+### 7.1 C 列覆盖率 —— **58 / 58 = 100%**（admin 子域）
+
+> 🔴 **2026-11-02 订正**：本节原写 **56 / 56** ⇒ **实际是 58** ⇒ 差额 **2 个** =
+> §1.3 补录行**点名要补**的验签侧两个类（`interceptor/AdminJwtSignatureFilter` + `interceptor/AdminJwtSignatureVerifier`）
+> ⇒ 选了「补」而非「登记为签字偏离」⇒ C 列 **56 → 58**。
 
 自查命令（`RAG-V1` 仓根）：
 
@@ -239,8 +243,8 @@ find "service/users/admin" -name '*.java' -not -path '*/src/test/*' -not -path '
 | C 模块 | `.java` 数 | 出现在本表 C 列的位置 | 覆盖 |
 |---|---|---|---|
 | `proto/src/main/proto/admin.proto`（**无 `.java`**） | **0** | 本域无错误码空间 ⇒ 无 `contract` 包 | ✅ 0/0（**但见 F-2**） |
-| `service/users/admin/src/main/java/com/rag/admin/` | 56 | §1.2.1（admin-rpc 侧）+ §1.2.2（admin-api 侧）+ §1.2.2 补充行（`AdminApiResponseAdvice` / `AdminApiExceptionHandler` / `AdminApiSupport`） | ✅ 56/56 |
-| **合计** | **56** | — | ✅ **56/56** |
+| `service/users/admin/src/main/java/com/rag/admin/` | **58** | §1.2.1（admin-rpc 侧）+ §1.2.2（admin-api 侧）+ §1.2.2 补充行（`AdminApiResponseAdvice` / `AdminApiExceptionHandler` / `AdminApiSupport`）+ §1.3 补录行（`AdminJwtSignatureFilter` / `AdminJwtSignatureVerifier`） | ✅ **58/58** |
+| **合计** | **58** | — | ✅ **58/58** |
 
 > ⚠️ **F-2 落点**：[`../_shared.md` §7.3](../_shared.md#73-b--c-之间职责对不上的地方⚠-需处理)。
 
@@ -282,5 +286,6 @@ find "service/users/admin" -name '*.java' -not -path '*/src/test/*' -not -path '
 **B 列 RAG**（`service/users/admin/`，76 个 `.java`）= **唯一真理之源**（api/rpc 分离的部署形态）；
 **C 列 RAG-V1**（`service/users/admin/`，56 个 `.java`）= Spring 惯用目标形态（一域一 app）。
 
-⇒ **admin 子域 C 列 56/56 覆盖、B 列 76/76 覆盖（2 个由兄弟文档承载）、映射类型 1:1 ×17 / 1:N ×8 / N:1 ×42 / C 新增 ×0（共 67 行）。**
+⇒ **admin 子域 C 列 58/58 覆盖、B 列 76/76 覆盖（2 个由兄弟文档承载）、映射类型 1:1 ×17 / 1:N ×8 / N:1 ×42 / C 新增 ×0（共 67 行）。**
+⇒ **2026-11-02 订正**：C 列 **56 → 58**（§1.3 补录行点名要补的验签 Filter + Verifier）⇒ 详见 `docs/DRIFT/users/admin/verification-admin-2026-11-02.md`。
 ⇒ **文件名与职责已逐条对应；行为是否一致，一律以 B 列（RAG 侧）源码为准，状态看 `RAG/docs/DRIFT/users/`。**

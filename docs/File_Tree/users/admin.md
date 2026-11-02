@@ -47,79 +47,81 @@
 │   │   │       └── rag/
 │   │   │           └── admin/
 │   │   │               ├── advice/
-│   │   │               │   ├── AdminApiExceptionHandler.java
-│   │   │               │   └── AdminApiResponseAdvice.java
+│   │   │               │   ├── AdminApiExceptionHandler.java    # 职责：admin 域 HTTP 面的异常出口 —— 把「业务层抛出的异常」翻译成
+│   │   │               │   └── AdminApiResponseAdvice.java    # 职责：admin 域 HTTP 面的响应信封 —— 把任意 Controller 返回值包成
 │   │   │               ├── config/
-│   │   │               │   ├── AdminApiProperties.java    # @ConfigurationProperties —— 聚合本域 HTTP 层配置。
-│   │   │               │   ├── AdminRpcProperties.java
-│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 对齐 B 侧同名配置类的注册形态。
+│   │   │               │   ├── AdminApiProperties.java    # 职责：admin 域 HTTP 面的配置聚合点 —— Spring Boot {@code @ConfigurationProperties}。
+│   │   │               │   ├── AdminRpcProperties.java    # 职责：admin 域 业务/领域面的配置聚合点 —— Spring Boot {@code @ConfigurationProperties}。
+│   │   │               │   └── WebMvcConfig.java    # 职责：admin 域的 Spring MVC 装配 —— 把 {@link AdminJwtAuthInterceptor} 挂到
 │   │   │               ├── controller/
-│   │   │               │   └── AdminController.java    # ⚠️ L1 路由契约（B 侧 正推，勿凭直觉改）
+│   │   │               │   └── AdminController.java    # 职责：admin Center 的 HTTP 出口 —— 13 个端点，全部 POST，前缀 {@code /admin/v1}。
 │   │   │               ├── domain/
 │   │   │               │   ├── entity/
-│   │   │               │   │   ├── AdminEntity.java
-│   │   │               │   │   ├── AdminInviteEntity.java
-│   │   │               │   │   └── UserEntity.java
+│   │   │               │   │   ├── AdminEntity.java    # {@code admin_admin} 表的 MyBatis-Plus 实体。
+│   │   │               │   │   ├── AdminInviteEntity.java    # {@code admin_invite} 表的 MyBatis-Plus 实体。
+│   │   │               │   │   └── UserEntity.java    # {@code users_user} 表的 MyBatis-Plus 实体（admin 子域独立持有）。
 │   │   │               │   └── service/
-│   │   │               │       ├── AdminCreateAtomicService.java
-│   │   │               │       └── AdminDomainService.java
+│   │   │               │       ├── AdminCreateAtomicService.java    # 职责：CreateAdmin 的 4 步原子事务（W1 锁 invite → W2 查 username 冲突 → bcrypt →
+│   │   │               │       └── AdminDomainService.java    # 职责：admin 域的领域服务 —— 13 个用例（login / logout / getSelf / updateSelf /
 │   │   │               ├── dto/
 │   │   │               │   ├── admin/
-│   │   │               │   │   ├── AdminInfo.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── CreateAdminReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── CreateAdminResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetSelfReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetSelfResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── UpdateSelfReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── UpdateSelfResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── AdminInfo.java    # 职责：管理员信息 DTO —— 4 字段（uid / username / email / extra_info）；被
+│   │   │               │   │   ├── CreateAdminReq.java    # 职责：admin createAdmin 用例的 HTTP 请求 DTO —— 账号 / 密码 / 邮箱 / 邀请码 / 扩展信息。
+│   │   │               │   │   ├── CreateAdminResp.java    # 职责：admin createAdmin 用例的 HTTP 响应 DTO —— 新建管理员的 UID。
+│   │   │               │   │   ├── GetSelfReq.java    # 职责：admin getSelf 用例的 HTTP 请求 DTO —— 空 struct（uid 从 JWT claim 解析）。
+│   │   │               │   │   ├── GetSelfResp.java    # 职责：admin getSelf 用例的 HTTP 响应 DTO —— 当前登录管理员的 {@link AdminInfo}。
+│   │   │               │   │   ├── UpdateSelfReq.java    # 职责：admin updateSelf 用例的 HTTP 请求 DTO —— 更新自己的用户名 / 密码 / 邮箱 / 扩展信息。
+│   │   │               │   │   └── UpdateSelfResp.java    # 职责：admin updateSelf 用例的 HTTP 响应 DTO —— 更新结果 + 最新管理员信息。
 │   │   │               │   ├── auth/
-│   │   │               │   │   ├── LoginReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── LoginResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── LogoutReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── LogoutResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── LoginReq.java    # 职责：admin login 用例的 HTTP 请求 DTO —— 账号 / 密码。
+│   │   │               │   │   ├── LoginResp.java    # 职责：admin login 用例的 HTTP 响应 DTO —— HS256 JWT 令牌。
+│   │   │               │   │   ├── LogoutReq.java    # 职责：admin logout 用例的 HTTP 请求 DTO —— 空 struct（token 从 JWT 解析）。
+│   │   │               │   │   └── LogoutResp.java    # 职责：admin logout 用例的 HTTP 响应 DTO —— 是否登出成功。
 │   │   │               │   ├── invite/
-│   │   │               │   │   ├── CreateInviteReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── CreateInviteResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── CreateInviteCodeReq.java    # 职责：admin createInviteCode 用例的 HTTP 请求 DTO —— 空 struct
+│   │   │               │   │   └── CreateInviteCodeResp.java    # 职责：admin createInviteCode 用例的 HTTP 响应 DTO —— 邀请码 + 过期时间（unix 秒）。
 │   │   │               │   └── user/
-│   │   │               │       ├── BanUserReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── BanUserResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── DeleteUserReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── DeleteUserResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── GetUserListReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── GetUserListResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── GetUserReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── GetUserResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── ResetUserPasswordReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── ResetUserPasswordResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── UnBanUserReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── UnBanUserResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── UpdateUserReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── UpdateUserResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       └── UserInfo.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── BanUserReq.java    # 职责：admin banUser 用例的 HTTP 请求 DTO —— 目标用户 UID
+│   │   │               │       ├── BanUserResp.java    # 职责：admin banUser 用例的 HTTP 响应 DTO —— 是否封禁成功。
+│   │   │               │       ├── DeleteUserReq.java    # 职责：admin deleteUser 用例的 HTTP 请求 DTO —— 目标用户 UID
+│   │   │               │       ├── DeleteUserResp.java    # 职责：admin deleteUser 用例的 HTTP 响应 DTO —— 是否删除成功。
+│   │   │               │       ├── GetUserListReq.java    # 职责：admin getUserList 用例的 HTTP 请求 DTO —— 分页（page / page_size）+ 搜索关键字。
+│   │   │               │       ├── GetUserListResp.java    # 职责：admin getUserList 用例的 HTTP 响应 DTO —— 用户列表 + 总数。
+│   │   │               │       ├── GetUserReq.java    # 职责：admin getUser 用例的 HTTP 请求 DTO —— 目标用户 UID。
+│   │   │               │       ├── GetUserResp.java    # 职责：admin getUser 用例的 HTTP 响应 DTO —— 用户信息 + 是否找到。
+│   │   │               │       ├── ResetUserPasswordReq.java    # 职责：admin resetUserPassword 用例的 HTTP 请求 DTO —— 目标用户 UID
+│   │   │               │       ├── ResetUserPasswordResp.java    # 职责：admin resetUserPassword 用例的 HTTP 响应 DTO —— 是否重置成功。
+│   │   │               │       ├── UnBanUserReq.java    # 职责：admin unBanUser 用例的 HTTP 请求 DTO —— 目标用户 UID
+│   │   │               │       ├── UnBanUserResp.java    # 职责：admin unBanUser 用例的 HTTP 响应 DTO —— 是否解封成功。
+│   │   │               │       ├── UpdateUserReq.java    # 职责：admin updateUser 用例的 HTTP 请求 DTO —— 目标用户 UID + 用户名 / 密码 / 邮箱 / 扩展信息
+│   │   │               │       ├── UpdateUserResp.java    # 职责：admin updateUser 用例的 HTTP 响应 DTO —— 更新结果 + 最新用户信息。
+│   │   │               │       └── UserInfo.java    # 职责：用户信息 DTO —— 5 字段（uid / status / username / email / extra_info）；
 │   │   │               ├── exception/
-│   │   │               │   └── AdminExceptions.java
+│   │   │               │   └── AdminExceptions.java    # admin 域的业务 sentinel 异常 + PG 唯一约束判定工具。
 │   │   │               ├── grpc/
-│   │   │               │   └── AdminGrpcService.java
+│   │   │               │   └── AdminGrpcService.java    # 职责：admin 域 13 个 gRPC RPC 的thin wrapper —— proto req → {@link AdminDomainService} → proto resp。
 │   │   │               ├── interceptor/
-│   │   │               │   └── AdminJwtAuthInterceptor.java
+│   │   │               │   ├── AdminJwtAuthInterceptor.java    # 职责：admin 域的 JWT 鉴权拦截器 —— 承担 B 侧 {@code rest.WithJwt}
+│   │   │               │   ├── AdminJwtSignatureFilter.java    # 职责：把 admin JWT 的验签搬出 3s 预算 —— 只验签、只把结果放进 request attribute、
+│   │   │               │   └── AdminJwtSignatureVerifier.java    # 职责：admin JWT 验签 —— 只做「解析 + 验签名 + 取 claim」，不写响应、不查 Redis。
 │   │   │               ├── mapper/
-│   │   │               │   ├── AdminInviteMapper.java
-│   │   │               │   ├── AdminMapper.java
-│   │   │               │   └── UserMapper.java
+│   │   │               │   ├── AdminInviteMapper.java    # {@code admin_invite} 表的 MyBatis-Plus Mapper。
+│   │   │               │   ├── AdminMapper.java    # {@code admin_admin} 表的 MyBatis-Plus Mapper。
+│   │   │               │   └── UserMapper.java    # {@code users_user} 表的 MyBatis-Plus Mapper（admin 子域独立持有）。
 │   │   │               ├── metrics/
-│   │   │               │   ├── AdminApiMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
-│   │   │               │   └── AdminRpcMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
+│   │   │               │   ├── AdminApiMetrics.java    # 职责：admin 域 HTTP 面的业务指标收集（Micrometer Counter）。
+│   │   │               │   └── AdminRpcMetrics.java    # 职责：admin 域 业务/领域面的 Prometheus 计数器（Micrometer Counter）。
 │   │   │               ├── service/
-│   │   │               │   ├── AdminApiService.java
-│   │   │               │   ├── AdminApiSupport.java
-│   │   │               │   ├── AdminHelpers.java
-│   │   │               │   └── AdminSpans.java
+│   │   │               │   ├── AdminApiService.java    # 职责：admin 域 HTTP 层的 13 个用例（登录 / 注销 / 查自己 / 改自己 / 建 admin / 建邀请码 /
+│   │   │               │   ├── AdminApiSupport.java    # admin 域共用 helper —— 跨 13 个用例 / 拦截器 / 控制器的工具方法聚合点。
+│   │   │               │   ├── AdminHelpers.java    # 业务逻辑共享的字符串归一化工具。
+│   │   │               │   └── AdminSpans.java    # admin 域的手写 span。
 │   │   │               ├── wiring/
-│   │   │               │   ├── AdminSchemaBootstrap.java
-│   │   │               │   ├── AdminSeederBootstrap.java
-│   │   │               │   ├── NacosRegistration.java
-│   │   │               │   └── SnowflakeBootstrap.java
-│   │   │               └── AdminServiceApplication.java    # @SpringBootApplication + @EnableDiscoveryClient —— api 与 rpc 合并后的唯一入口。
+│   │   │               │   ├── AdminSchemaBootstrap.java    # 职责：admin 域启动期建表 —— 把 users 域全部 DDL 幂等重放一遍。
+│   │   │               │   ├── AdminSeederBootstrap.java    # 职责：admin 域启动期 bootstrap —— 创建默认 admin 账号（用户名 / 密码均硬编码 {@code admin}）。
+│   │   │               │   ├── NacosRegistration.java    # 职责：显式注册 admin 域的 gRPC 实例到 Nacos（用 gRPC 端口，不是 web 端口）。
+│   │   │               │   └── SnowflakeBootstrap.java    # 职责：Snowflake 初始化触发器 —— 保证 Snowflake 在 admin 域启动期已就绪
+│   │   │               └── AdminServiceApplication.java    # 职责：admin 域的唯一启动入口 —— 一个进程内同时起 Tomcat（HTTP 面）与 gRPC server（业务面）。
 │   │   └── resources/
 │   │       ├── db/
 │   │       │   └── migration/
@@ -130,7 +132,13 @@
 │           └── com/
 │               └── rag/
 │                   └── admin/
-│                       └── AdminServiceApplicationTests.java
+│                       ├── domain/
+│                       │   └── service/
+│                       │       └── AdminDomainServiceRealPgTest.java    # admin 域领域层在「真 PostgreSQL + 真 Redis」上的行为对齐测试。
+│                       ├── http/
+│                       │   ├── AdminHttpContractRealTomcatTest.java    # admin 域 HTTP 契约测试 —— 真 Tomcat · 真 PG · 真 Redis。
+│                       │   └── NacosStubConfiguration.java    # Nacos 桩 —— 让 admin 域的测试能起真实 Spring 上下文，而不连 Nacos。
+│                       └── AdminServiceApplicationTests.java    # admin 域「真启动」契约测试 —— 进程起得来这件事本身就是契约。
 └── pom.xml    # Maven 模块描述
 ```
 

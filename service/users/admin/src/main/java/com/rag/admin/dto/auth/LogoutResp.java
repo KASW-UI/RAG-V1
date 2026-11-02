@@ -1,10 +1,18 @@
 package com.rag.admin.dto.auth;
 
 /**
- * <p><b>TODO：职责待补</b> —— 推导依据见《完全spring化的文件树》对应条目。
- * <p>immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+ * <p><b>职责</b>：admin logout 用例的 HTTP 响应 DTO —— 是否登出成功。
+ *
+ * <p><b>L4 idiomatization（三段式 · AGENTS.md §3.2）</b>：
+ * <ol>
+ *   <li><b>比 B 侧多做了什么</b>：可变 class + setter → <b>immutable record</b>（D5）；
+ *       包名 {@code api.dto} → {@code dto.auth}（D7 + D11）。</li>
+ *   <li><b>语义还一样吗</b>：一样 —— 单字段 {@code success}（primitive {@code boolean} ⇒ 永远出现在 JSON 里，
+ *       与 B 侧 {@code isSuccess()} 的 {@code boolean} 一致）。</li>
+ *   <li><b>B 出处</b>：{@code service/users/admin/admin-api/src/main/java/com/rag/users/admin/api/dto/LogoutResp.java}</li>
+ * </ol>
+ *
+ * @param success 是否成功
  */
-
-public record LogoutResp(
-) {
+public record LogoutResp(boolean success) {
 }

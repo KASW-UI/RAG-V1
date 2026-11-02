@@ -1,6 +1,16 @@
 # =============================================================================
-# Admin 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程）
+# Admin 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程 · D1 + D7）
 # =============================================================================
+# ⚠️ **本文件是 B 侧两份 yml 合并的结果**：
+#   B `service/users/admin/admin-api/src/main/resources/application.yml`（HTTP 面）
+#   B `service/users/admin/admin-rpc/src/main/resources/application.yml`（gRPC 面）
+# ⇒ D1 合并后**同一个进程**同时起 Tomcat 与 gRPC ⇒ **两份配置合到这一份**，
+#   键名**逐字沿用 B 侧**（`admin-api.*` 与 `admin-rpc.*` 两段都保留 ⇒ 各配置类的
+#   `@ConfigurationProperties(prefix=...)` 不用改）。
+# ⇒ ⚠️ B 侧 `grpc.client.admin-rpc`（api 进程拨 rpc 进程）**整段删除** ——
+#   D2 域内直连：api 层不再走自我 gRPC 往返 ⇒ 这段配置在 C 侧**没有消费者**
+#   （B 侧 api 的 `AdminRpcClient` 在 C 侧被删，mapping table admin.md §1.2.2 已登记）。
+
 spring:
   application:
     name: admin-service
@@ -13,27 +23,140 @@ spring:
     redis:
       host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      # ⚠️ **超时值逐字照抄 B 侧 admin-api yml**（出处：B `admin-api/.../application.yml` 的
+      #    「取 Redis 超时」注释块）：
+      #    · timeout = 3s ⇒ B 侧 go-redis/v9 v9.20.0 的 ReadTimeout 默认 3s
+      #      （options.go:364-370）；🔴 go-zero redis.go:27 的 readWriteTimeout=2s 是**死常量**，
+      #      别被它误导。
+      #    · connect-timeout = 5s ⇒ B 侧 go-redis 的 DialTimeout 默认 5s
+      #      （options.go:338-339）；⚠️ **不配这行会回落 Lettuce 自己的 10s** ⇒ 必须显式写 5s。
+      timeout: 3s
+      connect-timeout: 5s
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:nacos:8848}
+        server-addr: ${NACOS_ADDR:nacos}:${NACOS_PORT:8848}
+        namespace: ${NACOS_NAMESPACE:sea-rtw}
+        group: ${NACOS_GROUP:USER_GROUP}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+        # ⚠️ **自动注册必须关掉**（B 出处：B `service/users/admin/admin-rpc/src/main/resources/application.yml:119`
+        #    的 `register-enabled: false` —— **逐字照抄**）。
+        #
+        #    【为什么】D1 把 B 侧 admin-api + admin-rpc 合成**一个进程** ⇒ 本进程**同时**发
+        #    `WebServerInitializedEvent`（Tomcat）⇒ Spring Cloud Alibaba 的
+        #    `NacosAutoServiceRegistration` 会拿 **web 端口（8889）** 去注册
+        #    ⇒ 而域内 `wiring/NacosRegistration` 是**显式**用 **gRPC 端口（8082）** 注册的
+        #    ⇒ ⇒ Nacos 里同一个服务名 `admin-service` 下会出现**两个端口的实例**
+        #    ⇒ ⇒ 消费方按名字寻址会连到错端口 ⇒ **gRPC 链路断（业务码塌 1015）**。
+        #    （B 侧 yml 原文：「【本模块的注册是手写的】… ⇒ **自动注册必须关掉**，
+        #      否则**同一服务名下会有两个端口的实例**。」）
+        #
+        #    【消费点 · SCA 2025.0.0.0】`com/alibaba/cloud/nacos/registry/NacosAutoServiceRegistration.java`
+        #    · :71 `register()`    → `if (!isRegisterEnabled()) { return; }` ⇒ **不注册**
+        #    · :83 `registerManagement()` → 同
+        #    · :97 `isEnabled()`   → Spring Cloud Commons `AbstractAutoServiceRegistration` 用它判定
+        #    ⇒ ⇒ 这是**运行期判定**，**不是** bean gating（整个自动配置类由
+        #        `spring.cloud.service-registry.auto-registration.enabled` 决定）⇒
+        #        ⇒ **键名仍是 `spring.cloud.nacos.discovery.register-enabled`**（读的是
+        #           `NacosDiscoveryProperties#registerEnabled`，默认值 `true`）。
+        register-enabled: false
 
+# =============================================================================
+# HTTP server（B 侧 admin-api 的 8889 逐字不变）
+# =============================================================================
 server:
   port: ${ADMIN_HTTP_PORT:8889}
+  address: 0.0.0.0
+  servlet:
+    context-path: /
+  # ⚠️ **容器三旋钮逐字照抄 B 侧 admin-api yml**（B 侧出处：go 的 net/http 不校验 query 里的
+  #    `[ ]` 且 go-zero httpx.GetFormValues 明确支持方括号数组记法；Tomcat 默认拒绝 ⇒
+  #    400 + HTML 错误页（不是业务信封）⇒ 必须放开）：
+  #    ① relaxed-query-chars = ["[", "]"]
+  #    ② max-parameter-count = 2048（B 侧 go-zero httpx/util.go:15 maxFormParamCount=2048）
+  #    ③ max-http-request-header-size = 1028KB（B 侧 go-zero 的真实上限 =
+  #       DefaultMaxHeaderBytes(1<<20) + 4096 = 1028KB）
+  tomcat:
+    relaxed-query-chars: ["[", "]"]
+    max-parameter-count: 2048
+  max-http-request-header-size: 1028KB
 
+# =============================================================================
+# gRPC server（B 侧 admin-rpc 的 8081 → 本仓 8082，见「端口」注释）
+# =============================================================================
 grpc:
   server:
+    # ⚠️ **端口 8081 ⇒ 8082 是「签字偏离」（部署面）**：
+    #    B 侧 admin-rpc = 8081（B `admin-rpc/.../application.yml` 的 `ADMIN_RPC_PORT:8081`），
+    #    但 B 侧 user-rpc **也是 8081** ⇒ B 侧两域撞端口，靠 env 错开
+    #    （B `Infrastructure.md` §3「同机并行必须错开」）。
+    #    ⇒ C 侧 D1 把 api+rpc 合成一进程后，users 域只剩 **2 个进程**
+    #      （user-service / admin-service）⇒ 两者的 gRPC 端口**必须错开**
+    #    ⇒ user-service 已占 8081（`service/users/user/.../application.yml`）⇒ admin 取 **8082**。
+    #    ⇒ 登记为 Intentional Deviation（部署面 · 非行为面）。
     port: ${ADMIN_GRPC_PORT:8082}
     address: 0.0.0.0
     reflection-service-enabled: false
-  client:
-    # ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而上游 zrpc 是明文 gRPC。
-    #    不写会静默变 TLS —— 见《完全spring化的文件树》§9.1 断言 A4。
+    enable-keep-alive: true
+    keep-alive-time: 30s
+    permit-keep-alive-without-calls: true
+  # ⚠️ **本段刻意没有 `client:` 子键 —— 这不是漏写，是写了就起不来**（2026-11-02 实测）：
+  #    devh 3.1.0 的 `GrpcChannelsProperties` 是 `@ConfigurationProperties("grpc")`，
+  #    其 `client` 字段是 `Map<String, GrpcChannelProperties>`
+  #    ⇒ ⇒ `grpc.client.<X>` 的 `<X>` 是**通道名**（不是一个属性名）。
+  #    ⇒ ⇒ **坑 1**：写 `grpc.client.negotiation-type: plaintext` ⇒ 被当成
+  #        「名叫 negotiation-type 的通道」，且它的值是 String
+  #        ⇒ 绑不成 `GrpcChannelProperties` ⇒ **上下文启动直接失败**
+  #        （`ConverterNotFoundException`）。
+  #    ⇒ ⇒ **坑 2**：**连「只有注释的 `client:`」都不能留** ——
+  #        Spring 的 YAML loader 把「有键无值」的键读成 **空串**（不是 null）
+  #        ⇒ 绑到 `Map<String, GrpcChannelProperties>` 同样失败 ⇒ **启动失败**
+  #        （`Property: grpc.client / Value: ""`）。
+  # ⇒ ⇒ **D2 之后本域没有 gRPC 客户端**（域内直连）⇒ 本段**不需要** `client:`。
+  # ⇒ ⇒ 若将来本域真要加 `@GrpcClient("X")`，正确写法是
+  #        `grpc.client.X.negotiation-type: plaintext`（断言 A4 的原话）；
+  #        要给**所有**通道设默认明文则是 `grpc.client.GLOBAL.negotiation-type: plaintext`
+  #        （devh 的全局通道 key 就是字面量 `GLOBAL`）。
 
+# =============================================================================
+# 业务配置（B 侧 admin-api.admin-auth + admin-rpc.admin-auth + admin-rpc.system）
+# =============================================================================
+# ⚠️ **两段都保留**（B 侧就是两份 yml 各有一份）：
+#   · `admin-api.admin-auth` ⇒ HTTP 面的 JWT 签发/验签（`AdminApiProperties`）
+#   · `admin-rpc.admin-auth` ⇒ gRPC 面的同一套密钥（`AdminRpcProperties`）
+#   · `admin-rpc.system.default-password` ⇒ **重置普通用户密码**用的默认口令
+#     （⚠️ **不是**默认 admin 账号的密码 —— 后者是硬编码常量 `admin`，见 `AdminSeederBootstrap`）
+#
+# 🔴 **2026-10-29 · P0 #8：默认明文值已去掉** —— 键值只认环境变量 `${ADMIN_JWT_SECRET}`，
+#    **没有默认值** ⇒ 缺变量 / 变量为空串 ⇒ 由 `AdminApiProperties#verifyAccessSecret`
+#    与 `AdminRpcProperties#verifyAccessSecret` 的 `@PostConstruct` **判掉 ⇒ 启动失败**（fail-closed）。
+#    理由：那串口令是**写在仓里的公开密钥** ⇒ 谁都能用它伪造 admin JWT（越权）。
+#    ⚠️ 本地开发 / 测试：测试用 `@DynamicPropertySource` 注入同名变量
+#       （见 `src/test/java/com/rag/admin/http/AdminHttpContractRealTomcatTest`）。
+admin-api:
+  admin-auth:
+    access-secret: ${ADMIN_JWT_SECRET}
+    access-expire: ${ADMIN_JWT_EXPIRE:2592000}    # 30 天
+admin-rpc:
+  admin-auth:
+    access-secret: ${ADMIN_JWT_SECRET}
+    access-expire: ${ADMIN_JWT_EXPIRE:2592000}    # 30 天
+  system:
+    # 用于重置**普通用户**密码（`AdminDomainService#resetUserPassword`）
+    default-password: ${ADMIN_DEFAULT_PASSWORD:123456}
+
+# =============================================================================
+# MyBatis-Plus
+# =============================================================================
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
 
+# =============================================================================
+# Actuator（B 侧 admin-rpc 的 DevServer 9097 → 本仓与业务端口同进程，Actuator 挂主端口）
+# =============================================================================
 management:
   endpoints:
     web:
@@ -43,6 +166,39 @@ management:
     health:
       show-details: always
 
+# =============================================================================
+# OpenTelemetry（B 侧 Telemetry.* 的逐条重映射）
+# =============================================================================
+otel:
+  exporter:
+    otlp:
+      endpoint: http://${OTEL_ADDR:jaeger}:${OTLP_PORT:4317}
+      protocol: grpc
+  resource:
+    attributes:
+      service.name: admin-service
+  traces:
+    sampler: always_on
+
+# =============================================================================
+# observability（共享层 `ObservabilityProperties`，前缀 `observability`）
+# =============================================================================
+# ⚠️ **超时值逐字取 B 侧的「结构体默认值」**（不是 B 侧 yaml 里写的值 —— B 侧
+#    `service/users/{user,admin}/{api,rpc}/etc/*.yaml` **均未配置 Timeout**）：
+#    · http-timeout = 3s  ⇒ go-zero `rest/config.go:55` `Timeout int64 json:",default=3000"`
+#    · rpc-timeout  = 2s  ⇒ go-zero `zrpc/config.go:46` `Timeout int64 json:",default=2000"`
+# ⇒ ⇒ **本段补上了「F-8 · HTTP 超时机制在 C 侧未落点」**（该缺口本就在
+#    `docs/Mapping_Table/users/_shared.md` §7.3 F-8 登记：共享层的两个类当时是空壳，
+#    且两个 yml 无任何 timeout 配置 ⇒ 现在共享层已落地且本 yml 已显式配置）。
+observability:
+  http-timeout: 3s
+  rpc-timeout: 2s
+
+# =============================================================================
+# 日志
+# =============================================================================
 logging:
   level:
-    com.rag: INFO
+    root: INFO
+    com.rag.admin: INFO
+    com.rag.common: INFO
