@@ -106,7 +106,7 @@ NON_FILE_LEVEL = {
     ('like/like.md', 'like-common/'): ('模块/包级', '模块级对照（common/ 收成 starter）', '2026-11-02'),
     ('like/like.md', 'like-rpc/'): ('模块/包级', '模块级对照（进程拓扑）', '2026-11-02'),
     ('message/message.md', '2个（message-api/message-rpc）'): ('模块/包级', '进程拓扑对照（非文件级）', '2026-11-02'),
-    ('message/message.md', 'MessageErrorCode（enum，21常量+SUCCESS）'): ('成员/方法级', 'B 侧 const 块 ⇒ 成员级对照', '2026-11-02'),
+    ('message/message.md', 'MessageErrorCode（enum，20常量）'): ('成员/方法级', 'B 侧 const 块 ⇒ 成员级对照', '2026-11-02'),
     ('message/message.md', 'MessageErrorMessages（静态map）'): ('成员/方法级', 'B 侧包级 map ⇒ 成员级对照', '2026-11-02'),
     ('message/message.md', 'MessageGrpcError.CodeError（内部类）'): ('成员/方法级', 'B 侧内部 struct ⇒ 成员级对照', '2026-11-02'),
     ('message/message.md', 'MessageGrpcError.bizCodeFromError(Throwable)'): ('成员/方法级', 'B 侧包级函数 ⇒ 方法级对照', '2026-11-02'),

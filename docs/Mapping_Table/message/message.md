@@ -124,7 +124,7 @@
 | `dto/AdminSendNotificationReq.java` | `service/message/src/main/java/com/rag/message/dto/notification/AdminSendNotificationReq.java` | 1:1 | `broadcast` / `target_id` / `kind` / `extra` 均 `optional` |
 | `dto/AdminSendNotificationResp.java` | `service/message/src/main/java/com/rag/message/dto/notification/AdminSendNotificationResp.java` | 1:1 | ⚠️ `affected` 的 JSON 形态存在**已签字偏离**，见 §6 注 |
 | `dto/ChatMessageItem.java` | `service/message/src/main/java/com/rag/message/dto/conversation/ChatMessageItem.java` | 1:1 | 9 字段；`id` / `sender_id` / `recipient_id` 带 `,string` |
-| `dto/ConversationItem.java` | `service/message/src/main/java/com/rag/message/dto/conversation/ConversationItem.java` | 1:1 | 12 字段 |
+| `dto/ConversationItem.java` | `service/message/src/main/java/com/rag/message/dto/conversation/ConversationItem.java` | 1:1 | 11 字段 |
 | `dto/ConversationListResp.java` | `service/message/src/main/java/com/rag/message/dto/conversation/ConversationListResp.java` | 1:1 | `items` + `total` + `unread_count` |
 | `dto/ConversationMessagesReq.java` | `service/message/src/main/java/com/rag/message/dto/conversation/ConversationMessagesReq.java` | 1:1 | `offset` / `limit` 为 `optional` |
 | `dto/ConversationMessagesResp.java` | `service/message/src/main/java/com/rag/message/dto/conversation/ConversationMessagesResp.java` | 1:1 | 带 `status` / `can_send` / `pending_sender_*` |
@@ -170,10 +170,10 @@
 | `message-rpc/.../service/MessageDomainService.java` | `service/message/src/main/java/com/rag/message/domain/service/MessageDomainService.java` | N:1 | 9 用例合 1 个 DomainService；`sendChatMessage` 最复杂（会话状态机 + PENDING 单方连发拦截 + 首条 ≤ 50 rune 校验） |
 | `message-rpc/.../service/MessageRpcSupport.java` | `service/message/src/main/java/com/rag/message/service/MessageRpcSupport.java` | 1:1 | 20+ helper：`canonicalParticipants` / `canSend` / `peerOf` / `loadProfile` / `collectBroadcastRecipients` / `dedupeRecipients` / `trimPreview` / `notificationKindLabel` / `successBaseResp` … |
 | `message-rpc/.../mapper/ConversationMapper.java` + `mapper/ConversationMessageMapper.java` + `mapper/NotificationMapper.java` + `mapper/GoStylePagination.java` + `service/MessageAtomicService.java` | `service/message/src/main/java/com/rag/message/mapper/ConversationMapper.java` + `service/message/src/main/java/com/rag/message/mapper/ConversationMessageMapper.java` + `service/message/src/main/java/com/rag/message/mapper/NotificationMapper.java` + `service/message/src/main/java/com/rag/message/mapper/GoStylePagination.java` + `service/message/src/main/java/com/rag/message/domain/service/MessageAtomicService.java` | 1:N | 2 个 `conn.Transaction(...)` 闭包 + 3 个单条原子 UPDATE → `MessageAtomicService` 的 6 个 `@Transactional` 方法（**独立 Bean**，见 §2）；`GoStylePagination` 承接 B 侧的「offset / limit 各自有条件」分页口径 |
-| `message-rpc/.../domain/ConversationEntity.java` + `.../ConversationMessageEntity.java` + `.../NotificationEntity.java` | `service/message/src/main/java/com/rag/message/domain/entity/ConversationEntity.java` + `.../ConversationMessageEntity.java` + `.../NotificationEntity.java` | 1:N | 3 张表；B 侧手写的 `JsonbMapTypeHandler` → `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` |
+| `message-rpc/.../domain/ConversationEntity.java` + `.../ConversationMessageEntity.java` + `.../NotificationEntity.java` | `service/message/src/main/java/com/rag/message/domain/entity/ConversationEntity.java` + `.../ConversationMessageEntity.java` + `.../NotificationEntity.java` | 1:N | 3 张表；⚠️ B 侧手写的 `JsonbMapTypeHandler` **无法**用共享层的 `common/.../JsonbTypeHandler.java` 顶替 —— 后者是 **jsonb 列 ↔ `String`**（`BaseTypeHandler<String>`），而 B 侧那份是 **jsonb 列 ↔ `Map<String,String>`** ⇒ **类型不兼容** ⇒ 本域保留域内副本 `mapper/JsonbMapTypeHandler.java`（见 §1.5 + §4） |
 | `message-rpc/.../mapper/ConversationMapper.java` + `mapper/ConversationMessageMapper.java` + `mapper/NotificationMapper.java` + `resources/db/migration/V1..V5*.sql` | `service/message/src/main/java/com/rag/message/mapper/ConversationMapper.java` + `service/message/src/main/java/com/rag/message/mapper/ConversationMessageMapper.java` + `service/message/src/main/java/com/rag/message/mapper/NotificationMapper.java` + `resources/db/migration/`（**当前仅 `.gitkeep`**） | 1:N | ⚠️ C 侧 DDL 目录**是空的**；设计文档 §5.2 要求的 `wiring/MessageSchemaInitializer.java`（幂等 DDL 重放）在 C 侧**不存在**（见 §7 缺口清单） |
 | `message-rpc/.../metrics/MessageMetrics.java` | `service/message/src/main/java/com/rag/message/metrics/MessageRpcMetrics.java` | 1:1 | 5 个指标 `message_rpc_*` |
-| — | `service/message/src/main/java/com/rag/message/metrics/MessageMetrics.java` | C 新增 | ⚠️ C 侧**多出一个空壳** `MessageMetrics.java`，与 `MessageRpcMetrics.java` 职责重叠（后者已列全 5 个指标名）⇒ 待清理或明确分工 |
+| — | `service/message/src/main/java/com/rag/message/metrics/MessageMetrics.java` | C 新增 | ✅ **已明确分工（2026-11-02）**：本类是**两个具体指标类的共享基座**（namespace 前缀常量 + `MeterRegistry` 注册公共方法 + 标签键常量）；`MessageApiMetrics` 承载 3 个 `message_api_*`、`MessageRpcMetrics` 承载 5 个 `message_rpc_*` ⇒ **职责重叠已消除，且不留空壳**（空壳在 A1–A13 断言里算 PENDING） |
 | `message-api/.../client/MessageRpcClient.java` | `—（C 侧无对应手写文件）` | N:1 | D2 域内 api→rpc 改直连 ⇒ 域内 stub 无调用点；stub 仅作为对外契约留在根级 `proto/` 的生成物里 |
 | `message-proto/`（`message.proto` + 生成物） | `service/message/src/main/java/com/rag/message/contract/`（`message.proto` + 生成物） | 1:1 | `.proto` 与 B 侧逐字一致（只差 `option java_package`）；生成物**不计入 C 列 51 个手写 `.java`** |
 | `message-rpc/.../exception/MessageExceptions.java` | `service/message/src/main/java/com/rag/message/exception/MessageExceptions.java` | 1:1 | B 侧把 DB 错误包成 unchecked exception（`DbSelectException` / `DbUpdateException` / `TransactionRollbackException` / `DatabaseException`）⇒ **C 侧沿用同款 4 个内部类** |
@@ -202,17 +202,17 @@
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|
-| `message-common/.../errmsg/MessageErrorCode.java` + `MessageErrorMessages.java` + `MessageGrpcError.java` | `service/users/common/src/main/java/com/rag/users/common/ErrCodes.java` + `ErrMsg.java` + `CodeError.java` + `GrpcErrorMapper.java` | 1:N | ⚠️ **文案是英文**（`"service busy"` / `"internal server error"` / `"unauthorized"`）⇒ 与 article / comment / favorite / like / user 域的中文文案**逐域隔离，不可统一化**；C 侧 4 个类的 javadoc 已把这条写成硬约束 |
+| `message-common/.../errmsg/MessageErrorCode.java` + `MessageErrorMessages.java` + `MessageGrpcError.java` | `service/message/src/main/java/com/rag/message/contract/ErrCodes.java` + `ErrMsg.java` + `CodeError.java` + `GrpcErrorMapper.java` | 1:N | ⚠️ **文案是英文**（`"service busy"` / `"internal server error"` / `"unauthorized"`）⇒ 与 article / comment / favorite / like / user 域的中文文案**逐域隔离，不可统一化**；C 侧 4 个类的 javadoc 已把这条写成硬约束（⚠️ 本行旧版把 C 路径误写成 `service/users/common/...` ⇒ 那是 **users 域**的路径，message 域的错误契约在**域内 `contract/` 包**（D7）· 核对日期 2026-11-02） |
 | `MessageGrpcError.CodeError`（内部类） | `service/message/src/main/java/com/rag/message/contract/CodeError.java`（顶层类） | 1:1 | C 把它提到顶层 ⇒ 与 C 侧统一错误模型（`BusinessException`）并存 |
 | `MessageGrpcError.bizCodeFromError(Throwable)` | `service/message/src/main/java/com/rag/message/contract/GrpcErrorMapper.java` | 1:1 | 反查顺序：先按 message 反查 code → 查不到才按 gRPC 标准码 fallback（`InvalidArgument→5003` / `Unauthenticated→5004` / `PermissionDenied→5005` / `AlreadyExists→5006` / `NotFound→5002` / `Internal→5001` / default→`1015`） |
 | `MessageGrpcError.grpcError(Status.Code, int)` | `service/message/src/main/java/com/rag/message/contract/GrpcErrorMapper.java` | 1:1 | B 侧是 `MessageGrpcError.grpcError(grpcCode, bizCode)` —— **业务码塞进 gRPC status 的 description 字段** |
-| `MessageErrorMessages`（静态 map） | `service/users/common/src/main/java/com/rag/users/common/ErrMsg.java` | 1:1 | 22 条文案逐字照抄 B 侧 |
-| `MessageErrorCode`（enum，21 常量 + `SUCCESS`） | `service/users/common/src/main/java/com/rag/users/common/ErrCodes.java` | 1:1 | 见 §6 码值表 |
+| `MessageErrorMessages`（静态 map） | `service/message/src/main/java/com/rag/message/contract/ErrMsg.java` | 1:1 | **20 条**文案逐字照抄 B 侧 |
+| `MessageErrorCode`（enum，**20 常量**） | `service/message/src/main/java/com/rag/message/contract/ErrCodes.java` | 1:1 | 见 §6 码值表（⚠️ 本表旧版写「21 常量 + SUCCESS」与「22 个码」= **计数错**，B 侧实测 **20 个常量**；已按 D16「B 侧为准」更正 —— 核对日期 2026-11-02） |
 
 **1.4 决策锁**
 
 **换「错误契约逐域隔离」（C 新增约束，4 处同时改）**：
-1. `ErrCodes.java` 只放 message 域的 22 个码，**不引入共享基座**；
+1. `ErrCodes.java` 只放 message 域的 **20 个**码（⚠️ 旧版写「22 个」= 计数错，B 侧实测 20 个常量 ⇒ 按 D16 更正 · 核对日期 2026-11-02），**不引入共享基座**；
 2. `ErrMsg.java` 只放 message 域的英文文案，**不与中文域合并**；
 3. `GrpcErrorMapper.java` 的 fallback 表按 message 域的码值空间写死；
 4. `CodeError.java` 保持 `{code,msg}` 双角色（error + JSON 体）。
@@ -227,7 +227,7 @@
 |---|---|---|
 | `message-api/.../config/GoStyleMapStringValueDeserializer.java` | `common/src/main/java/com/rag/common/web/MapStringValueDeserializer.java` | 1:1 | D3：下沉到根级 starter |
 | `message-api/.../config/MessageGoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/Coercion.java` + `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java` | 1:N | 同上；C 侧改成 **Jackson 2** 的 `CoercionConfig` 装配点（D14：全项目 = Jackson 2 + Boot 3.5）|
-| `message-rpc/.../mapper/JsonbMapTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | 1:1 | 同上 |
+| `message-rpc/.../mapper/JsonbMapTypeHandler.java` | `service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java` | 1:1 | ⚠️ **本表旧版写「→ `common/.../JsonbTypeHandler.java`（D3 上提）」= 不成立**：共享层那份是 **jsonb ↔ `String`**（`BaseTypeHandler<String>`），B 侧这份是 **jsonb ↔ `Map<String,String>`** ⇒ **类型不兼容**，顶替会编译不过。共享层是**收口域**写权（AGENTS.md §五.3 规则 3）⇒ 本 lane **不得改 `common/`** ⇒ 域内保留照抄副本，并登记为待收口项（核对日期 2026-11-02） |
 | `message-rpc/.../config/MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | 1:1 | B 侧 9 份副本 → C 侧 1 份（D3 的直接账单） |
 | `service/common/.../response/Response.java` | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | 1:1 | 共享层整体下沉；**信封是 L1，不能换成 `ProblemDetail`** |
 | `service/common/.../observability/` | `common/src/main/java/com/rag/common/observability/`（3 类：Observation + `GoStyleRequestDeadline` + `ObservabilityCustomizer`） | 1:N | Micrometer `Observation` + OTel bridge 吸收 |
@@ -243,7 +243,7 @@
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|
-| `message-api/…/auth/MessageJwtAuthFilter.java` ＋ `message-api/…/auth/MessageJwtSignatureVerifier.java` | `service/message/src/main/java/com/rag/message/interceptor/MessageJwtAuthInterceptor.java` ＋ `service/message/src/main/java/com/rag/message/interceptor/MessageAdminJwtAuthInterceptor.java` | 1:N | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-MESSAGEAPI-009②`）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 2 个 `HandlerInterceptor`**（user / admin 各一）⇒ 🔴 **C 侧缺口**：要么补 Filter 承载验签，要么显式登记为签字偏离。⚠️ **两把 key（`UserAuth.AccessSecret` / `AdminAuth.AccessSecret`）＋ 两段路由表是 L1**；⚠️ user 拦截器必须 `excludePathPatterns("/message/v1/admin/**")`，否则 admin token 会被 user key 先拒一遍 |
+| `message-api/…/auth/MessageJwtAuthFilter.java` ＋ `message-api/…/auth/MessageJwtSignatureVerifier.java` | `service/message/src/main/java/com/rag/message/interceptor/MessageJwtAuthInterceptor.java` ＋ `service/message/src/main/java/com/rag/message/interceptor/MessageAdminJwtAuthInterceptor.java` | 1:N | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-MESSAGEAPI-009②`）：B 侧 `MessageJwtAuthFilter`（**Servlet Filter**）先验一次、**只记录不写响应**、无条件放行（来源标记 `SOURCE_FILTER` = 「验签在 **3s 预算之外**」）；最终 401 由 `HandlerInterceptor` 抛，**该处会再兜底验签一次**（来源标记 `SOURCE_INLINE` = 「验签在 **3s 预算之内**」）⇒ ⇒ **B 侧验签执行两次（预算外 + 预算内）** ⇒ C 侧**只有 2 个 `HandlerInterceptor`**（user / admin 各一）⇒ ⇒ **C 侧验签执行一次（只在预算内）** ⇒ 🔴 **C 侧缺口**：验签**次数**面与 B 侧不同（响应面逐条相同：401 + 空 body）⇒ 已**显式登记为签字偏离**（配套报告 §六·6-6 · 2026-11-02 已更正「B 侧在预算外」的不准确表述）。<br>⚠️ **2026-11-02 补记**：本域 `application.yml` 曾**完全没有 `observability` 段** ⇒ 3s HTTP 预算与 2s gRPC 超时**都不存在**（缺省即 `Duration.ZERO` = 不限时）⇒ 已补 `http-timeout: 3s` ＋ `rpc-timeout: 2s`（B 侧逐字对齐）⇒ **预算本身现已存在**（配套报告 §五·5-⑩）。⚠️ **两把 key（`UserAuth.AccessSecret` / `AdminAuth.AccessSecret`）＋ 两段路由表是 L1**；⚠️ user 拦截器必须 `excludePathPatterns("/message/v1/admin/**")`，否则 admin token 会被 user key 先拒一遍 |
 
 ---
 
@@ -253,7 +253,7 @@
 |---|---|---|---|
 | ORM | MyBatis-Plus `BaseMapper<Entity>` + `LambdaQueryWrapper` | 同 B | D4「生态优先」 |
 | 实体注解 | `@TableName` + `@TableId(type=IdType.ASSIGN_ID)` + `@TableField` | 同 B | 表名/列名显式声明 |
-| JSONB 列 | `JsonbMapTypeHandler`（手写 `BaseTypeHandler`） | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | ⚠️ **不能用 MP 自带 `JacksonTypeHandler`**：它走 `ps.setString()` ⇒ PG 收到 VARCHAR ⇒ 写 `jsonb` 列被拒 |
+| JSONB 列 | `JsonbMapTypeHandler`（手写 `BaseTypeHandler`） | `service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java`（**域内照抄 B 侧**） | ⚠️ **不能用 MP 自带 `JacksonTypeHandler`**：它走 `ps.setString()` ⇒ PG 收到 VARCHAR ⇒ 写 `jsonb` 列被拒。⚠️ 也**不能**用共享层的 `common/.../JsonbTypeHandler.java`（jsonb ↔ `String`，类型不兼容）⇒ 域内保留 `Map<String,String>` 版 |
 | Schema 演进 | Flyway `V1..V5`（`table: flyway_schema_history_message` 独立账本，`baseline-version: 0`） | 幂等 DDL 重放（`resources/db/migration/`，**当前为空**） | ⚠️ **C 侧 DDL 脚本还没落地** |
 | 建表责任 | message-rpc 独占（Flyway） | 待定（设计文档 §5.2 指向 `MessageSchemaInitializer`，**文件不存在**） | 共享库共存问题见 `RAG/docs/DRIFT/_cross/` |
 | 雪花 ID | `SnowflakeBean` 注入（`common` starter） | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration` | epoch/位段是契约 |
@@ -267,19 +267,23 @@
 
 **2 决策锁**
 
-**换「Flyway ⇒ 幂等 DDL 重放」（3 处同时改）**：
-1. `service/message/src/main/resources/db/migration/` 补 3 张表的建表脚本 + 索引（**当前只有 `.gitkeep`**）；
-2. 新增 `wiring/MessageSchemaInitializer.java`（**当前 C 侧不存在**）执行幂等重放；
-3. `application.yml` 去掉 Flyway 相关配置，改为 `SchemaInitializer` 装配。
+**换「B 侧 Flyway 配置照抄 + 独立账本表名」（3 处同时改 · 2026-11-02 落地）**：
+1. `service/message/src/main/resources/db/migration/` 落地 **V1~V5 五个脚本**（**逐字节照抄 B 侧** `message-rpc/src/main/resources/db/migration/`，已 `cmp` 校验 IDENTICAL）；
+2. **不新增** `wiring/MessageSchemaInitializer.java`（本表旧版要求新建 = **已撤销**，见下方「为什么这么定」）；
+3. `application.yml` **保留并补全** `spring.flyway` 段：`table: flyway_schema_history_message` + `baseline-on-migrate: true` + **`baseline-version: 0`** + `locations: classpath:db/migration` + `schemas: public`。
 
-**为什么换**：B 侧的 Flyway 是「一次性迁移 + **schema 级账本**」，而 message 与 like / article 共用同一个 `first_db` / `public` schema ⇒ 账本会撞号（`RAG` 的 AGENTS.md §6.3 问题 4）。幂等重放**没有账本** ⇒ 不撞号。
+**为什么这么定（推翻本表旧版「Flyway ⇒ 幂等 DDL 重放」）**：
+- **旧版决策的三个前提已经变了**：① `service/message/pom.xml` **本来就引了** `flyway-core` + `flyway-database-postgresql`（文件树与 pom 都保留 Flyway）⇒ 「去掉 Flyway 配置」与文件树冲突；② AGENTS.md §六 写明「**其余 7 域**待拍板」时给的候选就是「**B 侧做法 = 各域独立账本表名 + `baseline-on-migrate: true` + `baseline-version: 0` 必钉**」⇒ **照抄 B 侧**才是与 AGENTS.md 一致的那个候选；③ **users 域弃用 Flyway 是因为 B 侧 users 自己就用的是 `SchemaInitializer`**（D17「照抄 B 侧」）⇒ **message 域的 B 侧用的是 Flyway** ⇒ 按 D16「B 侧是唯一 oracle」应当**照抄 Flyway**，而不是照抄 users 的形态。
+- **独立账本表名已经把「撞号」这个原始病灶消掉了**：`flyway_schema_history` 是 schema 级账本，而本域改用 `flyway_schema_history_message` ⇒ 与 like / article 的账本**互不干扰** ⇒ 「幂等重放」这个替代方案**不再必要**。
+- ⚠️ **`baseline-version: 0` 是硬要求**（B 侧 2026-10-24 实测修掉的真缺陷）：非空 schema + 默认 `baseline-version=1` ⇒ baseline 打在 V1 ⇒ **V1 的 SQL 从未执行** ⇒ `message_notification` 表永远建不出来 ⇒ 服务起不来。`baseline-version: 0` ⇒ baseline 打在 version 0 ⇒ **V1 之后全部迁移照常执行**。
+- ⚠️ 本条与 `docs/File_Tree/message.md`（**文件树 = 权威**）一致：文件树里 `wiring/` 只有 `NacosRegistration.java`、`resources/db/migration/` 存在、pom 带 Flyway 依赖 ⇒ **本仓 message 域的落地形态就是 Flyway**。
 
 **换「B 侧 MyBatis-Plus 写法落地到 C 侧」（5 处同时改）**：
 1. `domain/entity/*Entity.java` 换注解（`@TableName` + `@TableId`），字段名不变；
 2. `mapper/*Mapper.java` 继承 `BaseMapper<Entity>`，调用点用 `LambdaQueryWrapper`；
 3. `mapper/GoStylePagination.java` 承担分页子句口径；
-4. `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` 承担 jsonb 列；
-5. 建表来源从 Flyway 改幂等脚本。
+4. `service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java` 承担 jsonb 列（域内照抄 B 侧；共享层那份是 jsonb ↔ `String`，类型不兼容）；
+5. 建表来源 = **B 侧的 V1~V5 Flyway 脚本**（逐字节照抄）⇒ 不改。
 
 **为什么换**：MyBatis-Plus 的 `LambdaQueryWrapper` 比链式 Mapper 更直观，且显式 SQL 可被逐条审；但**写法换掉不等于语义换掉** —— 每条查询条件、排序键、计数口径都必须逐条回到 B 侧源码对照。
 
@@ -342,7 +346,7 @@
 | 观测（http/rpc/mq） | `common/observability/` | `common/src/main/java/com/rag/common/observability/`（3 类） | span 名称/属性需逐条对拍 |
 | 熔断 / CPU 降载 / MaxBytes | `common/protection/` | `common/src/main/java/com/rag/common/protection/`（2 类） | 生态缺口，策略差异属 L3 |
 |日志|`common/logger/`|`common/src/main/java/com/rag/common/logger/`（4 类，SLF4J）|`call_chain` 等是行为契约|
-| JSONB TypeHandler | `message-rpc/.../mapper/JsonbMapTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | **从域内提升到共享层** |
+| JSONB TypeHandler | `message-rpc/.../mapper/JsonbMapTypeHandler.java` | `service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java` | ⚠️ **无法上提到共享层** —— 共享层 `common/.../JsonbTypeHandler.java` 是 **jsonb ↔ `String`**（`BaseTypeHandler<String>`），与 B 侧这份 **jsonb ↔ `Map<String,String>`** **类型不兼容** ⇒ 域内保留照抄副本（待收口域处理） |
 | 整数字段解码（`,string`） | `message-api/.../dto/GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/StringInt64.java` | 同上 |
 | Jackson 类型强转口径 | `message-api/.../config/{GoStyleMapStringValueDeserializer,MessageGoStyleCoercion}.java` | `common/src/main/java/com/rag/common/web/MapStringValueDeserializer.java` + `common/src/main/java/com/rag/common/web/Coercion.java` + `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java` | 同上 |
 | MyBatis-Plus 装配桥 | `message-rpc/.../config/MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | B 侧 9 份副本 → C 侧 1 份 |
@@ -351,7 +355,7 @@
 **4 决策锁**
 
 **换「共享件从域内提到 starter」（D3，6 处同时改）**：
-1. `JsonbMapTypeHandler` → `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java`；
+1. `JsonbMapTypeHandler` → ⚠️ **留在域内** `service/message/.../mapper/JsonbMapTypeHandler.java`（照抄 B 侧）；**不能**上提到 `common/`（共享层那份是 jsonb ↔ `String`，类型不兼容，且 `common/` 是收口域写权）；
 2. `GoStyleStringInt64` → `common/src/main/java/com/rag/common/web/StringInt64.java`；
 3. `GoStyleMapStringValueDeserializer` + `MessageGoStyleCoercion` → `common/src/main/java/com/rag/common/web/`；
 4. `MybatisPlusOrderingBridgeAutoConfiguration` → `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java`；
@@ -389,7 +393,7 @@
 |---|---|---|---|
 | **proto 字段号** | `message.proto` 逐条一致（B 侧与 RAG-V1 两份 `.proto` **只差 `option java_package`**：`com.rag.message.message.proto` → `com.rag.proto.message`） | `service/message/message-proto/src/main/proto/message.proto` | `proto/src/main/proto/message.proto` |
 | ↳ `SendNotificationResp.affected` | `int64 affected = 3;`（**无 `,string`**） | `service/message/message-proto/src/main/proto/message.proto:98`；HTTP 侧 `message-api/.../dto/AdminSendNotificationResp.java:43`（`@JsonFormat(shape = STRING)` ⇒ **B 侧输出 JSON 字符串**） | ⚠️ **B 侧输出 JSON 字符串**（`@JsonFormat(Shape.STRING)`）—— 该形态相对更早的源实现是**已签字的有意偏离**（`SD-2026-10-23-03`，详见 B 侧 javadoc）⇒ C 侧 `service/message/src/main/java/com/rag/message/dto/notification/AdminSendNotificationResp.java` 照抄 B 侧形态。**本表只点明差异存在，不下「该修 / 不该修」的结论** |
-| **错误码** | 22 个常量：`Success=200` / `Error=500` / `CodeServerBusy=1015` / `ErrorServerCommon=5001` / `ErrorNotFound=5002` / `ErrorInvalidParam=5003` / `ErrorUnauthorized=5004` / `ErrorForbidden=5005` / `ErrorAlreadyExist=5006` / `ErrorDbSelect=5007` / `ErrorDbUpdate=5008` / `ErrorUserNotFound=5101` / `ErrorAdminNotFound=5102` / `ErrorSelfChat=5201` / `ErrorConversationMiss=5202` / `ErrorNotificationMiss=5203` / `ErrorChatPending=5204` / `ErrorAdminOnlyInit=5205` / `ErrorFirstMsgTooLong=5206` / `ErrorUnsupportedRole=5207` | `service/message/message-common/src/main/java/com/rag/message/message/common/errmsg/MessageErrorCode.java:25-90` | `service/users/common/src/main/java/com/rag/users/common/ErrCodes.java` |
+| **错误码** | **20 个**常量：`Success=200` / `Error=500` / `CodeServerBusy=1015` / `ErrorServerCommon=5001` / `ErrorNotFound=5002` / `ErrorInvalidParam=5003` / `ErrorUnauthorized=5004` / `ErrorForbidden=5005` / `ErrorAlreadyExist=5006` / `ErrorDbSelect=5007` / `ErrorDbUpdate=5008` / `ErrorUserNotFound=5101` / `ErrorAdminNotFound=5102` / `ErrorSelfChat=5201` / `ErrorConversationMiss=5202` / `ErrorNotificationMiss=5203` / `ErrorChatPending=5204` / `ErrorAdminOnlyInit=5205` / `ErrorFirstMsgTooLong=5206` / `ErrorUnsupportedRole=5207`（⚠️ 本行旧版写「22 个常量」而列举的**恰是 20 个** ⇒ 计数错，按 D16 以 B 侧为准更正 · 核对日期 2026-11-02） | `service/message/message-common/src/main/java/com/rag/message/message/common/errmsg/MessageErrorCode.java:25-106` | `service/message/src/main/java/com/rag/message/contract/ErrCodes.java` |
 | **错误文案** | **英文**：`"service busy"` / `"internal server error"` / `"record not found"` / `"invalid parameter"` / `"unauthorized"` / `"forbidden"` / `"already exists"` / `"database query failed"` / `"database update failed"` / `"user not found"` / `"admin not found"` / `"self chat is not allowed"` / `"conversation not found"` / `"notification not found"` / `"waiting for the other side to reply"` / `"only admin can initiate this conversation"` / `"first private message cannot exceed 50 characters"` / `"unsupported sender role"` / `"OK"` / `"FAIL"` | `service/message/message-common/src/main/java/com/rag/message/message/common/errmsg/MessageErrorMessages.java:53-74` | `service/users/common/src/main/java/com/rag/users/common/ErrMsg.java`（⚠️ **逐域隔离，不可与中文域统一**） |
 | **gRPC fallback 码表** | `InvalidArgument→5003` / `Unauthenticated→5004` / `PermissionDenied→5005` / `AlreadyExists→5006` / `NotFound→5002` / `Internal→5001` / `default→1015` | `service/message/message-common/src/main/java/com/rag/message/message/common/errmsg/MessageGrpcError.java:255-271`（`mapStatusCodeToBizCode`） | `service/message/src/main/java/com/rag/message/contract/GrpcErrorMapper.java` |
 | **JWT claims** | `userId`（小写 u、驼峰）；claim 取值失败 ⇒ `ErrorUnauthorized(5004)` | `service/message/message-api/src/main/java/com/rag/message/message/api/interceptor/AbstractMessageJwtAuthInterceptor.java:70, 114` + `message-api/.../service/MessageApiSupport.java:85` | `service/message/src/main/java/com/rag/message/interceptor/*.java`（写 request attribute）+ `service/message/src/main/java/com/rag/message/service/MessageApiSupport.java`（取用） |
@@ -400,7 +404,7 @@
 | ↳ ⚠️ C 侧 javadoc 与 B 侧不一致 | C 侧两个 Controller 的 javadoc 写的是 `/message/v1/conversation/list`、`/notification/read/all`、`/unread/summary`、`/chat/send`，并把 admin 的 `conversation/list` 与 `conversation/messages` 标成 `GET` —— **与 B 侧源码逐条不符**（B 侧是复数 `/conversations/*`、`/notifications/*`，`/unread` 是 GET，admin 组 5 个端点**全是 POST**） | 同上 | ⚠️ 实现时以 B 侧为准；这两段 javadoc 需要更正 |
 | **Kafka topic** | **无 —— message 域完全不涉及 MQ。** B 侧 `service/message/**` 对 `kafka` / `kqueue` / `mq` 的引用数为 **0** | `grep -rln "org.apache.kafka\|springframework.kafka" service/message/` ⇒ 0 命中 | 无对应物 |
 | ↳ comment 域 MQ 载荷的归属澄清 | B 侧 comment 域的 MQ 载荷契约是 **`service/comment/comment-rpc/src/main/java/com/rag/comment/comment/rpc/service/CommentAuditMessage.java`**（**不在 message 域目录下**），topic 定义在 `comment-rpc/.../config/CommentKafkaTopics.java` ⇒ 它是 comment 域的域内 MQ 契约，**message 域既不定义也不引用** | `service/comment/comment-rpc/src/main/java/com/rag/comment/comment/rpc/service/CommentAuditMessage.java:52` | 无对应物（不属 message 域） |
-| **指标名（api 3 个）** | `message_api_request_total{route,result}` / `message_api_reject_total{route,reason}` / `message_api_request_duration_seconds{route}`（Histogram，`DefBuckets`） | `service/message/message-api/src/main/java/com/rag/message/message/api/metrics/MessageApiMetrics.java:53-57` | `service/message/src/main/java/com/rag/message/metrics/MessageApiMetrics.java` |
+| **指标名（api 3 个）** | `message_api_request_total{route,result}` / `message_api_reject_total{route,reason}` / `message_api_request_duration_seconds{route}`（⚠️ **B 侧 Java 未钉桶** ⇒ Micrometer 默认桶 ⇒ Prometheus 导出为 **summary**（`_count`/`_sum`/`_max`），**没有** `_bucket` 系列；**与 Go 的 `DefBuckets` 直方图形状不同 —— 这是 B 侧自带的差异，C 侧逐字继承，不回溯 Go** · 核对日期 2026-11-02） | `service/message/message-api/src/main/java/com/rag/message/message/api/metrics/MessageApiMetrics.java:81-84` | `service/message/src/main/java/com/rag/message/metrics/MessageApiMetrics.java` |
 | **指标名（rpc 5 个）** | `message_rpc_request_total{method,result}` / `message_rpc_request_duration_seconds{method}` / `message_rpc_notification_action_total{kind,result}` / `message_rpc_chat_action_total{action,result}` / `message_rpc_db_error_total{action,type}` | `service/message/message-rpc/src/main/java/com/rag/message/message/rpc/metrics/MessageMetrics.java:45-57` | `service/message/src/main/java/com/rag/message/metrics/MessageRpcMetrics.java` |
 | **gRPC 方法（9 个）** | `SendNotification` / `ListNotifications` / `MarkNotificationRead` / `MarkAllNotificationsRead` / `GetUnreadSummary` / `ListConversations` / `GetConversationMessages` / `SendChatMessage` / `MarkConversationRead` | `service/message/message-rpc/src/main/java/com/rag/message/message/rpc/service/impl/MessageRpcServiceImpl.java:72-113`（9 个 `@Override`） | `service/message/src/main/java/com/rag/message/grpc/MessageGrpcService.java`（9 个 override） |
 | **枚举** | `NotificationKind`（UNSPECIFIED=0 / ADMIN_BROADCAST=1 / ADMIN_NOTICE=2 / ARTICLE_COMMENT=3 / COMMENT_REPLY=4 / ARTICLE_PUBLISHED=5 / ARTICLE_LIKED=6）· `SenderRole`（UNSPECIFIED=0 / USER=1 / ADMIN=2 / SYSTEM=3）· `ConversationStatus`（UNSPECIFIED=0 / PENDING=1 / OPEN=2） | `service/message/message-proto/src/main/proto/message.proto:7-28` | `proto/src/main/proto/message.proto:7-28` |
@@ -418,16 +422,19 @@
 ```bash
 find "/Users/pr/Documents/GitHub/RAG-V1/service/message" -name '*.java' \
   -not -path '*/src/test/*' -not -path '*/target/*' | xargs -n1 basename | sort -u | wc -l
-# ⇒ 52
+# ⇒ 53
 ```
 
-**逐条落位（52 / 52 = 100%）**
+> 📌 **2026-11-02**：旧版自报 **52** ⇒ 本轮新增 `mapper/JsonbMapTypeHandler.java`（B 侧同名文件的**域内照抄副本**，见 §1.5 / §4）⇒ **53**。
+> ⚠️ 该文件**不**计入「proto 生成物」—— 它是手写源码。
+
+**逐条落位（53 / 53 = 100%）**
 
 | # | C 列文件 | 落位小节 |
 |---|---|---|
 | 1 | `service/message/src/main/java/com/rag/message/contract/CodeError.java` | §1.4 |
-| 2 | `service/users/common/src/main/java/com/rag/users/common/ErrCodes.java` | §1.4 |
-| 3 | `service/users/common/src/main/java/com/rag/users/common/ErrMsg.java` | §1.4 |
+| 2 | `service/message/src/main/java/com/rag/message/contract/ErrCodes.java` | §1.4 |
+| 3 | `service/message/src/main/java/com/rag/message/contract/ErrMsg.java` | §1.4 |
 | 4 | `service/message/src/main/java/com/rag/message/contract/GrpcErrorMapper.java` | §1.4 |
 | 5 | `service/message/src/main/java/com/rag/message/MessageServiceApplication.java` | §1.1 / §1.3 |
 | 6 | `service/message/src/main/java/com/rag/message/advice/MessageApiExceptionHandler.java` | §1.1 |
@@ -471,12 +478,13 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/message" -name '*.java' \
 | 44 | `service/message/src/main/java/com/rag/message/mapper/ConversationMessageMapper.java` | §1.3 |
 | 45 | `service/message/src/main/java/com/rag/message/mapper/GoStylePagination.java` | §1.3 |
 | 46 | `service/message/src/main/java/com/rag/message/mapper/NotificationMapper.java` | §1.3 |
-| 47 | `service/message/src/main/java/com/rag/message/metrics/MessageMetrics.java` | §1.3（C 新增 · 空壳重叠） |
+| 47 | `service/message/src/main/java/com/rag/message/metrics/MessageMetrics.java` | §1.3（C 新增 · **共享基座**，2026-11-02 明确分工） |
 | 48 | `service/message/src/main/java/com/rag/message/metrics/MessageRpcMetrics.java` | §1.3 |
 | 49 | `service/message/src/main/java/com/rag/message/domain/service/MessageAtomicService.java` | §1.3 |
 | 50 | `service/message/src/main/java/com/rag/message/domain/service/MessageDomainService.java` | §1.3 |
 | 51 | `service/message/src/main/java/com/rag/message/service/MessageRpcSupport.java` | §1.3 |
 | 52 | `service/message/src/main/java/com/rag/message/grpc/MessageGrpcService.java` | §1.3 |
+| 53 | `service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java` | §1.5 / §4（**2026-11-02 新增**：B 侧 `message-rpc/.../mapper/JsonbMapTypeHandler.java` 的**域内照抄副本**；共享层 `common/.../JsonbTypeHandler.java` 是 jsonb ↔ `String`，**类型不兼容** ⇒ 不可顶替） |
 
 > **不计入分母**：proto 生成物（根级 `proto/` 模块的 `target/generated-sources/**`）与 `target/classes/**` 下的 `.class` —— 它们不是手写源码。
 
@@ -505,7 +513,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/message" -name '*.java' \
 > 📌 **主要落点**：`1:1` = 入口 / 配置 / Metrics / Entity / Mapper（4 个）/ DTO（17 个逐条）/ proto / 错误契约 / `MessageApiSupport` / `MessageRpcSupport` / `MessageAtomicService`；
 > `1:N` = ① **一组路由 → 两组 JWT**（§1.1）② 13 个 handler → 2 个 Controller（2 行）③ DTO 17 个类 → 17 个 record（1 行文件级）④ `errmsg/` 3 个类 → 4 个契约类 + `CodeError` + `GrpcErrorMapper`（4 行）⑤ `MessageDomainService` + 3 个 Mapper → 4 Mapper + `MessageAtomicService` ⑥ 3 个 Mapper + Flyway 脚本 → 3 Mapper + DDL ⑦ `MessageApiProperties`（api 侧）→ Properties + yaml ⑧ `MessageProperties`（rpc 侧）→ Properties ⑨ rpc 侧 `ServiceContext` 的 2 个跨域 client ⑩ `MessageRpcApplication` → 入口 + Nacos ⑪ `message-api` 的 2 个 advice ⑫ B 侧 `MessageGoStyleCoercion` → `common/src/main/java/com/rag/common/web/Coercion` + `JsonBodyConverterAutoConfiguration`；
 > `N:1` = ① 8 个 user `*Service` → `MessageApiService` ② 5 个 admin `*Service` → `MessageApiService` ③ 9 个 rpc 用例 → `MessageDomainService` ④ `message-api/.../client/MessageRpcClient.java`（域内 stub 随 D2 消失）→ C 侧无手写文件 ⑤ `AbstractMessageApiService` → `MessageApiService` ⑥ `service/common`（跨域共享信封 + 异常基类）→ C 根级 `common/` 4 个类；
-> `C 新增` = ① `rpc/metrics/MessageMetrics.java`（与 `MessageRpcMetrics` 重叠的空壳）。
+> `C 新增` = ① `rpc/metrics/MessageMetrics.java`（**2026-11-02 定为两个指标类的共享基座**，消除与 `MessageRpcMetrics` 的职责重叠）。
 >
 > ✅ §1 全部映射行均填了映射类型，且只用 4 种合法词（机器核对：`illegal types = ∅`；**核对日期 2026-11-02 · D16 重算**）。
 
@@ -515,11 +523,11 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/message" -name '*.java' \
 
 | # | 位置 | 现象 | 影响面 |
 |---|---|---|---|
-| 1 | C 侧 `api/controller/MessageController.java` + `MessageAdminController.java` 的 javadoc | 路由清单写成 `/message/v1/conversation/list`、`/notification/read/all`、`/unread/summary`、`/chat/send`，并把 admin 的 `conversation/list` 与 `conversation/messages` 标成 `GET`；**B 侧是复数 `/conversations/*`、`/notifications/*`，`/unread` 是 GET，admin 组 5 个端点全是 POST** | **L1 路由契约**；若照 javadoc 实现即产生 wire 漂移 |
+| 1 | C 侧 `api/controller/MessageController.java` + `MessageAdminController.java` 的 javadoc | ✅ **已关闭（2026-11-02）**：路由清单已按 **B 侧源码**重写 —— 复数 `/conversations/*`、`/notifications/*`，`/unread` 是 **GET**，admin 组 5 个端点**全是 POST**（方法分布 **GET 1 + POST 12**） | **L1 路由契约**已对齐 B 侧（由真 Tomcat 契约测试逐条钉住） |
 | 2 | C 侧 `api/interceptor/` | ✅ **已关闭（2026-11-01）**：B 侧的 `AbstractMessageJwtAuthInterceptor`（两份 JWT 逻辑的共享基类）在 C 侧**已有落点** `service/message/src/main/java/com/rag/message/interceptor/AbstractMessageJwtAuthInterceptor.java` | 安全边界各自演化的风险已消除（⚠️ 实现时两个子类**必须继承**它，否则基类空转） |
-| 3 | C 侧 `rpc/metrics/` | `MessageMetrics.java`（空壳）与 `MessageRpcMetrics.java`（已列全 5 个指标）职责重叠 | 指标名可能双份定义、漂移 |
-| 4 | C 侧 `wiring/` | 设计文档 §5.2 要求的 `MessageSchemaInitializer.java`（幂等 DDL 重放）**不存在**；`resources/db/migration/` 只有 `.gitkeep` | 3 张表没有建表来源 ⇒ 服务起不来（**B 侧的 Flyway 建表职责在 C 侧无对应物**） |
-| 5 | C 侧 `rpc/service/` | `MessageDomainService` 的 9 个用例**尚未与 `api/service/MessageApiService` 划清边界**（谁做业务规则、谁做编排） | 合并后职责边界易糊 |
-| 6 | C 侧 `service/message/src/main/java/com/rag/message/contract/` | `CodeError` / `ErrCodes` / `ErrMsg` / `GrpcErrorMapper` 与根级 `common/src/main/java/com/rag/common/contract/ApiResponse` + `common/src/main/java/com/rag/common/exception/BusinessException` 的关系未标定 | 统一错误模型（D2 附带）落地时会双轨 |
+| 3 | C 侧 `rpc/metrics/` | ✅ **已关闭（2026-11-02）**：`MessageMetrics.java` 定为**共享基座**（namespace 前缀常量 + `MeterRegistry` 注册公共方法 + 标签键常量），`MessageApiMetrics`（3 个 `message_api_*`）与 `MessageRpcMetrics`（5 个 `message_rpc_*`）各自承载自己的指标 ⇒ **职责重叠消除**，且**不留空壳**（空壳在 A1–A13 断言里算 PENDING） | 指标名不再双份定义 |
+| 4 | C 侧 `wiring/` | ✅ **已关闭（2026-11-02 · 口径改判）**：**不新增** `MessageSchemaInitializer.java`；建表来源 = **B 侧 V1~V5 Flyway 脚本逐字节照抄**（已 `cmp` 校验 IDENTICAL）+ `application.yml` 补 `spring.flyway` 段（**独立账本表名 `flyway_schema_history_message`** + `baseline-on-migrate: true` + **`baseline-version: 0`**）⇒ 见 §2 决策锁「为什么这么定」 | 3 张表有建表来源；**独立账本**消除与 like / article 的账本撞号 |
+| 5 | C 侧 `rpc/service/` | ✅ **已关闭（2026-11-02）**：边界划定 = **`MessageDomainService`（9 用例 · 业务规则 · HTTP 与 gRPC 共享）** ↔ **`MessageApiService`（13 用例 · 编排：身份解析 → 硬编码 role → 调领域层 → 投影 DTO → 埋点）** ↔ **`MessageRpcSupport` / `MessageAtomicService` / `GoStylePagination`（协作者与事务边界，保持独立）** | 合并后职责边界已定 |
+| 6 | C 侧 `service/message/src/main/java/com/rag/message/contract/` | ✅ **已关闭（2026-11-02）**：`contract/` = **域内错误契约**（`ErrCodes` 20 码 / `ErrMsg` 20 条英文文案 / `CodeError` / `GrpcErrorMapper`，**逐域隔离不共享**）；`common/contract/ApiResponse` = **HTTP 信封**（`{code,msg,data}`）；`common/exception/BusinessException` = **业务异常基类**（域内**不重复定义**）⇒ **三层不重叠** | 统一错误模型（D2 附带）无双轨 |
 | 7 | 任务简报中的前提 | B 侧 comment 域的 MQ 载荷契约是 **`service/comment/comment-rpc/.../service/CommentAuditMessage.java`**（comment 域），topic 定义在 `comment-rpc/.../config/CommentKafkaTopics.java`；**B 侧 `service/message/**` 对 MQ 的引用数为 0**（无 `org.apache.kafka` / `springframework.kafka` 依赖） | 本表据此把 Kafka topic 记为「无」；**message 域无 MQ 契约** |
 | 8 | C 侧 `api/dto/AdminSendNotificationResp.java` | `affected` 的 JSON 形态：**B 侧 = 字符串**（`@JsonFormat(Shape.STRING)`，**已签字偏离 `SD-2026-10-23-03`**）⇒ C 侧照抄 B 侧形态 | 本表只点明差异，**不表结论**；proto 侧两侧均为 `int64 affected = 3`（无 `,string`） |
