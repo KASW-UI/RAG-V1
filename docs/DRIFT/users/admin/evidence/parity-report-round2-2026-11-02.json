@@ -1,0 +1,199 @@
+{
+  "S1_concurrency": {
+    "B": {
+      "statuses": [
+        "200",
+        "200",
+        "200",
+        "200",
+        "200"
+      ],
+      "codes": [
+        "1016",
+        "1016",
+        "1016",
+        "1016",
+        "200"
+      ],
+      "created_rows": "1",
+      "invite_used": "true",
+      "invite": "ADM-318AD54BC6F52D41"
+    },
+    "C": {
+      "statuses": [
+        "200",
+        "200",
+        "200",
+        "200",
+        "200"
+      ],
+      "codes": [
+        "1016",
+        "1016",
+        "1016",
+        "1016",
+        "200"
+      ],
+      "created_rows": "1",
+      "invite_used": "true",
+      "invite": "ADM-93A39318C3B037A9"
+    }
+  },
+  "S2_rollback": {
+    "B": {
+      "status": 200,
+      "code": 1001,
+      "body": "{\"code\":1001,\"msg\":\"用户名已存在\",\"data\":null}",
+      "new_admin_rows": "0",
+      "invite_used_at": "<NULL>"
+    },
+    "C": {
+      "status": 200,
+      "code": 1001,
+      "body": "{\"code\":1001,\"msg\":\"用户名已存在\",\"data\":null}",
+      "new_admin_rows": "0",
+      "invite_used_at": "<NULL>"
+    }
+  },
+  "S3a_redis_down": {
+    "B": {
+      "status": 200,
+      "code": 200,
+      "body": "{\"code\":200,\"msg\":\"OK\",\"data\":{\"admin\":{\"email\":\"\",\"uid\":\"2117256538443407360\",\"username\":\"admin\"}}}"
+    },
+    "C": {
+      "status": 200,
+      "code": 200,
+      "body": "{\"code\":200,\"msg\":\"OK\",\"data\":{\"admin\":{\"uid\":\"2117256543600091136\",\"username\":\"admin\",\"email\":\"\"}}}"
+    }
+  },
+  "S3b_pg_down": {
+    "B": {
+      "status": 200,
+      "code": 1015,
+      "body": "{\"code\":1015,\"msg\":\"服务繁忙\",\"data\":null}"
+    },
+    "C": {
+      "status": 503,
+      "code": null,
+      "body": "Request Timeout\n"
+    }
+  },
+  "S4_timeout": {
+    "B": {
+      "status": 200,
+      "code": 1015,
+      "elapsed_s": 2.03,
+      "body": "{\"code\":1015,\"msg\":\"服务繁忙\",\"data\":null}"
+    },
+    "C": {
+      "status": 503,
+      "code": null,
+      "elapsed_s": 3.03,
+      "body": "Request Timeout\n"
+    }
+  },
+  "verdicts": {
+    "S1_并发_响应码分布": {
+      "same": true,
+      "B": {
+        "codes": [
+          "1016",
+          "1016",
+          "1016",
+          "1016",
+          "200"
+        ],
+        "statuses": [
+          "200",
+          "200",
+          "200",
+          "200",
+          "200"
+        ]
+      },
+      "C": {
+        "codes": [
+          "1016",
+          "1016",
+          "1016",
+          "1016",
+          "200"
+        ],
+        "statuses": [
+          "200",
+          "200",
+          "200",
+          "200",
+          "200"
+        ]
+      }
+    },
+    "S1_并发_最终状态": {
+      "same": true,
+      "B": {
+        "created_rows": "1",
+        "invite_used": "true"
+      },
+      "C": {
+        "created_rows": "1",
+        "invite_used": "true"
+      }
+    },
+    "S2_回滚_响应面": {
+      "same": true,
+      "B": {
+        "status": 200,
+        "code": 1001
+      },
+      "C": {
+        "status": 200,
+        "code": 1001
+      }
+    },
+    "S2_回滚_事务原子性": {
+      "same": true,
+      "B": {
+        "new_admin_rows": "0",
+        "invite_used_at": "<NULL>"
+      },
+      "C": {
+        "new_admin_rows": "0",
+        "invite_used_at": "<NULL>"
+      }
+    },
+    "S3a_Redis停_响应面": {
+      "same": true,
+      "B": {
+        "status": 200,
+        "code": 200
+      },
+      "C": {
+        "status": 200,
+        "code": 200
+      }
+    },
+    "S3b_PG停_响应面": {
+      "same": false,
+      "B": {
+        "status": 200,
+        "code": 1015
+      },
+      "C": {
+        "status": 503,
+        "code": null
+      }
+    },
+    "S4_超时_响应面": {
+      "same": false,
+      "B": {
+        "status": 200,
+        "code": 1015
+      },
+      "C": {
+        "status": 503,
+        "code": null
+      }
+    }
+  }
+}

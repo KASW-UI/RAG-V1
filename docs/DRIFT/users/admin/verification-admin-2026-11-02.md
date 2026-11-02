@@ -36,7 +36,7 @@
 | jjwt | 0.12.6 | **0.12.6** | 无差异 |
 | MyBatis-Plus | — | **3.5.17** | ⚠️ `MybatisSqlSessionFactoryBean` 已移出 `mybatis-plus-extension`（§5-⑧） |
 | devh grpc | 3.1.0.RELEASE | **3.1.0.RELEASE** | ⚠️ `grpc.client.<X>` 是**通道名 map**（§5-④） |
-| go-zero | **v1.10.2** | —（行为基线） | 本轮所有 B 侧口径均按 **v1.10.2 源码**逐行核对 |
+| go-zero | **v1.10.2**（**语义来源**） | — | ⚠️ **2026-11-02 · E-4 订正**：B 侧实现是 **Java/Boot 4**，go-zero 只是它的**语义来源** ⇒ ⇒ **go-zero 源码只能作语义佐证，不能作行为依据**（§9.4 的教训） |
 | Tomcat | 11.x | **10.1.x** | D14 回退；本域**不用 MockMvc**（§七） |
 | JUnit / Testcontainers | — | 5.12.2 / 1.21.4 · PG 驱动 42.7.10 | 测试基础设施 |
 
@@ -386,22 +386,27 @@
 
 ## 七、测试资产与证据强度
 
-### 7.1 本域测试（**3 个类 · 39 例**）
+### 7.1 本域测试（**3 个类 · 40 例**）
 
 | 测试类 | 例数 | 触发层级 | 覆盖 |
 |---|---|---|---|
 | `domain/service/AdminDomainServiceRealPgTest` | **20** | **E-3**（真 PG `postgres:16-alpine` + 真 Redis `redis:7-alpine` + **真 `@Transactional` 代理**） | 登录 3 态 · 邀请码一次性 · username 查重**不消耗邀请码** · GORM 的 LIMIT/OFFSET 静默抑制 · `extra_info` 装 U+0000 · 黑名单 key 前缀 · 4 步事务回滚 |
-| `http/AdminHttpContractRealTomcatTest` | **15** | **E-3**（**真 Tomcat** · `RANDOM_PORT` · 绝不用 MockMvc） | 13 端点全 POST（GET 全 405）· public 放行 · protected 401 三态 · **200 信封恰好三键** · 400 + text/plain + nosniff + 尾随换行 · 415⇒400 · 未知路径 404 · 黑名单 401 + `admin:` 前缀隔离 · **鉴权路径集合 ↔ 控制器映射守卫** |
+| `http/AdminHttpContractRealTomcatTest` | **16** | **E-3**（**真 Tomcat** · `RANDOM_PORT` · 绝不用 MockMvc） | 13 端点全 POST（GET 全 405）· public 放行 · protected 401 三态 · **200 信封恰好三键** · 400 + text/plain + nosniff + 尾随换行 · 415⇒400 · **未知路径 401/500 双态**（对齐 B 侧活体）· 黑名单 401 + `admin:` 前缀隔离 · **鉴权路径前缀 ↔ 控制器映射守卫** |
 | `AdminServiceApplicationTests` | **4** | **E-3**（**真上下文启动**：Tomcat + gRPC server + PG + Redis） | 4 张表建出来 · 默认 admin 密码是**硬编码 `admin`** · gRPC server 与 Tomcat 同进程 · **Nacos 注册面：自动注册被关掉、只注册 gRPC 端口**（§5-⑩） |
 
 > ⚠️ **禁用清单**：`@EnabledIfDockerAvailable` **未使用**（AGENTS.md §五.8 硬规则 ③）⇒ Docker 不可用时**必须红**，不许静默跳过。
 > ⚠️ **`skipped = 0`**：本域三个测试类的 surefire 汇总均为 `Skipped: 0`。
+> ⚠️ **两个对拍探针不算进上面的 40 例**：它们是**仓内工具**，不是 JUnit 测试 ——
+> `tools/difftest/parity_admin.py`（第一轮 HTTP 面 28 用例）与
+> `tools/difftest/parity_admin_round2.py`（第二轮 4 类缺口）＋
+> `service/users/admin/src/test/java/com/rag/admin/parity/GrpcParityProbe.java`（gRPC 面 13 RPC，
+> **需两侧进程同时在跑** ⇒ 不能当普通单测跑 ⇒ 单独执行）。
 
 ### 7.2 ⚠️ **证据强度的诚实边界**
 
 | 级别 | 本域状态 |
 |---|---|
-| **E-4 双侧活体对拍** | ✅ **已做**（2026-11-02 · 见 §九）—— B 侧 `admin-api` + `admin-rpc`（Boot 4）与 C 侧 `admin-service`（Boot 3.5）**同时跑起来**，隔离库/Redis/Nacos ⇒ **HTTP 面 28 用例 0 行为差异 · gRPC 面 13 RPC 全一致 · DB 最终状态一致 · Redis 状态一致** ⚠️ **但**：并发 / 超时 / 外部依赖失败 / 直接回滚验证 **仍未覆盖**（§9.7）⇒ ⇒ 本域的 ✅ 读作「**在 E-4 已覆盖的维度上一致**」 |
+| **E-4 双侧活体对拍** | ✅ **已做（两轮）**（2026-11-02 · 见 §九）—— B 侧 `admin-api` + `admin-rpc`（Boot 4）与 C 侧 `admin-service`（Boot 3.5）**同时跑起来**，隔离库/Redis/Nacos ⇒ **第一轮**：HTTP 面 28 用例 0 行为差异 · gRPC 面 13 RPC 全一致 · DB 最终状态一致 · Redis 状态一致；**第二轮**：并发 / 事务回滚 / Redis 停 **全一致**，**PG 停 + 超时两项不一致**（§9.10.3 —— 根因在共享层，已移交 `global` 收口域）⇒ ⇒ 本域的 ✅ 读作「**在 E-4 已覆盖的维度上一致**」 |
 | **E-3 真中间件 / 真容器** | ✅ **已做**（PG · Redis · Tomcat · gRPC server） |
 | **E-2 源码级对照** | ✅ **已做**（B 侧 Go 源码 + go-zero v1.10.2 源码 + C 侧 Spring 6.2.16 / devh 3.1.0 源码逐行读） |
 | **E-1 形态级对照** | ✅ 已做（文件树 / 依赖 / 配置形状 / 签名） |
@@ -423,7 +428,7 @@
 |---|---|---|---|---|
 | `common` | `Tests run: 224` | 0 | 0 | **0** |
 | `users-common` | `Tests run: 46` | 0 | 0 | **0** |
-| **`admin-service`（本域）** | **`Tests run: 39`** | **0** | **0** | **0** |
+| **`admin-service`（本域）** | **`Tests run: 40`** | **0** | **0** | **0** |
 
 - **BUILD SUCCESS**（EXIT=0）· `spring-boot:3.5.11:repackage` **通过**
   （`Replacing main artifact …admin-service-1.0-SNAPSHOT.jar with repackaged archive`）
@@ -445,7 +450,7 @@
 | 9 | Tomcat / Jackson / Spring Framework 版本变化是否产生实际漂移？ | **Tomcat 10.1**：§5-③ 实测出「yml 有键无值 ⇒ 绑 Map 失败」；**Jackson 2**：`extra_info` 用 text + `JsonTextTypeHandler`（jsonb 会 22P05 拒收 U+0000）⇒ 与 B 侧一致；**Spring 6.2.16**：§5-④⑤⑥ 三处漂移的根因都读的是它的源码。 |
 | 10 | 哪些差异已经通过证据证明安全？ | **E-3 级**（真 PG / 真 Redis / 真 Tomcat / 真 gRPC server）：§二 A-01~A-25 + A-29 的 **26 条 PASS**。 |
 | 11 | 哪些差异仍然无法确认？ | **3 条 NOT_VERIFIED**（§7.3：gRPC 面 13 个 RPC · span 名与 audit 属性 · Nacos 真实注册）＋ **2 条窄偏离**（§六 ① gRPC 端口部署面、② 3 个空 struct 端点的非 JSON content-type）。 |
-| 12 | 当前 C 是否具备可靠的行为对拍条件？ | **HTTP 面：具备**（真 Tomcat + 真 PG + 真 Redis + 可注入的 JWT secret ⇒ 对拍矩阵已在本轮跑通 15 例）。**gRPC 面：具备但本轮未做**（真 gRPC server 已起，只差一个真 client 与 B 侧同时运行）。**Nacos 注册面：部分具备**（§5-⑩ 已钉住「注册的端口是 gRPC、web 端口从未被注册」，但**对真 Nacos 的注册结果**未验 ⇒ V-3）。**跨仓对拍（B 侧 Go 进程同时跑）：不具备** ⇒ 需 B 侧起进程 + 统一 DB/Redis，属**跨域工程**。 |
+| 12 | 当前 C 是否具备可靠的行为对拍条件？ | ✅ **已具备并已跑通两轮**（§九）：**HTTP 面**（真 Tomcat + 真 PG + 真 Redis + 可注入的 JWT secret）· **gRPC 面**（用 C 侧 proto stub 同打两侧 server）· **Nacos**（隔离实例 + `sea-rtw` 命名空间）· **PG/Redis 停启**（容器级故障注入）⇒ ⚠️ **B 侧不是 Go 进程，而是 Java/Boot 4 的 `admin-api` + `admin-rpc`**（§9.4 的教训）⇒ ⇒ 对拍前提是「**B 侧能起进程 + 统一 DB/Redis/Nacos**」，本轮已用隔离环境满足 ⇒ **可复现**（探针已入库）。 |
 
 ---
 
@@ -455,6 +460,7 @@
 |---|---|---|
 | **PASS**（在该证据强度下一致） | **28** | A-01 ~ A-25 + **A-29** + **A-30**（E-4 gRPC 面 + 路由面；不含 A-05 / A-14 的未验证部分） |
 | **FAIL** | **0** | ✅ 本轮发现的 **9 条**漂移**全部已修**（§五）⚠️ 其中 §5-⑥ / §5-⑦ 两条**修法被 E-4 推翻并重做**（§9.4） |
+| **⛔ 未修（跨域 · 归 `global` 收口域）** | **1** | §9.10.3 —— **PG 不可用 / 请求超时**时两侧响应面不一致（B `200+1015 信封` ↔ C `503+裸文本`），**且 C 侧超时后副作用已落库**；根因在**共享层**（HTTP 路径没绑 `DeadlineState` ⇒ SQL 不被取消）⇒ 按 AGENTS.md §五.3 归 `global` 收口域 ⇒ **本域不改 `common/`** |
 | **NOT_IMPLEMENTED** | **0** | ✅ 58 个 C 文件**全部落地，0 空壳** |
 | **NOT_VERIFIED** | **2** | V-2（span 名与 audit 属性）· V-3（**真 Nacos 的注册结果**）⇒ **不计入 PASS**<br>✅ **V-1（gRPC 面）已由 E-4 解除**（§九 · 13/13 一致） |
 | **FRAMEWORK_DIFFERENCE** | **2** | ②（3 个空 struct 端点的非 JSON content-type）· ①（gRPC 端口，**部署面**） |
@@ -468,12 +474,12 @@
 |---|---|
 | C 侧主代码文件 | **58**（**0 空壳**；⚠️ 映射表原写 56 ⇒ 差额 2 = 验签 Filter + Verifier，§二 A-21） |
 | C 侧主代码行数 | **7,036**（§5-⑩ 修完后复测；原 7,030） |
-| 测试文件 / 例数 | **3 个 / 39 例**（`Skipped: 0`） |
+| 测试文件 / 例数 | **3 个 / 40 例**（`Skipped: 0`）＋ **2 个对拍探针**（仓内工具，非 JUnit） |
 | 本轮修掉的漂移 | **9 条**（4 处 wire 错误码 + 死代码 + 起不来 + 空 body 500 + 415 vs 400 + 未知路径 401 + 未知路径 500 + DTO 改名 + **Nacos 同名双实例**） |
 | 独立词 `Go` 残留 | **0**（`\bGo\b` 全仓扫描 = 0） |
 | 未验证项 | **2**（§7.3 · gRPC 面已由 E-4 解除） |
-| **E-4 双侧活体对拍** | **已完成**（§九）· HTTP 28 用例 **0 行为差异** · gRPC 13 RPC **全一致** · DB/Redis 状态**一致** |
-| 构建 | `mvn -o -pl service/users/admin -am clean verify` ⇒ **BUILD SUCCESS**（admin 39 / common 224 / users-common 46，**全部 Skipped: 0**）⇒ §7.4 |
+| **E-4 双侧活体对拍** | **已完成（两轮）**（§九）· 第一轮：HTTP 28 用例 **0 行为差异** · gRPC 13 RPC **全一致** · DB/Redis 状态**一致**；第二轮：7 判定项 **5 一致 · 2 不一致**（并发 / 事务回滚 / Redis 停 **一致**；PG 停 + 超时 **不一致** ⇒ §9.10.3 移交 `global`） |
+| 构建 | `mvn -o -pl service/users/admin -am clean verify` ⇒ **BUILD SUCCESS**（admin 40 / common 224 / users-common 46，**全部 Skipped: 0**）⇒ §7.4 |
 
 ### 8.2 未闭合项（**移交主会话**）
 
@@ -491,7 +497,7 @@
    | **P-17** | 「合并进程的 Nacos **自动注册**拿 **web 端口**注册」⇒ **同名双实例** ⇒ gRPC 链路断；且**消费点是运行期 `if`、不是 `@ConditionalOnProperty`** ⇒ 只看声明点会误判「这键没人读」 |
 3. **`docs/Mapping_Table/users/admin/admin.md` 的同步**（§二 末行）—— **本轮已在本工作树内改**（56→58、§1.3 改写、F-5 闭合、§7.1/§8 计数）⇒ 合并时随代码一起进。
 4. **`docs/File_Tree/users/admin.md` 重生成** —— ⚠️ `tools/gen-file-tree.py` 的 `ROOT` **硬编码为主仓路径** ⇒ 在 worktree 内直接跑会量到**主工作区的树**（假绿）⇒ 须先改指向本工作树。
-5. **E-4 双侧活体对拍** —— 三个域同时跑（B 侧 Go + C 侧 Java）⇒ 属**跨域工程**，不在单域 stop point 内。
+5. **E-4 双侧活体对拍** —— ✅ **已完成（两轮）**（§九）⇒ 跨域工程已落地为**仓内探针**（`tools/difftest/parity_admin.py` ＋ `parity_admin_round2.py` ＋ `GrpcParityProbe.java`）⇒ 证据归档在 `docs/DRIFT/users/admin/evidence/`。
 6. **全量 `mvn -o -T1C clean verify`（16 模块）在本工作树会红** —— ⚠️ **红因不在本域**：
    8 个**尚未实现的空壳域**（`article` / `comment` / `favorite` / `follow` / `hot` / `like` / `message` / `task`）
    的 `*Application.java` 是**没有 `main` 方法的空壳类** ⇒
@@ -500,6 +506,12 @@
    ⇒ 同条件对照：本工作树对 `service/` 除 `admin/` 外**零改动**（`git status` 实证）⇒ ⇒ **主干自带**，非本轮引入。
    ⇒ ⇒ 本域的收口口径用 **`mvn -o -pl service/users/admin -am clean verify`**（含 `repackage`）
    ⇒ ⇒ 待那 8 个域落地（或其 `pom` 改掉 `repackage`）后，全量 build 自然转绿。
+7. **🔴 §9.10.3 的超时 / PG-不可用差异 —— 归 `global` 收口域** —— 根因在**共享层**：
+   `DeadlineState` 只在 **gRPC 服务端路径**绑定（`common/.../RpcHandleRunner.java:121`），
+   HTTP 路径没绑 ⇒ ⇒ D2 域内直连的 **SQL 永不被取消** ⇒ 超时后事务照常提交（**副作用已落库**）。
+   ⇒ 按 AGENTS.md §五.3「跨域 + `common/**` 的搁置漂移全归 `global` 收口域」⇒
+   **本 lane 不改 `common/`** ⇒ 复现命令与验收判据见 §9.10.3。
+   ⇒ ⚠️ **影响面不止 admin 域**：凡 D2 域内直连的域都同一条 ⇒ 收口域修复后可**全域复用**该回归命令。
 
 ---
 
@@ -584,15 +596,17 @@
 > ⚠️ **P-2 的教训**：「两侧读数相同」**不等于**「行为一致」——
 > **必须先证明读数本身有效**（status > 0、body 非空），再谈一致。
 
-### 9.7 仍然未覆盖（E-4 的诚实边界）
+### 9.7 E-4 第一轮的诚实边界（**第二轮已补齐 3 项 —— 见 §9.10**）
 
-| # | 项 | 为什么没覆盖 |
-|---|---|---|
-| 1 | **并发请求**（同一邀请码并发创建） | 本轮矩阵是**串行**；并发需要专门的压测夹具 ⇒ 未做 |
-| 2 | **超时 / 外部依赖失败** | 需要把 PG/Redis 主动掐掉再观测 ⇒ 未做 |
-| 3 | **数据库事务回滚** | 「4 步事务中途失败」需要注入唯一冲突 ⇒ HTTP 面用「邀请码已用」间接覆盖（两侧一致），**未做直接回滚验证** |
-| 4 | **定时任务与生命周期** | admin 域无定时任务 ⇒ N/A |
-| 5 | **Kafka 消息** | admin 域不发 Kafka ⇒ N/A |
+| # | 项 | 第一轮状态 | 第二轮状态（§9.10） |
+|---|---|---|---|
+| 1 | **并发请求**（同一邀请码并发创建） | 未做（矩阵是串行） | ✅ **已做** —— 5 路并发同一邀请码 ⇒ 两侧都是 **1×200 + 4×1016**，DB 只建出 1 行、邀请码只被消费 1 次 |
+| 2 | **超时 / 外部依赖失败** | 未做 | ✅ **已做** —— 3 个场景（Redis 停 / PG 停 / 持锁制造慢查询）⇒ **Redis 停两侧一致**；**PG 停 / 超时两侧不一致**（真实差异，见 §9.10.3） |
+| 3 | **数据库事务回滚** | 只用「邀请码已用」间接覆盖 | ✅ **已做（直接验证）** —— 外部注入 `email` 唯一约束冲突 ⇒ 失败点落在 **W3 insert** ⇒ 两侧都是 **新 admin 行数 = 0 ＋ 邀请码仍未被使用** ⇒ **4 步事务整体回滚**已直接证明 |
+| 4 | **定时任务与生命周期** | N/A | N/A（admin 域无定时任务） |
+| 5 | **Kafka 消息** | N/A | N/A（admin 域不发 Kafka） |
+| 6 | **部分成功 / 恢复清理** | 未覆盖 | ✅ **间接覆盖** —— 「部分成功」= §9.10 的事务回滚场景（4 步里前 3 步成功、第 4 步前失败 ⇒ 整体回滚）；「恢复清理」= 停 Redis/PG 后**再起**，后续场景全部正常 ⇒ 恢复链路已跑通 |
+
 
 ### 9.8 E-4 的连带修正（域内注释按实测事实校正）
 
@@ -626,3 +640,80 @@ E-4 推翻 §5-⑥/§5-⑦ 之后，域内**注释层**也必须跟着改 ——
 - **处置**：**本 lane 不改**（域外 + 用户自有笔记 + 体量约 14 份）
   ⇒ **登记在此，交主会话 / 用户决定是否同步**。
   ⇒ ⇒ 同一口径的**权威副本**是本台账 §九 与源码 javadoc —— **以本台账为准**。
+
+### 9.10 E-4 第二轮（E-4-R2）：并发 / 事务回滚 / 外部依赖失败 / 超时
+
+> **补 §9.7 的 3 项缺口** ⇒ 探针：`tools/difftest/parity_admin_round2.py`（仓内）
+> ⇒ 证据：`docs/DRIFT/users/admin/evidence/parity-report-round2-2026-11-02.json`
+> ⇒ 第一轮证据同目录：`parity-report-round1-2026-11-02.json`
+
+#### 9.10.1 判定结果（**7 个判定项 · 5 一致 · 2 不一致**）
+
+| 判定项 | 结果 | 读数 |
+|---|---|---|
+| **S1 并发 · 响应码分布** | ✅ 一致 | 两侧都是 `codes = [1016 ×4, 200 ×1]`、`statuses = [200 ×5]` |
+| **S1 并发 · 最终状态** | ✅ 一致 | 两侧都只建出 **1** 行 admin，邀请码都**只被消费 1 次**（悲观锁 `FOR UPDATE` 语义两侧同构） |
+| **S2 事务回滚 · 响应面** | ✅ 一致 | 两侧都是 `HTTP 200 + 信封 code=1001「用户名已存在」` |
+| **S2 事务回滚 · 事务原子性** | ✅ 一致 | 两侧都是 **新 admin 行数 = 0** ＋ **邀请码 `used_at` 仍为 NULL** ⇒ **4 步事务整体回滚**已直接证明 |
+| **S3a Redis 停 · 响应面** | ✅ 一致 | 两侧都是 `HTTP 200 + code=200` ⇒ **黑名单 fail-open** 两侧同形 |
+| **S3b PG 停 · 响应面** | ❌ **不一致** | **B = `200 + 信封 1015「服务繁忙」`** ↔ **C = `503 + 裸文本 "Request Timeout\n"`** |
+| **S4 超时（持锁）· 响应面** | ❌ **不一致** | **B = `200 + 信封 1015`，2.03s** ↔ **C = `503 + 裸文本`，3.03s** |
+
+#### 9.10.2 S2 的注入设计（为什么它能**直接**证明回滚）
+
+- **注入点**：`admin_admin.email` 是 `UNIQUE`（两侧实测同形，见 `information_schema` 对照），
+  而 **W2 只查 `username` 冲突**（`AdminCreateAtomicService`）⇒ ⇒
+  **预置一条同 `email`、不同 `username` 的行** ⇒ 失败点必然落在 **W3 `insert admin`** ——
+  即「W1 锁 invite、W2 查 username、bcrypt 都已成功」之后 ⇒ ⇒ 若事务不原子，
+  **邀请码会被消费掉**（W4 在 W3 之后）⇒ ⇒ 「邀请码仍未被使用」就是回滚的**直接证据**。
+- **实测**：两侧 `new_admin_rows = 0` ＋ `invite_used_at = <NULL>` ⇒ ✅ **两侧都整体回滚**。
+- **顺带确认**：唯一约束冲突在两侧都被映射成 **1001「用户名已存在」**（语义上略粗，但**两侧同形** ⇒ 不是漂移）。
+
+#### 9.10.3 🔴 两条真实差异（S3b / S4）：**同一个根因**，落点在**共享层**
+
+**症状**：PG 不可用、或请求被外部持锁卡住时 ——
+
+| | B 侧（RAG · Boot 4） | C 侧（RAG-V1 · Boot 3.5） |
+|---|---|---|
+| 客户端看到 | `HTTP 200` + 信封 `{"code":1015,"msg":"服务繁忙"}` | `HTTP 503` + 裸文本 `Request Timeout\n`（**无信封**） |
+| 触发时刻 | **2.03s**（gRPC `rpc-timeout`） | **3.03s**（HTTP `http-timeout`） |
+| **服务端副作用** | **无** —— SQL 被取消 ⇒ 事务回滚 ⇒ `admin_admin` 里 `r2%to` **0 行** | **有** —— 业务线程跑完并提交 ⇒ `r2Cto` **1 行** ＋ 邀请码 **已被消费** |
+
+**根因（代码级 + 运行证据双证）**：
+
+1. **两侧配置相同**：`observability.http-timeout: 3s`（两侧 yml 逐字一致）⇒ ⇒ **不是配置漂移**。
+2. **B 侧的「内层 2s」来自 gRPC 边界**：`admin-api`（HTTP，3s）→ gRPC `admin-rpc`（**2s rpc deadline**）→ SQL。
+   `admin-rpc` 侧的 `DeadlineState` 由 gRPC 拦截器绑定 ⇒ `DeadlineQueryTimeoutInjector`
+   把剩余预算落到每条 SQL ⇒ **2s 时 PG 收到 CancelRequest** ⇒ SQLState `57014`
+   ⇒ `SqlTimeoutStatusTranslator` 翻成 `DEADLINE_EXCEEDED` ⇒ 事务回滚（无副作用）
+   ⇒ gRPC 状态 ⇒ `admin-api` 映射成 **1015 信封**。
+3. **C 侧 D2「域内直连」把 DB 调用搬进了 HTTP 边界** ⇒ ⇒ **内层那层预算没了**：
+   - `DeadlineState` 的**生产绑定点只有 gRPC 服务端路径**（`common/.../RpcHandleRunner.java:121`
+     `bindRemainingNanos` ＋ `newUnaryServerInterceptor`）⇒ ⇒ **HTTP 路径没有绑定**
+     ⇒ ⇒ `DeadlineQueryTimeoutInjector` 读到「无预算」⇒ **SQL 根本不设 query timeout**
+     ⇒ ⇒ 阻塞的 `SELECT ... FOR UPDATE` **永不被取消** ⇒ 事务最终提交（**副作用已落库**）。
+   - 超时响应面也随之改变：HTTP 预算（3s）先于任何 DB deadline 到点 ⇒
+     **共享层 `HttpMiddleware` 的超时面**接管 ⇒ `503 + "Request Timeout\n"`（**裸文本，无信封**）。
+
+**⇒ 归属**：修法落在 **`common/`**（`HttpMiddleware` 侧缺 `DeadlineState` 绑定；且缺「DB deadline < HTTP 预算」这一层错开），
+按 AGENTS.md §五.3 **跨域 + `common/**` 的搁置漂移归 `global` 收口域** ⇒ ⇒
+**本 lane（admin 域）不改 `common/`，只登记并移交**。
+
+> ⚠️ **这不是 admin 域特有**：凡 **D2 域内直连**（DB 调用在 HTTP 边界内）的域都有同一条差异；
+> admin 域只是**第一个用活体对拍把它照出来**的域。
+> ⚠️ **也不能在域内私自补一层 2s**：那会把「架构差异」硬编进业务代码
+> （B 侧的 2s 来自 **gRPC 中间件**，不是业务代码）⇒ ⇒ **正解是共享层补齐等价结构**。
+
+**影响面（为什么严重）**：客户端收到 **失败**（503）而服务端**已提交** ⇒
+**重试会撞「邀请码已用 / 唯一约束」** ⇒ ⇒ 属于「**失败-成功不一致**」型风险，比单纯的状态码差异严重。
+
+**复现命令（收口域修复后直接用它回归）**：
+
+```bash
+B_BASE=http://127.0.0.1:18889 C_BASE=http://127.0.0.1:18890 \
+  B_PSQL="postgresql://admin:password@127.0.0.1:54844/admin_db" \
+  C_PSQL="postgresql://admin:password@127.0.0.1:54844/c_admin" \
+  python3 tools/difftest/parity_admin_round2.py
+```
+⇒ 修复的**验收判据** = `S3b_PG停_响应面` 与 `S4_超时_响应面` 两项从 ❌ 变 ✅，
+且 **C 侧 `admin_admin` 里 `r2%to` 必须 0 行**（副作用不得再发生）。
