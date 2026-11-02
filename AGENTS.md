@@ -63,7 +63,7 @@ RAG-V1 仓库路径：`/Users/pr/Documents/GitHub/RAG-V1`。
 | 仓库 | 路径 | 角色 |
 |---|---|---|
 | **RAG**（B 侧 · 真源） | `/Users/pr/Documents/java&golang/RAG` | **唯一真源** —— 所有行为与实现的唯一判定标准（Spring Boot 4 形态，api/rpc 分离） |
-| **RAG-V1**（本仓库） | 本地 `/Users/pr/Documents/GitHub/RAG-V1` · GitHub `github.com/KASW-UI/RAG-V1` | **Spring Boot 惯用形态的重做** —— B 侧行为用 Spring 生态重新组织（MP 分层 + starter 化 + api/rpc 合并压平，D1 + D7） |
+| **RAG-V1**（本仓库） | 本地 `/Users/pr/Documents/GitHub/RAG-V1` · GitHub `github.com/KASW-UI/RAG-V1` | **Spring Boot 3.5 形态**（Boot **3.5.11**）的惯用重做 —— B 侧行为用 Spring 生态重新组织（MP 分层 + starter 化 + api/rpc 合并压平，D1 + D7）；⚠️ **B 侧是 Boot 4 ⇒ 抄它的实现要按 3.5 的 API 面改写**（§1.0d） |
 
 ⚠️ **B 侧只读**（不反写）；**本仓不引入 B 侧之外的实现来源**。
 
