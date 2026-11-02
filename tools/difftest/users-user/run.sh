@@ -71,6 +71,11 @@ die()  { printf '!! %s\n' "$*" >&2; exit 2; }
 cleanup() {
   local p
   for p in "${PIDS[@]:-}"; do [ -n "${p}" ] && kill -9 "${p}" 2>/dev/null; done
+  # ⚠️ **先恢复两侧 PG**（场景轮可能把容器 pause/stop 了）⇒ 再删 ⇒
+  #    顺序反了的话，容器带着「paused」状态被删也无所谓，但**若 rm 失败**，
+  #    下一个 lane 会拿到一个挂着的容器 ⇒ ⇒ 先 unpause/start 再删。
+  docker unpause "${B_PG_CONTAINER}" "${C_PG_CONTAINER}" >/dev/null 2>&1
+  docker start   "${B_PG_CONTAINER}" "${C_PG_CONTAINER}" >/dev/null 2>&1
   [ "${KEEP_WORK:-0}" = "1" ] || docker rm -f "${B_PG_CONTAINER}" "${C_PG_CONTAINER}" >/dev/null 2>&1
   return 0
 }
@@ -97,6 +102,47 @@ wait_ready() {   # $1=端口 $2=标签
   return 1
 }
 
+# ⚠️ **按端口把监听进程记进 PIDS** ⇒ cleanup 能按 PID 精确杀掉**本轮起的**进程。
+#    为什么要多这一手：`$!` 只在「子 shell 里 exec」时才等于 java 的 PID；
+#    一旦任务被**外部取消**（SIGKILL）⇒ trap 不执行 ⇒ 进程活下来 ⇒ **端口残留**
+#    ⇒ 下一轮探针直接「端口被占用」退出（2026-11-03 实测踩过）。
+#    ⇒ 这里按端口**事后**取 PID ⇒ 即使 trap 没跑，残留也能被下一轮清掉。
+track_listener() {   # $1=端口
+  local pid
+  pid="$(lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1)"
+  [ -n "${pid}" ] && PIDS+=("${pid}") && return 0
+  return 1
+}
+
+# ── Nacos 实例断言（🔴 启动顺序纪律）────────────────────────────────────────────
+# ⚠️ **为什么必须等**：B 侧 user-api 用 devh 的 gRPC client 连 `user-rpc`
+#    ⇒ 那个 client **启动即连**（`connectOnStartup`）⇒ ⇒ user-rpc 虽已监听端口，
+#    但**还没注册进 Nacos**时，user-api 会以
+#    `IllegalStateException: Can't connect to channel user-rpc` **启动失败**
+#    ⇒ ⇒ 必须**等注册落进实例列表**再起 user-api（2026-11-03 实测踩过：偶发起不来）。
+nacos_list_instances() {   # $1=服务名 $2=组 ⇒ 逐行打印 "ip port"
+  curl -s -m 10 "http://127.0.0.1:${NACOS_PORT}/nacos/v1/ns/instance/list?serviceName=$1&groupName=$2&namespaceId=public" 2>/dev/null \
+  | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for h in (d.get("hosts") or []):
+    ip, port = h.get("ip"), h.get("port")
+    if ip and port:
+        print("%s %s" % (ip, port))
+'
+}
+nacos_assert_instance() {   # $1=服务名 $2=组 $3=端口
+  local i
+  for i in $(seq 1 30); do
+    nacos_list_instances "$1" "$2" | grep -q " ${3}$" && return 0
+    sleep 1
+  done
+  return 1
+}
+
 start_pg() {   # $1=容器名 $2=宿主端口 $3=库名
   docker rm -f "$1" >/dev/null 2>&1
   docker run -d --name "$1" -e POSTGRES_USER="${PG_USER}" -e POSTGRES_PASSWORD="${PG_PASSWORD}" \
@@ -118,14 +164,27 @@ say "   ✅ ${C_PG_CONTAINER} :${C_PG_PORT} / ${PG_DB_C}"
 step "准备两侧产物"
 B_API_JAR="${B_REPO}/service/users/user/user-api/target/user-api-0.0.1-SNAPSHOT.jar"
 B_RPC_JAR="${B_REPO}/service/users/user/user-rpc/target/user-rpc-0.0.1-SNAPSHOT.jar"
+C_JAR="${C_ROOT}/service/users/user/target/user-service-1.0-SNAPSHOT.jar"
+# 🔴 **陈旧产物检测**（2026-11-03 实测踩过）：「jar 存在 ⇒ 跳过构建」是**危险的**
+#    ⇒ jar 存在但**比源码旧**时 ⇒ 探针量到的是**上一次的代码** ⇒ 读数是假的
+#    ⇒ （实测：共享层的 timeout 修复已进 main，但 jar 还是旧的 ⇒ 量出了「假的 503」）
+newer_than_jar() {   # $1=jar  $2...=源码目录 ⇒ 有任一源文件比 jar 新 ⇒ 打印一行
+  find "$@" -type f -newer "$1" 2>/dev/null | head -1
+}
 if [ ! -f "${B_API_JAR}" ] || [ ! -f "${B_RPC_JAR}" ]; then
   say "   … B 侧 jar 不存在 ⇒ 在 B 仓跑 mvn package（只写 target/，已被 .gitignore 排除）"
   (cd "${B_REPO}" && mvn -o -q -DskipTests package -pl service/users/user/user-api,service/users/user/user-rpc -am) \
     || die "B 侧构建失败"
+elif [ -n "$(newer_than_jar "${B_API_JAR}" "${B_REPO}/service/users/user/user-api/src/main" "${B_REPO}/service/users/user/user-rpc/src/main")" ]; then
+  say "   … B 侧 jar 比源码旧 ⇒ 重建（否则探针量到陈旧产物）"
+  (cd "${B_REPO}" && mvn -o -q -DskipTests package -pl service/users/user/user-api,service/users/user/user-rpc -am) \
+    || die "B 侧构建失败"
 fi
-C_JAR="${C_ROOT}/service/users/user/target/user-service-1.0-SNAPSHOT.jar"
 if [ ! -f "${C_JAR}" ]; then
   say "   … C 侧 jar 不存在 ⇒ 在本仓跑 mvn package"
+  (cd "${C_ROOT}" && mvn -o -q -DskipTests package -pl service/users/user -am) || die "C 侧构建失败"
+elif [ -n "$(newer_than_jar "${C_JAR}" "${C_ROOT}/service/users/user/src/main" "${C_ROOT}/service/users/common/src/main" "${C_ROOT}/common/src/main" "${C_ROOT}/proto/src/main")" ]; then
+  say "   … C 侧 jar 比源码旧 ⇒ 重建（🔴 否则探针量到的是**陈旧产物** ⇒ 读数是假的）"
   (cd "${C_ROOT}" && mvn -o -q -DskipTests package -pl service/users/user -am) || die "C 侧构建失败"
 fi
 # 🔴 **C 侧 jar 必须含 grpc-inprocess**（devh 的 GrpcClientAutoConfiguration 运行期要它
@@ -149,6 +208,11 @@ step "启动 B 侧（user-rpc → user-api · 双进程）"
   exec java -jar "${B_RPC_JAR}" ) > "${WORK}/b-user-rpc.log" 2>&1 &
 PIDS+=($!); disown 2>/dev/null || true
 wait_ready "${B_RPC_PORT}" "B user-rpc(gRPC)" || { tail -30 "${WORK}/b-user-rpc.log"; die "B user-rpc 起不来"; }
+track_listener "${B_RPC_PORT}"
+# 🔴 **必须等 Nacos 注册落地**再起 user-api（它的 gRPC client **启动即连** `user-rpc`）
+nacos_assert_instance user-rpc "${B_GROUP}" "${B_RPC_PORT}" \
+  || { tail -30 "${WORK}/b-user-rpc.log"; die "B 侧 user-rpc 没出现在 Nacos[${B_GROUP}] 实例列表里"; }
+say "   ✅ B 侧 user-rpc 已自注册进 Nacos[${B_GROUP}]（:${B_RPC_PORT}）"
 
 ( cd "${B_REPO}" && POSTGRES_ADDR=127.0.0.1 POSTGRES_PORT="${B_PG_PORT}" POSTGRES_DB="${PG_DB_B}" \
   POSTGRES_USER="${PG_USER}" POSTGRES_PASSWORD="${PG_PASSWORD}" \
@@ -160,6 +224,7 @@ wait_ready "${B_RPC_PORT}" "B user-rpc(gRPC)" || { tail -30 "${WORK}/b-user-rpc.
   exec java -jar "${B_API_JAR}" ) > "${WORK}/b-user-api.log" 2>&1 &
 PIDS+=($!); disown 2>/dev/null || true
 wait_ready "${B_API_PORT}" "B user-api(HTTP)" || { tail -30 "${WORK}/b-user-api.log"; die "B user-api 起不来"; }
+track_listener "${B_API_PORT}"
 
 step "启动 C 侧（user-service · D1 合并单进程）"
 ( cd "${C_ROOT}" && POSTGRES_HOST=127.0.0.1 POSTGRES_PORT="${C_PG_PORT}" POSTGRES_DB="${PG_DB_C}" \
@@ -172,6 +237,7 @@ step "启动 C 侧（user-service · D1 合并单进程）"
   exec java -jar "${C_JAR}" ) > "${WORK}/c-service.log" 2>&1 &
 PIDS+=($!); disown 2>/dev/null || true
 wait_ready "${C_HTTP_PORT}" "C user-service(HTTP)" || { tail -40 "${WORK}/c-service.log"; die "C user-service 起不来"; }
+track_listener "${C_HTTP_PORT}"
 
 step "HTTP 对拍矩阵（20 例）"
 python3 "${HERE}/compare.py" "http://127.0.0.1:${B_API_PORT}" "http://127.0.0.1:${C_HTTP_PORT}" \
@@ -263,6 +329,17 @@ if ( cd "${B_REPO}" && git status --short -- service/ | grep -q . ); then
 else
   say "   ✅ B 仓 service/ 干净"
 fi
+
+# ⚠️ **场景轮必须排在最后**：它会 **pause / stop 两侧的 PG** 并**改库**
+#    ⇒ ⇒ 前面的 HTTP 矩阵、wire 矩阵、DB 最终态对拍都必须在**未注入故障**时跑完。
+step "场景轮（双侧对称）：超时 / gRPC deadline / 取消传播 / 恢复 / 外部依赖失败 / 恢复 / 并发"
+python3 "${HERE}/scenarios.py" \
+  --b-http "http://127.0.0.1:${B_API_PORT}" --c-http "http://127.0.0.1:${C_HTTP_PORT}" \
+  --b-grpc "${B_RPC_PORT}" --c-grpc "${C_GRPC_PORT}" \
+  --b-pg "${B_PG_CONTAINER}" --c-pg "${C_PG_CONTAINER}" \
+  --pg-user "${PG_USER}" --pg-db "${PG_DB_B}" --c-pg-db "${PG_DB_C}" \
+  --probe-cp "${GRPC_CP}" --probe-classes "${PROBE_DIR}" \
+  --username "e4us$$" --work "${WORK}" || FAILED=1
 
 printf '\n'
 if [ "${FAILED}" = "0" ]; then

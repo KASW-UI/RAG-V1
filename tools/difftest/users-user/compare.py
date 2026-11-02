@@ -3,6 +3,10 @@
 
 用法：compare.py <B_BASE> <C_BASE> [用户名后缀]
 退出码：0 = 结构级一致 · 1 = 有结构级不一致 · 2 = 环境问题（连不上）
+
+⚠️ **本模块可被 `scenarios.py` 复用** ⇒ 归一化/比对逻辑**只此一份**
+   （场景轮必须用**同一套**归一化，否则两轮的读数口径就分叉了）。
+   ⇒ argv 的读取**下沉到 main()** ⇒ import 本模块**不会**吃掉调用方的 argv。
 """
 import json
 import os
@@ -11,9 +15,10 @@ import subprocess
 import sys
 import tempfile
 
-B = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:18301"
-C = sys.argv[2] if len(sys.argv) > 2 else "http://127.0.0.1:18304"
-UNIQ = sys.argv[3] if len(sys.argv) > 3 else "pb"
+# ⚠️ **默认值**；`main()` 会用 argv 覆盖；`scenarios.py` import 后**自行覆盖**这两个。
+B = "http://127.0.0.1:18301"
+C = "http://127.0.0.1:18304"
+UNIQ = "pb"
 
 # 归一化：两侧**必然**不同的量（雪花 uid / history_id / 自签 JWT / 时间戳 / 密码哈希）
 NORM = [
@@ -162,6 +167,10 @@ def run_case(name, method, path, body=None, token=None, ctoken=None, text_only=F
 
 
 def main():
+    global B, C, UNIQ
+    B = sys.argv[1] if len(sys.argv) > 1 else B
+    C = sys.argv[2] if len(sys.argv) > 2 else C
+    UNIQ = sys.argv[3] if len(sys.argv) > 3 else UNIQ
     uniq = "%s%s" % (UNIQ, sys.argv[4] if len(sys.argv) > 4 else "1")
 
     # ── 1. 参数校验面 ────────────────────────────────────────

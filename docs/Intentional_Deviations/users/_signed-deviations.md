@@ -379,3 +379,50 @@ B 侧**已把域内 5 份 `RedisDisconnectedBehaviorConfig` 副本全删**并收
 | 405 = **裸状态码**（无 `Allow` 头、无 body） | 与 B 侧 Java 版**逐字一致** ⇒ **不是偏离** |
 | `extra_info` 是 **text**（不是 jsonb） | 与 B 侧 DDL 一致 ⇒ **不是偏离** |
 | 事务边界：Go 的 `m.conn.WithContext(ctx).Transaction(...)` → Spring **`@Transactional`**（挂在 mapper 接口的 `default` 方法上） | **L4 表达层改写，非行为偏离**：B 侧把「4 步 / 5 步原子」包在**同一个 DB 事务**里（D-005 / D-015）⇒ C 侧用 Spring 事务表达**同一件事** ⇒ 提交时机与回滚边界**逐条一致**。⚠️ 但这是本仓**最易静默失效**的形态（mapper 是 MyBatis 的 JDK 代理 ⇒ 三处前提任一不成立，注解就是装饰品且**零报错**）⇒ ⇒ 已配**真 UNIQUE 约束冲突**的运行证据 + **变异实测**。B 出处与语义等价论证见 `UserAvatarHistoryMapper` 的类 javadoc；证据见 `docs/DRIFT/users/verification-users-user-2026-11-02.md` §11.7 / §11.8；坑见 `docs/Pitfalls/users/_user-domain-pitfalls.md` P-USER-06 |
+
+---
+
+## DEV-USER-010 · D1 合并进程 ⇒ B 侧 api 层那一跳的「超时出口」不可达（「DB 完全不可响应」档）
+
+| 项 | 内容 |
+|---|---|
+| **状态** | 🏷 **候选，建议签** |
+| **分域** | user 域（HTTP 超时出口面） |
+| **偏离类型** | **有意偏离**（L4 后果 · D1/D2 域内直连） |
+| **关联漂移** | DRIFT-USER-PARITY-005（台账 §12.2.2） |
+
+### 偏离内容
+
+**注入「DB 完全不可响应」（PG 冻结）**时，同一读路径的 **HTTP 出口形态**两侧不同：
+
+| | 响应 | 耗时 |
+|---|---|---|
+| **B 侧** | `200` + 信封 `{"code":1015,"msg":"服务繁忙","data":null}` | **2.01s**（= user-rpc 的 **gRPC 服务端 2s 预算**关 call ⇒ api 层 `default` 分支 ⇒ 1015） |
+| **C 侧** | `503` + 裸文本 `Request Timeout` | **3.00s**（= 共享层 **HTTP 中间件的 3s 预算**兜底） |
+
+⇒ ⇒ **不是**「共享层的预算机制不对称」—— 场景轮阶段C 实测：**两侧 gRPC 服务端预算都是 ~2.1s**（B @ 2088ms · C @ 2096ms）⇒ **机制对称**。
+⇒ ⇒ 差异**只**来自 **D1 的进程合并**：B 侧 HTTP 要走 **user-api →(gRPC)→ user-rpc → DB**（**多一跳**），
+那一跳的「服务端 2s 预算**主动关闭 call**」在 C 侧**没有对应物**；
+C 侧 HTTP 路径的内层 2s 预算**只能靠 SQL cancel 送达 PG** 才生效
+⇒ ⇒ 而「PG 冻结」时 CancelRequest **送不到** ⇒ ⇒ 退化成 3s HTTP 预算兜底 ⇒ ⇒ 出口形态不同。
+
+### 语义等价论证
+
+- 两侧**语义一致**：都是「**服务端忙 ⇒ 拒绝**」；
+  - B 侧走**业务信封**（`200 + 1015`）⇒ 客户端**按业务码分支**；
+  - C 侧走**传输层错误**（`503 + 裸文本`）⇒ 客户端**按 HTTP 状态码分支**。
+- ⚠️ **边界**：这**只**在「DB 完全不响应（cancel 送不到）」这一档出现；
+  - 「DB 慢但活着」这一档（admin lane 的「持锁制造慢查询」）⇒ 两侧**都是 `1015 @ ~2s`** ⇒ **一致** ✔；
+  - 「DB 连不上」这一档（PG 停）⇒ 两侧**都是 `200 + 信封 1015`**（3/3 轮）⇒ **一致** ✔
+    ⇒ ⇒ **共享层 6a3acb4 的修复在本域同样生效**（与 admin lane 的复测**交叉验证**）。
+- ⇒ ⇒ **同族先例**：**DEV-USER-008**（D2 域内直连 ⇒ B 侧 api 层「客户端熔断打开」分支不可达 ⇒ 不保留）
+  ⇒ 本条是**同一个根因（D1/D2 进程合并）的另一个可观察面**：那一跳的**超时出口**同样不可达。
+- ⇒ ⇒ **修法需要改共享层**（让 HTTP 路径也有一层「独立于 DB 可用性」的主动关 call 机制）
+  ⇒ ⇒ **`common/**` 只有收口任务能写**（AGENTS.md §五.3）⇒ **本 lane 不越权代改**
+  ⇒ ⇒ **登记为偏离**（不是「域内可修的漂移」）。
+
+### RAG-V1 落点
+
+- 现象落点：`common/src/main/java/com/rag/common/observability/HttpMiddleware.java`（HTTP 3s 预算兜底面）
+- 与 B 侧对照：`service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java`（gRPC 服务端预算**主动关 call**）
+- 复跑入口：`bash tools/difftest/users-user/run.sh`（场景轮阶段B）

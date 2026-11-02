@@ -1,9 +1,12 @@
 package com.rag.user.parity;
 
 import io.grpc.CallOptions;
+import io.grpc.ClientCall;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
+import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.ClientCalls;
 
@@ -20,6 +23,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -505,10 +511,82 @@ public final class UserWireProbe {
         String status;    // OK | ERROR_<CODE>
         String payload;   // 规范化后的响应 / description
         byte[] raw;       // 原始响应字节（取易变值用）
+        boolean cancelIssued;  // 是否真的发起了取消（场景轮用）
+        long elapsedMs;        // 这次调用花了多久（场景轮用）
+    }
+
+    /**
+     * **可取消**的调用（场景轮「取消传播」维度用）。
+     *
+     * <p>⚠️ **为什么不能直接用 {@code ClientCalls.blockingUnaryCall}**：它是阻塞的
+     * ⇒ 没机会在中途发 {@code cancel} ⇒ ⇒ 只能用 grpc-java 的低层 {@link ClientCall}：
+     * {@code start(listener)} → {@code sendMessage} → {@code halfClose()} → 定时 {@code cancel}。
+     *
+     * <p>⇒ 取消后服务端收到的是 <b>CANCELLED</b>；但**服务端线程是否停下**、
+     * **已发出的 SQL 是否仍会提交** ⇒ 那要看服务端实现 ⇒ ⇒ **这正是要测的**。
+     */
+    static Reply callCancellable(ManagedChannel channel, CallOptions opts, String rpcName,
+                                  byte[] request, long cancelAfterMs) {
+        final Reply r = new Reply();
+        final CountDownLatch latch = new CountDownLatch(1);
+        final long t0 = System.nanoTime();
+        ClientCall<byte[], byte[]> call = channel.newCall(method(rpcName), opts);
+        call.start(new ClientCall.Listener<byte[]>() {
+            @Override
+            public void onHeaders(Metadata headers) {
+            }
+
+            @Override
+            public void onMessage(byte[] message) {
+                r.raw = message;
+                r.status = "OK";
+                r.payload = decode(responseMsg(rpcName), message);
+            }
+
+            @Override
+            public void onClose(Status status, Metadata trailers) {
+                if (!"OK".equals(r.status)) {
+                    r.status = "ERROR_" + status.getCode().name();
+                    r.payload = status.getDescription() == null ? "" : status.getDescription();
+                }
+                latch.countDown();
+            }
+        }, new Metadata());
+        call.sendMessage(request);
+        call.halfClose();
+        ScheduledExecutorService ex = null;
+        try {
+            if (cancelAfterMs > 0) {
+                // 🔴 **必须用守护线程**：默认线程工厂建的是**非守护**线程
+                //    ⇒ JVM 在 main() 返回后**不会退出** ⇒ 探针**永久挂住**
+                //    ⇒ 表现是「命令跑完但进程不结束」⇒ 看起来像探针卡死（2026-11-03 实测踩过）。
+                ex = Executors.newSingleThreadScheduledExecutor(task -> {
+                    Thread t = new Thread(task, "wire-probe-cancel");
+                    t.setDaemon(true);
+                    return t;
+                });
+                ex.schedule(() -> {
+                    r.cancelIssued = true;
+                    call.cancel("probe-cancel", null);
+                }, cancelAfterMs, TimeUnit.MILLISECONDS);
+            }
+            latch.await(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            r.status = "ERROR_INTERRUPTED";
+            r.payload = e.toString();
+        } finally {
+            if (ex != null) {
+                ex.shutdownNow();
+            }
+        }
+        r.elapsedMs = (System.nanoTime() - t0) / 1_000_000L;
+        return r;
     }
 
     static Reply call(ManagedChannel channel, CallOptions opts, String rpcName, byte[] request) {
         Reply r = new Reply();
+        long t0 = System.nanoTime();
         try {
             byte[] resp = ClientCalls.blockingUnaryCall(channel, method(rpcName), opts, request);
             r.status = "OK";
@@ -520,6 +598,9 @@ public final class UserWireProbe {
             r.payload = e.getStatus().getDescription() == null
                     ? "" : e.getStatus().getDescription();
         }
+        // ⚠️ **必须在这里也测耗时** ⇒ 否则 META 里的 elapsed_ms 恒 0
+        //    ⇒ 「服务端预算是 2s 先到」这类结论就**没有读数支撑**（2026-11-03 实测踩过）。
+        r.elapsedMs = (System.nanoTime() - t0) / 1_000_000L;
         return r;
     }
 
@@ -541,15 +622,43 @@ public final class UserWireProbe {
 
     // ==================== main ====================
 
+    /**
+     * 场景轮用的**自包含**用例（**不依赖前面的 setup** ⇒ 可单独跑）。
+     * <p>⚠️ 它们的**共同点**：都会**打到 DB 或 Redis** ⇒ ⇒ 故障注入（挂起 PG / 停 PG）
+     * 时打在这些用例上，才能观察到「超时 / 依赖失败 / 取消传播」的行为。
+     */
+    static boolean isScenarioCase(String name) {
+        return name.startsWith("scn_");
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length < 4) {
-            System.err.println("usage: UserWireProbe <host> <port> <outFile> <username>");
+            System.err.println("usage: UserWireProbe <host> <port> <outFile> <username> "
+                    + "[--only=NAME] [--deadline=MS] [--cancel-after=MS]");
             System.exit(2);
         }
         String host = args[0];
         int port = Integer.parseInt(args[1]);
         String outFile = args[2];
         String username = args[3];
+
+        // ── 可选参数（场景轮用）────────────────────────────────────────────────
+        String only = null;          // 只跑这一个用例
+        long deadlineMs = 20000L;    // 每个调用的 deadline
+        long cancelAfterMs = 0L;     // >0 ⇒ 发起后 N 毫秒主动取消
+        for (int i = 4; i < args.length; i++) {
+            String a = args[i];
+            if (a.startsWith("--only=")) {
+                only = a.substring("--only=".length());
+            } else if (a.startsWith("--deadline=")) {
+                deadlineMs = Long.parseLong(a.substring("--deadline=".length()));
+            } else if (a.startsWith("--cancel-after=")) {
+                cancelAfterMs = Long.parseLong(a.substring("--cancel-after=".length()));
+            } else {
+                System.err.println("unknown arg: " + a);
+                System.exit(2);
+            }
+        }
 
         String password = "parity-pw-0001";
         String email = username + "@parity.local";
@@ -560,9 +669,19 @@ public final class UserWireProbe {
                 .build();
         // ⚠️ 每个调用都带 deadline ⇒ 探针**不可能挂死**（挂死 ≠ 结论）。
         //   deadline 只影响服务端 ctx 的剩余预算，不影响响应 payload 字节。
-        CallOptions opts = CallOptions.DEFAULT.withDeadlineAfter(20L, TimeUnit.SECONDS);
+        //   ⚠️ **服务端自己的预算（rpc-timeout 2s）要短于它** ⇒ 才能观察到
+        //      「服务端预算先到 ⇒ DEADLINE_EXCEEDED 由服务端给出」而不是客户端先放弃。
+        CallOptions opts = CallOptions.DEFAULT.withDeadlineAfter(deadlineMs, TimeUnit.MILLISECONDS);
 
         try (PrintStream out = new PrintStream(new FileOutputStream(outFile), true, "UTF-8")) {
+            // ══════════ 单用例模式（场景轮）══════════════════════════════════════
+            if (only != null) {
+                runSingleCase(out, channel, opts, only, username, password, email,
+                        cancelAfterMs, deadlineMs);
+                return;
+            }
+
+            // ══════════ 全量模式（原 18 例矩阵）═══════════════════════════════════
             // ── 1) Register：拿到本侧的 uid（雪花 ID ⇒ 两侧必然不同 ⇒ 后面按 <UID> 屏蔽）──
             Map<String, String> extra = new LinkedHashMap<>();
             extra.put("city", "parity");
@@ -703,5 +822,60 @@ public final class UserWireProbe {
 
     static void selfCheck(PrintStream out, String name, boolean ok) {
         out.printf("SELFCHECK|%s|%s%n", name, ok ? "OK" : "FAIL");
+    }
+
+    /**
+     * <b>单用例模式</b>（场景轮用）—— 跑一个**自包含**的用例。
+     *
+     * <p>⚠️ **为什么场景用例必须自包含**：场景轮要在**故障注入期间**单独打某一个动作
+     * ⇒ 不能依赖「前面跑过 register 拿到 uid」那种链式前置 ⇒ ⇒ 这几个用例都**自带输入**：
+     * <ul>
+     *   <li>{@code scn_get_user_missing} —— GetUser(uid=1) ⇒ 打 **DB 读路径**</li>
+     *   <li>{@code scn_login_missing} —— Login(不存在的用户名) ⇒ 打 **DB 读路径**</li>
+     *   <li>{@code scn_register} —— Register(用户名 = 入参 username) ⇒ 打 **DB 写路径**
+     *       （⚠️ 用**入参原样**⇒ 场景脚本才能按这个名字去查库，看取消后副作用有没有落）</li>
+     *   <li>{@code scn_logout} —— Logout(token) ⇒ 打 **Redis 路径**</li>
+     * </ul>
+     *
+     * @param cancelAfterMs &gt;0 ⇒ 用 {@link #callCancellable}（中途取消）
+     */
+    static void runSingleCase(PrintStream out, ManagedChannel channel, CallOptions opts, String only,
+                              String username, String password, String email,
+                              long cancelAfterMs, long deadlineMs) {
+        Reply r;
+        switch (only) {
+            case "scn_get_user_missing":
+                r = exec(channel, opts, "GetUser", intField(1, 1L), cancelAfterMs);
+                break;
+            case "scn_login_missing":
+                r = exec(channel, opts, "Login",
+                        concat(stringField(1, "no-such-user-" + username), stringField(2, password)),
+                        cancelAfterMs);
+                break;
+            case "scn_register":
+                r = exec(channel, opts, "Register", concat(
+                        stringField(1, username),
+                        stringField(2, password),
+                        stringField(3, email)), cancelAfterMs);
+                break;
+            case "scn_logout":
+                r = exec(channel, opts, "Logout",
+                        stringField(1, "parity-token-" + username), cancelAfterMs);
+                break;
+            default:
+                out.printf("CASE|%s|ERROR_PROBE|未知用例名：%s%n", only, only);
+                return;
+        }
+        out.printf("CASE|%s|%s|%s%n", only, r.status, r.payload);
+        out.printf("META|%s|cancel_issued=%s|elapsed_ms=%d|deadline_ms=%d%n",
+                only, r.cancelIssued, r.elapsedMs, deadlineMs);
+    }
+
+    /** 按是否要取消，选择普通调用或可取消调用。 */
+    static Reply exec(ManagedChannel channel, CallOptions opts, String rpcName, byte[] request,
+                      long cancelAfterMs) {
+        return cancelAfterMs > 0
+                ? callCancellable(channel, opts, rpcName, request, cancelAfterMs)
+                : call(channel, opts, rpcName, request);
     }
 }
