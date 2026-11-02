@@ -33,6 +33,28 @@ import lombok.Setter;
  *
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/response/Response.java}
  * （L1 契约层**以 B 侧 为准** · D13；RAG 侧本就是 Jackson 2 写法 ⇒ <b>零回改</b>）。
+ *
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <pre>{@code
+ * public class ApiResponse {
+ *     private int code;
+ *     private String msg;
+ *     private Object data;
+ *
+ *     public int getCode() { return code; }
+ *     public void setCode(int code) { this.code = code; }
+ *     public String getMsg() { return msg; }
+ *     public void setMsg(String msg) { this.msg = msg; }
+ *     public Object getData() { return data; }
+ *     public void setData(Object data) { this.data = data; }
+ *
+ *     public ApiResponse() { }
+ *     public ApiResponse(int code, String msg, Object data) {
+ *         this.code = code;
+ *         this.msg = msg;
+ *         this.data = data;
+ *     }
+ * }</pre>
  */
 @Getter
 @Setter

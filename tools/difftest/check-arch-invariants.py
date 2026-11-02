@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""架构符合性守门（A1–A12）。
+"""架构符合性守门（A1–A13）。
 
 > 断言的完整定义 → [`../../docs/架构符合性断言.md`](../../docs/架构符合性断言.md)
 
@@ -21,8 +21,8 @@
 
 | 契约 | 形态 | 适用断言 |
 |---|---|---|
-| **A** | B 侧部署等价（api / rpc 分离） | A1 · A2 · A3 · A4–A12 |
-| **B** | Spring 惯用（api + rpc 合并）★ RAG-V1 | A4–A12 |
+| **A** | B 侧部署等价（api / rpc 分离） | A1 · A2 · A3 · A4–A13 |
+| **B** | Spring 惯用（api + rpc 合并）★ RAG-V1 | A4–A13 |
 
 ⚠️ **A1 / A2 / A3 是 api/rpc 分离的派生物**，合并形态下它们**自动消失**。
 ⇒ 在 `--contract B` 下它们报 **`N/A`**，**不得改成红灯**（AGENTS.md §二 D1 连带效应）。
@@ -719,6 +719,102 @@ def check_a12(root: pathlib.Path, contract: str) -> Result:
 
 
 # ---------------------------------------------------------------------------
+# A13 · 用了 Lombok ⇒ 必须在该注解正上方写「原本的完整代码」展开块
+# ---------------------------------------------------------------------------
+
+#: 本仓认可的 Lombok 注解（类级）。
+#: ⚠️ **判据边界**：只认**类上**的注解（字段级/方法级的不在本条判据范围）。
+LOMBOK_CLASS_ANNOTATIONS = (
+    "Data", "Getter", "Setter", "NoArgsConstructor", "AllArgsConstructor",
+    "RequiredArgsConstructor", "Builder", "Value", "EqualsAndHashCode",
+    "ToString", "Slf4j", "Cleanup", "SneakyThrows", "UtilityClass",
+)
+
+#: 展开块的标记（Lombok-使用规范.md §3.4 R2/R5）。
+LOMBOK_EXPANSION_MARKER = "Lombok 展开"
+LOMBOK_EXPANSION_CODE = re.compile(r"<pre>\s*\{@code", re.S)
+
+
+def lombok_annotated_types(src: str) -> list:
+    """找出**类级**带 Lombok 注解的类型（返回类型名列表）。
+
+    ⚠️ **为什么要先剥注释**：源码里任何位置的 `@Data` 都可能出现在 javadoc 正文里
+    ⇒ 直接正则全文匹配会**把注释里的示例当成真的注解** ⇒ 假红。
+    ⇒ 先 `strip_comments` 再找「类型声明头 + 其上方注解」。
+
+    ⚠️ **为什么要限定在类型声明头**：字段级/方法级上方的 `@Getter` 不在本判据范围
+    （本条只管**类上**那组 Lombok 注解）⇒ 只看 `type_header`。
+    """
+    header = type_header(src)
+    found = []
+    for ann in LOMBOK_CLASS_ANNOTATIONS:
+        if re.search(r"@" + ann + r"\b", header):
+            found.append(ann)
+    return found
+
+
+def class_javadoc(src: str) -> str:
+    """取**紧贴类声明**的那段 javadoc（`/** ... */`）。
+
+    ⚠️ **必须取「紧贴」的那段**而不是全文第一段 javadoc ⇒ 否则类上方远处
+    的一段无关 javadoc 会被误当成展开块 ⇒ 假绿。
+
+    实现：找类型声明头的位置 ⇒ 从它往前找**最近的** `/** ... */`。
+    """
+    s = _strip_pkg_import(strip_comments(src))  # 仅用于定位；正文另取原文
+    i = s.find("{")
+    if i == -1:
+        return ""
+    # 用「去注释后」的长度做前缀定位不可靠（长度不一致）⇒ 改为在原文里按类型名定位
+    m = re.search(r"\b(class|interface|enum|record)\s+(\w+)", s)
+    if not m:
+        return ""
+    name = m.group(2)
+    # 在原文里找类型声明（跳过 import/package 行）
+    decl = re.search(r"^[ \t]*(?:@\w+[^\n]*\n[ \t]*)*"
+                     r"(?:public\s+|final\s+|abstract\s+|static\s+)*"
+                     r"(?:class|interface|enum|record)\s+" + re.escape(name) + r"\b",
+                     src, flags=re.M)
+    if not decl:
+        return ""
+    head = src[:decl.start()]
+    # 取**最近的**一段 `/** ... */`
+    blocks = list(re.finditer(r"/\*\*.*?\*/", head, flags=re.S))
+    if not blocks:
+        return ""
+    return blocks[-1].group(0)
+
+
+def check_a13(root: pathlib.Path, contract: str) -> Result:
+    """A13 · 凡类上出现 Lombok 注解 ⇒ 该类的 javadoc 必须含「原本的完整代码」展开块。
+
+    **为什么这条要机器判**（D18）：「用了 Lombok 就把原本的完整代码写清楚」是
+    **可机械判定**的 ⇒ 不靠自觉 ⇒ 与「表达层可以变，但变的那部分必须看得见」配套。
+
+    **为什么它不是形式主义**：B 侧是唯一 oracle（D16）⇒ 没有展开块 ⇒
+    review 的人无法在不打开 IDE、不跑 delombok 的情况下核对「这段代码原本长什么样」
+    ⇒ Lombok 化就成了**不可对照的黑盒**。
+    """
+    viol, n = [], 0
+    for f in root.glob("**/src/main/java/**/*.java"):
+        if "target" in f.parts or not is_rag_type(f):
+            continue
+        src = f.read_text(encoding="utf-8")
+        anns = lombok_annotated_types(src)
+        if not anns:
+            continue
+        n += 1
+        doc = class_javadoc(src)
+        if LOMBOK_EXPANSION_MARKER in doc and LOMBOK_EXPANSION_CODE.search(doc):
+            continue
+        viol.append(f"{f.relative_to(root)} → 类上有 @{' / @'.join(anns)} "
+                    f"但缺「{LOMBOK_EXPANSION_MARKER}」展开块")
+    if viol:
+        return Result(FAIL, f"{len(viol)}/{n} 个 Lombok 类缺展开块", viol)
+    return ok(f"{n}/{n} 个 Lombok 类均带展开块")
+
+
+# ---------------------------------------------------------------------------
 # 断言注册表
 # ---------------------------------------------------------------------------
 CHECKS = [
@@ -734,6 +830,7 @@ CHECKS = [
     ("A10", "无手写必填校验器 · 含 DTO 须有 Bean Validation", check_a10),
     ("A11", "fact-* 独立进程须有域内装配落点", check_a11),
     ("A12", "模块内无同名简单类", check_a12),
+    ("A13", "用了 Lombok ⇒ 须写原本的完整代码展开块", check_a13),
 ]
 
 
@@ -753,6 +850,7 @@ FIXTURE_VIOLATIONS = {
     "A10": "手写必填校验器 / 有 DTO 缺 Bean Validation",
     "A11": "缺 FactProcessLogging 落点",
     "A12": "模块内同名类",
+    "A13": "Lombok 类缺「原本的完整代码」展开块",
 }
 
 
@@ -839,6 +937,15 @@ def build_fixture(base: pathlib.Path) -> pathlib.Path:
     # A12 违规：同名类，不同包
     _write(root / f"{j}/Dup.java", "package com.rag.x;\npublic class Dup { }\n")
     _write(root / f"{j}/sub/Dup.java", "package com.rag.x.sub;\npublic class Dup { }\n")
+    # A13 违规：类上有 Lombok 注解，但 javadoc **缺**「原本的完整代码」展开块
+    _write(root / f"{j}/LombokNoExpand.java",
+           "package com.rag.x;\n"
+           "import lombok.Data;\n"
+           "/**\n * <p>普通 javadoc，**没有**展开块。\n */\n"
+           "@Data\n"
+           "public class LombokNoExpand {\n"
+           "    private Long id;\n"
+           "}\n")
     return root
 
 
@@ -983,7 +1090,7 @@ def self_test() -> int:
 # 主流程
 # ---------------------------------------------------------------------------
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="架构符合性守门（A1–A12）")
+    ap = argparse.ArgumentParser(description="架构符合性守门（A1–A13）")
     ap.add_argument("--contract", choices=["A", "B"], default="B",
                     help="断言绑定契约：A=api/rpc 分离（B 侧部署等价）· B=api+rpc 合并（RAG-V1，默认）")
     ap.add_argument("--only", nargs="+", metavar="A#", help="只跑指定断言，如 --only A4 A11")

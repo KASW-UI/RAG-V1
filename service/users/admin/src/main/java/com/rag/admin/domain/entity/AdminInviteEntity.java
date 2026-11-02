@@ -49,6 +49,62 @@ import java.time.OffsetDateTime;
  *   <li>CreateInviteCode 生成的 code 唯一约束冲突 → 重试最多 3 次；</li>
  *   <li>CreateAdmin 在事务中悲观锁 SELECT + UPDATE 原子写入（4 步事务，见 {@code AdminCreateAtomicService}）。</li>
  * </ul>
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <pre>{@code
+ *public class AdminInviteEntity {
+ *    private Long id;
+ *    private String code;
+ *    private Long inviterUid;
+ *    private OffsetDateTime expiresAt;
+ *    private Long usedByUid;
+ *    private OffsetDateTime usedAt;
+ *    private OffsetDateTime createTime;
+ *    private OffsetDateTime updateTime;
+ *
+ *    public Long getId() { return id; }
+ *    public void setId(Long id) { this.id = id; }
+ *    public String getCode() { return code; }
+ *    public void setCode(String code) { this.code = code; }
+ *    public Long getInviterUid() { return inviterUid; }
+ *    public void setInviterUid(Long inviterUid) { this.inviterUid = inviterUid; }
+ *    public OffsetDateTime getExpiresAt() { return expiresAt; }
+ *    public void setExpiresAt(OffsetDateTime expiresAt) { this.expiresAt = expiresAt; }
+ *    public Long getUsedByUid() { return usedByUid; }
+ *    public void setUsedByUid(Long usedByUid) { this.usedByUid = usedByUid; }
+ *    public OffsetDateTime getUsedAt() { return usedAt; }
+ *    public void setUsedAt(OffsetDateTime usedAt) { this.usedAt = usedAt; }
+ *    public OffsetDateTime getCreateTime() { return createTime; }
+ *    public void setCreateTime(OffsetDateTime createTime) { this.createTime = createTime; }
+ *    public OffsetDateTime getUpdateTime() { return updateTime; }
+ *    public void setUpdateTime(OffsetDateTime updateTime) { this.updateTime = updateTime; }
+ *
+ *    @Override
+ *    public boolean equals(Object o) {
+ *        if (this == o) return true;
+ *        if (!(o instanceof AdminInviteEntity)) return false;
+ *        AdminInviteEntity other = (AdminInviteEntity) o;
+ *        return                 Objects.equals(id, other.id) &&
+                Objects.equals(code, other.code) &&
+                Objects.equals(inviterUid, other.inviterUid) &&
+                Objects.equals(expiresAt, other.expiresAt) &&
+                Objects.equals(usedByUid, other.usedByUid) &&
+                Objects.equals(usedAt, other.usedAt) &&
+                Objects.equals(createTime, other.createTime) &&
+                Objects.equals(updateTime, other.updateTime);
+ *    }
+ *
+ *    @Override
+ *    public int hashCode() {
+ *        return Objects.hash(id, code, inviterUid, expiresAt, usedByUid, usedAt, createTime, updateTime);
+ *    }
+ *
+ *    @Override
+ *    public String toString() {
+ *        return "AdminInviteEntity(id=" + id + ", " + code=" + code + ", " + inviterUid=" + inviterUid + ", " + expiresAt=" + expiresAt + ", " + usedByUid=" + usedByUid + ", " + usedAt=" + usedAt + ", " + createTime=" + createTime + ", " + updateTime=" + updateTime)";
+ *    }
+ *}
+ * }</pre>
+
  */
 @Data
 @TableName("admin_invite")

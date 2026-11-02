@@ -39,6 +39,70 @@ import java.util.Map;
  * B 侧的列是 {@code timestamptz}（无 type tag ⇒ GORM postgres driver 生成 timestamptz），
  * 若实体仍是 {@code LocalDateTime}，JVM 默认时区会参与换算
  * ⇒ 把「列类型不一致」换成「值算错」⇒ 必须与 DDL 同源。
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <pre>{@code
+ *public class UserEntity {
+ *    private Long id;
+ *    private Long uid;
+ *    private String username;
+ *    private String password;
+ *    private String email;
+ *    private Long status;
+ *    private Integer score;
+ *    private Map<String, String> extraInfo;
+ *    private OffsetDateTime createTime;
+ *    private OffsetDateTime updateTime;
+ *
+ *    public Long getId() { return id; }
+ *    public void setId(Long id) { this.id = id; }
+ *    public Long getUid() { return uid; }
+ *    public void setUid(Long uid) { this.uid = uid; }
+ *    public String getUsername() { return username; }
+ *    public void setUsername(String username) { this.username = username; }
+ *    public String getPassword() { return password; }
+ *    public void setPassword(String password) { this.password = password; }
+ *    public String getEmail() { return email; }
+ *    public void setEmail(String email) { this.email = email; }
+ *    public Long getStatus() { return status; }
+ *    public void setStatus(Long status) { this.status = status; }
+ *    public Integer getScore() { return score; }
+ *    public void setScore(Integer score) { this.score = score; }
+ *    public Map<String, String> getExtraInfo() { return extraInfo; }
+ *    public void setExtraInfo(Map<String, String> extraInfo) { this.extraInfo = extraInfo; }
+ *    public OffsetDateTime getCreateTime() { return createTime; }
+ *    public void setCreateTime(OffsetDateTime createTime) { this.createTime = createTime; }
+ *    public OffsetDateTime getUpdateTime() { return updateTime; }
+ *    public void setUpdateTime(OffsetDateTime updateTime) { this.updateTime = updateTime; }
+ *
+ *    @Override
+ *    public boolean equals(Object o) {
+ *        if (this == o) return true;
+ *        if (!(o instanceof UserEntity)) return false;
+ *        UserEntity other = (UserEntity) o;
+ *        return                 Objects.equals(id, other.id) &&
+                Objects.equals(uid, other.uid) &&
+                Objects.equals(username, other.username) &&
+                Objects.equals(password, other.password) &&
+                Objects.equals(email, other.email) &&
+                Objects.equals(status, other.status) &&
+                Objects.equals(score, other.score) &&
+                Objects.equals(extraInfo, other.extraInfo) &&
+                Objects.equals(createTime, other.createTime) &&
+                Objects.equals(updateTime, other.updateTime);
+ *    }
+ *
+ *    @Override
+ *    public int hashCode() {
+ *        return Objects.hash(id, uid, username, password, email, status, score, extraInfo, createTime, updateTime);
+ *    }
+ *
+ *    @Override
+ *    public String toString() {
+ *        return "UserEntity(id=" + id + ", " + uid=" + uid + ", " + username=" + username + ", " + password=" + password + ", " + email=" + email + ", " + status=" + status + ", " + score=" + score + ", " + extraInfo=" + extraInfo + ", " + createTime=" + createTime + ", " + updateTime=" + updateTime)";
+ *    }
+ *}
+ * }</pre>
+
  */
 @Data
 @TableName(value = "users_user", autoResultMap = true)

@@ -38,6 +38,7 @@
 - `org.springframework.boot:spring-boot-starter-data-redis`
 - `org.apache.commons:commons-pool2`
 - `org.springframework.kafka:spring-kafka`
+- `org.projectlombok:lombok`
 
 ## 三、目录树
 

@@ -38,6 +38,7 @@
 - `com.rag:proto`
 - `com.rag:common`
 - `org.springframework.kafka:spring-kafka`
+- `org.projectlombok:lombok`
 
 ## 三、目录树
 

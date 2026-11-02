@@ -37,6 +37,7 @@
 - `com.rag:common`
 - `org.springframework.boot:spring-boot-starter-data-redis`
 - `org.apache.commons:commons-pool2`
+- `org.projectlombok:lombok`
 
 ## 三、目录树
 

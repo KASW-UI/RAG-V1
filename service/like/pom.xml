@@ -135,10 +135,52 @@
         <dependency>
             <groupId>org.springframework.kafka</groupId><artifactId>spring-kafka</artifactId>
         </dependency>
+
+        <!-- ============ Lombok（provided · **编译期依赖** · D18） ============ -->
+        <!--
+            ⚠️ **为什么是 `provided`**：lombok 是**编译期**依赖（注解处理器），
+            它的产物是**已生成的方法** ⇒ 运行期不需要 lombok jar ⇒ 不传递给下游
+            ⇒ 下游若要用 lombok 必须自己声明（避免"隐式依赖"）。
+
+            ⚠️ **版本由 Boot BOM 管**（`spring-boot-starter-parent` → `spring-boot-dependencies`
+            的 `<lombok.version>` = 1.18.42）⇒ 本仓**不写** `<version>`（B 侧同样不写）。
+
+            ⚠️ **配套 `annotationProcessorPaths`**（见下方 build 段）：JDK 21 起 javac 在
+            「classpath 上发现注解处理器」时告警，**JDK 23+ 默认关闭** ⇒ 只靠 classpath 上的
+            lombok 迟早**静默失效** ⇒ 显式列出 processor path ⇒ 行为与 JDK 版本解耦。
+        -->
+        <dependency>
+            <groupId>org.projectlombok</groupId><artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <!--
+                ⚠️ **必须显式声明 `annotationProcessorPaths`**（D18 · 同一机制，抄 B 侧
+                `service/common/pom.xml` 的同名插件）：JDK 21 起 javac 对「classpath 上发现
+                注解处理器」告警，**JDK 23+ 默认关闭** ⇒ 只靠 classpath 上的 lombok 迟早
+                **静默失效**（lombok 注解不再生成方法 ⇒ 编译期才发现，或更糟：运行期
+                `NoSuchMethodError`）⇒ ⇒ 显式列出 processor path ⇒ 行为与 JDK 版本解耦。
+
+                ⚠️ 显式声明的**副作用**：classpath 上的**其它**注解处理器会被**忽略**。
+                本仓实测**无其它**注解处理器 ⇒ 该副作用当前为零。
+                （若将来引入别的注解处理器，必须一并列进 `annotationProcessorPaths`。）
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

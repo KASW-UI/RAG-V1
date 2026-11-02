@@ -49,6 +49,62 @@ import java.util.Map;
  * （实体为 null ⇒ MP 的 {@code MetaObjectHandler} 不会被调用）⇒ 必须靠
  * {@code wrapper.setSql("update_time = CURRENT_TIMESTAMP")} 推进时间戳。
  * ⇒ 该列在 admin.proto 的 13 个 message 里<b>没有</b>对应字段 ⇒ 不可观察。
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <pre>{@code
+ *public class AdminEntity {
+ *    private Long id;
+ *    private Long uid;
+ *    private String username;
+ *    private String password;
+ *    private String email;
+ *    private Map<String, String> extraInfo;
+ *    private OffsetDateTime createTime;
+ *    private OffsetDateTime updateTime;
+ *
+ *    public Long getId() { return id; }
+ *    public void setId(Long id) { this.id = id; }
+ *    public Long getUid() { return uid; }
+ *    public void setUid(Long uid) { this.uid = uid; }
+ *    public String getUsername() { return username; }
+ *    public void setUsername(String username) { this.username = username; }
+ *    public String getPassword() { return password; }
+ *    public void setPassword(String password) { this.password = password; }
+ *    public String getEmail() { return email; }
+ *    public void setEmail(String email) { this.email = email; }
+ *    public Map<String, String> getExtraInfo() { return extraInfo; }
+ *    public void setExtraInfo(Map<String, String> extraInfo) { this.extraInfo = extraInfo; }
+ *    public OffsetDateTime getCreateTime() { return createTime; }
+ *    public void setCreateTime(OffsetDateTime createTime) { this.createTime = createTime; }
+ *    public OffsetDateTime getUpdateTime() { return updateTime; }
+ *    public void setUpdateTime(OffsetDateTime updateTime) { this.updateTime = updateTime; }
+ *
+ *    @Override
+ *    public boolean equals(Object o) {
+ *        if (this == o) return true;
+ *        if (!(o instanceof AdminEntity)) return false;
+ *        AdminEntity other = (AdminEntity) o;
+ *        return                 Objects.equals(id, other.id) &&
+                Objects.equals(uid, other.uid) &&
+                Objects.equals(username, other.username) &&
+                Objects.equals(password, other.password) &&
+                Objects.equals(email, other.email) &&
+                Objects.equals(extraInfo, other.extraInfo) &&
+                Objects.equals(createTime, other.createTime) &&
+                Objects.equals(updateTime, other.updateTime);
+ *    }
+ *
+ *    @Override
+ *    public int hashCode() {
+ *        return Objects.hash(id, uid, username, password, email, extraInfo, createTime, updateTime);
+ *    }
+ *
+ *    @Override
+ *    public String toString() {
+ *        return "AdminEntity(id=" + id + ", " + uid=" + uid + ", " + username=" + username + ", " + password=" + password + ", " + email=" + email + ", " + extraInfo=" + extraInfo + ", " + createTime=" + createTime + ", " + updateTime=" + updateTime)";
+ *    }
+ *}
+ * }</pre>
+
  */
 @Data
 @TableName(value = "admin_admin", autoResultMap = true)
