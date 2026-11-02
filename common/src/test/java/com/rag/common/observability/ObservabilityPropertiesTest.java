@@ -51,4 +51,55 @@ class ObservabilityPropertiesTest {
             assertThat(props.getRpcTimeout()).isNull();
         });
     }
+
+    // ── 内层预算（= B 侧「gRPC 中间件那一层」的超时）· 全仓唯一口径 ────────
+
+    /**
+     * 🔴 <b>内层预算 = min(http-timeout, rpc-timeout)</b>（B 侧的 ctx 与 gRPC deadline 取更早者）。
+     *
+     * <p>⚠️ <b>为什么必须是 min 而不是「只取 rpc-timeout」</b>：若 rpc(5s) &gt; http(3s)，
+     * B 侧先到的是 HTTP 的 3s ⇒ ⇒ C 侧也必须取 3s ⇒ 否则「内层比外层还晚」
+     * ⇒ ⇒ 响应面反而更不像 B 侧。
+     */
+    @Test
+    @DisplayName("🔴 内层预算 = min(http-timeout, rpc-timeout)（B 侧的 min 语义）")
+    void innerBudgetIsTheMinimumOfBoth() {
+        runner.withPropertyValues(
+                        "observability.http-timeout=3s",
+                        "observability.rpc-timeout=2s")
+                .run(context -> {
+                    ObservabilityProperties props = context.getBean(ObservabilityProperties.class);
+                    assertThat(props.resolveInnerBudget()).hasSeconds(2);
+                });
+        runner.withPropertyValues(
+                        "observability.http-timeout=3s",
+                        "observability.rpc-timeout=5s")
+                .run(context -> {
+                    ObservabilityProperties props = context.getBean(ObservabilityProperties.class);
+                    assertThat(props.resolveInnerBudget())
+                            .as("rpc(5s) > http(3s) ⇒ B 侧先到的是 HTTP 的 3s ⇒ 必须取 3s")
+                            .hasSeconds(3);
+                });
+    }
+
+    @Test
+    @DisplayName("🔴 只配了一项时，内层预算取那一项（不是 null）")
+    void innerBudgetFallsBackToTheSingleConfiguredTimeout() {
+        runner.withPropertyValues("observability.http-timeout=3s")
+                .run(context -> assertThat(
+                        context.getBean(ObservabilityProperties.class).resolveInnerBudget()).hasSeconds(3));
+        runner.withPropertyValues("observability.rpc-timeout=2s")
+                .run(context -> assertThat(
+                        context.getBean(ObservabilityProperties.class).resolveInnerBudget()).hasSeconds(2));
+    }
+
+    @Test
+    @DisplayName("🔴 两项都未配（= 不限时）⇒ 内层预算为 null ⇒ 调用方不绑 deadline")
+    void innerBudgetIsNullWhenUnbounded() {
+        runner.run(context -> assertThat(
+                context.getBean(ObservabilityProperties.class).resolveInnerBudget()).isNull());
+        runner.withPropertyValues("observability.http-timeout=0s", "observability.rpc-timeout=0s")
+                .run(context -> assertThat(
+                        context.getBean(ObservabilityProperties.class).resolveInnerBudget()).isNull());
+    }
 }

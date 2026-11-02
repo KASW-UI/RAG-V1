@@ -33,8 +33,12 @@ docs/Pitfalls/
 | P-16 | **Boot 3.4+ 嵌套 `@TestConfiguration` 默认不被发现** | 测试配置**静默不注册** ⇒ 测试"绿"但根本没加载配置 |
 | P-17 | **合并进程里的「Nacos 自动注册」会拿 web 端口注册** | 同名双实例 ⇒ gRPC 链路断 |
 | P-18 | **域还是空壳 ⇒ 没有 `main` ⇒ `repackage` 失败 ⇒ `mvn verify` 恒红** | 报错出现在**打包阶段**（看着像 pom 配错）⇒ 真因是**域未实现** ⇒ 红绿分布只反映「实现到哪一步」，**与代码质量无关** ⇒ ⇒ **红也要做同条件对照**（`git archive HEAD` 基线副本 + **`-fae`**）⇒ 域实现完成前，全仓验收信号用 `mvn -o clean test-compile` / `mvn -o clean test` |
+| P-20 | **MyBatis 把 mapper 调用里的任何异常包成 `PersistenceException`** | `DefaultSqlSession` 对每个异常都 `catch (Exception e) → wrapException` ⇒ ⇒ 持久层翻好的 `StatusRuntimeException(DEADLINE_EXCEEDED)` **在离开持久层前就被吃掉一层** ⇒ ⇒ 域层的 `catch (StatusRuntimeException e) { throw e; }` **看不见它** ⇒ ⇒ 落 `catch (Exception e)` ⇒ ⇒ **被改写成 5001**（不是 B 侧的 1015）⇒ 解包点选在 `SqlSessionFactory`（两条 mapper 路径都经它） |
+| P-21 | **MyBatis 拦截器的 `@Intercepts` 漏签一个方法 ⇒ 那条路径整条绕过** | `Executor.queryCursor` 漏签 ⇒ MP 的 `BaseMapper.selectOne(Wrapper, boolean)`（**游标路径**）**完全不经过翻译器** ⇒ 57014 原样冒到域层 ⇒ 5001；⇒ **签错一个方法 ⇒ 启动期 `PluginException`**（3 参 `Executor.query` 在 MyBatis 3.5.19 里不存在）⇒ **漏签零报错、写错启动炸**，两者都是「零功能性报错」 |
 
 > 📖 详情 → [`_cross/P-08-落地证据未经机器复算.md`](_cross/P-08-落地证据未经机器复算.md) ·
+[`_cross/P-20-MyBatis包装异常导致status到不了域层.md`](_cross/P-20-MyBatis包装异常导致status到不了域层.md) ·
+[`_cross/P-21-MyBatis拦截器漏签与写错签名.md`](_cross/P-21-MyBatis拦截器漏签与写错签名.md) ·
 > [`_cross/P-09-批量替换的三个静默失效.md`](_cross/P-09-批量替换的三个静默失效.md) ·
 [`_cross/P-12-变异没变红等于那条断言没覆盖到.md`](_cross/P-12-变异没变红等于那条断言没覆盖到.md) ·
 > [`_cross/P-18-域还是空壳导致repackage找不到main方法.md`](_cross/P-18-域还是空壳导致repackage找不到main方法.md) ·

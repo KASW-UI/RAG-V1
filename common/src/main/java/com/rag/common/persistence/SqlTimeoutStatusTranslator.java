@@ -87,6 +87,17 @@ import java.util.Properties;
         @Signature(type = Executor.class, method = "query",
                 args = {MappedStatement.class, Object.class, RowBounds.class,
                         ResultHandler.class, CacheKey.class, BoundSql.class}),
+        // 🔴 2026-11-03 补：**queryCursor 此前漏签** ⇒ MP 的 `BaseMapper.selectOne(Wrapper, boolean)`
+        //    （游标查询路径）**完全不经过本翻译器** ⇒ pg 的 57014 原样冒到域层 ⇒ 被改写成 5001。
+        //    实测证据：admin 域 S4（外部持锁卡住 W1 的 SELECT ... FOR UPDATE）
+        //    ⇒ 响应面 HTTP 200 + {"code":5001} @ 2.02s（应为 1015）。
+        //    ⇒ 栈顶：`BaseExecutor.queryCursor` → `CachingExecutor.queryCursor` → `Plugin.invoke`。
+        //    ⚠️ **不要**再加 3 参的 `query(MappedStatement, Object, RowBounds)`：MyBatis 3.5.19 的
+        //    `Executor` 接口**没有**这个方法（只有 4 参与 6 参两个 `query`）
+        //    ⇒ ⇒ `Plugin.getSignatureMap` 会在**启动时**抛 `PluginException`（实测：
+        //    admin 服务起不来，报 `Could not find method on interface Executor named query`）。
+        @Signature(type = Executor.class, method = "queryCursor",
+                args = {MappedStatement.class, Object.class, RowBounds.class}),
         @Signature(type = Executor.class, method = "update",
                 args = {MappedStatement.class, Object.class})
 })
@@ -97,6 +108,21 @@ public class SqlTimeoutStatusTranslator implements Interceptor {
      * 由 CancelRequest（{@code setQueryTimeout} 到点、或 pg 的 {@code pg_cancel_backend}）产生。
      */
     static final String PG_QUERY_CANCELED = "57014";
+
+    /**
+     * Hikari「取连接超时」的 SQLState。
+     *
+     * <p>⚠️ <b>为什么只认 08001 还不够</b>：{@code 08001}（connection does not exist）
+     * 也覆盖「连接被拒」这类<b>快速失败</b> ⇒ ⇒ 必须再认准 Hikari 的<b>超时</b>文案
+     * （{@code "Connection is not available, request timed out after Nms."}）
+     * ⇒ ⇒ 只有「等不到连接」这一种才翻成 {@code DEADLINE_EXCEEDED}
+     * ⇒ ⇒ 「连接被拒」仍然按「数据库故障」上报（与 B 侧同形：B 侧连接被拒是快速错误，
+     * 由 api logic 的错误分支处理，不是 ctx 到期）。
+     */
+    static final String HIKARI_CONNECTION_TIMEOUT_SQLSTATE = "08001";
+
+    /** Hikari 取连接超时的文案标记（{@code HikariPool#createTimeoutException}）。 */
+    static final String HIKARI_CONNECTION_TIMEOUT_MARKER = "request timed out after";
 
     @Override
     public Object intercept(Invocation invocation) throws Throwable {
@@ -134,6 +160,36 @@ public class SqlTimeoutStatusTranslator implements Interceptor {
     static boolean isStatementTimeout(Throwable t) {
         for (Throwable c = t; c != null; c = c.getCause()) {
             if (c instanceof SQLException sql && PG_QUERY_CANCELED.equals(sql.getSQLState())) {
+                return true;
+            }
+            if (c.getCause() == c) {
+                break;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断异常链里是否含「<b>取连接</b>等超时」。
+     *
+     * <p><b>为什么单列一个判据（而不是并进 {@link #isStatementTimeout}）</b>：
+     * 二者的<b>语义与文案</b>不同 ⇒ ⇒ 翻译出的 description 也不同
+     * （「statement canceled」vs「connection acquisition timed out」）
+     * ⇒ ⇒ 且只有后者需要「认准 Hikari 的超时文案」（见
+     * {@link #HIKARI_CONNECTION_TIMEOUT_SQLSTATE} 的说明）。
+     *
+     * <p><b>为什么需要它（B 出处）</b>：B 侧 DB 调用的等待由 ctx 掐住
+     * ⇒ 「等连接等不到」也是 {@code context.DeadlineExceeded}
+     * ⇒ ⇒ 落 api logic 的 {@code default} ⇒ <b>1015</b>；
+     * ⇒ C 侧没有 ctx ⇒ 等价物就是 Hikari 的 {@code connectionTimeout} 到点
+     * ⇒ ⇒ 必须把它也翻成 {@code DEADLINE_EXCEEDED}，否则会被当成「数据库故障」（5001）。
+     */
+    static boolean isConnectionAcquisitionTimeout(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c instanceof SQLException sql
+                    && HIKARI_CONNECTION_TIMEOUT_SQLSTATE.equals(sql.getSQLState())
+                    && sql.getMessage() != null
+                    && sql.getMessage().contains(HIKARI_CONNECTION_TIMEOUT_MARKER)) {
                 return true;
             }
             if (c.getCause() == c) {
