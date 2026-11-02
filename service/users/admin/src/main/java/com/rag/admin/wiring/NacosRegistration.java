@@ -28,10 +28,14 @@ import java.util.Enumeration;
  *   <li><b>比 B 侧多做了什么</b>：仅<b>包名</b>（{@code com.rag.users.admin.rpc.bootstrap} →
  *       {@code com.rag.admin.wiring}，D7 包压平）＋ <b>两处字符串</b>：
  *       <ul>
- *         <li>注册的服务名 {@code "admin-rpc"} → {@code "admin-service"}
- *             （<b>D1 合并后的进程身份</b>，与 {@code spring.application.name} 一致；
- *             ⚠️ 本仓 D2 之后<b>没有</b>任何消费方按这个名字寻址 ⇒ 纯运维面）；</li>
- *         <li>日志前缀 {@code admin-rpc} → {@code admin-service}（纯日志）。</li>
+ *         <li>注册的服务名 <b>逐字沿用 B 侧</b> {@code "admin-rpc"}
+ *             （<b>2026-11-02 修正</b>：原先改成了 {@code "admin-service"}，理由是
+ *             「D1 合并后的进程身份，与 {@code spring.application.name} 一致」——
+ *             ⚠️ <b>该前提已被 message 域推翻</b>：message 的 gRPC client 按 B 侧逐字寻址
+ *             {@code discovery:///admin-rpc} ⇒ 注册名必须叫 {@code admin-rpc} 才寻址得到；
+ *             且兄弟域 user 就是这个形状（app name {@code user-service} ＋ 注册名 {@code user-rpc}）
+ *             ⇒ 详见 {@link #SERVICE_NAME} 的 L1 论证）；</li>
+ *         <li>日志前缀 {@code admin-rpc} → {@code admin-service}（<b>纯日志</b>，无行为面）。</li>
  *       </ul>
  *       <b>方法体逐字照抄</b>（含 group 读配置、{@code resolveLocalIp} 的非 loopback 规则、
  *       {@code @PreDestroy} 的反注册）。</li>
@@ -77,6 +81,54 @@ public class NacosRegistration {
 
     private static final Logger log = LoggerFactory.getLogger(NacosRegistration.class);
 
+    /**
+     * 🆕 2026-11-02 · <b>Nacos 注册名 = B 侧 rpc 进程名，逐字沿用</b>。
+     *
+     * <p><b>B 出处</b>：{@code service/users/admin/admin-rpc/src/main/java/com/rag/users/admin/rpc/bootstrap/NacosRegistration.java:88}
+     * —— B 侧 {@code String serviceName = "admin-rpc";}（<b>硬编码</b>）。
+     *
+     * <p><b>为什么必须逐字沿用</b>（L1 · 跨域寻址面）：
+     * <ul>
+     *   <li>B 侧 message 域的 gRPC client 按 <b>etcd key {@code admin.rpc}</b> 寻址 admin-rpc ⇒
+     *       本仓换成 Nacos discovery 后，对应的服务名就是 {@code admin-rpc}
+     *       （message 域的 {@code application.yml} 逐字写 {@code address: discovery:///admin-rpc}）；</li>
+     *   <li>注册名若不叫 {@code admin-rpc} ⇒ **寻址落空** ⇒ 跨域 gRPC 链路断（业务码塌 1015）；</li>
+     *   <li>⚠️ 与 {@code spring.application.name}（= {@code admin-service}）<b>刻意不同</b>：
+     *       前者是<b>进程名</b>（本仓 artifactId 惯例，同时是 Prometheus 的 {@code application} 标签），
+     *       后者是<b>服务发现名</b>（必须与 B 侧寻址键逐字一致）⇒ <b>兄弟域 user 就是这个形状</b>
+     *       （{@code spring.application.name=user-service} ＋ Nacos 注册名 {@code user-rpc}）。</li>
+     * </ul>
+     *
+     * <p>📌 **本条是一次「前提已变」的修正**：本类原先把注册名改成 {@code admin-service}，
+     * 理由是「D1 合并后的进程身份，与 {@code spring.application.name} 一致；
+     * 且本仓 D2 之后<b>没有</b>任何消费方按这个名字寻址 ⇒ 纯运维面」——
+     * ⚠️ 后半个前提<b>已被 message 域推翻</b>（它按 B 侧逐字寻址 {@code admin-rpc}）。
+     */
+    private static final String SERVICE_NAME = "admin-rpc";
+
+    /**
+     * 🆕 2026-11-02 · <b>注册名可覆盖，但默认值逐字等于 B 侧</b>。
+     *
+     * <p><b>取值来源</b>：{@code spring.cloud.nacos.discovery.service}
+     * （**Spring Cloud Alibaba 的标准键** —— 语义恰好就是「注册到 Nacos 的服务名」）
+     * ⇒ <b>未配置时回落 {@link #SERVICE_NAME} = {@code "admin-rpc"}</b>（B 侧逐字值）。
+     *
+     * <p><b>为什么默认值不能改</b>（L1 · 跨域寻址面）：
+     * message 域的 gRPC client 按 <b>B 侧逐字</b>寻址 {@code discovery:///admin-rpc}
+     * ⇒ 注册名一旦不是 {@code admin-rpc} ⇒ <b>寻址落空</b> ⇒ 跨域链路断（业务码塌 1015）。
+     *
+     * <p><b>为什么要留这个覆盖口</b>（不是「行为面」的灵活性，是**测试环境的隔离需求**）：
+     * E-4 双侧活体对拍环境里，**B 侧与 C 侧共用同一个 Nacos 实例**
+     * （B 侧 {@code admin-rpc} ＋ C 侧同时注册）⇒ 若两侧同名 ⇒ **同服务名下两个实例**
+     * ⇒ 消费方按服务名发现时可能拿到**另一侧的实例**（端口不同）⇒ **对拍打到错误进程 ⇒ 假绿/假红**。
+     * ⇒ ⇒ 对拍环境把 C 侧覆盖成另一个名字即可**错开**，而**默认部署形态零变化**
+     * （与 {@link #groupName} 的 DRIFT-G1-001 同款处理：**读配置 · 默认零变化**）。
+     *
+     * <p>⚠️ <b>不得把这个键当成「改名开关」随意用</b> —— 改了它就等于改了
+     * <b>跨域寻址键</b>（L1）⇒ 需走决策流程。
+     */
+    private final String serviceName;
+
     private final NacosServiceManager nacosServiceManager;
     private final GrpcServerProperties grpcServerProperties;
 
@@ -103,16 +155,35 @@ public class NacosRegistration {
     public NacosRegistration(NacosServiceManager nacosServiceManager,
                              GrpcServerProperties grpcServerProperties,
                              @Value("${spring.cloud.nacos.discovery.group:USER_GROUP}")
-                             String groupName) {
+                             String groupName,
+                             @Value("${spring.cloud.nacos.discovery.service:admin-rpc}")
+                             String serviceName) {
         this.nacosServiceManager = nacosServiceManager;
         this.grpcServerProperties = grpcServerProperties;
         this.groupName = groupName;
+        // ⚠️ 空值兜底：属性被显式配成空串/空白时，**不得**注册出一个空服务名
+        //    ⇒ 回落到 B 侧逐字值（与「默认值零变化」同一条纪律）。
+        this.serviceName = (serviceName == null || serviceName.isBlank())
+                ? SERVICE_NAME
+                : serviceName;
     }
 
     @EventListener(ApplicationReadyEvent.class)
     public void register() {
-        // ⚠️ D1 合并后的进程身份：与 spring.application.name 一致（本仓已无独立的 admin-rpc 进程）
-        String serviceName = "admin-service";
+        // 🔴 2026-11-02 修正（前提已变）：注册名**回到 B 侧逐字值 `admin-rpc`**。
+        //    原先写死 `admin-service` 的理由是「D1 合并后的进程身份，与 spring.application.name 一致，
+        //    且本仓 D2 之后没有任何消费方按这个名字寻址 ⇒ 纯运维面」——
+        //    ⚠️ **该前提已不成立**：message 域的 gRPC client 按 B 侧逐字寻址 `discovery:///admin-rpc`
+        //    （B 侧 zrpc 的 etcd key 是 `admin.rpc`）⇒ 注册名仍叫 `admin-service` ⇒ **寻址落空**
+        //    ⇒ 跨域 gRPC 链路断（业务码塌 1015）。
+        //    ⇒ 且它同时偏离 B 侧（`admin-rpc`）与兄弟域形状（user 域：`spring.application.name=user-service`
+        //    但 **Nacos 注册名 = `user-rpc` 逐字沿用 B 侧** ⇒ 两者本来就该分叉）。
+        //    ⇒ 本仓约定（user 域已确立）：**Nacos 注册名 = B 侧 rpc 进程名（逐字）**；
+        //      **spring.application.name = 本仓 artifactId 惯例（`admin-service`）** ⇒ 后者不动。
+        //    ⇒ 🆕 2026-11-02：改为**读配置**（`spring.cloud.nacos.discovery.service`）
+        //      ⇒ **默认值仍逐字等于 B 侧的 `admin-rpc`**（不配置时行为零变化）
+        //      ⇒ 覆盖口只服务于「E-4 双侧对拍环境里 B/C 共用一个 Nacos ⇒ 必须错开服务名」的隔离需求。
+        String serviceName = this.serviceName;
         String groupName = this.groupName;
         int port = grpcServerProperties.getPort();
 

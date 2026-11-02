@@ -192,3 +192,62 @@ B 侧那串文本是 **go-zero 的错误信息**，C 侧要对齐就得**手抄 
 - ✅ **形状一致即通过**；文本差异**显式登记**（本条 + `docs/L3-降级清单.md` **D-01**）。
 - ⚠️ **对拍探针必须显式排除它**（`tools/difftest/parity_admin.py` 的 `shape_only` 模式）
   ⇒ 否则会把**已签字的降级**误判成回归 ⇒ ⇒ 触发「修回旧行为」⇒ ⇒ **降级被静默撤销**。
+
+---
+
+## DEV-ADMIN-APPNAME-003 · `spring.application.name`：`admin-rpc` → **`admin-service`**（**部署面 · 进程名**）
+
+> **性质**：**部署面 / 进程名**（**不是行为面、不是寻址面**）⇒ 🏷 **候选，建议签**
+> **登记时间**：2026-11-02（`align/users-admin` 工作树 · 第五阶段「多文件合并 / 架构调整」专项核查时发现）
+
+### 偏离内容
+
+| 项 | B 侧（RAG 仓 · Boot 4） | C 侧（RAG-V1 · Boot 3.5） |
+|---|---|---|
+| `spring.application.name` | **`admin-rpc`** | **`admin-service`** |
+| **Nacos 注册名**（服务发现面） | `admin-rpc` | **`admin-rpc`**（✅ **逐字一致** · §五·5-⑪ 已修） |
+
+⇒ ⇒ **两个轴在本仓刻意分叉**：**进程名**（`spring.application.name`）≠ **服务发现名**（Nacos 注册名）。
+
+### B 侧出处（逐行核对）
+
+- B 侧 `service/users/admin/admin-rpc/src/main/resources/application.yml:4-5`：
+
+  ```yaml
+  spring:
+    application:
+      name: admin-rpc
+  ```
+
+- B 侧 `service/users/admin/admin-rpc/src/main/java/com/rag/users/admin/rpc/bootstrap/NacosRegistration.java:88`
+  —— `String serviceName = "admin-rpc";`（**硬编码** ⇒ 与上面对齐）。
+
+### RAG-V1 落点
+
+- `service/users/admin/src/main/resources/application.yml:16` ⇒ `name: admin-service`
+  （**本仓 artifactId 惯例**：`admin-service` / `user-service` / `message-service` …）。
+- `service/users/admin/src/main/java/com/rag/admin/wiring/NacosRegistration.java`
+  ⇒ 注册名**读配置** `spring.cloud.nacos.discovery.service`，**默认逐字 = `admin-rpc`**（B 侧值）。
+
+### 为什么**不参与服务发现**（本条不是寻址面）
+
+| 面 | 取值来源 | C 侧取值 | 影响 |
+|---|---|---|---|
+| **服务发现 / 寻址** | Nacos **注册名** | **`admin-rpc`**（逐字 = B 侧）⇒ ⇒ message 域按 `discovery:///admin-rpc` 寻址**能落到本进程** | ✅ **寻址正常** |
+| **进程名 / 指标标签** | `spring.application.name` | `admin-service` | Prometheus 的 `application` 标签 ＋ 观测层默认服务名 |
+
+⇒ ⇒ **兄弟域形状已经确立**：user 域 = `spring.application.name=user-service` ＋ **Nacos 注册名 = `user-rpc`（逐字沿用 B 侧）**
+⇒ ⇒ 本仓**两个轴本来就该分叉** ⇒ admin 域保持同款形状。
+
+### 语义等价性论证
+
+- **不影响寻址**：服务发现名 = Nacos 注册名 = `admin-rpc` ⇒ 与 B 侧逐字一致 ⇒ **跨域 gRPC 链路不受影响**。
+- **不影响业务行为**：13 个端点的 path / method / 错误码 / wire 载荷**均不含进程名**。
+- **不影响可观测语义**：`spring.application.name` 只作为**标签值**出现 ⇒ 改回去只会让标签与 B 侧同名，
+  却在**同机多域共存**时与兄弟域的标签口径不一致 ⇒ ⇒ 本仓取 artifactId 惯例口径（与 user 域同款）。
+
+### 处置
+
+- ✅ **显式登记**（本条），避免日后被当成「注册名漂移」而误改（**注册名 ≠ 进程名**，两者已由
+  `AdminServiceApplicationTests` 的两条断言分别钉死：注册名 == `admin-rpc`、进程名 == `admin-service`）。
+- ⚠️ **`docs/Intentional_Deviations/_INDEX.md` 的索引由主会话统一更新**（本 lane 不碰）。

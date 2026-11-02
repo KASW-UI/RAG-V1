@@ -132,12 +132,32 @@
 │                   └── admin/
 │                       ├── domain/
 │                       │   └── service/
-│                       │       └── AdminDomainServiceRealPgTest.java    # admin 域领域层在「真 PostgreSQL + 真 Redis」上的行为对齐测试。
+│                       │       ├── AdminCreatePasswordOrderRegressionTest.java    # R5 防回归测试 —— {@code admin.create} 里 bcrypt 哈希与前置业务检查的先后顺序。
+│                       │       ├── AdminDomainServiceCatchStructureTest.java    # 结构性元测试：把「每个 {@code catch (Exception)} 前面都必须有
+│                       │       ├── AdminDomainServiceRealPgTest.java    # admin 域领域层在「真 PostgreSQL + 真 Redis」上的行为对齐测试。
+│                       │       ├── AdminRpcColumnTypeParityTest.java    # 🔴 DRIFT-ARPC-004 ①② 守门测试 —— admin 域 DDL 列类型与 Go 真源同构。
+│                       │       ├── AdminRpcPaginationGormSemanticsTest.java    # E-3 根因 **R4** 的回归网 —— admin-rpc {@code getUserList} 的分页边界，在真 PG 上。
+│                       │       ├── AdminSemanticDriftRegressionTest.java    # Go↔RAG 语义一致性回归网 —— admin-rpc 侧（issue #71186443）。
+│                       │       └── AdminUpdateSelfAndCreateAdminRegressionTest.java    # admin-rpc 两个已确认缺陷的回归测试：
+│                       ├── dto/
+│                       │   └── ApiTypesSnakeCaseTest.java    # DTO 序列化 wire 契约测试 —— 验证 snake_case 字段名 + uid 序列化为字符串。
+│                       ├── grpc/
+│                       │   ├── AdminRpcGoWireParityTest.java    # 🔴 DRIFT-ARPC-007 / DRIFT-ARPC-008 守门测试 —— admin-rpc 的 gRPC wire 层与 Go 真源逐条对齐。
+│                       │   ├── AdminRpcLogoutClientVisibleGrpcStatusDefaultBehaviorTest.java    # 🔴 **admin-rpc 的 B 组反例：断连策略 = {@code DEFAULT} ⇒ 客户端看到 1015（DEADLINE_EXCEEDED）而不是 INTERNAL**
+│                       │   └── AdminRpcLogoutClientVisibleGrpcStatusTest.java    # 🔴 **admin-rpc 的 A 组：Redis 断连 ⇒ 客户端可见的 gRPC status 必须是 INTERNAL「注销失败,Redis写入异常」**
 │                       ├── http/
+│                       │   ├── AdminApiPlainText400ContentTypeTest.java    # 🔴 DRIFT-ADMINAPI-011 守门测试 —— 400 响应的 {@code Content-Type} 必须与 Go 逐字节相同。
+│                       │   ├── AdminApiPlainText400HeaderProbeTest.java    # E-1 取证（2026-10-22）：定位「RAG 的 text/plain 400 丢了 Content-Type」的机制层成因。
+│                       │   ├── AdminApiRealTomcatResponseBytesTest.java    # 🔴🔴 admin 真 Tomcat（RANDOM_PORT）响应字节级探针 ——
 │                       │   ├── AdminHttpContractRealTomcatTest.java    # admin 域 HTTP 契约测试 —— 真 Tomcat · 真 PG · 真 Redis。
+│                       │   ├── AdminSemanticDriftApiRegressionTest.java    # Go↔RAG 语义一致性回归网 —— admin-api 侧（issue #71186443）。
 │                       │   └── NacosStubConfiguration.java    # Nacos 桩 —— 让 admin 域的测试能起真实 Spring 上下文，而不连 Nacos。
 │                       ├── parity/
 │                       │   └── GrpcParityProbe.java    # admin 域 · gRPC 面双侧活体对拍探针（E-4） —— 用 **C 侧生成的 proto stub** 同时打
+│                       ├── service/
+│                       │   └── AdminSpanWiringTest.java    # 🔴 DRIFT-ARPC-006 守门 —— admin-rpc 的手写 span 必须真的被导出。
+│                       ├── wiring/
+│                       │   └── AdminRpcNacosGroupTest.java    # 🔴 DRIFT-G1-001 守门 —— admin-rpc 注册到 Nacos 的 group 必须来自配置，
 │                       └── AdminServiceApplicationTests.java    # admin 域「真启动」契约测试 —— 进程起得来这件事本身就是契约。
 └── pom.xml    # Maven 模块描述
 ```

@@ -145,6 +145,15 @@ class AdminServiceApplicationTests {
     @Autowired
     private NacosDiscoveryProperties nacosDiscoveryProperties;
 
+    /**
+     * <b>{@code spring.application.name} 的真值</b>（值来自真实 {@code application.yml}）。
+     * <p>用于断言「<b>进程名</b>（{@code admin-service}）与<b>Nacos 注册名</b>（{@code admin-rpc}）刻意分叉」——
+     * 两者是<b>不同轴</b>：前者是 Prometheus 的 {@code application} 标签，后者是<b>服务发现名</b>
+     * （必须与 B 侧寻址键逐字一致 ⇒ message 域按 {@code discovery:///admin-rpc} 寻址）。
+     */
+    @org.springframework.beans.factory.annotation.Value("${spring.application.name}")
+    private String springApplicationName;
+
     @Autowired
     private NacosAutoServiceRegistration nacosAutoServiceRegistration;
 
@@ -226,5 +235,19 @@ class AdminServiceApplicationTests {
                 "注册到 Nacos 的必须是 gRPC 端口（B 侧 admin-rpc 用 GrpcServerProperties.getPort()）");
         assertNotEquals(webPort, registered.getPort(),
                 "web 端口绝不能被注册 —— 否则同名服务下会出现两个端口的实例，gRPC 链路断（业务码塌 1015）");
+
+        // 🔴 ④ L1：注册名必须逐字等于 B 侧的 `admin-rpc`（2026-11-02 修正项）
+        //    B 出处：admin-rpc/.../bootstrap/NacosRegistration.java:88 ⇒ String serviceName = "admin-rpc";
+        //    ⚠️ 本条曾经是 `admin-service`（理由「D1 合并后的进程身份」）⇒ 而 message 域的 gRPC client
+        //    按 B 侧逐字寻址 `discovery:///admin-rpc` ⇒ 注册名不叫 admin-rpc ⇒ **寻址落空** ⇒ 链路断。
+        //    ⇒ 用断言把它钉死，防止再漂回去。
+        assertEquals("admin-rpc", registered.getServiceName(),
+                "Nacos 注册名必须是 B 侧逐字值 `admin-rpc`（message 域按 `discovery:///admin-rpc` 寻址；"
+                        + "兄弟域 user 同款：app name=user-service ＋ 注册名=user-rpc）");
+        // ⚠️ 与 spring.application.name 刻意不同：后者是**进程名**（Prometheus 的 application 标签），
+        //    前者是**服务发现名**（必须与 B 侧寻址键逐字一致）⇒ 两者分叉是设计，不是漂移。
+        assertEquals("admin-service", springApplicationName,
+                "spring.application.name 走本仓 artifactId 惯例（admin-service），"
+                        + "与 Nacos 注册名（admin-rpc）刻意不同 —— 两者是不同轴");
     }
 }

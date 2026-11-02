@@ -239,7 +239,7 @@
 
 ---
 
-## 五、本轮发现并修掉的漂移（**9 条 · 全部已修 + 已补真触发测试**）
+## 五、本轮发现并修掉的漂移（**10 条 · 全部已修 + 已补真触发测试**）
 
 > ⚠️ **本节是本轮的核心产出** —— 每条都是「**读 B 侧源码 / 读框架源码 → 发现 C 侧与 B 侧不一致 → 改 C 侧**」。
 
@@ -370,6 +370,38 @@
 
 ---
 
+### 5-⑪ 🔴 P0 · **Nacos 注册名与跨域寻址不匹配** ⇒ `discovery:///admin-rpc` 永远寻址落空
+
+- **B 出处**：`service/users/admin/admin-rpc/src/main/java/com/rag/users/admin/rpc/bootstrap/NacosRegistration.java:88`
+  —— B 侧 **`String serviceName = "admin-rpc";`**（**硬编码**）。
+- **现象**：C 侧原实现把注册名写成 **`admin-service`**，类 javadoc 给的理由是
+  「D1 合并后的进程身份，与 `spring.application.name` 一致；且本仓 D2 之后**没有**任何消费方按这个名字寻址 ⇒ 纯运维面」。
+- **⚠️ 后半个前提已被推翻**（message 域推翻）：message 域的 gRPC client 按 **B 侧逐字**寻址
+  `address: discovery:///admin-rpc`（B 侧 zrpc 的 etcd key 是 `admin.rpc`）
+  ⇒ ⇒ **注册名不叫 `admin-rpc` ⇒ 寻址落空 ⇒ 跨域 gRPC 链路断**（业务码塌 `1015`）。
+- **⚠️ 旁证一：它同时偏离 B 侧** —— B 侧注册名是 `admin-rpc`，C 侧写成 `admin-service` ⇒ **本身就是一条 L1 漂移**（与寻址无关）。
+- **⚠️ 旁证二：兄弟域形状已经确立了相反的做法** —— user 域是
+  `spring.application.name=user-service` ＋ **Nacos 注册名 = `user-rpc` 逐字沿用 B 侧**
+  ⇒ ⇒ **两个轴本来就该分叉** ⇒ admin 域原写法与兄弟域**不一致**。
+- **修法**（本轮）：
+  1. `NacosRegistration` 的注册名改为**读配置** `spring.cloud.nacos.discovery.service`，
+     **默认值逐字等于 B 侧的 `admin-rpc`**（**不配置时行为零变化**）
+     —— 与 DRIFT-G1-001 的 group 处理**同款**（「读配置 · 默认零变化」）；
+     ⚠️ 覆盖口存在的原因是 **E-4 双侧对拍环境里 B 侧与 C 侧共用同一个 Nacos**
+     ⇒ 同名会出两个实例 ⇒ 对拍可能打到错误进程 ⇒ 对拍环境需覆盖成另一个名字。
+  2. `spring.application.name` **保持 `admin-service`**（本仓 artifactId 惯例 · 兄弟域同款）
+     ⇒ ⇒ **两个轴刻意分叉**，已登记 `DEV-ADMIN-APPNAME-003`（§六 ⑥）。
+- **真触发验证**（3 条，缺一不可）：
+  1. `AdminServiceApplicationTests`：**运行期**从 `NacosServiceManager` 桩上取到的
+     `Instance#getServiceName()` **必须 == `admin-rpc`**；
+  2. 同一测试断言 `spring.application.name == admin-service` ⇒ ⇒ **「两者刻意分叉」被钉死**，防止再漂回去；
+  3. `AdminRpcNacosGroupTest`（移植自 B 侧）：默认名 **== `admin-rpc`**（跨域寻址键的守门）
+     ＋ **覆盖口真的被消费**（配了就跟着变，且**不再**注册默认名）。
+- **⚠️ 三轴核对**（跨域寻址的完整条件）：服务名 `admin-rpc` ＋ namespace `sea-rtw` ＋ group `USER_GROUP`
+  ⇒ ⇒ **message ↔ admin 三轴全对齐**（原先只有后两轴）。
+
+---
+
 ## 六、登记为 Intentional Deviation / 已批准降级的项
 
 | # | 项 | 性质 | 依据 | 状态 |
@@ -379,24 +411,44 @@
 | ③ | **必填字段缺失的 400 文本内容** | **已登记降级 D-01** | B 侧 `field "username" is not set`（go-zero mapping）↔ C 侧 Hibernate Validator / Spring 的消息 ⇒ **形状**（400 + text/plain + nosniff + 尾随换行）一致，**文本**不同 | ✅ **已登记**（`docs/L3-降级清单.md` D-01 · 不需签字） |
 | ④ | **表结构 `extra_info` 为 text 而非 jsonb** | **继承 B 侧已修的漂移** | jsonb 会以 **22P05** 拒收含 `U+0000` 的 payload ⇒ B 侧已改 text ⇒ **C 侧继承**（不得回流 jsonb） | ✅ **已继承** |
 | ⑤ | **指标名 `admin_rpc_high_risk_action_logal` 的拼写错误** | **L1 逐字照抄** | B 侧就是 `logal` ⇒ **不得修正** | ✅ **已照抄** |
+| ⑥ | **`spring.application.name`：`admin-rpc` → `admin-service`** | **部署面**（进程名，非行为面） | B 侧 admin-rpc 的 `spring.application.name = admin-rpc`（yml:5）⇒ C 侧 D1 合并后按**本仓 artifactId 惯例**取 `admin-service`（与兄弟域 `user-service` 同款）⇒ 该值**只**影响 Prometheus 的 `application` 标签 ＋ 观测层默认服务名，**不参与服务发现**（服务发现名 = Nacos 注册名 = `admin-rpc`，已按 B 侧逐字对齐 · §五·5-⑪）⇒ **不影响任何寻址或业务行为** | 🏷 **候选，建议签**（已落 `docs/Intentional_Deviations/admin/_signed-deviations.md` 的 `DEV-ADMIN-APPNAME-003`） |
 
-> ⚠️ **本表只登记，不升级为「请用户拍板」**（用户 2026-10-25 的明确要求）⇒ ① ② 两条按「🏷 候选，建议签」登记即算交付。
+> ⚠️ **本表只登记，不升级为「请用户拍板」**（用户 2026-10-25 的明确要求）⇒ ① ② ⑥ 三条按「🏷 候选，建议签」登记即算交付。
+> 📌 **本轮新增 ⑥ 的来历**：§五·5-⑪ 把 **Nacos 注册名**改回 B 侧逐字值 `admin-rpc` 之后，
+> **剩下的**与 B 侧的差异就只有 `spring.application.name` 这一项 ⇒ 单列登记，避免与「注册名」混为一谈。
+> ⚠️ **两个轴不是同一个轴**（避免后人「顺手统一」）：
+> | 轴 | 值 | 语义 | 参与寻址？ |
+> |---|---|---|---|
+> | `spring.application.name` | `admin-service` | **进程名** ＋ Prometheus 的 `application` 标签 ＋ 观测层默认服务名 | ❌ **否** |
+> | Nacos 注册名 | `admin-rpc` | **服务发现名** —— 跨域 client 按它寻址 | ✅ **是**（必须与 B 侧逐字一致） |
 
 ---
 
 ## 七、测试资产与证据强度
 
-### 7.1 本域测试（**3 个类 · 41 例**）
+### 7.1 本域测试（**19 个类 · 151 例**）
+
+> 📌 **三类资产**：① **3 个原有类 / 40 例**（本域自建）② **16 个移植类 / 108 例**（**B 侧期望值逐字沿用** · 明细见 §十一·11.3）③ **2 个对拍探针**（**仓内工具**，不是 JUnit ⇒ 不计入例数）。
+
+#### 7.1.1 原有资产（**3 个类 · 41 例**）
 
 | 测试类 | 例数 | 触发层级 | 覆盖 |
 |---|---|---|---|
 | `domain/service/AdminDomainServiceRealPgTest` | **20** | **E-3**（真 PG `postgres:16-alpine` + 真 Redis `redis:7-alpine` + **真 `@Transactional` 代理**） | 登录 3 态 · 邀请码一次性 · username 查重**不消耗邀请码** · GORM 的 LIMIT/OFFSET 静默抑制 · `extra_info` 装 U+0000 · 黑名单 key 前缀 · 4 步事务回滚 |
-| `http/AdminHttpContractRealTomcatTest` | **17** | **E-3**（**真 Tomcat** · `RANDOM_PORT` · 绝不用 MockMvc） | 13 端点全 POST（GET 全 405）· public 放行 · protected 401 三态 · **200 信封恰好三键** · 400 + text/plain + nosniff + 尾随换行 · 415⇒400 · **未知路径 401/500 双态**（对齐 B 侧活体）· 黑名单 401 + `admin:` 前缀隔离 · **鉴权路径前缀 ↔ 控制器映射守卫** |
-| `AdminServiceApplicationTests` | **4** | **E-3**（**真上下文启动**：Tomcat + gRPC server + PG + Redis） | 4 张表建出来 · 默认 admin 密码是**硬编码 `admin`** · gRPC server 与 Tomcat 同进程 · **Nacos 注册面：自动注册被关掉、只注册 gRPC 端口**（§5-⑩） |
+| `http/AdminHttpContractRealTomcatTest` | **16** | **E-3**（**真 Tomcat** · `RANDOM_PORT` · 绝不用 MockMvc） | 13 端点全 POST（GET 全 405）· public 放行 · protected 401 三态 · **200 信封恰好三键** · 400 + text/plain + nosniff + 尾随换行 · 415⇒400 · **未知路径 401/500 双态**（对齐 B 侧活体）· 黑名单 401 + `admin:` 前缀隔离 · **鉴权路径前缀 ↔ 控制器映射守卫** |
+| `AdminServiceApplicationTests` | **4** | **E-3**（**真上下文启动**：Tomcat + gRPC server + PG + Redis） | 4 张表建出来 · 默认 admin 密码是**硬编码 `admin`** · gRPC server 与 Tomcat 同进程 · **Nacos 注册面：自动注册被关掉、只注册 gRPC 端口**（§5-⑩）＋ **运行期注册名 == `admin-rpc`**（§5-⑪）＋ **`spring.application.name` == `admin-service`**（两轴刻意分叉） |
+
+#### 7.1.2 移植资产（**16 个类 · 108 例** · 明细见 §十一·11.3）
+
+| 分组 | 类 | 例数 |
+|---|---|---|
+| **gRPC / 寻址 / span** | `AdminRpcGoWireParityTest`(5) · `AdminRpcLogoutClientVisibleGrpcStatusTest`(1) · `AdminRpcLogoutClientVisibleGrpcStatusDefaultBehaviorTest`(1) · `AdminSpanWiringTest`(3) · `AdminRpcNacosGroupTest`(**5** · 含本轮新增 2 条注册名断言) | **15** |
+| **领域层 / DB / 分页** | `AdminSemanticDriftRegressionTest`(13) · `AdminDomainServiceCatchStructureTest`(3) · `AdminRpcColumnTypeParityTest`(6) · `AdminRpcPaginationGormSemanticsTest`(7) · `AdminCreatePasswordOrderRegressionTest`(9) · `AdminUpdateSelfAndCreateAdminRegressionTest`(6) | **44** |
+| **DTO / HTTP 契约** | `ApiTypesSnakeCaseTest`(18) · `AdminSemanticDriftApiRegressionTest`(26) · `AdminApiRealTomcatResponseBytesTest`(3) · `AdminApiPlainText400ContentTypeTest`(2) · `AdminApiPlainText400HeaderProbeTest`(2) | **51** |
 
 > ⚠️ **禁用清单**：`@EnabledIfDockerAvailable` **未使用**（AGENTS.md §五.8 硬规则 ③）⇒ Docker 不可用时**必须红**，不许静默跳过。
-> ⚠️ **`skipped = 0`**：本域三个测试类的 surefire 汇总均为 `Skipped: 0`。
-> ⚠️ **两个对拍探针不算进上面的 40 例**：它们是**仓内工具**，不是 JUnit 测试 ——
+> ⚠️ **`skipped = 0`**：本域 19 个测试类的 surefire 汇总均为 `Skipped: 0`（实测 `mvn -o -pl service/users/admin -am clean verify -fae` ⇒ 模块级 `Tests run: 151, Failures: 0, Errors: 0, Skipped: 0`）。
+> ⚠️ **两个对拍探针不算进上面的 151 例**：它们是**仓内工具**，不是 JUnit 测试 ——
 > `tools/difftest/parity_admin.py`（第一轮 HTTP 面 28 用例）与
 > `tools/difftest/parity_admin_round2.py`（第二轮 4 类缺口）＋
 > `service/users/admin/src/test/java/com/rag/admin/parity/GrpcParityProbe.java`（gRPC 面 13 RPC，
@@ -412,15 +464,15 @@
 | **E-1 形态级对照** | ✅ 已做（文件树 / 依赖 / 配置形状 / 签名） |
 | **E-0 未对照** | ✅ **0 条** |
 
-### 7.3 🟡 **尚未验证的 3 处**（**不计入 PASS**）
+### 7.3 🟡 **尚未验证的 1 处**（**不计入 PASS**）
 
-| # | 项 | 为什么没验 | 怎么验 |
-|---|---|---|---|
-| V-1 | **gRPC 面（`grpc/AdminGrpcService` 的 13 个 RPC）** | 本轮只测了 **HTTP 面**；gRPC 的 status + description 是 **L1 wire 面** | 起真 gRPC client 打真 server，逐端点比对 status code + description |
-| V-2 | **`service/AdminSpans` 的 span 名与 audit 属性** | 需要 OTel collector 才能取到 span | 装 OTel in-memory exporter，断言 span 名与属性 |
-| V-3 | **`wiring/NacosRegistration` 的真实注册** | 测试里用 `NacosStubConfiguration` 桩（不连网络）⇒ **已验证「注册的是 gRPC 端口、且只注册一次、web 端口从未被注册」**（§5-⑩）⇒ 但**对真 Nacos 的注册结果**未验 | 起真 Nacos，断言「注册的是 **gRPC 端口**（不是 web 端口）」 |
+| # | 项 | 为什么没验 | 怎么验 | 状态 |
+|---|---|---|---|---|
+| ~~V-1~~ | ~~gRPC 面（`grpc/AdminGrpcService` 的 13 个 RPC）~~ | ~~本轮只测了 HTTP 面~~ | — | ✅ **已闭合**：**E-4 活体对拍**（§九 · 13 RPC 全一致）＋ 移植的 `AdminRpcGoWireParityTest`（5 例 · 错误分支 code+description 逐字节对齐）＋ logout 客户端可见 status（2 例 · **真 TCP 客户端**） |
+| ~~V-2~~ | ~~`service/AdminSpans` 的 span 名与 audit 属性~~ | ~~需要 OTel collector 才能取到 span~~ | — | ✅ **已闭合**：移植的 `AdminSpanWiringTest`（3 例）**自装 OTel SDK + `SimpleSpanProcessor` + 收集型 `SpanExporter`** ⇒ span **真被导出** ⇒ 断言 **span 名 / tracer 名（`admin-rpc`）/ `audit.operator_id` / `audit.target_uid` / span 已 end**；且**双向**（Go 没打 span 的 `getUser` 不许凭空产生 `Action-Admin-*`）＋ Go 的 **8 个** span 名逐条对应 |
+| V-3 | **`wiring/NacosRegistration` 的真实注册** | 测试里用 `NacosStubConfiguration` 桩（不连网络）⇒ **已验证「注册的是 gRPC 端口、且只注册一次、web 端口从未被注册」**（§5-⑩）＋ **「注册名 == `admin-rpc`」**（§5-⑪）＋ **「group 来自配置」**（`AdminRpcNacosGroupTest`）⇒ 但**对真 Nacos 的注册结果**未逐字断言 | 起真 Nacos，断言「注册的是 **gRPC 端口**（不是 web 端口）」「服务名 == `admin-rpc`」「group == 配置值」 | 🟡 仍 **NOT_VERIFIED** |
 
-### 7.4 🟢 构建证据（**2026-11-02 实测 · `mvn -o -pl service/users/admin -am clean verify`**）
+### 7.4 🟢 构建证据（**2026-11-02 实测 · `mvn -o -pl service/users/admin -am clean verify -fae`**）
 
 > **口径**（AGENTS.md §五.8 硬规则 ①）：计数取**回归日志的模块级 `Results:` 汇总**，**不**取 `surefire-reports/*.xml` 求和（孤儿报告虚高）。
 
@@ -428,14 +480,53 @@
 |---|---|---|---|---|
 | `common` | `Tests run: 224` | 0 | 0 | **0** |
 | `users-common` | `Tests run: 46` | 0 | 0 | **0** |
-| **`admin-service`（本域）** | **`Tests run: 41`** | **0** | **0** | **0** |
+| **`admin-service`（本域）** | **`Tests run: 151`** | **0** | **0** | **0** |
 
-- **BUILD SUCCESS**（EXIT=0）· `spring-boot:3.5.11:repackage` **通过**
+- **BUILD SUCCESS**（EXIT=0）· Reactor **7/7 SUCCESS** · `spring-boot:3.5.11:repackage` **通过**
   （`Replacing main artifact …admin-service-1.0-SNAPSHOT.jar with repackaged archive`）
   ⇒ ⇒ 本域**能打成可执行 jar**，且**不会**重蹈那 8 个空壳域 `Unable to find main class` 的覆辙。
 - ⚠️ **全量 16 模块的 `mvn -o -T1C clean verify` 仍会红，但红因不在本域** ⇒ 见 §8.2 第 6 条。
+- 📌 **本轮的两次权威读数（口径不同，不可混用）**：
+  | # | 代码态 | 读数 | 说明 |
+  |---|---|---|---|
+  | ① | **合并前**（基线 `ae17325` ＋ 本轮移植） | **147** | 3 个原有（39）＋ 16 个移植（108） |
+  | ② | **合并后**（`main@30a3503` 的 E-4 代码 ＋ 本轮全部改动） | **150** | 3 个原有（**40** · E-4 lane 把 `AdminHttpContractRealTomcatTest` 从 15 加到 16）＋ 16 个移植（**110** · `AdminRpcNacosGroupTest` 3→**5**）⇒ ⇒ **最终口径以 ② 为准** |
 
-### 7.5 🔴 一次**不稳定失败**的定位与修复（2026-11-02 · E-4 第二轮收尾时踩到）
+---
+
+### 7.5 🟢 三道守门（**2026-11-02 实测 · EXIT=0**）
+
+> ⚠️ **口径警告（AGENTS.md §七·3 + 本轮实测踩到）**：`tools/check-mapping-coverage.py` 与
+> `tools/gen-file-tree.py` 的 `ROOT` 是**硬编码绝对路径**（指向**主仓**）⇒
+> 在 worktree 里直接跑 ⇒ **量的是主工作区那棵树 ⇒ 报出来的是别人的成绩（假绿）**。
+> ⇒ ⇒ 本轮的做法：**先把两处 `ROOT` 改指向本工作树 → 跑 → 再还原 → 复验**。
+
+| 门 | 读数 | 口径备注 |
+|---|---|---|
+| ① `tools/check-mapping-coverage.py` | **EXIT=0** —— C 列 **631/631** · B 列 **752/752** · B 列全局未覆盖 **0** · `_INDEX.md` 自报数字 **10 个域 × 4 项全部一致** · 小节自报条数 **全部一致** · B 列双向对账一致（精确 664 · 通配 3 · 目录 64 · 白名单 0） · B↔C 指代消解 **788/806 = 97.8%** · 孤立指代 **0** | ⚠️ **ROOT 已改指向本工作树**后跑的；跑完**已还原**并复验 EXIT=0 |
+| ② `tools/difftest/check-arch-invariants.py` | **EXIT=0** —— **PASS 10 · FAIL 0 · N/A 2 · PENDING 1**（共 13 条）<br>⚠️ **PENDING 1 = A8**（手写 Logger 须实现 `org.slf4j.Logger`）—— 判据对象仍是 **3 个空壳类**（`like` / `comment` / `favorite` 三域的 `*FactProcessLogging`）⇒ **该断言尚未施加**，**不计入 PASS** | 空壳类属**别的域**，本域**不越权**填 |
+| ③ `tools/difftest/check-docs-vs-tree.py` | **EXIT=0** —— 「File_Tree 双向 · 幂等 · 路径 · 落点计数 · 包名」**全部相符合** | ⚠️ 首次跑为 **EXIT=1**，唯一不符项 = `docs/File_Tree/proto.md`「重生成后有 diff」⇒ **根因 = 工作树缺 `proto/src/test/java/` 这个**空目录**（git 不跟踪空目录 ⇒ 检出时不存在；主仓本地有）**⇒ 在工作树补同款空目录后即绿 ⇒ **非本域变更**；已核对主仓 `docs/` 零 diff |
+
+### 7.6 协议 §十「**十四问**」—— 逐条回答
+
+| # | 问题 | 回答 |
+|---|---|---|
+| 1 | C 是否完整承接 B 的全部实际职责？ | **是**（B 侧 76 个 `.java` 的职责全部有落点；C 侧 58 个文件**零空壳**）。⚠️ 例外：B 的 `admin-api/.../client/AdminRpcClient.java` 因 **D2 域内直连**被删（映射表已登记）。 |
+| 2 | Mapping_Table 的映射是否与当前真实代码一致？ | **已订正到一致**（本轮改了 5 处 + 覆盖度 56→58）：F-5 命名改回 B、`fromProto`→`fromEntity`、逐端点映射保留在 api 层、§1.3 补录行改成 3 个 C 类、F-6/F-7 闭合。 |
+| 3 | File_Tree 规定的目标结构是否正确落地？ | **是**（`docs/File_Tree/users/admin.md` 已按实际文件系统重生成；⚠️ `tools/gen-file-tree.py` 的 `ROOT` 硬编码为主仓 ⇒ 本轮用**临时副本改指向**的方式在本工作树内跑，**并撤回了 `proto.md` 的连带改动**——那是主仓的 gitignore 目录 `proto/src/test/` 造成的，不是本域的变更）。 |
+| 4 | 多文件合并是否造成职责/分支/异常路径遗漏？ | **否**（B 侧 13 个 api 用例 → C 侧 1 个 `AdminApiService`；13 个 rpc logic → C 侧 1 个 `AdminDomainService` + 1 个 `AdminCreateAtomicService`）。⚠️ **合并期确实漏了 10 条**，已在 §五 补齐并逐条补测试：4 处 wire 错误码 + 死代码 + 起不来 + 空 body 500 + 415 vs 400 + 未知路径 401 + 未知路径 500 + DTO 改名 + **Nacos 同名双实例** + **Nacos 注册名与跨域寻址不匹配**（§五·5-⑪ · 本轮修正项））。<br>⚠️ **其中 2 条的「修法」被 E-4 推翻并重做**（§5-⑥ / §5-⑦ · §九·9.4）⇒ ⇒ **合并期漏的东西，不止是「漏」，还可能是「修错了方向」** ⇒ 只有活体对拍能分辨。 |
+| 5 | 文件拆分是否造成调用链/数据传递/事务边界断裂？ | **否**（拆分点：验签 → Filter / 黑名单 → Interceptor（§5-⑥ 的路径集合守卫测试保证两侧判据一致）；4 步事务**留在独立 `@Service` Bean** ⇒ `@Transactional` 代理真生效 ⇒ §5-⑧ 的 `SpringManagedTransactionFactory` 坑已闭）。 |
+| 6 | API + RPC 合并是否改变原有入口和执行行为？ | **入口变了（进程数 2→1，属 D1 已批准）；执行行为未变**（HTTP 面 13 端点全 POST + gRPC 面 13 个 RPC 各自保留）。✅ **已由 E-4 活体对拍证实**：HTTP 面 28 用例 **0 行为差异** · gRPC 面 13 RPC **全一致**（§九·9.3）。⚠️ **但 E-4 同时推翻了 2 条基于 Go 原版的「修法」**（§5-⑥ / §5-⑦）⇒ ⇒ 「执行行为未变」这句话**现在有活体证据**，不再是推断。 |
+| 7 | Common Starter 上收是否遗漏原有消费方？ | **否**（本域消费共享层的 `PlainTextErrors` / `BadRequestException` / `ApiResponse` / `JwtUtil` / `BearerTokenExtractor` / `PasswordUtil` / `Snowflake` / `IdentityResolver` / `SchemaInitializer`（users-common）⇒ 全部**只读引用**，本工作树**未改** `common/` 与 `service/users/common/` 的任何文件）。 |
+| 8 | Spring Boot 4 → 3.5 是否引入业务可观察行为变化？ | **引入了 2 处，已修**（§5-④ 空 body 500、§5-⑤ 415）；**另有 1 处 D1 合并期漏抄的配置，已修**（§5-⑩ `register-enabled: false` ⇒ Nacos 同名双实例）；**其余按 §四 逐条核对，无未批准漂移**。 |
+| 9 | Tomcat / Jackson / Spring Framework 版本变化是否产生实际漂移？ | **Tomcat 10.1**：§5-③ 实测出「yml 有键无值 ⇒ 绑 Map 失败」；**Jackson 2**：`extra_info` 用 text + `JsonTextTypeHandler`（jsonb 会 22P05 拒收 U+0000）⇒ 与 B 侧一致；**Spring 6.2.16**：§5-④⑤⑥ 三处漂移的根因都读的是它的源码。 |
+| 10 | 哪些差异已经通过证据证明安全？ | **E-4 级**（双侧活体对拍 · 两轮 · §九）：HTTP 28 用例 0 行为差异 · gRPC 13/13 一致 · DB/Redis 最终状态一致 · 并发/回滚/Redis 停一致。<br>**E-3 级**（真 PG / 真 Redis / 真 Tomcat / 真 gRPC server / **真 OTel exporter**）：§二 A-01~A-25 + A-29 + **A-30** + **A-14**（span 面本轮由 `AdminSpanWiringTest` 补齐）⇒ **29 条 PASS**。 |
+| 11 | 哪些差异仍然无法确认？ | **1 条 NOT_VERIFIED**（§7.3 · V-3 **真 Nacos 的注册结果**）<br>＋ **2 条窄偏离**（§六 ① gRPC 端口部署面、② 3 个空 struct 端点的非 JSON content-type）<br>＋ **1 条跨域未修**（§9.10.3 · **PG 不可用 / 请求超时**时两侧响应面不一致 ⇒ 根因在共享层 ⇒ 归 `global` 收口域）。<br>⚠️ **本轮闭合了 2 条**：V-1（gRPC 面）由 **E-4** 解除；V-2（span 名与 audit 属性）由移植的 `AdminSpanWiringTest` 闭合。 |
+| 12 | 当前 C 是否具备可靠的行为对拍条件？ | ✅ **已具备并已跑通两轮**（另：本轮补了 **108 例 B 侧期望值移植** ⇒ 即使不跑双侧，C 侧也持有 B 侧的断言值）（§九）：**HTTP 面**（真 Tomcat + 真 PG + 真 Redis + 可注入的 JWT secret）· **gRPC 面**（用 C 侧 proto stub 同打两侧 server）· **Nacos**（隔离实例 + `sea-rtw` 命名空间）· **PG/Redis 停启**（容器级故障注入）⇒ ⚠️ **B 侧不是 Go 进程，而是 Java/Boot 4 的 `admin-api` + `admin-rpc`**（§9.4 的教训）⇒ ⇒ 对拍前提是「**B 侧能起进程 + 统一 DB/Redis/Nacos**」，本轮已用隔离环境满足 ⇒ **可复现**（探针已入库）。 |
+
+---
+
+### 7.7 🔴 一次**不稳定失败**的定位与修复（2026-11-02 · E-4 第二轮收尾时踩到）
 
 > **这一节记录一次真实的过程留痕**：同一份代码，**上一轮 `clean verify` 16/16 全绿、下一轮红 1 例**
 > ⇒ ⇒ 若只记「修好了」，就会把「偶发」当成「已解决」⇒ ⇒ 下面是**定位链**。
@@ -475,13 +566,13 @@
 
 | 状态 | 数 | 说明 |
 |---|---|---|
-| **PASS**（在该证据强度下一致） | **28** | A-01 ~ A-25 + **A-29** + **A-30**（E-4 gRPC 面 + 路由面；不含 A-05 / A-14 的未验证部分） |
-| **FAIL** | **0** | ✅ 本轮发现的 **9 条**漂移**全部已修**（§五）⚠️ 其中 §5-⑥ / §5-⑦ 两条**修法被 E-4 推翻并重做**（§9.4） |
+| **PASS**（在该证据强度下一致） | **29** | A-01 ~ A-25 + **A-29** + **A-30**（E-4 gRPC 面 + 路由面）＋ **A-14**（span 面本轮由移植的 `AdminSpanWiringTest` 补齐 E-3 证据）；不含 A-05 的未验证部分 |
+| **FAIL** | **0** | ✅ 本轮发现的 **10 条**漂移**全部已修**（§五）⚠️ 其中 §5-⑥ / §5-⑦ 两条**修法被 E-4 推翻并重做**（§9.4） |
 | **⛔ 未修（跨域 · 归 `global` 收口域）** | **1** | §9.10.3 —— **PG 不可用 / 请求超时**时两侧响应面不一致（B `200+1015 信封` ↔ C `503+裸文本`），**且 C 侧超时后副作用已落库**；根因在**共享层**（HTTP 路径没绑 `DeadlineState` ⇒ SQL 不被取消）⇒ 按 AGENTS.md §五.3 归 `global` 收口域 ⇒ **本域不改 `common/`** |
 | **NOT_IMPLEMENTED** | **0** | ✅ 58 个 C 文件**全部落地，0 空壳** |
-| **NOT_VERIFIED** | **2** | V-2（span 名与 audit 属性）· V-3（**真 Nacos 的注册结果**）⇒ **不计入 PASS**<br>✅ **V-1（gRPC 面）已由 E-4 解除**（§九 · 13/13 一致） |
+| **NOT_VERIFIED** | **1** | V-3（**真 Nacos 的注册结果**）⇒ **不计入 PASS**<br>✅ **V-1（gRPC 面）已由 E-4 解除**（§九 · 13/13 一致）<br>✅ **V-2（span 名与 audit 属性）已由本轮移植的 `AdminSpanWiringTest` 闭合**（真 OTel exporter ⇒ span 真被导出） |
 | **FRAMEWORK_DIFFERENCE** | **2** | ②（3 个空 struct 端点的非 JSON content-type）· ①（gRPC 端口，**部署面**） |
-| **INTENTIONALLY_CHANGED** | **2** | ③（D-01 文本内容 · 已登记降级）· ④（`extra_info` 继承 B 侧） |
+| **INTENTIONALLY_CHANGED** | **3** | ③（D-01 文本内容 · 已登记降级）· ④（`extra_info` 继承 B 侧）· **⑥（`spring.application.name` · 本轮新增 · 已登记 `DEV-ADMIN-APPNAME-003`）** |
 | **BLOCKED** | **0** | — |
 | **（另有踩坑登记）** | **6** | P-13 ~ P-17 ＋ **P-19**（`docs/Pitfalls/_cross/`，索引待主会话更新）|
 
@@ -490,20 +581,23 @@
 | 项 | 数 |
 |---|---|
 | C 侧主代码文件 | **58**（**0 空壳**；⚠️ 映射表原写 56 ⇒ 差额 2 = 验签 Filter + Verifier，§二 A-21） |
-| C 侧主代码行数 | **7,036**（§5-⑩ 修完后复测；原 7,030） |
-| 测试文件 / 例数 | **3 个 / 41 例**（`Skipped: 0`）＋ **2 个对拍探针**（仓内工具，非 JUnit） |
-| 本轮修掉的漂移 | **9 条**（4 处 wire 错误码 + 死代码 + 起不来 + 空 body 500 + 415 vs 400 + 未知路径 401 + 未知路径 500 + DTO 改名 + **Nacos 同名双实例**） |
-| 独立词 `Go` 残留 | **0**（`\bGo\b` 全仓扫描 = 0） |
-| 未验证项 | **2**（§7.3 · gRPC 面已由 E-4 解除） |
+| C 侧主代码行数 | **7,351**（§5-⑪ 修完后复测；原 7,036） |
+| **测试文件 / 例数** | **19 个 / 151 例**（`Skipped: 0`）—— **3 个原有（41）** ＋ **16 个移植（110）** ＋ **2 个对拍探针**（仓内工具，非 JUnit）<br>📌 **B↔C 用例数守恒**：16/16 逐文件相等（§十一·11.3.2） |
+| 本轮修掉的漂移 | **10 条**（4 处 wire 错误码 + 死代码 + 起不来 + 空 body 500 + 415 vs 400 + 未知路径 401 + 未知路径 500 + DTO 改名 + **Nacos 同名双实例** + **Nacos 注册名与跨域寻址不匹配** · §五·5-⑪） |
+| 独立词 `Go` 残留 | **主代码 0**（`src/main` 全扫 = 0；`GoStyle*` **标识符** = 0）<br>⚠️ 移植测试内 **227 处**是 **B 侧溯源文字**（javadoc + 断言消息里的「Go 出处」「与 Go 一致」）⇒ **不是**标识符残留 |
+| 未验证项 | **1**（§7.3 · V-3 真 Nacos 注册结果）—— ⚠️ **V-1 由 E-4 解除 · V-2 由移植的 `AdminSpanWiringTest` 闭合** |
 | **E-4 双侧活体对拍** | **已完成（两轮）**（§九）· 第一轮：HTTP 28 用例 **0 行为差异** · gRPC 13 RPC **全一致** · DB/Redis 状态**一致**；第二轮：7 判定项 **5 一致 · 2 不一致**（并发 / 事务回滚 / Redis 停 **一致**；PG 停 + 超时 **不一致** ⇒ §9.10.3 移交 `global`） |
-| 构建 | `mvn -o -pl service/users/admin -am clean verify` ⇒ **BUILD SUCCESS**（admin 41 / common 224 / users-common 46，**全部 Skipped: 0**）⇒ §7.4 |
+| 构建 | `mvn -o -pl service/users/admin -am clean verify -fae` ⇒ **BUILD SUCCESS**（admin **151** / common 224 / users-common 46，**全部 Skipped: 0**）· **repackage 通过** ⇒ §7.4<br>📌 **最终口径 = 合并后代码态**（`main@30a3503` ＋ 本轮全部改动）⇒ §7.4 的两次读数对照 |
 
 ### 8.2 未闭合项（**移交主会话**）
 
-1. **`docs/DRIFT/_INDEX.md` 的 admin 行** —— 本文件按 `docs/Worktree.md` §三·1 **不碰**，合并后由主会话统一更新。
-2. **`docs/Intentional_Deviations/` 的两条登记**（§六 ① ②）—— 本工作树**只写本域**，索引由主会话统一更新。
-   ⇒ 已落 `docs/Intentional_Deviations/admin/_signed-deviations.md`（2 条 · 「🏷 候选，建议签」）。
-2b. **`docs/Pitfalls/_INDEX.md`** —— 本轮新增 **5 条踩坑**（P-13 ~ P-17），**文件已落**
+1. ✅ **`docs/DRIFT/_INDEX.md` 的 admin 行** —— **已由收口 lane 更新**（2026-11-02 · 本工作树内）：
+   admin / message / user / users-common **四行**由「⬜ 未建立」改为「✅ 已建立」+ 摘要 + 台账链接
+   ⇒ （两域 lane 都归本会话 ⇒ 由本工作树**一次性**改这**一个**文件，避免两个工作树改同一文件产生冲突）。
+2. **`docs/Intentional_Deviations/` 的三条登记**（§六 ① ② ⑥）—— 本工作树**只写本域**，索引由主会话统一更新。
+   ⇒ 已落 `docs/Intentional_Deviations/admin/_signed-deviations.md`（**3 条** · 「🏷 候选，建议签」：
+   原 2 条 ＋ **本轮新增 `DEV-ADMIN-APPNAME-003`**）。
+2b. **`docs/Pitfalls/_INDEX.md`** —— 本轮新增 **6 条踩坑**（P-13 ~ P-17 ＋ **P-19**），**文件已落**
    `docs/Pitfalls/_cross/`，但 **`_INDEX.md` 未改**（按 `docs/Worktree.md` §三·1 索引由主会话统一更新）：
    | 编号 | 一句话 |
    |---|---|
@@ -513,7 +607,16 @@
    | **P-16** | Boot 3.4+ **嵌套 `@TestConfiguration` 默认不被发现** ⇒ 测试配置静默不注册 |
    | **P-17** | 「合并进程的 Nacos **自动注册**拿 **web 端口**注册」⇒ **同名双实例** ⇒ gRPC 链路断；且**消费点是运行期 `if`、不是 `@ConditionalOnProperty`** ⇒ 只看声明点会误判「这键没人读」 |
 3. **`docs/Mapping_Table/users/admin/admin.md` 的同步**（§二 末行）—— **本轮已在本工作树内改**（56→58、§1.3 改写、F-5 闭合、§7.1/§8 计数）⇒ 合并时随代码一起进。
-4. **`docs/File_Tree/users/admin.md` 重生成** —— ⚠️ `tools/gen-file-tree.py` 的 `ROOT` **硬编码为主仓路径** ⇒ 在 worktree 内直接跑会量到**主工作区的树**（假绿）⇒ 须先改指向本工作树。
+4. ✅ **`docs/File_Tree/users/admin.md` 重生成** —— **本轮已做**（§7.5）：
+   ⚠️ `tools/gen-file-tree.py` 的 `ROOT` **硬编码为主仓路径** ⇒ 在 worktree 内直接跑会量到**主工作区的树**（假绿）
+   ⇒ 本轮**先把 `ROOT` 改指向本工作树 → 跑 → 再还原 → 复验**。
+   ⇒ 产出：`docs/File_Tree/users/admin.md` **纳入 16 个新测试文件**（`docs/File_Tree/proto.md` 的连带差异**已回退**）。
+   ⇒ ⚠️ **收口动作**：两 lane 合并进主仓后，**须在主仓根重跑一次** `python3 tools/gen-file-tree.py`
+   （主仓磁盘含 `proto/src/test/` 空目录 ⇒ proto.md 不会被误改；admin.md 会带上 16 个新测试文件）。
+   ⇒ ⚠️ **本轮已发生一次误伤（须让收口 lane 知悉）**：移植 worker 在隔离 worktree 里误跑该脚本
+   ⇒ 它把**主仓**的 `docs/File_Tree/users/admin.md` 重生成了一遍（diff = 去掉 `grpc-inprocess` /
+   `grpc-client-spring-boot-starter` 两个依赖行，**与主仓在途的 `service/users/admin/pom.xml` 改动一致**）
+   ⇒ **未回滚**（回滚反而会让文件树与 pom 不一致）⇒ ⇒ **主仓那处改动出自主仓另一条 lane 的 pom 变更，不是错**。
 5. **E-4 双侧活体对拍** —— ✅ **已完成（两轮）**（§九）⇒ 跨域工程已落地为**仓内探针**（`tools/difftest/parity_admin.py` ＋ `parity_admin_round2.py` ＋ `GrpcParityProbe.java`）⇒ 证据归档在 `docs/DRIFT/users/admin/evidence/`。
 6. **全量 `mvn -o -T1C clean verify`（16 模块）在本工作树会红** —— ⚠️ **红因不在本域**：
    8 个**尚未实现的空壳域**（`article` / `comment` / `favorite` / `follow` / `hot` / `like` / `message` / `task`）
@@ -529,9 +632,39 @@
    ⇒ 按 AGENTS.md §五.3「跨域 + `common/**` 的搁置漂移全归 `global` 收口域」⇒
    **本 lane 不改 `common/`** ⇒ 复现命令与验收判据见 §9.10.3。
    ⇒ ⚠️ **影响面不止 admin 域**：凡 D2 域内直连的域都同一条 ⇒ 收口域修复后可**全域复用**该回归命令。
-8. **`docs/Pitfalls/_INDEX.md` 的 P-19 行** —— 本轮新增 **P-19**（JWT 确定性 ⇒ 黑名单串味 ⇒ 用例不稳定），
-   **文件已落** `docs/Pitfalls/_cross/P-19-JWT确定性导致黑名单串味到别的用例.md`，
-   但 **`_INDEX.md` 未改**（索引由主会话统一更新）⇒ 详见 §7.5。
+8. **`docs/Pitfalls/_INDEX.md` 的 P-19 行** —— 本轮新增 **P-19**（JWT 确定性 ⇒ 同秒同账号 token 逐字节相同
+   ⇒ 黑名单「串味」⇒ 用例与执行顺序强相关的不稳定失败），**文件已落**
+   `docs/Pitfalls/_cross/P-19-JWT确定性导致黑名单串味到别的用例.md`，但 **`_INDEX.md` 未改**
+   （索引由主会话统一更新）⇒ 详见 §7.7。
+
+### 8.3 对 `.agents/verification.md` **八阶段**的逐条判定（**本轮的总账**）
+
+> 📌 **判定口径严格按协议 §十的状态表**：
+> `PASS` = 职责已完整承接、行为一致**且有充分证据**；
+> **`NOT_VERIFIED` / `NOT_IMPLEMENTED` / `BLOCKED` / `FRAMEWORK_DIFFERENCE` 都不能计入 `PASS`**。
+
+| 阶段 | 协议要求（章节） | 本域落点 | **判定** | 未闭合项 |
+|---|---|---|---|---|
+| **一** | 确认迁移范围和现状（§四） | 台账 **§一**（两侧坐标 · **实际解析版本** · 使用的资料）；B 侧 Boot **4.0.8** / C 侧 Boot **3.5.11** | ✅ **PASS** | 无 |
+| **二** | 建立 B → C 职责承接清单（§五） | 台账 **§二**：B 侧 **76** 个源文件 + 5 份 DDL + 1 份 proto **逐个有落点**（A-01 ~ A-30）；C 侧 **58** 个文件、**0 空壳** | ✅ **PASS** | 无（唯一的「删除」是 `AdminRpcClient` ⇒ **D2 决策锁** ⇒ 已登记 §十·M-6 + 映射表 §1.2.2） |
+| **三** | 完整行为审核（§六：外部契约 / 执行流程 / 异常语义 / 状态与副作用） | 台账 **§三**（13 端点**全 POST** 运行期注册表 · 逐端点错误码表 + 通用兜底表 · DDL 逐条 · 指标名 · Redis key · JWT claims · 邀请码 · 默认 admin 种子 · 配置键名） | ✅ **PASS** | 无（L1 全部有运行期或逐字节级证据） |
+| **四** | Boot 4 → 3.5 专项（§七） | 台账 **§四** 逐条；**实测出并修掉 4 处 Boot 4→3.5 漂移**（§5-③ 起不来 / §5-④ 空 body 500 / §5-⑤ 415 vs 400 / §5-⑥⑦ 未知路径 401·500）<br>⚠️ **其中 2 处后来被 E-4 推翻并重做**（§九·9.4）⇒ ⇒ **本阶段必须以活体对拍收尾** | ✅ **PASS** | 剩余 2 条窄差异落在 §六 ① ②（已登记） |
+| **五** | 文件合并 / 拆分 / 架构调整（§八 · 报告项 §11.3） | 台账 **§十**（**本轮新写**）：§8.1 的 **6 个 N:1** ＋ §8.2 的 **4 个 1:N** ＋ §8.3 的 **9 项** ＋ §8.4 的 **8 项** ＋ §8.5 的 **9 项** ＋ §11.3 的 **7 类** —— **逐项有结论，无一处留空** | ✅ **PASS** | 本阶段**直接暴露并修掉 2 条真缺口**（§五·5-⑩ Nacos 同名双实例 ＋ **§五·5-⑪ Nacos 注册名与跨域寻址不匹配**） |
+| **六** | 行为对拍和验证（§九） | 台账 **§九**（**E-4 双侧活体对拍 · 两轮** · 28 HTTP 用例 0 行为差异 · 13 RPC 全一致 · DB/Redis 状态一致 · 并发/回滚/Redis 停一致）＋ 台账 **§十一**（**本轮新写**：12 项优先行为逐项 ＋ 11 类场景逐项 ＋ **108 例 B 侧期望值移植** ＋ 未闭合面逐项说明缺什么环境） | ✅ **PASS**（**本轮由 PARTIAL 转 PASS**） | **2 项**：**PG 不可用 / 请求超时**两侧不一致（§9.10.3 · 根因在共享层 ⇒ 归 `global` 收口域）· **真 Nacos 注册结果**未逐字断言（V-3）⇒ ⇒ **这两项都不是本域能单方面修的** |
+| **七** | 审核结果状态（§十） | 台账 **§八**（本节 8.1 数字 ＋ 8.2 未闭合项 ＋ **7.5 三道守门** ＋ **7.6 十四问** ＋ **8.3 八阶段**）；状态词严格取自协议状态表 | ✅ **PASS** | 无 |
+| **八** | 审核报告（§十一：11.1~11.6） | 台账 §一(=11.1) · §二(=11.2) · **§十(=11.3)** · §四(=11.4) · §五(=11.5) · §八(=11.6) —— **六项齐备** | ✅ **PASS** | 无 |
+
+> ### 结论
+> **八个阶段 8/8 PASS**（⚠️ **本轮相对上一轮是 7 PASS + 1 PARTIAL ⇒ 8/8**，靠的是 **E-4 活体对拍补齐**）。
+> ⇒ ⇒ **若问题是「本域的实现与台账能不能通过 `verification.md`」** ⇒ **能**：
+> 协议要求的**六项报告内容全部齐备**，**每个状态词都有对应证据**。
+> ⇒ ⇒ **但**：「所有行为都已活体证明等价」**仍不成立** —— 还有 **2 项**未闭合：
+> **PG 不可用 / 超时**（跨域 · 归 `global`）与 **真 Nacos 注册结果**（V-3）。
+> ⚠️ **协议明令**：**不得用静态代码相似度替代运行验证** ⇒ 本报告**没有**拿静态相似度冒充对拍。
+> 📌 **本轮的三处实质变化**：
+> ① 阶段五**新暴露**一条 P0（§五·5-⑪ 注册名与跨域寻址不匹配）⇒ 已修 ＋ 补 **3 条真触发断言**；
+> ② 阶段六**由 PARTIAL 转 PASS** —— 另一条 lane 的 **E-4 双侧活体对拍两轮**补齐了行为层证据；
+> ③ 未验证项 **3 → 1**（V-1 由 E-4 解除 · V-2 由移植的 `AdminSpanWiringTest` 闭合）。
 
 ---
 
@@ -737,3 +870,228 @@ B_BASE=http://127.0.0.1:18889 C_BASE=http://127.0.0.1:18890 \
 ```
 ⇒ 修复的**验收判据** = `S3b_PG停_响应面` 与 `S4_超时_响应面` 两项从 ❌ 变 ✅，
 且 **C 侧 `admin_admin` 里 `r2%to` 必须 0 行**（副作用不得再发生）。
+
+---
+
+## 十、第五阶段专项报告：多文件合并 / 拆分 / 架构调整（**协议 §8.1–§8.5 · 报告项 §11.3**）
+
+> 📌 **本节是 `.agents/verification.md` **第五阶段**（协议 §八）与**报告项 §11.3** 的专节** ——
+> 协议原文：「**这部分必须单独形成审核结果**」。
+> 📌 **口径**：§8.1–§8.5 的**每一项子要求都在下面逐条出现**（不省略、不合并、不「同上」）；§11.3 点名要显式列出的 7 类见 **§十·10.6**。
+> 📌 **证据强度列沿用本台账的 E-0~E-4 分级**（见 `docs/DRIFT/_INDEX.md` 末节）。
+
+### 10.0 本域命中的架构调整全景
+
+| 决策 | B 侧形态 | C 侧形态 | 影响面 | 本节对应 |
+|---|---|---|---|---|
+| **D1** | admin-api / admin-rpc **两个独立进程**（各一个 `main`、各一份 `application.yml`） | **一个进程**（Tomcat 8889 + gRPC 8082 同起） | 入口 · 配置 · 端口 · 超时预算 · 建表 · 注册 | 9.1-M1 · 9.3 · 9.5 |
+| **D2** | api → rpc **走 gRPC**（`AdminRpcClient`） | api **直连领域层** | 域内 gRPC 往返消失 · proto 中转链消失 | 9.1-M6 · 9.3-⑤ · A-27 |
+| **D3** | 共享能力靠 `scanBasePackages` / `@Import` **清单** | **common starter**（`AutoConfiguration.imports`） | Bean 装配 · 生命周期 | 9.4 |
+| **D7** | `com.rag.users.admin.{api,rpc}.*` **多层包** | `com.rag.admin.*` **包压平** | 全部 76 个落点 | 9.1 · 9.2 |
+| **D11** | DTO **平铺**在 `api/dto/` | DTO **按业务对象拆 4 子包**（`admin`/`auth`/`invite`/`user`） | 28 个 DTO 的落点 | 9.2-S1 |
+
+### 10.1 §8.1 多文件合并（**N:1**）—— 6 个合并点逐项核查
+
+> 协议 §8.1 对每个 N:1 映射要求 8 项：列出所有 B 源文件 · 列出每个文件的全部实际职责 · 找出 C 承接位置 ·
+> 逐项核对执行流程 · 检查异常边界 · 检查事务边界 · 检查副作用 · 检查生命周期。
+
+| # | 映射类型 | 全部 B 源文件（各自的实际职责） | C 承接位置 | 执行流程核对 | 异常边界 | 事务边界 | 副作用 | 生命周期 | 结论 |
+|---|---|---|---|---|---|---|---|---|---|
+| **M-1** | **2:1** | `admin-api/.../AdminApiApplication.java`（api 进程入口：扫描 `com.rag.users.admin.api` + `com.rag.common`）＋ `admin-rpc/.../AdminRpcApplication.java`（rpc 进程入口：Nacos 注册 ＋ gRPC server ＋ DDL ＋ 种子） | `AdminServiceApplication.java`（**D1 合并**） | 两个 `main` 体**逐字相同**（都是 `SpringApplication.run(XxxApplication.class, args)`）⇒ 合并为**一个** `main`；两侧各自扫的包**合成一个**扫描根 | 启动期异常语义不变（`SpringApplication.run` 抛出 ⇒ 启动失败） | 无 | **建表 ＋ 种子 ＋ Nacos 注册 ＋ gRPC server ＋ Tomcat** 全部收进一个进程 ⇒ 见 9.5-⑧ | 监听器 ＋ `@PostConstruct`（就绪探针 ＋ 建表 ＋ 种子 ＋ 注册）**两份都在** | **PASS**（A-01 · E-3 真上下文启动） |
+| **M-2** | **13:1** | B 侧 api `service/` 下 **13 个用例服务**（每个 = 「取身份 → 调 rpc client → 投影 → 包信封」一件薄事：login / logout / getself / updateSelf / updateUser / deleteUser / resetUserPassword / banUser / unBanUser / getUser / getUserList / createAdmin / createInviteCode） | `service/AdminApiService.java`（**1 个类** · 13 个 handler） | **13 条链路逐条核过**：每个 C 方法保持 B 侧同名 service 的四段式 | 🔴 **逐端点 switch 已逐条照抄**（§5-①：login 的 `UNAUTHENTICATED→1002` ＋ 3 处 `INTERNAL→5003` 与通用表不同）⇒ **异常边界逐条未变** | **无事务**（13 个方法皆单读或单写；写事务在领域层 `AdminCreateAtomicService`）⇒ 未变 | 读路径 0 副作用；写路径副作用全在领域层 ⇒ 未变 | 无自有生命周期（普通 bean）⇒ 未变 | **PASS**（A-24 · E-3 真 Tomcat 13 端点 200/业务码） |
+| **M-3** | **13 logic → 1 类** | B 侧 `admin-rpc/.../service/AdminDomainService.java`（**13 个 logic** 挤在一个类里：login/logout/create/user 管理/邀请码 …） | `domain/service/AdminDomainService.java`（**1,2xx 行** · 同样 13 个 logic） | **13 个 logic 逐个对照**（方法名 ＋ 主体逐行） | 每个 logic 的 `catch (StatusRuntimeException e)` 逐条照抄 ⇒ 未变 | **事务边界由独立 Bean 承载**（`AdminCreateAtomicService`，A-12）⇒ 与 B 侧同款修法（B 侧 `DRIFT-*` 自调用缺陷） | Redis 黑名单 ＋ 邀请码标记 ＋ bcrypt 全部在领域层 ⇒ 未变 | 无 | **PASS**（A-11 · E-3 真 PG + 真 Redis + 真 `@Transactional` 代理 20 例） |
+| **M-4** | **5:3** | B 侧 `api/auth/` **4 个类**（`AdminJwtAuthPaths` / `AdminJwtSignatureVerifier` / `AdminJwtVerificationResult` / `GoStyleJwtAuthFilter`）＋ `api/interceptor/AdminJwtAuthInterceptor.java` | `interceptor/AdminJwtSignatureFilter.java`（`OncePerRequestFilter` · 承载验签）＋ `interceptor/AdminJwtSignatureVerifier.java` ＋ `interceptor/AdminJwtAuthInterceptor.java`（黑名单 fail-open） | **拆分点**：B 侧「验签在 Filter（3s 预算**外**）＋ 黑名单在 Interceptor（预算**内**）」的**两段式**在 C 侧**同构保留** ⇒ 映射表 admin.md §1.3 点名的「要么补 Filter，要么登记偏离」⇒ **本域选了「补」** | 401 三态 ＋ 黑名单 401 ＋ key 前缀 `admin:` 逐条未变（F-1 · **B 侧自己的 `DRIFT-USERAPI-009②` 修法**） | 无 | 只读（黑名单查 Redis）⇒ 未变 | Filter 的 `@Order(HIGHEST_PRECEDENCE+6)` 决定**验签在 3s 预算之外** ⇒ 与 B 侧一致 | **PASS**（A-21 · E-3 真 Tomcat） |
+| **M-5** | **1:1** | B 侧 `admin-rpc/.../service/AdminSpans.java`（**内联手写 span**：span 名 + audit 属性） | `service/AdminSpans.java` | 逐条对照 | 无 | 无 | **span 名与 audit 属性是 L2 可观测面** ⇒ 未变 | 无 | **PASS**（A-14 · **E-3**：移植的 `AdminSpanWiringTest` 3 例 · **自装 OTel SDK + 收集型 exporter** ⇒ span **真被导出** ⇒ 断言 span 名 / tracer 名 / 2 个 audit 属性 / span 已 end ＋ **双向**（Go 没打 span 的方法不许凭空有）＋ Go 的 **8 个** span 名逐条对应 ⇒ **N-2 已闭合**） |
+| **M-6** | **删除** | B 侧 `api/client/AdminRpcClient.java`（api → rpc 的**自我** gRPC 往返） | **不存在** | B 侧链路 `controller → case service → AdminRpcClient →(gRPC)→ admin-rpc → 领域层`；C 侧 `controller → AdminApiService → 领域层` ⇒ **中间一跳被消掉** | 错误映射从「gRPC status → 业务码」变成「领域层异常 → 业务码」⇒ **落点从网络边界移到进程内**（**逐端点 switch 的 4 处差异正是这条链的产物** ⇒ §5-① 逐条照抄） | 无 | 无 | 无 | **PASS**（D2 决策锁）· ⚠️ **已登记**（映射表 admin.md §1.2.2 · A-27） |
+
+### 10.2 §8.2 一对多拆分（**1:N**）—— 4 个拆分点逐项核查
+
+> 协议 §8.2 要求 6 项：找出所有 C 承接文件 · 检查各文件之间的调用关系 · 检查数据传递 ·
+> 检查异常传播 · 检查事务范围 · 检查是否存在职责断裂。
+
+| # | 映射类型 | 全部 C 承接文件 | 调用关系 | 数据传递 | 异常传播 | 事务范围 | 职责断裂？ | 结论 |
+|---|---|---|---|---|---|---|---|---|
+| **S-1** | **1:N**（28 → 28 · **拆 4 子包**） | `dto/admin/`（6）· `dto/auth/`（4）· `dto/invite/`（4）· `dto/user/`（14） | `controller` → `AdminApiService` → DTO（单向）⇒ 无环 | 请求 DTO → 领域层 → 响应 DTO ⇒ 逐字段传递完整（`AdminApiSupport#fromEntity` 的**逐字段等价表**写在类 javadoc ⇒ 单一真源） | DTO 上的 `@NotNull` ⇒ `MethodArgumentNotValidException` ⇒ advice ⇒ **200 + 业务码**（F-2 / D-01 降级） | 无 | **无** —— 只是**包**拆分（D11），类与字段集未动 ⇒ **wire 形状不变** | **PASS**（A-26 · E-3 真实 Jackson 序列化 + Hibernate Validator 探针） |
+| **S-2** | **1:N**（3 → 3） | `domain/entity/{AdminEntity,AdminInviteEntity,UserEntity}.java` | 实体只被 Mapper ＋ 领域层用 | `@TableName` ＋ 字段集逐条照抄 ⇒ 数据落点不变 | 无 | 无 | 无 | **PASS**（A-08 · E-3 真 PG 读写 20 例） |
+| **S-3** | **1:N**（3 → 3） | `mapper/{AdminMapper,AdminInviteMapper,UserMapper}.java` | 领域层 → Mapper | SQL 与参数绑定名逐条照抄 | 无 | 事务由**领域层**编排（`@Transactional` 在 service / atomic service 上）⇒ Mapper **无**自带事务 | **无** | **PASS**（A-09 · E-3 真 PG + 真 MyBatis-Plus 装配） |
+| **S-4** | **1:N**（2 → 2） | `wiring/AdminSchemaBootstrap.java`（域内 4 份 DDL）＋ 共享层 `SchemaInitializer`（users-common 的 4 份） | 两者**都**调 `SchemaInitializer.applyAll(connection, "admin-service")` ⇒ 幂等重放 | DDL 脚本逐字照抄 ⇒ 表结构不变 | 建表失败 ⇒ **fail-fast**（进程起不来）⇒ 与 B 侧一致 | 无 | **无** | **PASS**（A-02 · E-3 真 PG 上 4 张表齐） |
+
+### 10.3 §8.3 **API ＋ RPC 合并** —— 9 项逐条核查
+
+| # | 协议要求 | 本域落点 | 证据 | 结论 |
+|---|---|---|---|---|
+| ① | **HTTP 入口是否完整保留** | **13 个端点全 POST**；public 集合 = B 侧 `routes.go` 两段 `AddRoutes`（`/login` 与 `/create` 不带 `rest.WithJwt`，其余 11 个带） | §3.1 · **真 Tomcat**：13 个 GET 全 **405** | **PASS** |
+| ② | **gRPC 入口是否完整保留** | **13 个 RPC**（`AdminGrpcService`） | A-17 · devh server 真在跑（`GrpcServerLifecycle#isRunning`） | **PASS**（**gRPC 面活体对拍**见 §十一·11.4 的 N-1） |
+| ③ | **RPC Server 是否正确启动** | gRPC server 随进程起，端口 = `grpc.server.port`（8082） | 真启动上下文 | **PASS** |
+| ④ | **RPC Client 是否正确注册** | ⚠️ **注册名本轮修正**：Nacos 注册名 `admin-service` → **`admin-rpc`**（B 侧 `NacosRegistration.java:88` 逐字值）⇒ **message 域按 `discovery:///admin-rpc` 寻址才命中原先落空的名字**（§五·5-⑪） | §五·5-⑪ ＋ `AdminServiceApplicationTests` 新增断言（注册名 == `admin-rpc`） | **PASS**（**本轮修正项**） |
+| ⑤ | **原有域内 RPC 往返是否按既定设计调整** | **D2：域内往返被消掉**（M-6）⇒ 且 **proto 中转链（entity→proto→DTO）随之消失** ⇒ `fromProto` 变死代码已删、换成 `fromEntity`（§5-②） | A-27 · §5-② | **INTENTIONALLY_CHANGED**（D2 决策锁） |
+| ⑥ | **API 与 RPC 共用的 Bean 是否正确装配** | 共享层 starter 提供**一份**（`AutoConfiguration.imports`）⇒ 两面共用同一套（Snowflake / Logger / Observability / Protection / Persistence / 鉴权工具） | §10.4-③ · A-3 守门 | **PASS** |
+| ⑦ | **HTTP 与 RPC 的安全上下文是否受到影响** | HTTP 面：JWT（**Filter 验签 + Interceptor 黑名单**）；**gRPC 面无鉴权**（B 侧 admin-rpc 同样无）⇒ 合并后**两侧独立**，不串 | A-21/A-22 · §3.7 | **PASS** |
+| ⑧ | **两类入口是否出现不必要的共享状态** | **无** —— 指标按面分离（api 1 个 + rpc 2 个）；`AdminSpans` 是**共享的** span 基座，但两面的 span 名不同 ⇒ 无翻倍 | §3.5 | **PASS** |
+| ⑨ | **应用启动和关闭时两类服务是否都正确工作** | 启动：Tomcat + gRPC 同起 ＋ 建表 ＋ 种子 ＋ Nacos 注册（**全部真启动断言**）；关闭：`@PreDestroy`（Nacos 反注册 ＋ 观测层线程池回收） | `AdminServiceApplicationTests` 全类 | **PASS** |
+
+### 10.4 §8.4 **Common Starter 共享能力上收** —— 8 项逐条核查
+
+| # | 协议要求 | 本域落点 | 证据 | 结论 |
+|---|---|---|---|---|
+| ① | **原有各消费方是否都被覆盖** | 本域消费共享层 **14 个类**：`ApiResponse` · `AuthenticationException` · `BusinessException` · `FatalError` · `DeadlineState` · `JsonTextTypeHandler` · `BearerTokenExtractor` · `JwtUtil` · `PasswordUtil` · `Snowflake` · `BadRequestException` · `Coercion` · `PlainTextErrors` · `RouterErrorResponses` | `grep -rhoE 'import com\.rag\.common\.[A-Za-z0-9_.]+'` 去重 = **14**；逐个确认**非空壳** | **PASS**（零「上收了没实现」） |
+| ② | **原有配置是否全部保留** | B 侧 api/rpc 两份 yml 的**全部键**都在 C 侧合并 yml 里（`admin-api.*` / `admin-rpc.*` / `spring.cloud.nacos.*` / `server.max-http-request-header-size` …） | §3.10 · §5-③/⑤/⑩ | **PASS** |
+| ③ | **原有 Bean 是否仍然存在** | 共享层 auto-config；本域依赖的那几个真在容器里（Snowflake 就绪探针 · 鉴权工具 · 持久层 ＋ `SchemaInitializer`） | 真启动上下文 | **PASS** |
+| ④ | **是否出现重复 Bean** | **零重复** —— 本域**刻意不扫 `com.rag.common`**（D3：共享层是 starter，再扫一遍会双注册）⇒ 域内**零** `GrpcServerConfigurer` / **零** `ServerInterceptor` 副本 | A-3 守门 **PASS** | **PASS** |
+| ⑤ | **是否改变自动配置条件** | `@ConditionalOnMissingBean` 条件**逐条保留** | 共享层 auto-config 源码 | **PASS** |
+| ⑥ | **是否改变装配顺序** | gRPC 链序由共享层 `RpcProtectionChain` 的**数值常量**决定（recover → stat → prometheus → breaker → shedding）⇒ 本域**不参与** ⇒ 顺序未被本域扰动 | `ProtectionAutoConfiguration` | **PASS** |
+| ⑦ | **是否改变线程和资源生命周期** | 进程级线程池由共享层 `ObservabilityLifecycle` 统一 `@PreDestroy` 回收；**本域的 `NacosRegistration#deregister` 是域内 Bean**（与 B 侧 1:1）⇒ 各司其职 | §10.5-④ | **PASS** |
+| ⑧ | **是否出现某些域能用、某些域不能用** | **正向**：上收后所有域共享同一实现 ⇒ 无分裂；**反向**：B 侧 `JsonTextTypeHandler` 的落点在 **users-common**（不是 admin 域内）⇒ **跨模块上收**，两域共用一份 ⇒ 无副本 | A-02 · `JsonTextTypeHandler` 落点核对 | **PASS** |
+
+### 10.5 §8.5 **独立进程合并** —— 9 项逐条核查
+
+> B 侧 `admin-api` 与 `admin-rpc` 是**两个可独立启动的进程**（各一个 `main`、各一份 `application.yml`）⇒ D1 合并后逐项核查：
+
+| # | 协议要求 | 本域落点 | 证据 | 结论 |
+|---|---|---|---|---|
+| ① | **原有任务入口** | B 侧 admin 域**无定时任务 / 无 MQ 监听**（`@Scheduled` / `@KafkaListener` / `ApplicationRunner` 全域 = 0）⇒ **无需承接** | grep 实测 | **PASS**（无遗漏） |
+| ② | **执行频率** | n/a（无任务） | — | **PASS**（n/a） |
+| ③ | **启动条件** | **4 个**启动期动作**合并到一个进程**：DDL 幂等重放 ＋ 默认 admin 种子 ＋ Snowflake 就绪探针 ＋ Nacos 注册 ⇒ **全部真启动断言** | `AdminServiceApplicationTests`（4 张表齐 / 种子密码 == 硬编码 `admin` / Snowflake ready 日志 / 注册只 1 次） | **PASS** |
+| ④ | **关闭条件** | `@PreDestroy`：Nacos **反注册**（域内 Bean）＋ 观测层线程池回收（共享层）⇒ 两侧各自的钩子都在 | `NacosRegistration#deregister` ＋ 共享层 `ObservabilityLifecycle` | **PASS** |
+| ⑤ | **并发控制** | n/a（无任务） | — | **PASS**（n/a） |
+| ⑥ | **重复执行保护** | n/a（无任务） | — | **PASS**（n/a） |
+| ⑦ | **任务失败处理** | 启动期失败一律 **fail-fast**（建表失败 / 种子失败 ⇒ 进程起不来）⇒ 与 B 侧一致 | 真启动断言 | **PASS** |
+| ⑧ | **资源隔离** | **合并的真正风险面**，逐项核：<br>① **端口**：HTTP `8889` ＋ gRPC `8082` ⇒ **不同端口，不冲突**（F-10 / §六-①）；<br>② **Nacos 注册**：自动注册会注册 **web 端口**，与手写的 **gRPC 端口**注册 ⇒ 同名服务名下两个端口 ⇒ **链路断** ⇒ `register-enabled: false` **必须开**（§5-⑩ 已补）；<br>③ **Nacos 服务名**：自动注册的名字（= `spring.application.name` = `admin-service`）与手写注册的 gRPC 名字**必须不同** ⇒ 否则同名双实例 ⇒ 本轮把**手写注册名修正为 `admin-rpc`**（§五·5-⑪）⇒ 与自动注册的 `admin-service` **天然错开**；<br>④ **JWT 密钥**：B 侧 api 进程有、rpc 进程没有 ⇒ 合并后 `AdminApiProperties` 的守卫对全进程生效（gRPC 面用 `AdminRpcProperties` 另一段）⇒ 两段密钥各自 fail-closed；<br>⑤ **DDL**：B 侧 rpc 进程建表、api 进程不建 ⇒ 合并后**仍只有一条建表路径** ⇒ 幂等重放 ⇒ 不重复建表；<br>⑥ **Redis 黑名单**：api 与 rpc 各自用同一份 key 空间 ⇒ 合并后**共享**（B 侧同库同 key ⇒ 语义不变）。 | ① §六-① · ② §5-⑩ · ③ §5-⑪ · ④ A-06/A-07 · ⑤ A-02 · ⑥ §3.6 | **PASS**（⚠️ ②③ **曾是真缺口**，已在本轮补齐） |
+| ⑨ | **资源隔离的副作用** | 合并后**进程内两个端口** ⇒ 部署侧两个端口都要暴露 ⇒ 已登记为部署面偏离 | §六-① | **PASS**（已登记） |
+
+### 10.6 §11.3 点名要显式列出的 **7 类** —— 汇总
+
+| # | §11.3 要求 | 本域落点 | 结论 |
+|---|---|---|---|
+| 1 | **所有 N:1 映射** | **6 个** —— M-1(2:1) · M-2(13:1) · M-3(13 logic→1 类) · M-4(5:3) · M-5(1:1) · M-6(删除) | 逐项见 **9.1** |
+| 2 | **所有 1:N 映射** | **4 个** —— S-1(28 DTO→4 子包) · S-2(3 实体) · S-3(3 mapper) · S-4(2 建表载体) | 逐项见 **9.2** |
+| 3 | **所有多对多映射** | **0 个** —— 本域**没有**「B 侧 N 个文件 ↔ C 侧 M 个文件」的**双向**多对多；最接近的是 M-4（5 → 3）与 S-1（28 → 28），两者都是**单向可枚举**的 | **PASS**（无遗漏） |
+| 4 | **共享能力上收** | **14 个共享层类被消费**；本域**向共享层上收 1 项**（`JsonTextTypeHandler` 的落点在 users-common ⇒ 跨模块共享，**域内零副本**） | 逐项见 **9.4** |
+| 5 | **Spring 接管** | **4 处** —— ① 共享层 starter 接管 B 侧的 `@Import` 清单；② devh starter 接管 gRPC server 启动与 `@GrpcService` 注册；③ Spring `@ResponseBodyAdvice` 接管成功信封；④ Spring `@RestControllerAdvice` 接管异常出口 ⇒ **每处都有「执行链」级证据**，非「Bean 存在」级 | 9.3-②⑥ · 9.4-③④ |
+| 6 | **独立进程合并** | **1 处** —— `admin-api` ＋ `admin-rpc` → `admin-service`（D1） | 逐项见 **9.5**（9 项全过） |
+| 7 | **职责缺失** | **0 条** —— 76 个 B 源文件逐个有落点（A-01~A-29 覆盖全部职责）；唯一的「删除」是 M-6（`AdminRpcClient`，D2 决策锁）⇒ 已登记（A-27） | **PASS** |
+
+> **⚠️ 一处跨域形状差异（本轮发现 · 不属 admin 域写权）**：
+> **验签的载体**：admin 域**补了 `OncePerRequestFilter`**（`AdminJwtSignatureFilter`）承载验签 ⇒ 验签在 **3s 预算之外**（与 B 侧 `DRIFT-USERAPI-009②` 同构）；
+> 而 **message 域选了另一条路** —— 无独立 Filter ⇒ 验签与 401 合在 `HandlerInterceptor` 内 ⇒ 验签**落在 3s 预算之内**
+> （message 台账 §六·6-6 已登记为签字偏离）。
+> ⇒ ⇒ **两个兄弟域的形状不一致**：**行为面**（401 形状、claim 名、黑名单 fail-open）**两侧一致**，
+> 但「验签是否计入 3s 预算」**两侧不同** ⇒ ⇒ **属跨域形状债**，建议由收口 lane 统一裁决（要么 message 也补 Filter，要么 admin 也改登记偏离）。
+> ⇒ **本域不单方面改**（改 admin 会推翻 A-21 与 F-1 的结论）。
+
+> **本阶段结论**：**PASS**（协议 §8.1–§8.5 全部逐项核查完毕；6 个 N:1 ＋ 4 个 1:N ＋ 1 处独立进程合并 ＋ 14 项共享层消费 ＋ 4 处 Spring 接管全部有结论；
+> 本阶段**直接暴露并修掉 2 条真缺口**（§5-⑩ Nacos 双注册、**§5-⑪ 注册名与寻址不匹配**）；
+> 另**登记 1 条跨域形状债**（验签载体：补 Filter vs 登记偏离）。
+
+---
+
+---
+
+## 十一、第六阶段专项报告：行为对拍和验证（**协议 §九**）
+
+> 📌 **本节是 `.agents/verification.md` **第六阶段**（协议 §九）的专节** ——
+> 协议原文：「对关键行为使用相同输入比较 B 与 C」；「**不得用静态代码相似度替代运行验证**」。
+> 📌 **本轮的做法**：把 **B 侧测试资产**（`*ParityTest` / `*RegressionTest` / `*SemanticDrift*Test`）
+> **移植到 C 侧**，**断言与期望值逐字沿用 B 侧**（AGENTS.md §1.0c「测试资产单独一档」＋ D13）
+> ⇒ ⇒ **期望值不是本域自拟的** ⇒ 比「只跑 C 侧探针」强一档。
+
+### 11.1 协议 §九「优先验证的 12 项行为」—— 逐项判定
+
+| # | 行为 | 本域的验证手段 | 状态 |
+|---|---|---|---|
+| 1 | **HTTP 请求和响应** | **13 端点全 POST**（GET 全 405）· public 集合 = B 侧两段 `AddRoutes` · **200 信封恰好三键、顺序不变** · **400 + text/plain + nosniff + 尾随换行** · 415⇒400 · 未知路径 404 · 鉴权路径集合 ↔ 控制器映射守卫 —— 全部走**真 Tomcat**（`RANDOM_PORT` · **绝不用 MockMvc**） | ✅ **PASS**（本轮再补「响应字节面」探针，见 §十一·11.3） |
+| 2 | **RPC 请求和响应** | **13 个 RPC** 的服务实现 ＋ `admin.proto` **逐字节一致** ＋ devh server 真在跑 ＋ **移植的 7 例 gRPC 期望值**（`AdminRpcGoWireParityTest` 5 · `AdminRpcLogoutClientVisibleGrpcStatusTest` 1 · `…DefaultBehaviorTest` 1）＋ **E-4 活体对拍：用 C 侧 proto stub 同时打两侧 server** | ✅ **PASS**（**E-4 · 13/13 RPC 全一致** ⇒ §九·9.3） |
+| 3 | **JSON 解析和序列化** | **28 个 DTO 的 snake_case 键名**（`ApiTypesSnakeCaseTest`）＋ 真实 Jackson 序列化 ＋ Hibernate Validator 探针 ＋ 端到端 HTTP 用例 | ✅ **PASS**（本轮移植 `ApiTypesSnakeCaseTest` · 18 例） |
+| 4 | **错误码和异常映射** | **逐端点 switch 12 个**（§5-① 修完）＋ **通用兜底表**（§3.3）—— 两张表都逐条照抄 B 侧 | ✅ **PASS** |
+| 5 | **数据库最终状态** | **真 PG**（`postgres:16-alpine`）＋ 真 MyBatis-Plus ＋ 真 Redis ＋ 真 `@Transactional` 代理 —— **20 例** | ✅ **PASS** |
+| 6 | **事务提交和回滚** | **4 步原子事务**（W1 悲观锁 → W2 查重 → bcrypt → insert → 标记 invite used）用**真 UNIQUE 冲突**注入失败 ⇒ **行级锁真在 PG 上生效** | ✅ **PASS** |
+| 7 | **Kafka 消息内容** | **n/a** —— B 侧 admin 域对 MQ 的引用数为 **0**（无 `org.apache.kafka` / `springframework.kafka` 依赖）⇒ 两侧一致 | ✅ **PASS**（两侧都无） |
+| 8 | **消息发送时机** | **n/a**（无 MQ / 无定时任务 ⇒ 无「消息发送时机」可对） | ✅ **PASS**（n/a） |
+| 9 | **幂等和重复请求** | **邀请码一次性**（`createAdmin` 消费后置 used ⇒ 第二次被拒）+ username 查重**不消耗邀请码** + 行级锁串行化 | ✅ **PASS** |
+| 10 | **JWT** | claim 名 ＋ 签发参数（§3.7）+ **key 前缀 `admin:` 隔离** + **两把 secret 各自 fail-closed** + 401 三态 | ✅ **PASS** |
+| 11 | **Redis 状态** | **黑名单 key**（§3.6）+ 真 Redis 容器 + fail-open 语义 | ✅ **PASS** |
+| 12 | **定时任务和生命周期** | 本域**无定时任务 / 无 MQ 监听**（B 侧全域 grep = 0）⇒ 生命周期面 = **启动**（DDL ＋ 种子 ＋ Snowflake 探针 ＋ Nacos 注册）＋ **关闭**（Nacos 反注册 ＋ 观测层线程池回收）⇒ 全部**运行期**断言 | ✅ **PASS** |
+
+### 11.2 协议 §九「对拍必须覆盖的 11 类场景」—— 逐项判定
+
+| # | 场景 | 本域覆盖情况 | 状态 |
+|---|---|---|---|
+| 1 | **正常路径** | 13 端点全部注册并真调；领域层 13 个 logic | ✅ |
+| 2 | **边界输入** | 登录 3 态 · 邀请码一次性 · username 查重不消耗邀请码 · GORM 的 LIMIT/OFFSET **静默抑制**（`page=0` ⇒ 负 offset ⇒ 不生成 OFFSET） | ✅ |
+| 3 | **空值和缺省值** | **空 body ⇒ 400**（B 侧同）· `extra_info` 装 **U+0000** · 必填缺失 ⇒ 400 | ✅ |
+| 4 | **非法输入** | 必填字段缺失 ⇒ 400 + text/plain（**文本**属 D-01 降级，**形状**一致） | ✅ |
+| 5 | **类型不匹配** | DTO snake_case 键名 ＋ 真实 Jackson 序列化（**18 例**逐个键） | ✅ |
+| 6 | **重复请求** | 邀请码一次性（真 UNIQUE 冲突 ⇒ 真回滚） | ✅ |
+| 7 | **并发请求** | `AdminCreateAtomicService` 的**行级悲观锁**（真 PG 上验证：`FOR UPDATE` 串行化）＋ **E-4-R2 并发判定项两侧一致** | ✅ **PASS**（§九·9.10） |
+| 8 | **外部依赖失败** | 唯一约束冲突（23505）⇒ `isUniqueViolation` 分支；Redis 断开 ⇒ fail-open | ✅ |
+| 9 | **超时** | gRPC 侧 `DeadlineState`（共享层）＋ 出向 deadline cap ＋ **E-4-R2 用「故意慢的下游」真触发** | 🔴 **两侧不一致**（B `200+1015` ↔ C `503+裸文本`，且 **C 侧副作用已落库**）⇒ 根因在**共享层**（HTTP 路径没绑 `DeadlineState` ⇒ SQL 不被取消）⇒ 归 **`global` 收口域**（§9.10.3） |
+| 10 | **部分成功** | 4 步原子事务中途失败 ⇒ **全部回滚**（不留下半条 admin + 不消耗邀请码） | ✅ |
+| 11 | **恢复和清理** | Nacos 注册 / 反注册 ＋ 观测层线程池 `@PreDestroy` 回收 ＋ 黑名单 fail-open | ✅ |
+
+### 11.3 本轮「B 侧期望值移植」的对拍资产
+
+> 📌 **移植原则**（AGENTS.md §1.0c「测试资产单独一档」＋ D13）：**断言、期望值、`@DisplayName` 逐字沿用 B 侧**；
+> 机械照抄的偏差只有「**B 侧形态在 C 侧不存在**」导致的必然改写（逐条登记于下表末的「移植偏差」）。
+> 📌 **落地方式**：3 个**隔离 worktree**（`admin-parity-{a,b,c}`，基线 `ae17325`）并行移植 ⇒ 互不踩 `target/`；
+> 产物**全部拷回本工作树**，在**含本轮注册名修正的新代码态**上**重跑全量**（§8.1 读数即该次）。
+
+#### 11.3.1 移植清单（**16 个类 / 108 例** · `Skipped: 0`）
+
+| # | C 侧类（`service/users/admin/src/test/java/com/rag/admin/…`） | B 侧出处（`service/users/admin/…`） | 例数 | **断言面**（`@DisplayName` 摘要） |
+|---|---|---|---|---|
+| 1 | `grpc/AdminRpcGoWireParityTest` | `admin-rpc/…/rpc/AdminRpcGoWireParityTest` | 5 | status IS NULL 读成 0（与 Go 一致）· 13 个 RPC 错误分支 code+description 逐字节对齐 · `createAdmin` 撞用户名两腿文案差异 · `UpdateUserResp.success=false` · W4 推进 `admin_invite.update_time` |
+| 2 | `grpc/AdminRpcLogoutClientVisibleGrpcStatusTest` | `admin-rpc/…/rpc/AdminRpcLogoutClientVisibleGrpcStatusTest` + `AdminRpcRedisDisconnectedFastFailTest` | 1 | Redis 断连 ⇒ **客户端可见** status = INTERNAL「注销失败,Redis写入异常」 |
+| 3 | `grpc/AdminRpcLogoutClientVisibleGrpcStatusDefaultBehaviorTest` | `admin-rpc/…/rpc/AdminRpcLogoutClientVisibleGrpcStatusDefaultBehaviorTest` | 1 | 断连策略=DEFAULT ⇒ 命令排队 ⇒ **2s rpc 预算先到** ⇒ 客户端看到 DEADLINE_EXCEEDED(1015) |
+| 4 | `service/AdminSpanWiringTest` | `admin-rpc/…/rpc/AdminSpanWiringTest` | 3 | `resetUserPassword` 真导出 `Action-Admin-ResetUserPassword` + 2 个 audit 属性 · Go 没打 span 的方法 RAG 也不许凭空加 · Go 有 span 的 8 个方法与 `AdminSpans` 常量逐条对应 |
+| 5 | `wiring/AdminRpcNacosGroupTest` | `admin-rpc/…/rpc/AdminRpcNacosGroupTest` | 3 | group **来自配置**（非写死）· 默认行为零变化（仍 `USER_GROUP`）· yml 里那行还在（删掉 ⇒ `NACOS_GROUP` 失效） |
+| 6 | `domain/service/AdminSemanticDriftRegressionTest` | `admin-rpc/…/rpc/service/AdminSemanticDriftRegressionTest` | 13 | seeder 密码 = `admin`（非 `default-password`）· seeder 不重复插入 · keyword 空白/前后空格/空串三态 · **GORM LIMIT/OFFSET 静默抑制**（`page=0` / `pageSize=-5` / `pageSize=0`）· `username` 空串不报 INVALID_ARGUMENT · `inviteCode` 空仍 PERMISSION_DENIED · `total` 来自独立 count |
+| 7 | `domain/service/AdminDomainServiceCatchStructureTest` | `admin-rpc/…/rpc/service/AdminDomainServiceCatchStructureTest` | 3 | 每个 `catch(Exception)` 前邻都有 `catch(StatusRuntimeException){throw e;}` · **守恒计数 29/29** · 自检 Range/Entry 的 equals 依赖 Label 的 hashCode |
+| 8 | `domain/service/AdminRpcColumnTypeParityTest` | `admin-rpc/…/rpc/AdminRpcColumnTypeParityTest` | 6 | `extra_info` 是 **text**、6 个时间列是 **timestamptz**（对齐 Go AutoMigrate）· 非 UTC 会话时区下重放 DDL 时刻不漂移 · jsonb 会拒收的 `\u0000` payload · invite 有效期按绝对时刻判定 · `users_user.extra_info` 逐字节落库（CAST 残留守门） |
+| 9 | `domain/service/AdminRpcPaginationGormSemanticsTest` | `admin-rpc/…/rpc/AdminRpcPaginationGormSemanticsTest` | 7 | R4 规则（LIMIT 仅 `pageSize>=0`、OFFSET 仅 `offset>0`）· `page=0` / `page=-1` / `page_size=-5` / `page=int64max` 四种边界 · **对照组**：正常分页不受影响 · **恒绿自检**：修复前形态必须真的会被 PG 拒掉 |
+| 10 | `domain/service/AdminCreatePasswordOrderRegressionTest` | `admin-rpc/…/rpc/AdminCreatePasswordOrderRegressionTest` | 9 | R5-A/B/C/C2/C3 五种组合的**错误码顺序**（1001 / 1016）· bcrypt 上限 ⇒ 5001 而非一致性回退 · 正常路径存的是 **bcrypt hash** · 6 参签名传已哈希密码 ⇒ **不得二次哈希** · DomainService 层 ⇒ gRPC 码是 1001/1016 而非 INTERNAL |
+| 11 | `domain/service/AdminUpdateSelfAndCreateAdminRegressionTest` | `admin-rpc/…/rpc/service/AdminUpdateSelfAndCreateAdminRegressionTest` | 6 | `updateSelf` 未带 email ⇒ UPDATE 子句**不出现 email 列** · 纯空白 email 同理 · 合法 email 必须更新（守卫没挡正常路径）· `createAdmin` 查邀请码必须带 **FOR UPDATE 行锁** · 4 步事务已抽独立 Bean（`@Transactional` 不再 self-invocation）· 已用邀请码仍被拒 |
+| 12 | `dto/ApiTypesSnakeCaseTest` | `admin-api/…/api/dto/ApiTypesSnakeCaseTest` | 18 | **28 个 DTO 的 snake_case 键名**逐个（`loginReq` / `createAdminReq` / `createAdminResp` / `createInviteCodeResp` / `adminInfo` / `userInfo` / `updateUserReq` / `updateSelfReq` / `getUserReq` / `resetUserPasswordReq` / `getUserListReq` / `getUserListResp` / `getUserResp` / `updateUserResp` / `banUserResp` …）· `uid` 是 **string** · `list` 空时为 **null** 不是空数组 · `extraInfo` snake_case |
+| 13 | `http/AdminSemanticDriftApiRegressionTest` | `admin-api/…/api/service/AdminSemanticDriftApiRegressionTest` | 26 | DRIFT-002 `found=true` · DRIFT-003 NotFound⇒**1003**（不是 1015）· DRIFT-004 Internal⇒**5003**（不是 5001）· DRIFT-007 `default=1/20` + `page=0` 原样透传 · A-01 空 list 为 null · A-02 `AdminInfo.email` 空串仍 set（`UserInfo` 相反）· **DRIFT-009 验签先于黑名单**（无效签名 ⇒ 黑名单一次都不查）· DRIFT-010 `XXBearer` 不能绕过 · `bearer` 大小写不敏感 · Redis 故障 **fail-open** · uid 缺失/非数字 ⇒ 1017 · `updateuser` 的 operatorId 取自 token |
+| 14 | `http/AdminApiRealTomcatResponseBytesTest` | `admin-api/…/api/AdminApiRealTomcatResponseBytesTest` | 3 | **真 Tomcat** CASE-24：400 text/plain 带 `charset=utf-8` + `nosniff` + 尾随换行 · CASE-26：下游睡过 3s ⇒ **503** + text/plain + nosniff · **对照组**：同一路由 + 快下游 ⇒ 200 + application/json（证明 503 是超时触发的） |
+| 15 | `http/AdminApiPlainText400ContentTypeTest` | `admin-api/…/api/AdminApiPlainText400ContentTypeTest` | 2 | 400 text/plain 的 Content-Type = `text/plain; charset=utf-8`（与 Go 逐字节相同）· **畸形 JSON** 的 400 同样带 charset（同一分支，不能只测必填缺失） |
+| 16 | `http/AdminApiPlainText400HeaderProbeTest` | `admin-api/…/api/AdminApiPlainText400HeaderProbeTest` | 2 | 取证：畸形 JSON ⇒ 400 text/plain 时 Content-Type 是否真的丢了 · **取证对照**：200 JSON 的 Content-Type 是否正常（鉴别 wrapper 是否普遍吞 header） |
+| | **合计** | | **108** | |
+
+#### 11.3.2 🟢 **B ↔ C 用例数守恒核对**（移植完整性的硬证据）
+
+> 📌 **不是**「B 侧有多少、C 侧跑多少」的粗账，而是**逐文件**比对两侧 `@Test` 注解数：
+
+| 核对项 | 结果 |
+|---|---|
+| 16 个移植类，**逐文件** B 侧 `@Test` 数 vs C 侧 `@Test` 数 | **16/16 完全相等**（9·3·6·7·13·6·18·2·2·3·26·5·1·1·3·3 = **108**） |
+| B 侧 16 个源文件**真实存在**（`ls` 逐个核对，非「推测有」） | **16/16 存在** |
+| C 侧实跑例数 vs 守恒预期 | **一致**（见 §8.1） |
+| 「期望值是不是本域自拟的」 | ❌ 不是 —— 逐条沿用 B 侧断言（AGENTS.md §1.0c「测试资产单独一档」＋ D13） |
+
+#### 11.3.3 移植偏差登记（**只允许「B 侧形态在 C 侧不存在」类**）
+
+| # | 偏差 | 性质 | 依据 |
+|---|---|---|---|
+| P-a | **包压平**：B 侧 `com.rag.users.admin.{api,rpc}.*` → C 侧 `com.rag.admin.*`（D7） | 表达层 | D7 |
+| P-b | **进程合并**：B 侧两个 `main` + 两份 `application.yml` → C 侧一个进程 + 一份合并 yml（D1） | 表达层 | D1 |
+| P-c | **端口动态化**：B 侧 `RealGrpcPort` / `RealTomcatPort` / `GoStyleHostPortPinning` 在 C 侧不存在 ⇒ 改用 `new ServerSocket(0)` 取空闲端口 | 表达层（不改变被测语义） | — |
+| P-d | **容器自建**：C 侧 admin 域**没有**共享的 `TestPostgres` 单例（message 域有）⇒ 每类自带 `@Container` | 表达层 | — |
+| P-e | **DDL 走生产路径**：建表一律 `new AdminSchemaBootstrap(ds).initSchema()`（→ 共享层 `SchemaInitializer` 幂等重放 `db/01..04_*.sql`）⇒ **不另抄一份 DDL** | 表达层 | §二 A-02 |
+| P-f | **删 `@EnabledIfDockerAvailable`** | 守门纪律 | AGENTS.md §五.8 ③ —— 实测本域 **0 处真实用法**（仅 javadoc 里留「已删」的记录） |
+| P-g | **指标类未改名**：B 侧 `AdminApiMetrics` + `AdminRpcMetrics` **两个类** → C 侧**同名两个类**（仅包压平 `com.rag.users.admin.api.metrics` → `com.rag.admin.metrics`）⇒ **类名逐字未动**，指标名/label 名/取值/description/Counter 数量全部照抄 | 表达层（仅包名） | §二 A-15 · 映射表 admin.md §6 |
+| P-h | 🔴 **注册名断言前提修正**：`AdminRpcNacosGroupTest` 的 `SERVICE_NAME` 由 `admin-service` 改为 **`admin-rpc`** | **不是移植偏差 —— 是本轮修正项的前置对齐** | §五·5-⑪：**B 侧逐字值是 `admin-rpc`**（`NacosRegistration.java:88`）⇒ 原前提（「D1 已签字的偏离」）**已被推翻** ⇒ 断言必须跟着回到 B 侧逐字值（AGENTS.md §3.3.2） |
+
+
+### 11.4 ⚠️ **无法运行验证的部分**（协议 §九：明确说明缺什么环境 ＋ 保留静态证据 ＋ 标记状态）
+
+| # | 项 | **缺什么** | 保留的静态证据 | 状态 |
+|---|---|---|---|---|
+| ~~N-1~~ | ~~gRPC 面 13 个 RPC 的活体对拍~~ | ~~未做「真 gRPC 客户端 → 真服务端」逐端点全量对拍~~ | — | ✅ **已闭合（2026-11-02）**：**E-4 双侧活体对拍**用 C 侧 proto stub 同时打两侧 server ⇒ **13/13 RPC 全一致**（§九·9.3）＋ 本轮移植的 **wire 对拍（5 例）** ＋ **logout 客户端可见 status（2 例 · 真 TCP 客户端）** 在 C 侧跑绿 |
+| N-2 | ~~**`AdminSpans` 的 span 名与 audit 属性**~~ | ~~需要 OTel collector（或 in-memory exporter）才能取到 span~~ | — | ✅ **已闭合**（2026-11-02 本轮）：移植的 `AdminSpanWiringTest`（3 例）**自装 OTel SDK + `SimpleSpanProcessor` + 收集型 `SpanExporter`** ⇒ span **真被导出** ⇒ 断言 **span 名 / tracer 名（`admin-rpc`）/ `audit.operator_id` / `audit.target_uid` / span 已 end** ＋ **双向**（Go 没打 span 的 `getUser` 不许凭空产生 `Action-Admin-*`）＋ Go 的 **8 个** span 名逐条对应 |
+| N-3 | **真 Nacos 的注册结果** | 测试里用 `NacosStubConfiguration` 桩（不连网络）⇒ 已验证「注册的是 **gRPC 端口**、且**只注册 1 次**、**web 端口从未被注册**、**服务名 == `admin-rpc`**」（§5-⑩ ＋ §5-⑪）⇒ 但**对真 Nacos 的注册结果**未跑过 | 桩上捕获到的 `Instance` 全字段断言 ＋ 变异检验判据能红 | **NOT_VERIFIED** |
+| ~~N-4~~ | ~~并发压测~~ | ~~需要并发装置~~ | — | ✅ **已闭合**：E-4 第二轮并发判定项 **一致**（§九·9.10）＋ 行级悲观锁（真 PG 上 `FOR UPDATE` 生效） |
+| N-5 | **真实超时触发** | ⚠️ **E-4 第二轮**已用「故意慢的下游」触发 ⇒ **但两侧响应面不一致**（B `200+1015 信封` ↔ C `503+裸文本`）⇒ ⇒ **不是「没验」，是「验出了差异」** | `DeadlineState` 消费点 ＋ 出向 deadline cap 装配 ＋ **E-4-R2 的复现命令与验收判据（§9.10.3）** | 🔴 **NOT_VERIFIED → 已判定为跨域差异**，根因在共享层 ⇒ 归 `global` 收口域（见 N-9） |
+| N-6 | **变异证据**（证「断言不是假绿」） | 本轮**随移植带进 2 条真实变异用例**（B 侧自带，已在 C 侧跑绿）：① `AdminRpcPaginationGormSemanticsTest#theOldSqlWouldIndeedFailOnRealPg` —— **手工执行修复前的拼法**（`LIMIT -5 OFFSET -10`）⇒ PG **必须**报 `OFFSET must not be negative`（22023）⇒ 否则「上面几条」就可能因「压根没查库」而假绿；② `AdminDomainServiceCatchStructureTest` 的**守恒计数 29/29** ＋ 邻接结构断言 ⇒ 摘掉任一放行分支即红。<br>⚠️ **但「本轮新修的 11 条漂移」仍无逐条变异记录**（变异必然要改 `src/main/**` ⇒ 需单独授权，改后必须还原） | 已有**一处**变异检验记录（§5-⑩：注释掉 `register-enabled` ⇒ 出现两次注册 ⇒ 判据能红）＋ 上述 **2 条移植带进的变异用例** | **NOT_VERIFIED**（**部分**） |
+| ~~N-7~~ | ~~B 侧活体对拍~~ | ~~B 侧是 Boot 4 + go-zero 服务链，起真环境需 etcd + Nacos + PG + Redis~~ | — | ✅ **已闭合（2026-11-02 · 另一条 lane）**：**E-4 双侧活体对拍两轮**（§九）—— ⚠️ **一条重要的口径订正**：**B 侧实现是 Java/Boot 4**（`admin-api` + `admin-rpc`），**go-zero 只是语义来源** ⇒ ⇒ 活体对拍已用**隔离的 PG 库 / Redis 容器 / Nacos**跑通，**探针已入库**（`tools/difftest/parity_admin.py` + `parity_admin_round2.py` + `GrpcParityProbe.java`）⇒ **可复现** |
+| N-8 | **跨域 gRPC 链路**（message → admin-rpc） | 真 Nacos + 真 message + 真 admin 三方同跑 | 🔴 **本轮已修**（§5-⑪：注册名回到 B 侧逐字值 `admin-rpc` ⇒ 与 message 的 `discovery:///admin-rpc` 对齐；namespace `sea-rtw` / group `USER_GROUP` 两侧一致）⇒ **三轴全对齐** ⇒ 但**三方活体未跑** | **NOT_VERIFIED**（缺陷已修 · 链路待活体验） |
+| N-9 | 🔴 **PG 不可用 / 请求超时 ⇒ 两侧响应面不一致** | **不缺环境** —— E-4-R2 已实测出来：B `200+1015 信封` ↔ C `503+裸文本`，且 **C 侧超时后副作用已落库** | 根因在**共享层**：`DeadlineState` 只在 **gRPC 服务端路径**绑定（`common/…/RpcHandleRunner.java:121`）⇒ **HTTP 路径没绑 ⇒ SQL 不被取消** ⇒ 事务照常提交 | ⛔ **跨域未修**（按 AGENTS.md §五.3 归 **`global` 收口域**）⇒ 复现命令与验收判据见 §9.10.3 |
