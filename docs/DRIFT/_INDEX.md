@@ -26,7 +26,7 @@ docs/DRIFT/
 | `article` | article-service | ⬜ 未建立 |
 | `comment` | comment-service | ⬜ 未建立 |
 | `favorite` | favorite-service | ⬜ 未建立 |
-| `follow` | follow-service | ⬜ 未建立 |
+| `follow` | follow-service | ✅ **已建立** —— [`follow/verification-follow-2026-11-02.md`](follow/verification-follow-2026-11-02.md)（RAG → RAG-V1 迁移审核 · B **51** → C **37**（**0 空壳** · 覆盖 **37/37 = 100%**）· L1 契约（8 端点 / 16 错误码 / 3 种错误响应形状 / DTO JSON 形状 / proto）**逐条一致** · 10 个测试类 / **72 例**（真 PG + 真 Tomcat + 真 gRPC + 真 Flyway + 真并发）· **E-4 双侧活体对拍**：HTTP **21/21** 三方逐字节一致 ＋ gRPC wire **13/13** 双边 ＋ 场景轮 6 类（超时/恢复/外部依赖失败/并发/事务回滚）· 签字偏离 **8 条**（DEV-FOLLOW-007 已撤销 ⇒ 生效 7 条）· 全仓 **16/16 模块 SUCCESS · 420 例 · 0/0/0** · 四道闸门全绿（对拍 / 变异 M1~M7 / 三道守门 / 全仓回归）） |
 | `hot` | hot-service | ⬜ 未建立 |
 | `like` | like-service | ⬜ 未建立 |
 | `message` | message-service | ✅ **已建立** —— [`message/verification-message-service-2026-11-02.md`](message/verification-message-service-2026-11-02.md)（RAG → RAG-V1 迁移审核 · 八阶段 **7 PASS + 1 PARTIAL**（阶段六 = 行为对拍）· B **71** → C **53**（**0 空壳**）· **10 条漂移全部已修** · 11 个测试类 / **103 例** · **35 例 B 侧期望值移植** · 全仓 **16/16 模块 SUCCESS · 451 例 · 0/0/0** · 三道守门 **EXIT=0**） |

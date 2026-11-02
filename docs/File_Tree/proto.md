@@ -24,18 +24,20 @@
 
 ```
 ├── src/
-│   └── main/
-│       └── proto/
-│           ├── admin.proto
-│           ├── article.proto
-│           ├── comment.proto
-│           ├── favorite.proto
-│           ├── follow.proto
-│           ├── hot.proto
-│           ├── like.proto
-│           ├── message.proto
-│           ├── task.proto
-│           └── users.proto
+│   ├── main/
+│   │   └── proto/
+│   │       ├── admin.proto
+│   │       ├── article.proto
+│   │       ├── comment.proto
+│   │       ├── favorite.proto
+│   │       ├── follow.proto
+│   │       ├── hot.proto
+│   │       ├── like.proto
+│   │       ├── message.proto
+│   │       ├── task.proto
+│   │       └── users.proto
+│   └── test/
+│       └── java/
 └── pom.xml    # Maven 模块描述
 ```
 
