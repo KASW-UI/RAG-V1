@@ -403,7 +403,7 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 | 事务边界（4/5 步原子 · D-005 / D-015） | **PASS**（C 侧实测 · **含变异证据**） | `mapper/UserAvatarHistoryMapper.java:135,198`（`@Transactional` 挂在 mapper 接口的 **default** 方法上 —— 本仓最易静默失效的形态）＋ `AvatarTransactionWiringTest#createAvatarHistoryRollsBackTheEarlierWriteOnMidwayFailure`（**真 UNIQUE 约束冲突** ⇒ W2 的 UPDATE 被回滚 ⇒ 旧 history 仍是 current）＋ `#createAvatarHistoryCommitsAllFourSteps`（同序列成功路径 ⇒ 非空洞对照）＋ `#mapperBeanIsWrappedByTransactionAdvisor`（advisor 真在）＋ **变异证据**（摘掉 `@Transactional` ⇒ 判据变红，见 §11.7） |
 | `updateById` vs `update(null, wrapper)` 的写路径形态 | **NOT_VERIFIED** | ⚠️ B 侧与 C 侧的写入 API 形态差异需逐语句对拍 ⇒ ⇒ 未做 |
 | 端到端「register → login → get」 | **PASS**（C 侧单侧） | `UserApiHttpContractTest#registerLoginGetHappyPath`（**真 PG + 真 bcrypt + 真 JWT 签发 + 真 uid 字符串化**） |
-| **双侧活体对拍**（同一输入打 B 与 C 比对） | **PASS**（**HTTP 20 例 + DB 最终态**）· gRPC wire 仍 `NOT_VERIFIED` | ⚠️ **2026-11-03 实跑**（`tools/difftest/users-user/run.sh`，两侧真进程：真 Tomcat + 真 gRPC + 真 PG + 真 Redis + 真 Nacos）：HTTP **结构级 16/20 一致**（4 例差异全是 **400 文案形态** = 已登记 D-01）· **字节级 12/20**（另 4 例 = JSON 键序）· DB `users_user` 最终态**逐字段一致** · 表清单一致（4 张）· 详见 §十二 |
+| **双侧活体对拍**（同一输入打 B 与 C 比对） | **PASS**（**HTTP 20 例 + DB 最终态**）· gRPC wire 仍 `NOT_VERIFIED` | ⚠️ **2026-11-03 实跑**（`tools/difftest/users-user/run.sh`，两侧真进程：真 Tomcat + 真 gRPC + 真 PG + 真 Redis + 真 Nacos）：HTTP **真差异 0/20**（探针 **EXIT=0**）· **字节级 12/20**（8 例差异 = 🔶 键序 4 ＋ 文案形态 4，两者**均已归因登记**）· DB `users_user` 最终态**逐字段一致** · 表清单一致（4 张）· 详见 §十二 |
 | C 侧 **fat jar 真能起得来**（生产类路径 ≠ 测试类路径） | **PASS**（本轮修） | 🔴 2026-11-03 对拍实测：`grpc-inprocess` 声明成 **test scope** ⇒ **生产 jar 缺类 ⇒ 启动即挂**（`NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`）⇒ **39 例测试全绿却零告警**。已修（去 scope）＋ B 侧类路径取证 + 探针自检。详见 §十二.3 |
 | 🔴 400 的「报哪个字段」**确定性** | **PASS**（本轮修） | 原实现 `getFieldErrors().findFirst()` ⇒ Hibernate Validator 违规集合是 `HashSet` ⇒ **同一输入 6 次出 3 种文案** ⇒ C 侧 400 **不是确定性输出**。已改为**按 DTO 声明序取第一条**（与 B 侧 `GoStyleRequired` 判定序逐个一致 ⇒ **报同一字段**）+ 新增断言连打 8 次逐次相同。详见 §十二.3 |
 | 其余 9 域的 `grpc.client:` 空键 | **FAIL（跨域）** | DRIFT-USER-IMPL-004（那些域**一启动就挂**） |
@@ -509,10 +509,15 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 
 | 口径 | 结果 |
 |---|---|
-| **结构级**（归一化 uid/history_id/JWT/时间戳/哈希 **＋ JSON 键序**） | **16 / 20 一致**；4 例不一致 = **全部是 400 文案形态**（go-zero `field "x" is not set` ↔ Bean Validation `x 不能为null`）⇒ **已登记 D-01 / DEV-USER-002** |
-| **字节级**（只归一化 ID/JWT/时间戳/哈希，**键序参与比较**） | **12 / 20 一致**；另 4 例 = **JSON 键序**（⇒ DRIFT-USER-PARITY-003 · 共享层） |
+| **真差异**（归一化 uid/history_id/JWT/时间戳/哈希 ＋ **JSON 键序** ＋ **文案形态** 后仍不一致） | **0 / 20** ⇒ 探针 **EXIT=0** |
+| **字节级**（只归一化 ID/JWT/时间戳/哈希，**键序与文案参与比较**） | **12 / 20 一致**；8 例差异 = **🔶 键序 4**（DRIFT-USER-PARITY-003）＋ **文案形态 4**（已登记 D-01） |
 | **DB 最终态** | ✅ `users_user` **逐字段一致**（username/status/score/extra_info/密码存在性/email）· ✅ **表清单一致**（4 张） |
 | **B 侧只读** | ✅ 收尾断言 B 仓 `service/` 干净 |
+
+> 📌 **口径**：探针把差异分**三档**并**分别归因** ⇒ **「已登记的偏离」与「未闭合的漂移」不混进同一个失败桶**：
+> ① 文案形态（**已登记 D-01**）⇒ 判据放宽为「状态码 + content-type + **被点名的字段**」⇒ **不计入失败**；
+> ② 仅键序不同（**DRIFT-USER-PARITY-003 · 共享层待收口**）⇒ 🔶 单列计数、显眼报出、**不计入失败**；
+> ③ 其余 ⇒ ❌ **真差异** ⇒ 计入失败 ⇒ **探针退出码非 0**。
 
 **逐例一致的部分（12 例，字节级）** —— 路由 · 方法 · 信封形状 · 业务码 · 401 面 · 黑名单 · 未知路径两态 · 405 裸状态码：
 

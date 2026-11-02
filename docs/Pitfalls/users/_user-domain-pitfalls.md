@@ -166,3 +166,32 @@ NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder
    （本域：`UserApiHttpContractTest#validationViolationSelectionIsDeterministicAndMatchesB`，连打 8 次）；
 4. ⇒ ⚠️ **注意与「文案形态」分开**：字段**选谁**是行为（要对齐 B），
    **文案长什么样**是表达层（可以是已登记的降级）⇒ **两者要分别判、分别登记**。
+
+---
+
+## P-USER-10 · 对拍探针用 Python 打 HTTP ⇒ **1xx 中间响应**会被当成最终响应（`urllib` 只跳 100）
+
+**形态**：B 侧的 `HttpMiddleware` 有「**1xx 探针行数预算**」机制 ⇒ 会**主动发 1xx 探针字节**
+（首次请求实测收到 `103`）⇒ ⇒ Python `urllib` **只跳过 `100 CONTINUE`** ⇒ 把 `103` **当成最终响应**
+（空 body + 无 Content-Type）⇒ ⇒ **误判成「两侧不一致」**。
+
+**判定式**：
+1. ⇒ ⇒ **「curl 看着是 200、探针看着是 103」并不矛盾** ⇒ 两者都对的 ⇒ 差异在**客户端**不在服务端；
+2. ⇒ ⇒ `http.client` **也不行**：读掉 1xx 后 `close()` 会**关掉 socket** ⇒ 下一次 `getresponse()` 失败
+   ⇒ ⇒ **改用 `curl`**（天然跳过 1xx，等最终响应）⇒ 且与 follow 域探针同款
+   （`curl -s -D hdr -o body -w '%{http_code}|%{content_type}'`）；
+3. ⇒ ⇒ **凡用脚本打 HTTP 对拍** ⇒ 先确认服务端有没有 1xx 探针 / `100-continue` / `103 Early Hints` 机制。
+
+---
+
+## P-USER-11 · bash 里 `( cd … && java … ) &` 的 `$!` 是**子 shell 的 PID** ⇒ cleanup 杀不到 java ⇒ 端口残留
+
+**形态**：探针用 `( cd "${B_REPO}" && ENV=… java -jar … ) > log 2>&1 &` 启动两侧 ⇒ `$!` 拿到的是
+**子 shell 的 PID**，而 **java 是子 shell 的子进程** ⇒ ⇒ `kill -9 "${PIDS[@]}"` **只杀了子 shell**
+⇒ ⇒ **java 活下来** ⇒ ⇒ **端口残留** ⇒ 下一轮跑探针直接 `端口被占用` 退出。
+
+**判定式**：
+1. ⇒ ⇒ 子 shell 里用 **`exec java …`** ⇒ 让 java **取代**子 shell ⇒ `$!` 就是 java 的 PID ⇒ cleanup 有效；
+2. ⇒ ⇒ 探针收尾后**必须验证端口真的释放了**（`lsof -iTCP:<port> -sTCP:LISTEN`）⇒
+   **「探针退出了」不等于「进程退了」**；
+3. ⇒ ⇒ 端口段要**独占**且**每轮固定** ⇒ 残留会直接挡住下一轮 ⇒ 报「端口被占用」时先查残留而不是换端口。

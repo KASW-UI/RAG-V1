@@ -146,7 +146,7 @@ step "启动 B 侧（user-rpc → user-api · 双进程）"
   NACOS_USERNAME= NACOS_PASSWORD= \
   USER_JWT_SECRET="${JWT_SECRET}" USER_JWT_EXPIRE=31536000 \
   USER_RPC_PORT="${B_RPC_PORT}" USER_RPC_MANAGEMENT_PORT="${B_RPC_MGMT_PORT}" \
-  java -jar "${B_RPC_JAR}" ) > "${WORK}/b-user-rpc.log" 2>&1 &
+  exec java -jar "${B_RPC_JAR}" ) > "${WORK}/b-user-rpc.log" 2>&1 &
 PIDS+=($!); disown 2>/dev/null || true
 wait_ready "${B_RPC_PORT}" "B user-rpc(gRPC)" || { tail -30 "${WORK}/b-user-rpc.log"; die "B user-rpc 起不来"; }
 
@@ -157,7 +157,7 @@ wait_ready "${B_RPC_PORT}" "B user-rpc(gRPC)" || { tail -30 "${WORK}/b-user-rpc.
   NACOS_USERNAME= NACOS_PASSWORD= \
   USER_JWT_SECRET="${JWT_SECRET}" USER_JWT_EXPIRE=31536000 \
   USER_API_PORT="${B_API_PORT}" \
-  java -jar "${B_API_JAR}" ) > "${WORK}/b-user-api.log" 2>&1 &
+  exec java -jar "${B_API_JAR}" ) > "${WORK}/b-user-api.log" 2>&1 &
 PIDS+=($!); disown 2>/dev/null || true
 wait_ready "${B_API_PORT}" "B user-api(HTTP)" || { tail -30 "${WORK}/b-user-api.log"; die "B user-api 起不来"; }
 
@@ -169,7 +169,7 @@ step "启动 C 侧（user-service · D1 合并单进程）"
   NACOS_USERNAME= NACOS_PASSWORD= \
   USER_JWT_SECRET="${JWT_SECRET}" USER_JWT_EXPIRE=31536000 \
   USER_HTTP_PORT="${C_HTTP_PORT}" USER_GRPC_PORT="${C_GRPC_PORT}" \
-  java -jar "${C_JAR}" ) > "${WORK}/c-service.log" 2>&1 &
+  exec java -jar "${C_JAR}" ) > "${WORK}/c-service.log" 2>&1 &
 PIDS+=($!); disown 2>/dev/null || true
 wait_ready "${C_HTTP_PORT}" "C user-service(HTTP)" || { tail -40 "${WORK}/c-service.log"; die "C user-service 起不来"; }
 
