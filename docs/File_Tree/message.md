@@ -50,89 +50,114 @@
 │   │   │       └── rag/
 │   │   │           └── message/
 │   │   │               ├── advice/
-│   │   │               │   ├── MessageApiExceptionHandler.java
-│   │   │               │   └── MessageApiResponseAdvice.java
+│   │   │               │   ├── MessageApiExceptionHandler.java    # 职责：message 域 HTTP 面的异常出口 —— 把「业务层抛出的异常」翻译成
+│   │   │               │   └── MessageApiResponseAdvice.java    # 职责：message 域 HTTP 面的成功信封包装 —— 把 controller 的返回值统一包成
 │   │   │               ├── client/
-│   │   │               │   ├── AdminRpcClient.java    # 跨域 gRPC 客户端 —— 域内调用已直连，此处只保留跨域依赖。
-│   │   │               │   └── UserRpcClient.java    # 跨域 gRPC 客户端 —— 域内调用已直连，此处只保留跨域依赖。
+│   │   │               │   ├── AdminRpcClient.java    # 职责：跨域 gRPC 客户端 —— 调 admin 域的
+│   │   │               │   └── UserRpcClient.java    # 职责：跨域 gRPC 客户端 —— 调 user 域的 {@code UserService.GetUser}，
 │   │   │               ├── config/
-│   │   │               │   ├── MessageApiProperties.java    # @ConfigurationProperties —— 聚合本域 HTTP 层配置。
-│   │   │               │   ├── MessageProperties.java
-│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 对齐 B 侧同名配置类的注册形态。
+│   │   │               │   ├── MessageApiProperties.java    # message 域 HTTP 层配置聚合点 —— Spring Boot {@code @ConfigurationProperties}。
+│   │   │               │   ├── MessageProperties.java    # message 域业务配置 —— 对应 Go 端 {@code service/message/rpc/internal/config/config.go}：
+│   │   │               │   └── WebMvcConfig.java    # message 域的 Spring MVC 装配点 —— 挂两条鉴权路径 + 注册 go-zero 对齐的 Jackson 解析规则。
 │   │   │               ├── contract/
-│   │   │               │   ├── CodeError.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│   │   │               │   ├── ErrCodes.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│   │   │               │   ├── ErrMsg.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│   │   │               │   └── GrpcErrorMapper.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
+│   │   │               │   ├── CodeError.java    # message 域业务错误载体 —— 携带业务码 {@code code} + 业务文案 {@code msg} 的 unchecked 异常，
+│   │   │               │   ├── ErrCodes.java    # message 域业务错误码枚举 —— 20 个码值的唯一真源（L1 契约 · D16：B 侧 RAG 仓为唯一判定基准）。
+│   │   │               │   ├── ErrMsg.java    # message 域 code → msg 文案映射 —— 20 条文案的唯一真源（L1 契约 · 含语言）。
+│   │   │               │   └── GrpcErrorMapper.java    # message 域 gRPC 错误转换工具 —— 业务码 ⇄ gRPC status 的双向转换 + status 提取。
 │   │   │               ├── controller/
-│   │   │               │   ├── MessageAdminController.java    # ⚠️ L1 路由契约（B 侧 正推，勿凭直觉改）
-│   │   │               │   └── MessageController.java    # ⚠️ L1 路由契约（B 侧 正推，勿凭直觉改）
+│   │   │               │   ├── MessageAdminController.java    # 职责：message 域管理侧的 5 个 HTTP 端点 —— 只做「解析 + 转交」，
+│   │   │               │   └── MessageController.java    # 职责：message 域用户侧的 8 个 HTTP 端点 —— 只做「解析 + 转交」，
 │   │   │               ├── domain/
 │   │   │               │   ├── entity/
-│   │   │               │   │   ├── ConversationEntity.java
-│   │   │               │   │   ├── ConversationMessageEntity.java
-│   │   │               │   │   └── NotificationEntity.java
+│   │   │               │   │   ├── ConversationEntity.java    # 会话表 ORM 实体 —— {@code message_conversation} 表的 MyBatis-Plus 映射。
+│   │   │               │   │   ├── ConversationMessageEntity.java    # 会话内单条消息表 ORM 实体 —— {@code message_conversation_message} 表的 MyBatis-Plus 映射。
+│   │   │               │   │   └── NotificationEntity.java    # 通知表 ORM 实体 —— {@code message_notification} 表的 MyBatis-Plus 映射。
 │   │   │               │   └── service/
-│   │   │               │       ├── MessageAtomicService.java
-│   │   │               │       └── MessageDomainService.java
+│   │   │               │       ├── MessageAtomicService.java    # 职责：message 域多步写的事务边界 —— 6 个 {@code @Transactional} 方法。
+│   │   │               │       └── MessageDomainService.java    # 职责：message 域 9 个领域用例 —— HTTP 与 gRPC 共享同一份业务规则。
 │   │   │               ├── dto/
 │   │   │               │   ├── chat/
-│   │   │               │   │   ├── AdminSendChatReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── SendChatResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── UserSendChatReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── AdminSendChatReq.java    # 职责：管理员发私信请求 —— 对应 Go {@code types.go} 的 {@code AdminSendChatReq}。
+│   │   │               │   │   ├── SendChatResp.java    # 职责：发私信响应 —— 对应 Go {@code types.go} 的 {@code SendChatResp}。
+│   │   │               │   │   └── UserSendChatReq.java    # 职责：用户发私信请求 —— 对应 Go {@code types.go} 的 {@code UserSendChatReq}。
 │   │   │               │   ├── common/
-│   │   │               │   │   ├── EmptyReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── PageReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── EmptyReq.java    # 职责：空请求 / 空响应 —— 对应 Go {@code types.go} 的 {@code type EmptyReq struct{}}。
+│   │   │               │   │   └── PageReq.java    # 职责：分页请求 —— 对应 Go {@code service/message/api/internal/types/types.go} 的 {@code PageReq}。
 │   │   │               │   ├── conversation/
-│   │   │               │   │   ├── ChatMessageItem.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── ConversationItem.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── ConversationListResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── ConversationMessagesReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── ConversationMessagesResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── ChatMessageItem.java    # 职责：单条私信 —— 对应 Go {@code types.go} 的 {@code ChatMessageItem}。
+│   │   │               │   │   ├── ConversationItem.java    # 职责：会话列表项 —— 对应 Go {@code types.go} 的 {@code ConversationItem}。
+│   │   │               │   │   ├── ConversationListResp.java    # 职责：会话列表响应 —— 对应 Go {@code types.go} 的 {@code ConversationListResp}。
+│   │   │               │   │   ├── ConversationMessagesReq.java    # 职责：会话消息列表请求 —— 对应 Go {@code types.go} 的 {@code ConversationMessagesReq}。
+│   │   │               │   │   └── ConversationMessagesResp.java    # 职责：会话消息列表响应 —— 对应 Go {@code types.go} 的 {@code ConversationMessagesResp}。
 │   │   │               │   ├── notification/
-│   │   │               │   │   ├── AdminSendNotificationReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── AdminSendNotificationResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── MarkNotificationReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── NotificationItem.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── NotificationListResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── AdminSendNotificationReq.java    # 职责：管理员发通知请求 —— 对应 Go {@code types.go} 的 {@code AdminSendNotificationReq}。
+│   │   │               │   │   ├── AdminSendNotificationResp.java    # 职责：管理员发通知响应 —— 对应 Go {@code types.go} 的 {@code AdminSendNotificationResp}。
+│   │   │               │   │   ├── MarkNotificationReq.java    # 职责：标记单条通知已读请求 —— 对应 Go {@code types.go} 的 {@code MarkNotificationReq}。
+│   │   │               │   │   ├── NotificationItem.java    # 职责：单条通知 —— 对应 Go {@code types.go} 的 {@code NotificationItem}。
+│   │   │               │   │   └── NotificationListResp.java    # 职责：通知列表响应 —— 对应 Go {@code types.go} 的 {@code NotificationListResp}。
 │   │   │               │   └── read/
-│   │   │               │       ├── MarkConversationReadReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       └── UnreadSummaryResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── MarkConversationReadReq.java    # 职责：标记会话已读请求 —— 对应 Go {@code types.go} 的 {@code MarkConversationReadReq}。
+│   │   │               │       └── UnreadSummaryResp.java    # 职责：未读汇总响应 —— 对应 Go {@code types.go} 的 {@code UnreadSummaryResp}。
 │   │   │               ├── exception/
-│   │   │               │   └── MessageExceptions.java
+│   │   │               │   └── MessageExceptions.java    # message 域业务异常聚合 —— 4 个 unchecked 异常的容器类（自身不可实例化）。
 │   │   │               ├── grpc/
-│   │   │               │   └── MessageGrpcService.java
+│   │   │               │   └── MessageGrpcService.java    # 职责：message 域的 gRPC 服务端 —— 9 个 RPC 方法的 薄转发。
 │   │   │               ├── interceptor/
-│   │   │               │   ├── AbstractMessageJwtAuthInterceptor.java    # message 域两份 JWT 逻辑的共享基类 —— 防止两份安全边界各自演化。
-│   │   │               │   ├── MessageAdminJwtAuthInterceptor.java
-│   │   │               │   └── MessageJwtAuthInterceptor.java
+│   │   │               │   ├── AbstractMessageJwtAuthInterceptor.java    # 职责：message 域两份 JWT 逻辑的共享基类 —— 持有全部鉴权逻辑，
+│   │   │               │   ├── MessageAdminJwtAuthInterceptor.java    # 职责：管理员侧 JWT 鉴权拦截器 —— 挂 {@code /message/v1/admin/**}。
+│   │   │               │   └── MessageJwtAuthInterceptor.java    # 职责：用户侧 JWT 鉴权拦截器 —— 挂 {@code /message/v1/**}（不含 {@code /admin/**}）。
 │   │   │               ├── mapper/
-│   │   │               │   ├── ConversationMapper.java
-│   │   │               │   ├── ConversationMessageMapper.java
-│   │   │               │   ├── GoStylePagination.java
-│   │   │               │   └── NotificationMapper.java
+│   │   │               │   ├── ConversationMapper.java    # {@code message_conversation} 表 Mapper 接口（MyBatis-Plus）。
+│   │   │               │   ├── ConversationMessageMapper.java    # {@code message_conversation_message} 表 Mapper 接口（MyBatis-Plus）。
+│   │   │               │   ├── GoStylePagination.java    # 🔴 分页子句的 Go 复刻 —— 对应 GORM 的
+│   │   │               │   ├── JsonbMapTypeHandler.java    # {@code jsonb} 列 ↔ {@code Map} 的 TypeHandler（域内副本）。
+│   │   │               │   └── NotificationMapper.java    # {@code message_notification} 表 Mapper 接口（MyBatis-Plus）。
 │   │   │               ├── metrics/
-│   │   │               │   ├── MessageApiMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
-│   │   │               │   ├── MessageMetrics.java
-│   │   │               │   └── MessageRpcMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
+│   │   │               │   ├── MessageApiMetrics.java    # message 域 HTTP 层指标 —— 承载 3 个 {@code message_api_*} 指标。
+│   │   │               │   ├── MessageMetrics.java    # message 域指标类的共享基座 —— 承载「指标名前缀常量 / 标签键常量 / MeterRegistry 注册的公共方法 /
+│   │   │               │   └── MessageRpcMetrics.java    # message 域 RPC 侧业务指标 —— 承载 5 个 {@code message_rpc_*} 指标。
 │   │   │               ├── service/
-│   │   │               │   ├── MessageApiService.java
-│   │   │               │   ├── MessageApiSupport.java
-│   │   │               │   └── MessageRpcSupport.java
+│   │   │               │   ├── MessageApiService.java    # 职责：message 域 HTTP 层 13 个用例的编排 —— 身份解析 → 硬编码 role →
+│   │   │               │   ├── MessageApiSupport.java    # 职责：message 域 HTTP 层的共享行为 —— 身份解析、错误映射、proto → DTO 投影。
+│   │   │               │   └── MessageRpcSupport.java    # 职责：message 域跨用例共享的领域算法与响应工厂（不持外部依赖）。
 │   │   │               ├── wiring/
-│   │   │               │   └── NacosRegistration.java
-│   │   │               └── MessageServiceApplication.java    # @SpringBootApplication + @EnableDiscoveryClient —— api 与 rpc 合并后的唯一入口。
+│   │   │               │   └── NacosRegistration.java    # 职责：message 域进程启动后显式注册到 Nacos —— 注册的是
+│   │   │               └── MessageServiceApplication.java    # 职责：message 域的唯一启动入口 —— 一个进程内同时起 Tomcat（HTTP 面 8883）
 │   │   └── resources/
 │   │       ├── db/
 │   │       │   └── migration/
-│   │       │       └── .gitkeep
+│   │       │       ├── .gitkeep
+│   │       │       ├── V1__create_message_notification.sql
+│   │       │       ├── V2__create_message_conversation.sql
+│   │       │       ├── V3__create_message_conversation_message.sql
+│   │       │       ├── V4__conversation_pair_unique_index.sql
+│   │       │       └── V5__message_time_columns_timestamptz.sql
 │   │       └── application.yml
 │   └── test/
 │       └── java/
 │           └── com/
 │               └── rag/
 │                   └── message/
-│                       └── MessageServiceApplicationTests.java
+│                       ├── config/
+│                       │   └── MessageCoercionContractTest.java    # 🔴 JSON 解析面（请求体契约）的可执行断言 —— 把「规则写在代码里」变成「规则生效且可回归」。
+│                       ├── contract/
+│                       │   └── MessageErrorContractTest.java    # message 域错误契约（码值 / 文案 / gRPC 双向转换）的锁定测试。
+│                       ├── domain/
+│                       │   └── service/
+│                       │       ├── MessageDomainServiceRealPgTest.java    # message 域领域层在「真 PostgreSQL」上的行为对齐测试。
+│                       │       └── MessageSemanticEquivalenceTest.java    # message 域「行为对拍」用例 —— 锁住 DRIFT-MSG-V-001 / -002 / -004 / -005 / -006 / -007。
+│                       ├── dto/
+│                       │   └── MessageDtoWireShapeTest.java    # message 域 17 个 DTO 的 wire 形状锁定测试（Jackson 2）。
+│                       ├── service/
+│                       │   ├── MessageListConversationsParityTest.java    # 移植说明（本文件来自 B 侧测试资产 · AGENTS.md §1.0c「测试资产单独一档」· D13）。
+│                       │   ├── MessageMarkNotificationReadTest.java    # 移植说明（本文件来自 B 侧测试资产 · AGENTS.md §1.0c「测试资产单独一档」· D13）。
+│                       │   ├── MessageRpcSupportTimeZoneTest.java    # 移植说明（本文件来自 B 侧测试资产 · AGENTS.md §1.0c「测试资产单独一档」）。
+│                       │   └── MessageRpcSupportTrimPreviewTest.java    # 移植说明（本文件来自 B 侧测试资产 · AGENTS.md §1.0c「测试资产单独一档」）。
+│                       ├── support/
+│                       │   ├── MessageTimeColumnParityTest.java    # DRIFT-MSG-V-020 的真 PG 守门：断言**运行中的库**里 8 个时间列确实是
+│                       │   ├── NacosStubConfiguration.java    # Nacos 桩 —— 让 message 域的测试能起真实 Spring 上下文，而不连 Nacos。
+│                       │   └── TestPostgres.java    # 测试用真 PostgreSQL（进程内单例容器）。
+│                       └── MessageServiceApplicationTests.java    # message 域「真启动」契约测试 —— 进程起得来这件事本身就是契约。
 └── pom.xml    # Maven 模块描述
 ```
 

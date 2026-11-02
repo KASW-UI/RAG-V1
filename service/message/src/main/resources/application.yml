@@ -13,10 +13,119 @@ spring:
     redis:
       host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}
+  # ============== Flyway（DDL 迁移） ==============
+  # ⚠️ **独立账本表名**（照抄 B 侧 `message-rpc/src/main/resources/application.yml` 的同名段）
+  #    `flyway_schema_history` 是 **schema 级**账本，一个 schema 只能有一本账。
+  #    message-service 与 like-service / article-service 连同一个 first_db、同一个 public schema，
+  #    共用默认账本时后启动者会把自己的迁移判为「已应用」而静默跳过 ——
+  #    message 与 like 的 V1-V3 版本号直接撞车且内容不同。
+  #    改账本表名即可消除病根，**迁移文件名一个字都不用动**。
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    # ⚠️⚠️ **baseline-version 必须显式钉 0**（照抄 B 侧 · 2026-10-24 实测修掉的真缺陷）
+    #    非空 schema + 默认 baseline-version=1 ⇒ baseline 打在 V1 ⇒ **V1 的 SQL 从未执行**
+    #    ⇒ `message_notification` 表永远建不出来 ⇒ 服务起不来。
+    #    baseline-version=0 ⇒ baseline 标记打在 version 0 ⇒ **V1 之后全部迁移照常执行**。
+    baseline-version: 0
+    locations: classpath:db/migration
+    schemas: public
+    table: flyway_schema_history_message
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:nacos:8848}
+        # ⚠️ **host 与 port 必须拆成两个变量**（R1-ENV-001 · 2026-11-01 收口轮）
+        #    `${NACOS_ADDR:nacos:8848}` 把端口**硬编码进默认值** ⇒ `NACOS_PORT` 被完全忽略
+        #    ⇒ 与 `.env.example` / `docker-compose.yaml` 的契约（NACOS_ADDR=host + NACOS_PORT=port）冲突。
+        server-addr: ${NACOS_ADDR:nacos}:${NACOS_PORT:8848}
+        # ⚠️ **namespace / group 与本仓已落地域对齐**（`service/users/{user,admin}`）——
+        #    B 侧 message-rpc 写的是 `public` / `DEFAULT_GROUP`
+        #    （B 出处：`service/message/message-rpc/src/main/resources/application.yml:134,136`）。
+        #    ⚠️ **但那不是行为事实**：B 侧 message→user/admin 的 gRPC 调用走
+        #    **etcd key `user.rpc` / `admin.rpc`**（`zrpc.RpcClientConf{Etcd:{Key:"user.rpc"}}`），
+        #    **etcd 没有 namespace / group 概念** ⇒ ⇒ 那两个值在 B 侧**不承载任何行为**
+        #    ⇒ ⇒ 对齐它们**不是「回溯第三方」**，只是**部署面**的取值。
+        #    ⚠️ **C 侧必须对齐**：本仓的 gRPC client 走 **Nacos discovery**（`discovery:///user-rpc`）
+        #    ⇒ namespace / group **真的参与寻址** ⇒ 若沿用 B 侧的 `public` / `DEFAULT_GROUP`，
+        #    则已落地的 `users/user`（注册名 `user-rpc` · group `USER_GROUP` · namespace `sea-rtw`）
+        #    **在本域的寻址空间里根本不存在** ⇒ gRPC 链路直接断 ⇒ 业务码塌成 1015。
+        #    ⇒ 对齐到本仓已落地域的取值 ⇒ 跨域链路成立。
+        #    （本条登记为 message 域的**签字偏离** —— 部署面 · 非行为面。）
+        namespace: ${NACOS_NAMESPACE:sea-rtw}
+        group: ${NACOS_GROUP:USER_GROUP}
+        # 🔴 **必须显式关掉自动注册**（照抄 B 侧 `message-rpc/.../application.yml:156`）。
+        #    `NacosAutoServiceRegistration` 继承 `AbstractAutoServiceRegistration`
+        #    ⇒ 监听 `WebServerInitializedEvent` ⇒ **注册的是 web 容器端口**（8883）。
+        #    而本域的手写 `wiring/NacosRegistration` 注册的是 **gRPC 端口**（8084）。
+        #    ⇒ 自动注册一旦生效 ⇒ 同一个服务名下出现**两个端口的实例**
+        #    ⇒ 调用方按 Nacos 给出的地址连过来 ⇒ 连到一个只提供 HTTP 路由的端口
+        #    ⇒ **gRPC 链路直接断**（业务码塌成 1015）。
+        #    ⇒ 与 B 侧语义一致：只保留显式的 gRPC 端口注册。
+        register-enabled: false
+
+# =============================================================================
+# message-api.* —— 两组 JWT 的密钥与有效期（L1 配置键名 · 逐字照抄 B 侧）
+# =============================================================================
+# B 出处：service/message/message-api/src/main/resources/application.yml:98-104
+#   ⚠️ **两组 secret 都没有默认值**（`${USER_JWT_SECRET}` / `${ADMIN_JWT_SECRET}` 是裸占位符）
+#      ⇒ 缺变量 ⇒ `MessageApiProperties#verifyAccessSecrets` 的 fail-closed 守卫**启动即失败**
+#      ⇒ 这是**刻意**的：空密钥 = 任何人都能伪造 user/admin token。
+#      ⚠️ 部署侧：根级 `docker-compose.yaml` 需给本服务注入 `USER_JWT_SECRET` / `ADMIN_JWT_SECRET`
+#         （**根级文件 ⇒ 归「合并收口执行者」**；compose 侧应给这两个变量加 `:?` 守卫 ⇒ 未设即报错）。
+#      ⚠️ 两段 secret 的值必须与**签发方一致**：user 段 ← user-api，admin 段 ← admin-api。
+message-api:
+  user-auth:
+    access-secret: ${USER_JWT_SECRET}
+    access-expire: ${USER_JWT_EXPIRE:31536000}
+  admin-auth:
+    access-secret: ${ADMIN_JWT_SECRET}
+    access-expire: ${ADMIN_JWT_EXPIRE:2592000}
+
+# =============================================================================
+# message.* —— message 域专属业务配置（L1 配置键名 · 逐字照抄 B 侧 rpc 段）
+# =============================================================================
+# B 出处：service/message/message-rpc/src/main/resources/application.yml:278-285
+#   对应 Go 的 List { DefaultLimit: 20, MaxLimit: 100 } / Broadcast { PageSize: 200 }
+#   ⇒ 三个值被 `MessageRpcSupport#normalizeLimit` 与 `collectBroadcastRecipients` 直接消费。
+message:
+  list:
+    default-limit: 20
+    max-limit: 100
+  broadcast:
+    page-size: 200
+
+# =============================================================================
+# observability —— 观测层的两个超时预算（L1 配置键名 · 逐字照抄 B 侧）
+# =============================================================================
+# B 出处（两侧各一段，因为 B 侧是**两个进程**）：
+#   service/message/message-api/src/main/resources/application.yml:248-254
+#     observability.http-timeout: 3s
+#     （取值依据：Go 侧 etc/messagecenter.yaml **未配置** Timeout，
+#      实际生效值来自 go-zero v1.10.2 rest/config.go:55 的
+#      `Timeout int64 json:",default=3000"` ⇒ 3000ms；
+#      且 DisableNativeRestTimeout 已把 go-zero 原生超时中间件关掉 ⇒ 超时只有一个执行者）
+#   service/message/message-rpc/src/main/resources/application.yml:352-355
+#     observability.rpc-timeout: 2s
+#     （取值依据：Go yaml 未配 Timeout ⇒ go-zero zrpc/config.go:46 默认 2000ms）
+#
+# ⚠️ **D1 合并 ⇒ 两个键都要写**：B 侧 api 进程只管 http-timeout、rpc 进程只管 rpc-timeout；
+#    本仓合并为**单一进程**（Tomcat + gRPC 同起）⇒ 两个预算**同时存在** ⇒ 两个键都必须显式写。
+#    （与本仓已落地域 `service/users/user/src/main/resources/application.yml:75-77` 同款写法。）
+#
+# ⚠️⚠️ **这两个键缺失 = 机制静默不生效**（AGENTS.md §3.3.1 ·「配置里没写」≠「没开」）：
+#    `ObservabilityProperties` 的两个 timeout **没有 env 兜底**，缺省即 `Duration.ZERO`（不限时）
+#    —— 这正是 B 侧 `TimeoutFromMillis(ms<=0) → 0` 的语义
+#    ⇒ ⇒ **不写这两个键 ⇒ 3s HTTP 预算与 2s gRPC 超时都不存在**
+#    ⇒ ⇒ 慢请求**不会**返回 503 / `Request Timeout`，gRPC 调用也**不会**被服务端超时打断。
+#    ⇒ 消费点（运行期证据见 `MessageServiceApplicationTests`）：
+#      ① HTTP：`ObservabilityAutoConfiguration#httpMiddleware`（filter · HIGHEST_PRECEDENCE+7）
+#         读 `ObservabilityProperties#getHttpTimeout` ⇒ 写 `Request Timeout` + 503。
+#      ② gRPC：`ObservabilityAutoConfiguration#grpcObservationInterceptor` 读 `getRpcTimeout`
+#         ⇒ 该拦截器由 `ProtectionAutoConfiguration#seaGrpcServerConfigurer`
+#         用 `interceptors.orderedStream()` 收进服务端链 ⇒ **确实在执行链里**（不是「Bean 存在」）。
+observability:
+  http-timeout: 3s
+  rpc-timeout: 2s
 
 server:
   port: ${MESSAGE_HTTP_PORT:8883}
@@ -29,6 +138,36 @@ grpc:
   client:
     # ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而上游 zrpc 是明文 gRPC。
     #    不写会静默变 TLS —— 见《完全spring化的文件树》§9.1 断言 A4。
+    #
+    # B 出处：service/message/message-rpc/src/main/resources/application.yml:248-273
+    #   对应 Go 侧 zrpc.RpcClientConf{Etcd:{Hosts:[...], Key:"user.rpc" / "admin.rpc"}}。
+    #
+    # 🔴 地址必须是**三斜杠**（`discovery:///user-rpc`），不是两斜杠。
+    #    判据出处（devh 3.1.0.RELEASE）：
+    #      net/devh/boot/grpc/client/nameresolver/DiscoveryClientResolverFactory.java
+    #      的 newNameResolver —— 它取 targetUri.getPath()，
+    #      要求**非 null、长度 > 1、以 "/" 开头**。
+    #    ⇒ `discovery://user-rpc` 解析出 path=""（长度 0）⇒ 不合格
+    #    ⇒ 抛 IllegalArgumentException: Incorrectly formatted target uri;
+    #       expected: 'discovery:[//]/<service-name>'
+    #    ⇒ **这个检查发生在任何网络调用之前** ⇒ 与 Nacos 在不在线无关
+    #    ⇒ grpcClientBeanPostProcessor 先炸 ⇒ **连 Flyway 都跑不到** ⇒ 真 fat jar 起不来。
+    #    ⚠️ 三斜杠**不改变服务发现名**：devh 取 path.substring(1) = "user-rpc"
+    #    ⇒ 仍是 Nacos 上的服务名 `user-rpc`。
+    #    ⚠️ 这不是「与 Go 对齐」—— 两侧注册中心本来就不同（Go 用 etcd key `user.rpc`，
+    #       那是**已签字的有意偏离**）；本条修的是「RAG 侧写法非法导致起不来」。
+    user-rpc:
+      address: discovery:///user-rpc
+      enable-keep-alive: true
+      keep-alive-time: 30s
+      negotiation-type: plaintext
+    admin-rpc:
+      # 🔴 同上：三斜杠。devh 取 path.substring(1) = "admin-rpc"
+      #    ⇒ 服务名不变（users 域确有 admin-rpc 这个独立进程）。
+      address: discovery:///admin-rpc
+      enable-keep-alive: true
+      keep-alive-time: 30s
+      negotiation-type: plaintext
 
 mybatis-plus:
   configuration:

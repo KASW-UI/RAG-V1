@@ -75,9 +75,9 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **follow** | [follow/follow.md](follow/follow.md) | 517 | **37 / 37 = 100%** | **51 / 51 = 100%** | 116 |
 | **hot** | [hot/hot.md](hot/hot.md) | 519 | **31 / 31 = 100%** | **34 / 34 = 100%** | 56 |
 | **like** | [like/like.md](like/like.md) | 451 | **69 / 69 = 100%** | **83 / 83 = 100%** | 81 |
-| **message** | [message/message.md](message/message.md) | 525 | **52 / 52 = 100%** | **71 / 71 = 100%** | 69 |
+| **message** | [message/message.md](message/message.md) | 533 | **53 / 53 = 100%** | **71 / 71 = 100%** | 69 |
 | **task** | [task/task.md](task/task.md) | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
-| **合计** |  | **5,956** | **631 / 631 = 100%** | **752 / 752 = 100%** | 891 |
+| **合计** |  | **5,964** | **632 / 632 = 100%** | **752 / 752 = 100%** | 891 |
 
 > 📌 **users 域拆分的守恒性**（2026-10-25 拆分后实测）：
 > 拆分前单文件 515 行 / 127 映射行 ⇒ 拆分后四份合计 **1,011 行 / 127 映射行**（行数增加是**导航与分节标题**带来的，非内容膨胀）。
@@ -169,7 +169,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **users** | **错误契约在两个子域间不对称**（**F-2 · 2026-10-26 D7 后由 🔴 降级为 🟠**）—— C 的 `service/users/user/src/main/java/com/rag/user/contract/` 有 `ErrCodes`+`ErrMsg`，但 **admin 侧无 `contract/` 包**（`admin-contract` 模块已随 D7 删除）；公共库 `service/users/common/src/main/java/com/rag/users/common/` 那份 admin 尚未引用（但 pom 依赖已接上） | 1,158 | **111 / 111 = 100%** | **145 / 145 = 100%** | 134 |
 | **task** | 持久层空位（`db/migration/` 只有 `.gitkeep`、yml 无 `flyway`/`hikari`/`id-type`）· RAG-V1 `common/` 无 `RpcServerInterceptorFactory`（**上游**的 unary interceptor 无落点）· MQ 载荷契约 C 侧只剩 like 域那一份 · `grpc-client-spring-boot-starter` 本域无使用方 · **Kafka 消费侧仍整体缺失**（`messaging/` 只有 `TaskKafkaTopics` + `TaskRewardPublisher`，B 侧 11 个 `mq/*.java` 里的 9 个消费者无落点，全仓 `@KafkaListener` **零命中**） | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |
 | **like** | Kafka 消费入口（listener / ack 契约 / 失败即丢弃不重投）无落点 · `like_outbox_event → article-hot-events` 发件箱中继无落点 · Jackson 2 `ObjectMapper` Bean 无落点 · `like` / `like-api` 配置段整个缺失 · DDL 迁移脚本为空 | 451 | **69 / 69 = 100%** | **83 / 83 = 100%** | 81 |
-| **message** | `controller/`（两个 Controller）· `interceptor/`（两组 JWT）· `metrics/` · `wiring/` · `service/` · `service/message/src/main/java/com/rag/message/contract/` 均有职责缺口 | 525 | **52 / 52 = 100%** | **71 / 71 = 100%** | 69 |
+| **message** | ✅ **6 条落点缺口全部关闭（2026-11-02 · 本域实现轮）** —— `controller/`（两个 Controller）· `interceptor/`（两组 JWT）· `metrics/`（共享基座）· `wiring/`（Nacos 手写注册）· `service/`（边界已定）· `contract/`（域内错误契约）⇒ 逐条见 [`message/message.md`](message/message.md) §7.3 #1~#6<br>🟠 **余 3 条（不属本域写权）**：① **跨域注册名不一致** —— 本域 gRPC client 寻址 `discovery:///admin-rpc`（B 侧逐字），而已落地的 `service/users/admin` 注册名是 **`admin-service`** ⇒ 寻址落空 ⇒ **归 users/admin lane**；② `JsonbMapTypeHandler`（jsonb↔Map）**应上收到 `common/`**（共享层现只有 jsonb↔String 与 text↔Map 两份，类型都不兼容）⇒ **归收口任务**；③ **§1.6 缺口**：B 侧 `DRIFT-MESSAGEAPI-009②`（验签耗时应**在 3s 预算外**）在 C 侧**未闭环**（C 侧无独立 Servlet Filter ⇒ 验签与 401 合在 `HandlerInterceptor` 内）⇒ **继承 B 侧漂移 · 登记为签字偏离** | 533 | **53 / 53 = 100%** | **71 / 71 = 100%** | 69 |
 | **favorite** | `POST /favorite/v1/folder/create` 端点缺失 · public 路径集 · preflight 触发入口 · DDL 迁移脚本 · `JsonbTypeHandler` / MP 排序桥的归属 · `GetFavoritesByFolderReq.FolderId` 的取参位置 · 域内 gRPC client · 端口号 | 519 | **61 / 61 = 100%** | **75 / 75 = 100%** | 88 |
 | **common** | `GrpcStatusMapper` 与 `GrpcExceptionMapperAutoConfiguration` **职责重叠** · 设计文档 §5.1 列了 `contract/ErrorCode.java` 但**实际树里没有** · 雪花 ID 有**两个落点** · `JsonBodyConverterConfig` 是「注册点」还是「配置类」 · **gRPC 拦截链挂载点缺位**（D9 ⇒ 落 `common/autoconfigure/ProtectionAutoConfiguration`，共享层 1 份） | 918 | **104 / 104 = 100%** | **88 / 88 = 100%** | 135 |
 | **follow** | `db/migration/` 为空 · `application.yml` 缺段 · `*Properties` 聚合边界 · `FollowBlacklistInterceptor` + `FollowJwtAuthInterceptor` · `GoStyleLimitOffset` | 517 | **37 / 37 = 100%** | **51 / 51 = 100%** | 116 |
