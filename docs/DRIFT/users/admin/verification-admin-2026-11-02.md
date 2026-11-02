@@ -426,18 +426,19 @@
 
 ## 七、测试资产与证据强度
 
-### 7.1 本域测试（**19 个类 · 151 例**）
+### 7.1 本域测试（**20 个类 · 152 例**）
 
 > 📌 **三类资产**：① **3 个原有类 / 41 例**（本域自建）② **16 个移植类 / 110 例**（**B 侧期望值逐字沿用** · 明细见 §十一·11.3）③ **2 个对拍探针**（**仓内工具**，不是 JUnit ⇒ 不计入例数）⇒ **合计 19 个类 / 151 例**。
 > 📌 **计数口径**：逐文件 `grep -cE '^\s*@Test\s*$'`（**排除 `@Testcontainers` 的误匹配**）⇒ 与 surefire 的模块级汇总行 `Tests run: 151` 逐字相符。
 
-#### 7.1.1 原有资产（**3 个类 · 41 例**）
+#### 7.1.1 原有资产（**4 个类 · 42 例**）
 
 | 测试类 | 例数 | 触发层级 | 覆盖 |
 |---|---|---|---|
 | `domain/service/AdminDomainServiceRealPgTest` | **20** | **E-3**（真 PG `postgres:16-alpine` + 真 Redis `redis:7-alpine` + **真 `@Transactional` 代理**） | 登录 3 态 · 邀请码一次性 · username 查重**不消耗邀请码** · GORM 的 LIMIT/OFFSET 静默抑制 · `extra_info` 装 U+0000 · 黑名单 key 前缀 · 4 步事务回滚 |
 | `http/AdminHttpContractRealTomcatTest` | **17** | **E-3**（**真 Tomcat** · `RANDOM_PORT` · 绝不用 MockMvc） | 13 端点全 POST（GET 全 405）· public 放行 · protected 401 三态 · **200 信封恰好三键** · 400 + text/plain + nosniff + 尾随换行 · 415⇒400 · **未知路径 401/500 双态**（对齐 B 侧活体）· 黑名单 401 + `admin:` 前缀隔离 · **鉴权路径前缀 ↔ 控制器映射守卫** |
 | `AdminServiceApplicationTests` | **4** | **E-3**（**真上下文启动**：Tomcat + gRPC server + PG + Redis） | 4 张表建出来 · 默认 admin 密码是**硬编码 `admin`** · gRPC server 与 Tomcat 同进程 · **Nacos 注册面：自动注册被关掉、只注册 gRPC 端口**（§5-⑩）＋ **运行期注册名 == `admin-rpc`**（§5-⑪）＋ **`spring.application.name` == `admin-service`**（两轴刻意分叉） |
+| `http/AdminDbTimeoutBudgetRealTomcatTest` | **1** | **E-3**（真 PG · 真 Tomcat · **外部行锁注入**） | 🔴 **DB 超时预算的域级守卫**：行锁卡住 W1 ⇒ **200 + 信封 1015「服务繁忙」** ＋ 耗时 **< 2.9s**（证明到点是**内层** 2s 预算而非 HTTP 3s）＋ **副作用 0 行**（`admin_admin` 无新行、邀请码未消费） ⇒ **不依赖 B 侧进程**即可守住 §9.10.3 的两条判据（**变异检验**：内层预算 `min(2s,3s)`→`3s` ⇒ 变红`expected 200 but was 503` ⇒ 还原 ⇒ 复绿） |
 
 #### 7.1.2 移植资产（**16 个类 · 110 例** · 明细见 §十一·11.3）
 
@@ -481,7 +482,7 @@
 |---|---|---|---|---|
 | `common` | `Tests run: 224` | 0 | 0 | **0** |
 | `users-common` | `Tests run: 46` | 0 | 0 | **0** |
-| **`admin-service`（本域）** | **`Tests run: 151`** | **0** | **0** | **0** |
+| **`admin-service`（本域）** | **`Tests run: 152`** | **0** | **0** | **0** |
 
 - **BUILD SUCCESS**（EXIT=0）· Reactor **7/7 SUCCESS** · `spring-boot:3.5.11:repackage` **通过**
   （`Replacing main artifact …admin-service-1.0-SNAPSHOT.jar with repackaged archive`）
@@ -583,12 +584,12 @@
 |---|---|
 | C 侧主代码文件 | **58**（**0 空壳**；⚠️ 映射表原写 56 ⇒ 差额 2 = 验签 Filter + Verifier，§二 A-21） |
 | C 侧主代码行数 | **7,351**（§5-⑪ 修完后复测；原 7,036） |
-| **测试文件 / 例数** | **19 个 / 151 例**（`Skipped: 0`）—— **3 个原有（41）** ＋ **16 个移植（110）** ＋ **2 个对拍探针**（仓内工具，非 JUnit）<br>📌 **B↔C 用例数守恒**：16/16 逐文件相等（§十一·11.3.2） |
+| **测试文件 / 例数** | **20 个 / 152 例**（`Skipped: 0`）—— **4 个原有（42）** ＋ **16 个移植（110）** ＋ **2 个对拍探针**（仓内工具，非 JUnit）<br>📌 **B↔C 用例数守恒**：16/16 逐文件相等（§十一·11.3.2） |
 | 本轮修掉的漂移 | **10 条**（4 处 wire 错误码 + 死代码 + 起不来 + 空 body 500 + 415 vs 400 + 未知路径 401 + 未知路径 500 + DTO 改名 + **Nacos 同名双实例** + **Nacos 注册名与跨域寻址不匹配** · §五·5-⑪） |
 | 独立词 `Go` 残留 | **主代码 0**（`src/main` 全扫 = 0；`GoStyle*` **标识符** = 0）<br>⚠️ 移植测试内 **227 处**是 **B 侧溯源文字**（javadoc + 断言消息里的「Go 出处」「与 Go 一致」）⇒ **不是**标识符残留 |
 | 未验证项 | **1**（§7.3 · V-3 真 Nacos 注册结果）—— ⚠️ **V-1 由 E-4 解除 · V-2 由移植的 `AdminSpanWiringTest` 闭合** |
 | **E-4 双侧活体对拍** | **已完成（两轮）**（§九）· 第一轮：HTTP 28 用例 **0 行为差异** · gRPC 13 RPC **全一致** · DB/Redis 状态**一致**；第二轮：7 判定项 **5 一致 · 2 不一致**（并发 / 事务回滚 / Redis 停 **一致**；PG 停 + 超时 **不一致** ⇒ §9.10.3 移交 `global`） |
-| 构建 | `mvn -o -pl service/users/admin -am clean verify -fae` ⇒ **BUILD SUCCESS**（admin **151** / common 224 / users-common 46，**全部 Skipped: 0**）· **repackage 通过** ⇒ §7.4<br>📌 **最终口径 = 合并后代码态**（`main@30a3503` ＋ 本轮全部改动）⇒ §7.4 的两次读数对照 |
+| 构建 | `mvn -o -pl service/users/admin -am clean verify -fae` ⇒ **BUILD SUCCESS**（admin **152** / common 234 / users-common 46，**全部 Skipped: 0**）· **repackage 通过** ⇒ §7.4<br>📌 **最终口径 = 合并后代码态**（`main@30a3503` ＋ 本轮全部改动）⇒ §7.4 的两次读数对照 |
 
 ### 8.2 未闭合项（**移交主会话**）
 
@@ -924,6 +925,22 @@ E-4 推翻 §5-⑥/§5-⑦ 之后，域内**注释层**也必须跟着改 ——
 
 **影响面（为什么严重）**：客户端收到 **失败**（503）而服务端**已提交** ⇒
 **重试会撞「邀请码已用 / 唯一约束」** ⇒ ⇒ 属于「**失败-成功不一致**」型风险，比单纯的状态码差异严重。
+
+#### 9.10.4 🟢 域级守卫已固化（2026-11-03 · 本 lane 补）
+
+- **为什么还要补一条域内守卫**：收口域的复测是**跨仓对拍**（要同时起 B 侧进程）
+  ⇒ ⇒ **admin 域自己没有一条「不依赖 B 侧进程」的守卫**
+  ⇒ ⇒ 共享层日后任何一次改动，都可能把「副作用归零」悄悄改回去，而**域内 151 条用例照绿**。
+- **新增**：`service/users/admin/src/test/java/com/rag/admin/http/AdminDbTimeoutBudgetRealTomcatTest`
+  （**1 例** · 真 PG · 真 Tomcat · **外部行锁注入**）⇒ 把 §9.10.3 的两条判据**固化成域内可跑的测试**：
+  1. **响应面**：DB 被行锁卡住 ⇒ **HTTP 200 + 信封 `code=1015「服务繁忙」`**（不是 503 + 裸文本）
+     ＋ **耗时 < 2.9s** ⇒ ⇒ 证明到点的是**内层**预算（2s）**而不是** HTTP 预算（3s）；
+  2. **副作用面**：`admin_admin` **0 行** ＋ 邀请码 `used_at` 仍为 NULL
+     ⇒ ⇒ 「客户端拿到失败、服务端却已提交」这条**失败-成功不一致**被钉死。
+- **变异检验（判据有牙齿）**：把共享层的 `ObservabilityProperties#resolveInnerBudget()`
+  从 `min(http-timeout, rpc-timeout)`（= 2s）改成 `http-timeout`（= 3s）⇒ ⇒ **守卫变红**，
+  且红在**第一条断言**上：`expected: <200 OK> but was: <503 SERVICE_UNAVAILABLE>`
+  ⇒ ⇒ **精确复现修复前的症状** ⇒ ⇒ 还原 ⇒ ⇒ **复跑复绿** ⇒ 判据成立。
 
 **复现命令（收口域修复后直接用它回归）**：
 

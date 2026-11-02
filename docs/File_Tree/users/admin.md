@@ -149,6 +149,7 @@
 │                       │   ├── AdminApiPlainText400ContentTypeTest.java    # 🔴 DRIFT-ADMINAPI-011 守门测试 —— 400 响应的 {@code Content-Type} 必须与 Go 逐字节相同。
 │                       │   ├── AdminApiPlainText400HeaderProbeTest.java    # E-1 取证（2026-10-22）：定位「RAG 的 text/plain 400 丢了 Content-Type」的机制层成因。
 │                       │   ├── AdminApiRealTomcatResponseBytesTest.java    # 🔴🔴 admin 真 Tomcat（RANDOM_PORT）响应字节级探针 ——
+│                       │   ├── AdminDbTimeoutBudgetRealTomcatTest.java    # admin 域 · DB 超时预算的「域级守卫」（真 PG · 真 Tomcat）。
 │                       │   ├── AdminHttpContractRealTomcatTest.java    # admin 域 HTTP 契约测试 —— 真 Tomcat · 真 PG · 真 Redis。
 │                       │   ├── AdminSemanticDriftApiRegressionTest.java    # Go↔RAG 语义一致性回归网 —— admin-api 侧（issue #71186443）。
 │                       │   └── NacosStubConfiguration.java    # Nacos 桩 —— 让 admin 域的测试能起真实 Spring 上下文，而不连 Nacos。
