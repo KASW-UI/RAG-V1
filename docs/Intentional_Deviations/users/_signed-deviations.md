@@ -93,6 +93,24 @@ B 侧的 **HTTP 层** DTO 叫 `RegisterReq` / `RegisterResp`；C 侧叫 `CreateU
 `service/users/user/src/test/java/com/rag/user/api/UserApiHttpContractTest.java`
 —— `missingRequiredFieldIsPlainText400`：**400 ＋ `text/plain` ＋ `X-Content-Type-Options: nosniff`**。
 
+### 🔴 2026-11-03 双侧活体对拍后的**边界收窄**（偏离只剩「文案形态」这一项）
+
+对拍（`tools/difftest/users-user/run.sh`）实测发现：本条降级**原先还盖住了一个更严重的问题** ——
+C 侧「报哪个字段」**不确定**（Hibernate Validator 的违规集合是 `HashSet` ⇒ `findFirst()` 随 hash 变
+⇒ 同一输入 6 次出 3 种文案），而 B 侧 `GoStyleRequired` 是**按固定序逐个判、遇第一个缺失就抛**
+⇒ **报同一个字段**。
+
+⇒ **已修**（`DRIFT-USER-PARITY-004`）：改为**按 DTO record 声明序取第一条违规**
+⇒ C 侧各 record 的声明序**恰好与 B 的判定序逐个一致** ⇒ ⇒ **现在两侧报同一个字段**。
+
+⇒ ⇒ **本条偏离的边界收窄为**：
+| 维度 | 状态 |
+|---|---|
+| 状态码 400 | ✅ 与 B 一致 |
+| 错误结构（text/plain ＋ nosniff ＋ 尾换行） | ✅ 与 B 一致 |
+| **报哪个字段**（声明序第一个违规） | ✅ **2026-11-03 起与 B 一致** |
+| **文案形态**（`field "x" is not set` ↔ `x 不能为null`） | 🟡 **仍是本条偏离**（D-01 降级，未变） |
+
 ---
 
 ## DEV-USER-003 · 鉴权失败的响应体统一成完整信封（L4 · 表达层；B 侧自身不一致）

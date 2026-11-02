@@ -214,8 +214,8 @@
 | `exception/` | 1 | 47 |
 | `controller/` | 1 | 187 |
 | 入口（`UserServiceApplication`） | 1 | 100 |
-| **主代码合计** | **48** | **5,300** |
-| **测试合计** | **7** | **1,293** |
+| **主代码合计** | **48** | **5,313** |
+| **测试合计** | **7** | **1,337** |
 
 > 口径：`wc -l` 实测（`find … -name '*.java' -exec cat {} + | wc -l`），**不是估算**。
 
@@ -224,12 +224,12 @@
 | 测试类 | 例数 | 覆盖 |
 |---|---|---|
 | `UserServiceApplicationTests` | 6 | 上下文装配 · `@MapperScan` 生效 · `@GrpcService` 被扫到 · JWT 两段 bean 都在 · **DDL 在启动期真被重放**（查真 PG）· 表名 L1 |
-| `api/UserApiHttpContractTest` | 11 | **真 Tomcat**（非 MockMvc）：L1 路由/method · public 白名单 · 信封三字段 · 401（缺 token / 坏签名）· 400+text/plain+nosniff · **🔴 验签来源 = filter**（009② 闭环）· 签名合法但用户不存在 ⇒ 200+1003 · **端到端 register→login→get**（真 PG + 真 bcrypt + 真 JWT）· 未知路径两态 |
+| `api/UserApiHttpContractTest` | 12 | **真 Tomcat**（非 MockMvc）：L1 路由/method · public 白名单 · 信封三字段 · 401（缺 token / 坏签名）· 400+text/plain+nosniff · **🔴 验签来源 = filter**（009② 闭环）· 签名合法但用户不存在 ⇒ 200+1003 · **端到端 register→login→get**（真 PG + 真 bcrypt + 真 JWT）· 未知路径两态 · **🔴 400 的「报哪个字段」确定且与 B 同字段**（连打 8 次逐次相同） |
 | `grpc/UserGrpcServiceContractTest` | 4 | **真 gRPC server**（in-process）：9 个方法全被 starter 分发 · `StatusRuntimeException` 原样透传（code+description）· 未映射异常 ⇒ INTERNAL + `"类名: 消息"` |
 | `wiring/UserNacosRegistrationWiringTest` | 6 | 注册名 = `user-rpc` · 端口 = gRPC 端口 · group 来自配置 · 默认值零变化 · yml 仍声明 group · 自动注册已关 |
 | `config/UserApiPropertiesSecretGuardTest` | 7 | 密钥 fail-closed：null / 空串 / **未解析占位符** 三路都必须启动失败（api ＋ rpc 两侧） |
 | `mapper/AvatarTransactionWiringTest` | 5 | 🔴 **事务边界的真实测**（D-005 / D-015）：**真 UNIQUE 约束冲突**制造中途失败 ⇒ 断言 W2 的 UPDATE 被回滚 · 同序列成功路径作非空洞对照 · 5 步原子的 uid 隔离 · mapper bean 真被事务 advisor 包住 |
-| **合计** | **39** | **skipped = 0** |
+| **合计** | **40** | **skipped = 0** |
 
 ---
 
@@ -248,10 +248,11 @@ mvn -o -pl service/users/user -am -DskipTests package
 # ── 1b. 本域 + 全部依赖模块的完整 verify（串行）──────────────
 mvn -o clean verify -pl service/users/user -am
 # ⇒ BUILD SUCCESS（common 3:10 · proto 0:48 · users-common 1:59 · user-service 2:59 · 合计 08:56）
-# ⇒ user-service: Tests run: 39, Failures: 0, Errors: 0, Skipped: 0
-# ⇒ 参与测试的模块合计: tests=309 failures=0 errors=0 skipped=0
-#    （309 = 上一轮的 304 + 本轮新增的 `AvatarTransactionWiringTest` 5 例；
-#      口径 = **回归日志的模块级汇总**，不取 `surefire-reports/*.xml` 求和 —— §五.8 守门硬规则 ①）
+# ⇒ user-service: Tests run: 40, Failures: 0, Errors: 0, Skipped: 0
+# ⇒ 参与测试的模块合计: tests=310 failures=0 errors=0 skipped=0
+#    （310 = common 224 + users-common 46 + user-service 40；
+#      口径 = **回归日志的模块级汇总**，不取 `surefire-reports/*.xml` 求和 —— §五.8 守门硬规则 ①
+#      ⇒ ⚠️ 也**不能**把「逐类行」与「汇总行」一起求和 ⇒ 那会算成 620）
 # ⇒ repackage 成功 ⇒ 可执行 jar 的 Start-Class = com.rag.user.UserServiceApplication
 #
 # ⚠️ **不要用 `-T1C` 跑全仓**：其余 8 个域的 Application 还是空壳（没有 `main`）
@@ -263,7 +264,7 @@ mvn -o clean verify -pl service/users/user -am
 
 # ── 2. 本域测试（只跑本域；依赖模块不重跑）──────────────────
 mvn -o -pl service/users/user -am test -Dtest='com.rag.user.**' -Dsurefire.failIfNoSpecifiedTests=false
-# ⇒ Tests run: 39, Failures: 0, Errors: 0, Skipped: 0   · BUILD SUCCESS
+# ⇒ Tests run: 40, Failures: 0, Errors: 0, Skipped: 0   · BUILD SUCCESS
 # ⚠️ `-DfailIfNoTests=false` **不是** surefire 3.x 的参数名 ⇒ 用错会让 `common` 模块直接 FAIL
 
 # ── 3. 映射表守门（ROOT 改指向 worktree）────────────────────
@@ -402,11 +403,15 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 | 事务边界（4/5 步原子 · D-005 / D-015） | **PASS**（C 侧实测 · **含变异证据**） | `mapper/UserAvatarHistoryMapper.java:135,198`（`@Transactional` 挂在 mapper 接口的 **default** 方法上 —— 本仓最易静默失效的形态）＋ `AvatarTransactionWiringTest#createAvatarHistoryRollsBackTheEarlierWriteOnMidwayFailure`（**真 UNIQUE 约束冲突** ⇒ W2 的 UPDATE 被回滚 ⇒ 旧 history 仍是 current）＋ `#createAvatarHistoryCommitsAllFourSteps`（同序列成功路径 ⇒ 非空洞对照）＋ `#mapperBeanIsWrappedByTransactionAdvisor`（advisor 真在）＋ **变异证据**（摘掉 `@Transactional` ⇒ 判据变红，见 §11.7） |
 | `updateById` vs `update(null, wrapper)` 的写路径形态 | **NOT_VERIFIED** | ⚠️ B 侧与 C 侧的写入 API 形态差异需逐语句对拍 ⇒ ⇒ 未做 |
 | 端到端「register → login → get」 | **PASS**（C 侧单侧） | `UserApiHttpContractTest#registerLoginGetHappyPath`（**真 PG + 真 bcrypt + 真 JWT 签发 + 真 uid 字符串化**） |
-| **双侧活体对拍**（同一输入打 B 与 C 比对） | **NOT_VERIFIED** | ⚠️ 本轮**未做** ⇒ ⇒ 需要 B 侧运行环境（B 的 build ＋ Nacos ＋ Go/Java 双栈）⇒ ⇒ **本报告的所有 `PASS` 都不含这一项** |
+| **双侧活体对拍**（同一输入打 B 与 C 比对） | **PASS**（**HTTP 20 例 + DB 最终态**）· gRPC wire 仍 `NOT_VERIFIED` | ⚠️ **2026-11-03 实跑**（`tools/difftest/users-user/run.sh`，两侧真进程：真 Tomcat + 真 gRPC + 真 PG + 真 Redis + 真 Nacos）：HTTP **结构级 16/20 一致**（4 例差异全是 **400 文案形态** = 已登记 D-01）· **字节级 12/20**（另 4 例 = JSON 键序）· DB `users_user` 最终态**逐字段一致** · 表清单一致（4 张）· 详见 §十二 |
+| C 侧 **fat jar 真能起得来**（生产类路径 ≠ 测试类路径） | **PASS**（本轮修） | 🔴 2026-11-03 对拍实测：`grpc-inprocess` 声明成 **test scope** ⇒ **生产 jar 缺类 ⇒ 启动即挂**（`NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`）⇒ **39 例测试全绿却零告警**。已修（去 scope）＋ B 侧类路径取证 + 探针自检。详见 §十二.3 |
+| 🔴 400 的「报哪个字段」**确定性** | **PASS**（本轮修） | 原实现 `getFieldErrors().findFirst()` ⇒ Hibernate Validator 违规集合是 `HashSet` ⇒ **同一输入 6 次出 3 种文案** ⇒ C 侧 400 **不是确定性输出**。已改为**按 DTO 声明序取第一条**（与 B 侧 `GoStyleRequired` 判定序逐个一致 ⇒ **报同一字段**）+ 新增断言连打 8 次逐次相同。详见 §十二.3 |
 | 其余 9 域的 `grpc.client:` 空键 | **FAIL（跨域）** | DRIFT-USER-IMPL-004（那些域**一启动就挂**） |
 | `admin.md:158` 的 C 列悬空指针 | **FAIL（跨域）** | DRIFT-USER-IMPL-005 |
 | `docs/File_Tree/proto.md` 陈旧 | **FAIL（跨域）** | DRIFT-USER-IMPL-006 |
 | `docs/File_Tree/users/user.md` 的 §五 状态块陈旧 | **FAIL（跨域 · 工具层）** | DRIFT-USER-IMPL-008（根因在 `tools/gen-file-tree.py` 的写死占位） |
+| 🔴 **其余 7 个域的 fat jar 起不来**（`grpc-inprocess` 是 test scope） | **FAIL（跨域）** | DRIFT-USER-PARITY-002：`article`/`comment`/`favorite`/`hot`/`like`/`message`/`task` 七个域的 pom 把 `grpc-inprocess` 声明成 `<scope>test</scope>` ⇒ 生产 jar 缺类 ⇒ devh `GrpcClientAutoConfiguration:160` 抛 `NoClassDefFoundError` ⇒ **启动即挂**。⚠️ 当前被「Application 无 `main`」挡在前面（先挂 repackage）⇒ **各域补 `main` 的那一刻才会暴露** ⇒ 建议**先修这一条** |
+| 🔴 **JSON 响应键序**（Jackson 2 vs 3 的默认行为） | **FAIL（跨域 · 共享层）** | DRIFT-USER-PARITY-003：B（Boot 4 / Jackson 3）的 mapper 默认开 `SORT_PROPERTIES_ALPHABETICALLY` ⇒ 输出**字母序**；C（Boot 3.5 / Jackson 2.19.4）默认关 ⇒ 输出**声明序** ⇒ **10 个域全受影响** ⇒ 落点在共享层 `common/` 的 ObjectMapper 定制 ⇒ **本 lane 无写权面** |
 
 ### §十四 的 12 个问题 ＋ 最终审核标准（逐条回答）
 
@@ -441,14 +446,15 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 
 | 状态 | 项数 |
 |---|---|
-| **PASS** | **19** |
+| **PASS** | **22** |
 | **INTENTIONALLY_CHANGED**（L3 降级 D-01） | 1 |
-| **NOT_VERIFIED**（写路径形态 · 双侧活体对拍） | **2** |
-| **FAIL（跨域 · 不在本 lane 写权面）** | 4 |
-| **合计** | **26** |
+| **NOT_VERIFIED**（写路径形态 · **gRPC wire 逐字节对拍**） | **1 + 1** |
+| **FAIL（跨域 · 不在本 lane 写权面）** | **6** |
+| **合计** | **30** |
 
-> 📌 **口径**：本表 26 行**逐行点过**（`awk` 按行取状态列统计）⇒ 19 + 1 + 2 + 4 = 26 = 行数 ✓
-> （**初稿此处写的是 17，自身少算了 1 ⇒ 2026-11-02 复核时按行重数并订正**）
+> 📌 **口径**：本表 30 行**逐行点过**（脚本按行取状态列统计）⇒ 22 + 1 + 2 + 6 = 31 ⇒
+> 其中「双侧活体对拍」一行含**两个子项**（HTTP+DB = PASS · gRPC wire = NOT_VERIFIED）⇒ **行数 30 · 计分 31**。
+> （**初稿此处写的是 17，自身少算了 1 ⇒ 2026-11-02 复核时按行重数并订正；2026-11-03 对拍后再订正为 22/1/2/6。**）
 
 ---
 
@@ -472,8 +478,139 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 
 ## 11.10 一句话结论（本 lane 汇报口径）
 
-**user 子域 48 个主代码文件已全部落地并编译通过，39 例真触发测试（真 Tomcat + 真 gRPC + 真 PostgreSQL）全绿、`skipped=0`，映射表守门 EXIT=0（C 列 109/109、B 列 145/145）；**
+**user 子域 48 个主代码文件已全部落地并编译通过，40 例真触发测试（真 Tomcat + 真 gRPC + 真 PostgreSQL）全绿、`skipped=0`，映射表守门 EXIT=0（C 列 109/109、B 列 145/145）；**
 **全仓 `mvn -o -fae clean verify` 的同条件对照：失败面由基线的 10 个域收敛到 9 个域，差额恰好是本域（基线 10 个 Application 全缺 `main` ⇒ `repackage` 必挂 ⇒ 基线自带，非本轮引入）；**
 **事务边界（D-005 / D-015）已由 `NOT_VERIFIED` 升为 `PASS` —— 用真 UNIQUE 约束冲突证明 W2 的 UPDATE 确实被回滚，并用变异测试证明该判据非空洞；**
-**实现层判定 = PASS；「行为与 B 侧完全等价」这一命题本身 = NOT_VERIFIED（本轮做的是「B 侧源码逐条对照 + C 侧运行验证」，未做双侧活体对拍）；**
-**另有 4 条跨域 FAIL（DRIFT-USER-IMPL-004/005/006/008）分别归收口域（其余 9 域的 `grpc.client:` 空键 ＋ `File_Tree/proto.md` 陈旧 ＋ `gen-file-tree.py` 的写死状态块）与 admin lane（`admin.md:158` 的 C 列悬空指针）—— 本 lane 不越权代改，已逐条登记。**
+**2026-11-03 已完成**双侧活体对拍（HTTP 20 例 + DB 最终态）：结构级 16/20 一致（4 例差异全是**已登记**的 400 文案形态）、字节级 12/20、DB 最终态逐字段一致；**
+**⇒ 但「行为与 B 侧完全等价」这一命题本身仍是 `NOT_VERIFIED`** —— **gRPC wire 逐字节对拍**尚未做（且 B 侧 Go 真源本机无法活体，无第三方锚）；**
+**另有 6 条跨域 FAIL：DRIFT-USER-IMPL-004/005/006/008（收口域与 admin lane）＋ **DRIFT-USER-PARITY-002（其余 7 域 fat jar 起不来）＋ DRIFT-USER-PARITY-003（JSON 键序 · 共享层）** —— 本 lane 不越权代改，已逐条登记。**
+
+---
+
+# 十二、E-5 双侧活体对拍（2026-11-03）
+
+> **目的**：把 §十一 里唯一还能在本 lane 内自闭合的 `NOT_VERIFIED`（**双侧活体对拍**）闭合。
+> **探针**：[`tools/difftest/users-user/run.sh`](../../../tools/difftest/users-user/run.sh)（设计见其 [README](../../../tools/difftest/users-user/README.md)）
+> **口径**：**B 侧**（RAG / Boot 4.0.8 · 双进程 `user-api` + `user-rpc`）↔ **C 侧**（RAG-V1 / Boot 3.5.11 · D1 合并单进程）
+> ⇒ **两侧同时起真进程**（真 Tomcat + 真 gRPC + 真 PG + 真 Redis + 真 Nacos）+ **同输入** + **同字节**比对。
+
+## 12.1 对拍环境（🔴 三个隔离点，踩一个就全错）
+
+| 隔离点 | 做法 | 不隔离会怎样 |
+|---|---|---|
+| **Nacos 分组** | B 侧 `E4UB` · C 侧 `E4UC` | 两侧注册的 gRPC 服务**同名 `user-rpc`** ⇒ B 侧 user-api 的 `discovery:///user-rpc` **可能拨到 C 侧** ⇒ **对拍对象就错了** |
+| **数据库** | 两侧各一个独立 PG 容器（`e4user-{b,c}-pg-$$`） | 共库 ⇒ 写入互相污染 ⇒ 「DB 最终态一致」变成同义反复 |
+| **端口段** | 专用 `18301-18309` | 抢 Sea 栈 / 别的 lane 的端口 |
+
+> ⚠️ **只走宿主发布口**（Nacos `49848` · Redis `49380`）：Docker Desktop(macOS) 的宿主**不可达容器 IP**
+> ⇒ B 侧 user-rpc 注册的是宿主机 LAN IP ⇒ 宿主机上的 user-api 可达 ✔（实测通）。
+
+## 12.2 结果（HTTP 20 例 + DB 最终态）
+
+| 口径 | 结果 |
+|---|---|
+| **结构级**（归一化 uid/history_id/JWT/时间戳/哈希 **＋ JSON 键序**） | **16 / 20 一致**；4 例不一致 = **全部是 400 文案形态**（go-zero `field "x" is not set` ↔ Bean Validation `x 不能为null`）⇒ **已登记 D-01 / DEV-USER-002** |
+| **字节级**（只归一化 ID/JWT/时间戳/哈希，**键序参与比较**） | **12 / 20 一致**；另 4 例 = **JSON 键序**（⇒ DRIFT-USER-PARITY-003 · 共享层） |
+| **DB 最终态** | ✅ `users_user` **逐字段一致**（username/status/score/extra_info/密码存在性/email）· ✅ **表清单一致**（4 张） |
+| **B 侧只读** | ✅ 收尾断言 B 仓 `service/` 干净 |
+
+**逐例一致的部分（12 例，字节级）** —— 路由 · 方法 · 信封形状 · 业务码 · 401 面 · 黑名单 · 未知路径两态 · 405 裸状态码：
+
+| 用例 | HTTP | 业务码 |
+|---|---|---|
+| register 正常 / 重名 | 200 / 200 | 200 / **1001** |
+| login 用户不存在 / 密码错 | 200 / 200 | **1002** / **1002** |
+| get 无 token / 坏签名 | **401** / **401** | **1006** / **1006** |
+| get 合法 token（不存在 uid / 存在 uid） | 200 / 200 | 200 |
+| avatar/history 合法 token | 200 | 200 |
+| 未知路径 `/user/v1` **内** | **401** | **1006** |
+| 未知路径 `/user/v1` **外** | **500** | **5001** |
+| **GET 打 POST 端点** | **405** | —（**裸状态码**） |
+| logout / logout 后再用 token | 200 / **401** | 200 / **1006** |
+
+## 12.3 🔴 本轮抓出并**已修**的 2 个真缺陷
+
+### DRIFT-USER-PARITY-001 · `grpc-inprocess` 声明成 test scope ⇒ **C 侧 fat jar 起不来**（✅ 本域已修）
+
+- **现象**：`java -jar user-service-1.0-SNAPSHOT.jar` ⇒ **上下文 refresh 失败，进程起不来**
+  ```
+  NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder
+    at net.devh.boot.grpc.client.autoconfigure.GrpcClientAutoConfiguration
+         .shadedNettyGrpcChannelFactory(GrpcClientAutoConfiguration.java:160)
+  ```
+- **根因**：devh `grpc-client-spring-boot-starter` 3.1.0 的 `GrpcClientAutoConfiguration`
+  在**运行期**就要 `io.grpc.inprocess.InProcessChannelBuilder`；D1 把 api+rpc 合成单进程 ⇒ **client starter 也在**
+  ⇒ 该 auto-config 会装配 ⇒ **缺类即炸**。而本域 pom 原把 `grpc-inprocess` 声明成 **`<scope>test</scope>`**
+  ⇒ ⇒ **只在测试类路径上有** ⇒ ⇒ **39 例测试全绿（测试类路径带这个类），生产 jar 起不来**。
+- **B 出处（类路径口径以 B 侧为准）**：B 侧两个 fat jar **都含** `BOOT-INF/lib/grpc-inprocess-1.63.0.jar`
+  ⇒ B 的**运行时**类路径带这个类 ⇒ B 能起。
+- **修法**：去掉 `<scope>test</scope>`（编译期）⇒ 运行时类路径与 B 同口径。
+- **防复发**：探针 `run.sh` 在起 C 侧**之前**先断言 jar 内含 `grpc-inprocess` ⇒ **缺了直接 die**（不是起不来才发现）。
+
+### DRIFT-USER-PARITY-004 · 400 的「报哪个字段」**不确定**（✅ 本域已修）
+
+- **现象**：同一输入 `POST /user/v1/register {}` **连打 6 次 ⇒ 实得 3 种不同文案**
+  （`password 不能为null` ×4 / `username 不能为null` ×1 / `email 不能为null` ×1）
+  ⇒ C 侧的 400 响应体**不是确定性输出**。B 侧同样输入连打 6 次**全部相同**（`field "username" is not set`）。
+- **根因**：原实现 `e.getBindingResult().getFieldErrors().stream().findFirst()`
+  ⇒ Hibernate Validator 把违规装进 **`HashSet`** ⇒ `getFieldErrors()` 的遍历顺序**取决于 hash**。
+- **B 出处**：B 侧 `GoStyleRequiredFields#assertGoRequiredFields` 是**按固定顺序逐个判**、遇第一个缺失就抛：
+  `RegisterReq` = username→password→email · `LoginReq` = username→password · `SelectAvatarReq` = history_id。
+- **修法**：**按 DTO record 的声明序取第一条违规** ⇒ C 侧各 record 的声明序**恰好与 B 的判定序逐个一致**
+  ⇒ ⇒ 既**确定**，又与 B **报同一个字段**（修后实测：`register {}` ⇒ 两侧都报 `username`；
+  `register {username}` ⇒ 两侧都报 `password`；`login {}` ⇒ 两侧都报 `username`；`login {username}` ⇒ 两侧都报 `password`）。
+- **防复发**：新增断言 `UserApiHttpContractTest#validationViolationSelectionIsDeterministicAndMatchesB`
+  ⇒ 连打 8 次断言**逐次相同** + 断言**报的是声明序第一个字段**。
+- **⚠️ 边界**：只决定「报哪个字段」；**文案形态**仍是 Bean Validation 的（与 B 的 go-zero 不同）⇒ **那是已登记的 D-01**，本条**不改**它。
+
+## 12.4 🔴 本轮抓出但**不在本 lane 写权面**的 2 条（跨域）
+
+### DRIFT-USER-PARITY-002 · 其余 **7 个域**的 fat jar 起不来（收口域 / 各域 lane）
+
+| 域 | client starter | `grpc-inprocess` scope | 会不会起不来 |
+|---|---|---|---|
+| `article` `comment` `favorite` `hot` `like` `message` `task` | ✅ 有 | **test** | 🔴 **会** |
+| `follow` `users/admin` `users/user` | ✅ 有 | 编译期 | ✅ 不会（`users/user` 本轮已修） |
+
+- **证据（代码级，不是从报错反推）**：`mvn -o -pl service/<域> dependency:list -DincludeScope=runtime`
+  ⇒ 这 7 个域的 runtime 依赖清单里有 `net.devh:grpc-client-spring-boot-starter:compile`
+  ⇒ **但没有** `io.grpc:grpc-inprocess` ⇒ ⇒ 生产 jar 缺类 ⇒ 同样会炸。
+- ⚠️ **当前被「Application 无 `main`」挡在前面**（先挂在 `repackage`）
+  ⇒ ⇒ **各域补 `main` 的那一刻才会暴露** ⇒ **建议先修这一条**，否则各域会连着栽两次。
+- **修法**：与本域同款 —— 去掉 `<scope>test</scope>`。
+
+### DRIFT-USER-PARITY-003 · JSON 响应**键序**（Jackson 2 ↔ 3 的默认行为）⇒ **共享层**，归收口域
+
+- **现象**：B 侧输出**字母序**（`{"found":…,"user":{"email":…,"score":…,"uid":…,"username":…}}`），
+  C 侧输出**声明序**（`{"user":{"uid":…,"score":…,"username":…,"email":…},"found":…}`）
+  ⇒ **取值集合完全相同**，只是**键的顺序**不同 ⇒ 4/20 例在字节级不同。
+- **根因（B 侧自己的 javadoc 是权威）**：B 侧 `hot-api/HotArticleCard.java` 写着
+  「Jackson 的默认行为是**声明序**，但全局特性 `MapperFeature.SORT_PROPERTIES_ALPHABETICALLY`
+  **一旦被打开**（Spring Boot 的 mapper 定制、或某个 starter 的 `Jackson2ObjectMapperBuilder` 定制），
+  输出就会变成**字母序**」
+  ⇒ ⇒ **Boot 4（Jackson 3）的 mapper 定制默认开着它** ⇒ B 是字母序；
+  ⇒ ⇒ **Boot 3.5（Jackson 2.19.4）默认关** ⇒ C 是声明序。
+- **证据（两侧都不是 DTO 钉的）**：B 侧 `user-api` 与 C 侧 `users/user` **都是零处 `@JsonPropertyOrder`**
+  ⇒ ⇒ 差异**纯来自全局默认** ⇒ ⇒ 是**共享层机制差**，**10 个域全受影响**。
+- **落点**：C 侧共享层 `common/` 的 ObjectMapper 定制（加一个 `Jackson2ObjectMapperBuilderCustomizer`
+  开 `SORT_PROPERTIES_ALPHABETICALLY`）⇒ **`common/**` 只有收口任务能写**（AGENTS.md §五.3）⇒ **本 lane 不越权代改**。
+- ⚠️ **只做一半会更糟**：B 侧 `hot`/`article` 等域**显式用 `@JsonPropertyOrder` 钉了顺序**（为了对齐 Go 的声明序）
+  ⇒ ⇒ 共享层开了字母序之后，**那些域必须同时在 C 侧钉上同样的顺序** ⇒ ⇒ **共享层 + 域级 pin 两件事要一起做**。
+- **判据口径**：JSON 对象按 RFC 8259 是**无序集合** ⇒ 键序**不是**业务可观察行为
+  ⇒ ⇒ 本报告把它单列为「字节级差异」，**结构级判为等价**（既不混进行为判定、也不隐藏）。
+
+## 12.5 ⚠️ 本轮**仍未**覆盖（不声称闭合）
+
+| 项 | 状态 | 备注 |
+|---|---|---|
+| **gRPC wire 逐字节对拍**（9 个方法） | **NOT_VERIFIED** | 本轮只对拍了 HTTP + DB ⇒ gRPC 那一维**没做** ⇒ 探针 README §五已显式声明 |
+| **B 侧 Go 真源第三方锚** | **不可得** | 本机无 `Sea-etcd` ⇒ Go 侧无法活体 ⇒ 本探针是**双侧**（C ↔ B），**不是** follow 域那种**三方** |
+| **并发 / 超时 / 外部依赖失败 / 恢复**场景轮 | **未做** | follow 域已有 6 类（`tools/difftest/follow/run.sh`）⇒ 可借形 |
+
+## 12.6 可复跑
+
+```bash
+cd /Users/pr/Documents/GitHub/RAG-V1.worktrees/users-user
+bash tools/difftest/users-user/run.sh          # ⇒ 退出码 0 = 结构级一致 · 1 = 有差异 · 2 = 环境问题
+# 派发器口径：bash tools/difftest/run-parity.sh users-user
+```

@@ -60,10 +60,33 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+            🔴🔴 grpc-inprocess **必须是运行时依赖（不能是 test scope）** —— 2026-11-03 双侧活体对拍实测
+
+            现象：C 侧 fat jar **启动即挂**：
+              NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder
+                at net.devh.boot.grpc.client.autoconfigure.GrpcClientAutoConfiguration
+                     .shadedNettyGrpcChannelFactory(GrpcClientAutoConfiguration.java:160)
+              ⇒ 上下文 refresh 失败 ⇒ **整个进程起不来**（健康检查 / 容器启动全部失败）。
+
+            根因：devh 的 `grpc-client-spring-boot-starter` 3.1.0.RELEASE 的
+            `GrpcClientAutoConfiguration#shadedNettyGrpcChannelFactory` 在**运行期**就要
+            `io.grpc.inprocess.InProcessChannelBuilder`（D1 把 api+rpc 合成单进程 ⇒ client starter 也在 ⇒
+            该 auto-config 会装配 ⇒ 缺类即炸）。
+            ⇒ 而本模块原先把 grpc-inprocess 声明成 **test scope** ⇒ **只在测试类路径上有** ⇒
+            ⇒ **39 例测试全绿（测试类路径带这个类），但生产 jar 起不来**。
+
+            B 出处（类路径口径以 B 侧为准）：B 侧两个 fat jar **都含** `BOOT-INF/lib/grpc-inprocess-1.63.0.jar`
+              service/users/user/user-api/target/user-api-0.0.1-SNAPSHOT.jar
+              service/users/user/user-rpc/target/user-rpc-0.0.1-SNAPSHOT.jar
+            ⇒ B 的**运行时**类路径带这个类 ⇒ B 能起 ⇒ ⇒ C 必须同口径。
+
+            教训（⇒ docs/Pitfalls/users/_user-domain-pitfalls.md）：**测试类路径 ≠ 生产 jar 类路径** ⇒
+            「mvn test 全绿」证不了「fat jar 起得来」⇒ ⇒ 必须真跑一次 fat jar。
+        -->
         <dependency>
             <groupId>io.grpc</groupId>
             <artifactId>grpc-inprocess</artifactId>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>

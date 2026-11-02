@@ -110,3 +110,59 @@
 2. ⇒ ⇒ **失败模块集合相同** ⇒ 才是「基线自带」的证据；**集合差一条** ⇒ 那一条正是本轮的贡献；
    （本轮：基线 10 个域全红 → 当前分支 9 个域红 ⇒ 差额 = `user-service` 由红转绿）；
 3. ⇒ ⇒ 根因要**代码级取证**（本轮：逐个 `Application` 查 `static void main`），**不能只从报错反推**。
+
+---
+
+## P-USER-08 · **测试类路径 ≠ 生产 jar 类路径** ⇒ 「`mvn test` 全绿」证不了「fat jar 起得来」
+
+**形态**：某依赖被声明成 **`<scope>test</scope>`** ⇒ **只在测试类路径上有**，**不进** `repackage` 出来的 fat jar
+⇒ ⇒ 测试全绿（测试类路径带这个类），**生产 jar 起不来**，且**零告警**。
+
+**实测代价（RAG-V1 · users-user · 2026-11-03 双侧活体对拍）**：
+本域把 `io.grpc:grpc-inprocess` 设成 test scope ⇒ devh `grpc-client-spring-boot-starter` 3.1.0 的
+`GrpcClientAutoConfiguration#shadedNettyGrpcChannelFactory`（`:160`）在**运行期**要这个类
+⇒ **fat jar 启动即挂**：
+
+```
+NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder
+  ⇒ 上下文 refresh 失败 ⇒ 进程起不来
+```
+
+⇒ **39 例真触发测试全绿、`skipped=0`、守门 EXIT=0** ⇒ **零信号**。
+⇒ 是**双侧活体对拍**（要真起一个 fat jar）才暴露的。
+
+**判定式**：
+1. ⇒ **凡「启动期/运行期要某个类」的机制**（auto-config 的 `@ConditionalOnClass` 之外的**硬引用**、
+   SPI、反射加载），都要问一句「**这个类在生产 jar 里在不在**」；
+2. ⇒ 判据 = **列 jar 内容**（`unzip -l` / `zipfile`）**对比** pom 的 scope，**不是**「测试跑过了」；
+3. ⇒ ⇒ **凡本域的依赖有 test scope 且可能被运行期引用** ⇒ 在**启动脚本/探针里加一条 jar 内容自检**
+   （本域落在 `tools/difftest/users-user/run.sh`：缺了直接 `die`，**不是起不来才发现**）；
+4. ⇒ ⇒ **跨域提醒**：全仓另有 **7 个域同型**（`article`/`comment`/`favorite`/`hot`/`like`/`message`/`task`）
+   ⇒ 判据 = `mvn -o -pl service/<域> dependency:list -DincludeScope=runtime` 看 `grpc-inprocess` 在不在
+   ⇒ ⚠️ **它们当前被「Application 无 `main`」挡在前面** ⇒ **补 `main` 的那一刻才会暴露** ⇒ **先修这条**。
+
+**⇒ 同族**：与「『跑绿』≠『本来就绿』」「『Bean 存在』≠『机制生效』」同源 —— 本条补的是
+「**『测试跑过』≠『生产能起』**」这一面：**测试与产物是两份不同的类路径**。
+
+---
+
+## P-USER-09 · Bean Validation 的**违规集合是 `HashSet`** ⇒ `findFirst()` **不确定** ⇒ 「取第一条违规」必须自己定序
+
+**形态**：`e.getBindingResult().getFieldErrors().stream().findFirst()`
+⇒ Hibernate Validator 把所有违规装进 **`HashSet`** ⇒ `getFieldErrors()` 的遍历顺序**取决于 hash**
+⇒ ⇒ **同一输入、同一次启动，多次请求可能报出不同的字段**。
+
+**实测代价（RAG-V1 · users-user）**：`POST /user/v1/register` 带 `{}` **连打 6 次**
+⇒ 实得 **3 种不同文案**（`password 不能为null` ×4 / `username 不能为null` ×1 / `email 不能为null` ×1）。
+⇒ B 侧同样输入连打 6 次**全部相同**（`field "username" is not set`）
+⇒ ⇒ **C 侧的 400 响应体不是确定性输出** ⇒ 客户端按文案解析会不稳、回归断言也钉不住。
+
+**判定式**：
+1. ⇒ ⇒ **凡「取第一条违规 / 取第一条错误」** ⇒ **必须自己定序**，不能依赖容器的迭代序
+   （`HashSet` / `HashMap` 的迭代序**跨运行都可能变**）；
+2. ⇒ ⇒ 定序要**对齐 B 侧**的判定序：B 的 `GoStyleRequired` 是**按 DTO 字段声明序逐个判、遇第一个缺失就抛**
+   ⇒ C 侧按 **record 声明序**排即可（本域各 record 的声明序**恰好与 B 的判定序逐个一致**）；
+3. ⇒ ⇒ **判据**：连打 N 次断言**逐次相同** ＋ 断言**报的是声明序第一个字段**
+   （本域：`UserApiHttpContractTest#validationViolationSelectionIsDeterministicAndMatchesB`，连打 8 次）；
+4. ⇒ ⚠️ **注意与「文案形态」分开**：字段**选谁**是行为（要对齐 B），
+   **文案长什么样**是表达层（可以是已登记的降级）⇒ **两者要分别判、分别登记**。
