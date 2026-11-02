@@ -1,8 +1,10 @@
 # `users-user` 迁移审核报告 —— RAG（B 侧）→ RAG-V1（C 侧）
 
 > **产出坐标**：由 **`align/users-user` 工作树**产出
-> （`/Users/pr/Documents/GitHub/RAG-V1.worktrees/users-user`）· **基线 commit `07ff14a`**
-> （与本地 `main` 同点；`main` 领先 `origin/main` 8 个 commit）· **核对日期 2026-11-02**
+> （`/Users/pr/Documents/GitHub/RAG-V1.worktrees/users-user`）· **基线 commit `e67c7ed`**
+> （= 本地 `main` tip；⚠️ 本报告初稿写的是 `07ff14a`，其间 `main` 只多了一个
+> **纯文档**提交 `e67c7ed`（仅改 `AGENTS.md` 一行）⇒ **代码等价** ⇒ 全部读数不受影响
+> —— 2026-11-02 复核）· **核对日期 2026-11-02**
 >
 > **本文件归属**：`service/users/user/`（`user-service`）子域。
 > ⚠️ **只写自己域**：`admin` 子域与 `users-common` 的台账各有其主，本文件**不代笔**。
@@ -189,7 +191,7 @@
 | B 侧主代码 `.java`（`service/users/user/`） | **58**（`user-api` 43 ＋ `user-rpc` 15） |
 | C 侧主代码 `.java`（`service/users/user/src/main/java/`） | **48**（骨架 45 − 1 删除 ＋ 4 新增） |
 | C 侧**空壳残留** | **0** |
-| C 侧测试 `.java` | **6** |
+| C 侧测试 `.java` | **7** |
 | 映射表 C 列覆盖 | **109/109 = 100%**（users 域口径） |
 | 映射表 B 列覆盖 | **145/145 = 100%**（users 域口径） |
 
@@ -212,8 +214,8 @@
 | `exception/` | 1 | 47 |
 | `controller/` | 1 | 187 |
 | 入口（`UserServiceApplication`） | 1 | 100 |
-| **主代码合计** | **48** | **5,290** |
-| **测试合计** | **6** | **1,061** |
+| **主代码合计** | **48** | **5,300** |
+| **测试合计** | **7** | **1,293** |
 
 > 口径：`wc -l` 实测（`find … -name '*.java' -exec cat {} + | wc -l`），**不是估算**。
 
@@ -226,7 +228,8 @@
 | `grpc/UserGrpcServiceContractTest` | 4 | **真 gRPC server**（in-process）：9 个方法全被 starter 分发 · `StatusRuntimeException` 原样透传（code+description）· 未映射异常 ⇒ INTERNAL + `"类名: 消息"` |
 | `wiring/UserNacosRegistrationWiringTest` | 6 | 注册名 = `user-rpc` · 端口 = gRPC 端口 · group 来自配置 · 默认值零变化 · yml 仍声明 group · 自动注册已关 |
 | `config/UserApiPropertiesSecretGuardTest` | 7 | 密钥 fail-closed：null / 空串 / **未解析占位符** 三路都必须启动失败（api ＋ rpc 两侧） |
-| **合计** | **34** | **skipped = 0** |
+| `mapper/AvatarTransactionWiringTest` | 5 | 🔴 **事务边界的真实测**（D-005 / D-015）：**真 UNIQUE 约束冲突**制造中途失败 ⇒ 断言 W2 的 UPDATE 被回滚 · 同序列成功路径作非空洞对照 · 5 步原子的 uid 隔离 · mapper bean 真被事务 advisor 包住 |
+| **合计** | **39** | **skipped = 0** |
 
 ---
 
@@ -244,9 +247,11 @@ mvn -o -pl service/users/user -am -DskipTests package
 
 # ── 1b. 本域 + 全部依赖模块的完整 verify（串行）──────────────
 mvn -o clean verify -pl service/users/user -am
-# ⇒ BUILD SUCCESS（common 1:07 · proto 0:30 · users-common 1:44 · user-service 3:43 · 合计 07:05）
-# ⇒ user-service: Tests run: 34, Failures: 0, Errors: 0, Skipped: 0
-# ⇒ 四模块合计: tests=304 failures=0 errors=0 skipped=0
+# ⇒ BUILD SUCCESS（common 3:10 · proto 0:48 · users-common 1:59 · user-service 2:59 · 合计 08:56）
+# ⇒ user-service: Tests run: 39, Failures: 0, Errors: 0, Skipped: 0
+# ⇒ 参与测试的模块合计: tests=309 failures=0 errors=0 skipped=0
+#    （309 = 上一轮的 304 + 本轮新增的 `AvatarTransactionWiringTest` 5 例；
+#      口径 = **回归日志的模块级汇总**，不取 `surefire-reports/*.xml` 求和 —— §五.8 守门硬规则 ①）
 # ⇒ repackage 成功 ⇒ 可执行 jar 的 Start-Class = com.rag.user.UserServiceApplication
 #
 # ⚠️ **不要用 `-T1C` 跑全仓**：其余 8 个域的 Application 还是空壳（没有 `main`）
@@ -258,7 +263,7 @@ mvn -o clean verify -pl service/users/user -am
 
 # ── 2. 本域测试（只跑本域；依赖模块不重跑）──────────────────
 mvn -o -pl service/users/user -am test -Dtest='com.rag.user.**' -Dsurefire.failIfNoSpecifiedTests=false
-# ⇒ Tests run: 34, Failures: 0, Errors: 0, Skipped: 0   · BUILD SUCCESS
+# ⇒ Tests run: 39, Failures: 0, Errors: 0, Skipped: 0   · BUILD SUCCESS
 # ⚠️ `-DfailIfNoTests=false` **不是** surefire 3.x 的参数名 ⇒ 用错会让 `common` 模块直接 FAIL
 
 # ── 3. 映射表守门（ROOT 改指向 worktree）────────────────────
@@ -277,6 +282,71 @@ python3 /tmp/gen-file-tree-usersuser.py
 git checkout -- docs/File_Tree/proto.md     # ⚠️ proto/ 不是本域写权面（见 DRIFT-USER-IMPL-006）
 # ⇒ 只留 docs/File_Tree/users/user.md 的变更（+65 −50）
 ```
+
+### 🔴 **全仓 `clean verify` 的同条件对照（本轮实测 ⇒ 证明 9 个域的红是基线自带，且本域由红转绿）**
+
+> ⚠️ 默认的 `mvn -o clean verify` 是 **fail-fast** ⇒ 第一个域（`article-service`）挂了就 **SKIPPED 后面全部**
+> ⇒ ⇒ **看不出失败面** ⇒ ⇒ 必须加 **`-fae`**（fail-at-end）才能拿到**完整**的失败模块集合。
+
+```bash
+# ① 当前分支（-fae）
+cd /Users/pr/Documents/GitHub/RAG-V1.worktrees/users-user && mvn -o -fae clean verify
+# ② 基线纯净副本（-fae）
+mkdir -p /tmp/ragv1-base && git archive 07ff14a | tar -x -C /tmp/ragv1-base
+cd /tmp/ragv1-base && mvn -o -fae clean verify
+```
+
+| 模块 | 基线 `07ff14a` | 当前分支 `align/users-user` | 差异 |
+|---|---|---|---|
+| `article-service` | FAILURE | FAILURE | 无（同一根因） |
+| `comment-service` | FAILURE | FAILURE | 无 |
+| `favorite-service` | FAILURE | FAILURE | 无 |
+| `follow-service` | FAILURE | FAILURE | 无 |
+| `hot-service` | FAILURE | FAILURE | 无 |
+| `like-service` | FAILURE | FAILURE | 无 |
+| `message-service` | FAILURE | FAILURE | 无 |
+| `task-service` | FAILURE | FAILURE | 无 |
+| `admin-service` | FAILURE | FAILURE | 无 |
+| **`user-service`** | **FAILURE** | **SUCCESS** ✅ | 🔴 **本 lane 由红转绿** |
+| `common` / `proto` / `users` / `users-common` | SUCCESS | SUCCESS | 无 |
+
+**根因（代码级取证，不是从报错反推）** —— `spring-boot-maven-plugin:repackage` 报
+`Unable to find main class`，是因为**各域的 Application 类没有 `main`**：
+
+```bash
+for f in $(find service -name '*Application.java'); do
+  grep -q "static void main" "$f" && echo "✅ $f" || echo "🔴 $f"
+done
+```
+
+| 树 | 缺 `main` 的 Application |
+|---|---|
+| 基线 `07ff14a` | **10 个全缺**（含 `user-service`） |
+| 当前分支 | **9 个缺**（`user-service` 已补上 `main`） |
+
+⇒ ⇒ **失败面 10 → 9，差额恰好是本域自己** ⇒ ⇒ **其余 9 个域的红是基线自带（DRIFT-USER-IMPL-009），不是本轮引入**。
+
+### 🔴 **变异测试：证明「回滚」判据不是假绿**（AGENTS.md §3.3.3「变异测试是另一半」）
+
+> ⚠️ 只跑本仓探针只能证「代码写成了这样」，**证不了「期望值对」** ⇒ ⇒ 必须做一次**变异**：
+> 把被测机制**摘掉**，看判据会不会**真的变红**。
+
+```bash
+# 变异：摘掉 mapper 接口 default 方法上的两处 @Transactional
+sed -i '' '/^[[:space:]]*@org\.springframework\.transaction\.annotation\.Transactional[[:space:]]*$/d' \
+  service/users/user/src/main/java/com/rag/user/mapper/UserAvatarHistoryMapper.java
+mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsurefire.failIfNoSpecifiedTests=false
+# ⇒ Tests run: 5, Failures: 2, Errors: 0   ← 判据真的红了 ✅
+#   ① createAvatarHistoryRollsBackTheEarlierWriteOnMidwayFailure
+#      「W2 的 clearCurrentByUid 必须随事务回滚 ⇒ 旧 history 仍是 current」
+#      Expecting value to be true but was false   ← 摘掉事务 ⇒ W2 落了库 ⇒ 无回滚
+#   ② mapperBeanIsWrappedByTransactionAdvisor
+#      「mapper bean 必须被 Spring AOP 包住」Expecting value to be true but was false
+# 还原：git checkout -- service/users/user/src/main/java/com/rag/user/mapper/UserAvatarHistoryMapper.java
+# ⇒ 还原校验：注解数 2 · `git diff` 空 · 复跑 39 例全绿
+```
+
+⇒ ⇒ **「事务真的回滚了」这条结论有变异证据支撑**（不是「跑绿了就当真」）。
 
 ### 🔴 **守门脚本的「硬编码 ROOT」陷阱（本轮实测，务必转给其他 lane）**
 
@@ -303,7 +373,7 @@ git checkout -- docs/File_Tree/proto.md     # ⚠️ proto/ 不是本域写权�
 ## 11.8 审核结果状态（按 `.agents/verification.md` §十 的状态词表）
 
 > ⚠️ **本报告的证据边界（必须先读）**：
-> 本轮**做完了「C 侧运行验证」**（34 例真触发测试，见 §11.6.3）与**「B 侧源码逐条对照」**（58/58 文件全读）；
+> 本轮**做完了「C 侧运行验证」**（39 例真触发测试，见 §11.6.3）与**「B 侧源码逐条对照」**（58/58 文件全读）；
 > ⇒ 但**没有做「双侧活体对拍」**（同一输入同时打 B 与 C，逐字节比对响应）⇒ ⇒
 > ⇒ 下表的 `PASS` 含义是「**C 侧运行证据 + B 侧源码逐条对照一致**」，
 > **不等于**「双侧活体对拍已闭合」。
@@ -329,7 +399,7 @@ git checkout -- docs/File_Tree/proto.md     # ⚠️ proto/ 不是本域写权�
 | DDL 在启动期真被重放 | **PASS** | `wiring/UserSchemaBootstrap.java` ＋ `UserServiceApplicationTests#schemaWasAppliedAtStartup`（查**真 PG** 的 `information_schema`） |
 | 表名 / 列类型 L1 | **PASS** | `users/user.md` §6 ＋ `UserServiceApplicationTests#tableNamesMatchB` |
 | 指标名 + label（**只有 `result`**） | **PASS**（静态 + B 侧源码逐条对照） | `metrics/{UserApiMetrics,UserRpcMetrics}.java`（逐条照抄 B 侧） |
-| 事务边界（`selectAvatar` 多步原子） | **NOT_VERIFIED** | ⚠️ 实现侧是 `@Transactional` 独立 Bean（B 侧同形）⇒ 但**未做「真并发 + 回滚」实测** ⇒ ⇒ 需双侧对拍或专门的回滚测试 ⇒ **不计入 PASS** |
+| 事务边界（4/5 步原子 · D-005 / D-015） | **PASS**（C 侧实测 · **含变异证据**） | `mapper/UserAvatarHistoryMapper.java:135,198`（`@Transactional` 挂在 mapper 接口的 **default** 方法上 —— 本仓最易静默失效的形态）＋ `AvatarTransactionWiringTest#createAvatarHistoryRollsBackTheEarlierWriteOnMidwayFailure`（**真 UNIQUE 约束冲突** ⇒ W2 的 UPDATE 被回滚 ⇒ 旧 history 仍是 current）＋ `#createAvatarHistoryCommitsAllFourSteps`（同序列成功路径 ⇒ 非空洞对照）＋ `#mapperBeanIsWrappedByTransactionAdvisor`（advisor 真在）＋ **变异证据**（摘掉 `@Transactional` ⇒ 判据变红，见 §11.7） |
 | `updateById` vs `update(null, wrapper)` 的写路径形态 | **NOT_VERIFIED** | ⚠️ B 侧与 C 侧的写入 API 形态差异需逐语句对拍 ⇒ ⇒ 未做 |
 | 端到端「register → login → get」 | **PASS**（C 侧单侧） | `UserApiHttpContractTest#registerLoginGetHappyPath`（**真 PG + 真 bcrypt + 真 JWT 签发 + 真 uid 字符串化**） |
 | **双侧活体对拍**（同一输入打 B 与 C 比对） | **NOT_VERIFIED** | ⚠️ 本轮**未做** ⇒ ⇒ 需要 B 侧运行环境（B 的 build ＋ Nacos ＋ Go/Java 双栈）⇒ ⇒ **本报告的所有 `PASS` 都不含这一项** |
@@ -350,18 +420,19 @@ git checkout -- docs/File_Tree/proto.md     # ⚠️ proto/ 不是本域写权�
 | 6 | 响应信封形状是否一致？ | ✅ `{code,msg,data}` 三字段恒在（`data=null` 也在） |
 | 7 | JWT 鉴权是否与 B 一致？ | ✅ public 集合、protected 前缀、claim 名 `userId`、黑名单 key、fail-open **逐条一致** |
 | 8 | 表结构/实体是否一致？ | ✅ `users_user` / `users_user_avatar_history`；`extra_info` = text；`timestamptz` |
-| 9 | 事务边界是否一致？ | 🟡 **实现同形，但未做「真并发 + 回滚」实测** ⇒ **NOT_VERIFIED**（见上表） |
+| 9 | 事务边界是否一致？ | ✅ **实现同形 + 已实测**：`@Transactional` 挂在 mapper 的 default 方法上 ⇒ **真 UNIQUE 约束冲突**下 W2 的 UPDATE 确实被回滚（+ 变异证据）⇒ **PASS** |
 | 10 | 指标名/label 是否一致？ | ✅ `user_api_intercept_total{path,result}` · `user_rpc_login_total{result}` · `user_rpc_register_total{result}`（**只有 `result`**） |
 | 11 | 是否有「无出处的 idiomatization」？ | ✅ **零** —— 每个改写点都带 **B 出处 ＋ 语义等价论证**（javadoc 三段式） |
-| 12 | 框架机制是否有真触发测试？ | ✅ 34 例、`skipped=0`；**真 Tomcat** ＋ **真 gRPC** ＋ **真 PostgreSQL**（Testcontainers `postgres:16-alpine`） |
+| 12 | 框架机制是否有真触发测试？ | ✅ 39 例、`skipped=0`；**真 Tomcat** ＋ **真 gRPC** ＋ **真 PostgreSQL**（Testcontainers `postgres:16-alpine`） |
 
 ### 最终结论（**按 §十 的状态词表**）
 
-> **本域实现层：PASS**（文件级承接 48/48、零空壳、C 侧运行证据 34 例全绿 `skipped=0`、映射表守门 EXIT=0）。
+> **本域实现层：PASS**（文件级承接 48/48、零空壳、C 侧运行证据 39 例全绿 `skipped=0`、映射表守门 EXIT=0）。
 >
 > ⚠️ **但「行为与 B 侧完全等价」这一命题本身是 `NOT_VERIFIED`** —— 本轮做的是
 > **「B 侧源码逐条对照 ＋ C 侧运行验证」**，**不是**「双侧活体对拍」。
-> ⇒ ⇒ 需补：**双侧对拍**（同一输入打 B 与 C 比对）与 **事务回滚实测**。
+> ⇒ ⇒ 需补：**双侧对拍**（同一输入打 B 与 C 比对）与 **写路径形态逐语句对拍**。
+> （**事务回滚实测已于本轮补上** ⇒ 由 `NOT_VERIFIED` 升为 `PASS`，含变异证据。）
 >
 > ⚠️ **另有 4 条跨域 `FAIL`**（DRIFT-USER-IMPL-004/005/006/008）⇒ 归属收口域与 admin lane ⇒
 > **不在本 lane 的写权面**，已逐条登记。
@@ -370,14 +441,22 @@ git checkout -- docs/File_Tree/proto.md     # ⚠️ proto/ 不是本域写权�
 
 | 状态 | 项数 |
 |---|---|
-| **PASS** | 17 |
+| **PASS** | **19** |
 | **INTENTIONALLY_CHANGED**（L3 降级 D-01） | 1 |
-| **NOT_VERIFIED**（事务回滚 · 写路径形态 · 双侧活体对拍） | 3 |
+| **NOT_VERIFIED**（写路径形态 · 双侧活体对拍） | **2** |
 | **FAIL（跨域 · 不在本 lane 写权面）** | 4 |
+| **合计** | **26** |
+
+> 📌 **口径**：本表 26 行**逐行点过**（`awk` 按行取状态列统计）⇒ 19 + 1 + 2 + 4 = 26 = 行数 ✓
+> （**初稿此处写的是 17，自身少算了 1 ⇒ 2026-11-02 复核时按行重数并订正**）
 
 ---
 
-## 11.9 本轮踩坑与元教训（⇒ 已按纪律登记进 `docs/Pitfalls/` 的候选）
+## 11.9 本轮踩坑与元教训（⇒ 已登记进 [`docs/Pitfalls/users/_user-domain-pitfalls.md`](../../Pitfalls/users/_user-domain-pitfalls.md)）
+
+> 📌 **`docs/Pitfalls/_INDEX.md` 不归本 lane**（AGENTS.md §五.2：三个 `_INDEX.md` 合并后统一更新）⇒ 需收口域合并。
+> ⚠️ **通用方法论不在本表重复**：变异测试方法论见 [`P-12`](../../Pitfalls/_cross/P-12-变异没变红等于那条断言没覆盖到.md) ·
+> 落地证据须机器复算见 [`P-08`](../../Pitfalls/_cross/P-08-落地证据未经机器复算.md)。
 
 | # | 形态 | 判据（可复用） |
 |---|---|---|
@@ -386,11 +465,15 @@ git checkout -- docs/File_Tree/proto.md     # ⚠️ proto/ 不是本域写权�
 | **P-USER-03** | **`-pl <module>` 单模块跑测会解析不到兄弟模块** ⇒ `Could not find artifact com.rag:proto` | ⇒ 本仓的模块依赖**只在 reactor 里解析** ⇒ ⇒ 必须 `-am`；要「只跑本域的测试」就配 `-Dtest=<pattern> -Dsurefire.failIfNoSpecifiedTests=false`（⚠️ `-DfailIfNoTests=false` **不是** surefire 3.x 的参数名 ⇒ 用错会让 `common` 模块直接 FAIL） |
 | **P-USER-04** | **「测试写错了」和「实现写错了」长得一样**：本轮 3 次红里，2 次是**我的期望值按 Go 侧直觉写**（未知路径该 404），而 B 侧 Java 的真实行为是 500 / 401 | ⇒ 红了先问「**B 侧 Java 真的会那样吗**」，再问「实现错在哪」⇒ ⇒ **读 B 侧同形代码**（`WebMvcConfig` 的前缀注册 / `handleAny` 的兜底）比推理快；⇒ 顺带把「B 侧 Go 与 B 侧 Java 自身不一致」记成**继承项**，别当 C 侧漂移去「修」 |
 | **P-USER-05** | **守门脚本的 `ROOT` 有三种形态，只有一种是对的**：`gen-file-tree.py` 与 `check-mapping-coverage.py` = **硬编码主工作区**；`sync-mapping-index.py` = `__file__` 相对（**看着是对的**）⇒ **但它 import 的那个模块里是硬编码** ⇒ ⇒ 它**间接**量的是主工作区 | ⇒ **在 worktree 里跑任何仓内脚本前，先确认它看的是哪棵树**：<br/>① `grep -n "ROOT" tools/<x>.py` ⇒ 直接硬编码 ⇒ 改指向 worktree（**用 `/tmp` 下的副本，不改仓内脚本**）；<br/>② `__file__` 相对 ⇒ **再查它 import 的模块里有没有硬编码**（本轮就踩了这个 ⇒ 「看着对」的也会中招）；<br/>③ ⇒ **绿灯也要做同条件对照**（本轮：基线纯净副本 users C 列 **106/106 且自报一致 ⇒ EXIT=0**；改动后 **109/109 但自报仍 106 ⇒ EXIT=1** ⇒ ⇒ **证明这处漂移是本轮引入的**，不是基线自带的） |
+| **P-USER-06** | **「事务注解挂在 MyBatis-Plus mapper 接口的 `default` 方法上」是本仓最易静默失效的形态**：mapper 是 MyBatis 的 JDK 代理 ⇒ `@Transactional` 能不能生效取决于 ① auto-proxy 是否包住 `FactoryBean` 产出的代理 ② advisor 是否认得 default 方法上的注解 ③ `SqlSessionTemplate` 是否参与进已开事务 —— **三者任一不成立，注解就是装饰品，且零报错** | ⇒ **判据 = 真 DB 约束冲突**（拿 `UNIQUE(history_id)` 让 W3 真失败）⇒ 断言 **W2 的 UPDATE 不留痕**；<br/>⇒ **必须配「同序列成功路径」作非空洞对照**（否则「回滚了」可能只是「压根没写」）；<br/>⇒ **必须做变异测试**（摘掉注解 ⇒ 判据变红）⇒ 否则「跑绿」证不了「期望值对」；<br/>⇒ ⚠️ **Mockito 桩掉 mapper 方法不算数** —— 桩了就连真实 SQL 都不发 ⇒ 证不了回滚 |
+| **P-USER-07** | **默认 `mvn clean verify` 是 fail-fast ⇒ 失败面被截断在第一个模块** ⇒ 拿它做「同条件对照」会得出**错误的结论**（看起来只有 1 个域红，实际有 9 个红） | ⇒ ⇒ **做跨树对照必须加 `-fae`（fail-at-end）** 才能拿到**完整**失败模块集合；<br/>⇒ ⇒ 失败模块集合相同 ⇒ 才是「基线自带」的证据；**集合差一条** ⇒ 那一条正是本轮的贡献（本次：10 → 9，差额 = 本域）；<br/>⇒ ⇒ 根因要**代码级取证**（本轮：逐个 `Application` 查 `static void main`），不能只从报错反推 |
 
 ---
 
-## 11.10 未提交给本人的一句话结论
+## 11.10 一句话结论（本 lane 汇报口径）
 
-**user 子域 48 个主代码文件已全部落地并编译通过，34 例真触发测试（真 Tomcat + 真 gRPC + 真 PostgreSQL）全绿、`skipped=0`，映射表守门 EXIT=0（C 列 109/109、B 列 145/145）；**
+**user 子域 48 个主代码文件已全部落地并编译通过，39 例真触发测试（真 Tomcat + 真 gRPC + 真 PostgreSQL）全绿、`skipped=0`，映射表守门 EXIT=0（C 列 109/109、B 列 145/145）；**
+**全仓 `mvn -o -fae clean verify` 的同条件对照：失败面由基线的 10 个域收敛到 9 个域，差额恰好是本域（基线 10 个 Application 全缺 `main` ⇒ `repackage` 必挂 ⇒ 基线自带，非本轮引入）；**
+**事务边界（D-005 / D-015）已由 `NOT_VERIFIED` 升为 `PASS` —— 用真 UNIQUE 约束冲突证明 W2 的 UPDATE 确实被回滚，并用变异测试证明该判据非空洞；**
 **实现层判定 = PASS；「行为与 B 侧完全等价」这一命题本身 = NOT_VERIFIED（本轮做的是「B 侧源码逐条对照 + C 侧运行验证」，未做双侧活体对拍）；**
 **另有 4 条跨域 FAIL（DRIFT-USER-IMPL-004/005/006/008）分别归收口域（其余 9 域的 `grpc.client:` 空键 ＋ `File_Tree/proto.md` 陈旧 ＋ `gen-file-tree.py` 的写死状态块）与 admin lane（`admin.md:158` 的 C 列悬空指针）—— 本 lane 不越权代改，已逐条登记。**

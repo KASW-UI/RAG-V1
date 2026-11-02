@@ -33,6 +33,16 @@ import java.util.Map;
  * MyBatis-Plus mapper 是接口，由 {@code MybatisAutoConfiguration} 注册的 {@code SqlSessionTemplate}
  * 提供事务管理 ⇒ 本域的 {@code AvatarTransactionWiringTest} 用<b>真 PostgreSQL</b> 验证
  * 「4 步原子」在中途失败时整体回滚（不是靠 Mockito 桩）。
+ *
+ * <p>🔴 <b>该断言的实测形态（2026-11-02 · users-user lane）</b>：注解写在<b>接口的 {@code default} 方法</b>上
+ * ⇒ 是本仓<b>最易静默失效</b>的形态（三处前提任一不成立，注解就是装饰品且零报错）⇒ ⇒ 判据 =
+ * <ul>
+ *   <li>用 {@code history_id} 的 <b>UNIQUE 约束</b>让 W3 的 INSERT <b>真失败</b>（真实 {@code DuplicateKeyException}）</li>
+ *   <li>断言 <b>W2 的 UPDATE 不留痕</b>（旧 history 仍是 {@code is_current=true}）</li>
+ *   <li>配<b>同序列成功路径</b>作非空洞对照 + <b>变异实测</b>（摘掉注解 ⇒ 判据变红）</li>
+ * </ul>
+ * ⇒ 证据见 {@code docs/DRIFT/users/verification-users-user-2026-11-02.md} §11.7 / §11.8 ·
+ * 方法论见 {@code docs/Pitfalls/users/_user-domain-pitfalls.md} P-USER-06。
  */
 @Mapper
 public interface UserAvatarHistoryMapper extends BaseMapper<UserAvatarHistoryEntity> {

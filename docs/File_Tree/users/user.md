@@ -128,6 +128,8 @@
 │       │               │   └── UserApiPropertiesSecretGuardTest.java    # 🔴 密钥 fail-closed 守门 —— 缺变量 / 空串 / 未解析占位符，一律启动失败。
 │       │               ├── grpc/
 │       │               │   └── UserGrpcServiceContractTest.java    # UserService gRPC 契约（真 gRPC server · 真 proto 编解码 · 真 starter 分发）。
+│       │               ├── mapper/
+│       │               │   └── AvatarTransactionWiringTest.java    # 「4 步 / 5 步原子」的事务边界真实测 —— 把 D-005 / D-015 从「源码上看着像」推到
 │       │               ├── support/
 │       │               │   └── TestPostgres.java    # 测试用真 PostgreSQL（进程内单例容器）。
 │       │               ├── wiring/
