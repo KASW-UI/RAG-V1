@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rag.admin.AdminServiceApplication;
 import com.rag.admin.controller.AdminController;
 import com.rag.admin.interceptor.AdminJwtAuthInterceptor;
+import com.rag.common.security.JwtUtil;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +32,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -167,7 +169,22 @@ class AdminHttpContractRealTomcatTest {
         }
     }
 
-    /** 用默认 admin 账号登录，拿到 JWT。 */
+    /**
+     * 用默认 admin 账号登录，拿到 JWT。
+     *
+     * <p><b>🔴 为什么登录后必须清掉同名黑名单（2026-11-02 · 实测踩坑，见 {@code docs/Pitfalls/} P-18）</b>：
+     * <ul>
+     *   <li>JWT 载荷 = {@code {uid, iat, exp}} ⇒ <b>同密钥 + 同 uid + 同一秒 ⇒ token 逐字节相同</b>
+     *       （本夹具每次都用默认 admin ⇒ uid 固定 ⇒ 唯一的变量就是 {@code iat}）；</li>
+     *   <li>而 {@link #blacklistedTokenIs401AndUsesAdminScopedKey()} 会把
+     *       {@code admin:jwt_blacklist:<token>} 写进 Redis（<b>无 TTL</b>）⇒
+     *       ⇒ <b>同一秒内</b>后续用例再登录，拿到的<b>就是那个已被拉黑的 token</b>
+     *       ⇒ ⇒ 后续用例莫名 401（实测：{@code protectedPathWithValidTokenIs200}
+     *       「期望 200 实得 401」）⇒ ⇒ **与执行顺序强相关的不稳定失败**。</li>
+     *   <li>⇒ 这里登录后立即删掉同名黑名单 ⇒ <b>用例与执行顺序解耦</b>
+     *       （被拉黑这件事由黑名单用例<b>自己</b>在登录<b>之后</b>制造 ⇒ 不受影响）。</li>
+     * </ul>
+     */
     private String login() {
         ResponseEntity<String> resp = rest.postForEntity(
                 "/admin/v1/login", json("{\"username\":\"admin\",\"password\":\"admin\"}"), String.class);
@@ -176,6 +193,8 @@ class AdminHttpContractRealTomcatTest {
         assertNotNull(data, "登录成功时 data 不得为 null");
         String token = data.get("token").asText();
         assertFalse(token.isEmpty(), "登录成功时 token 不得为空串");
+        // 清掉同名黑名单残留（JWT 确定性 ⇒ 同秒同 uid ⇒ token 字符串相同 ⇒ 会串味）
+        redis.delete("admin:jwt_blacklist:" + token);
         return token;
     }
 
@@ -352,6 +371,23 @@ class AdminHttpContractRealTomcatTest {
     }
 
     // ============== 7. 黑名单 ==============
+
+    @Test
+    @DisplayName("JWT 同 (secret, iat, expire, uid) ⇒ 逐字节相同（黑名单串味的根因 · P-18）")
+    void jwtIsDeterministicForSameClaims() {
+        // ⚠️ 这条**不是**在测「本类要稳定」—— 它把 P-18 的**机制**钉死：
+        //   JWT 载荷 = {uid, iat, exp} ⇒ 同样的 (secret, iat, expire, uid) ⇒ **同一个字符串**。
+        // ⇒ 本类每次都用默认 admin 登录 ⇒ uid 固定 ⇒ 唯一的变量是 iat（秒级）
+        // ⇒ ⇒ **同一秒内**两次登录 ⇒ token 相同 ⇒ 黑名单一旦写入就会「误伤」别的用例。
+        // 变异检验：若 JwtUtil 哪天加了随机 nonce（iat/jti 随机化），本断言立刻转红。
+        long iat = 1_700_000_000L;
+        String a = JwtUtil.getToken("deterministic-secret", iat, 2592000L, 12345L);
+        String b = JwtUtil.getToken("deterministic-secret", iat, 2592000L, 12345L);
+        assertEquals(a, b, "同 (secret, iat, expire, uid) 必须签出逐字节相同的 token");
+        // 反面：iat 变了 ⇒ 必须不同（否则连「同秒碰撞」都不成立 ⇒ 隔离手段就选错了）
+        assertNotEquals(a, JwtUtil.getToken("deterministic-secret", iat + 1, 2592000L, 12345L),
+                "iat 变化必须签出不同的 token");
+    }
 
     @Test
     @DisplayName("token 进黑名单 ⇒ 401；且黑名单 key 前缀是 admin:（不与 user 域混用）")

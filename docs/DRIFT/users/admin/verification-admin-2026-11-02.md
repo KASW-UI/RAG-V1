@@ -386,12 +386,12 @@
 
 ## 七、测试资产与证据强度
 
-### 7.1 本域测试（**3 个类 · 40 例**）
+### 7.1 本域测试（**3 个类 · 41 例**）
 
 | 测试类 | 例数 | 触发层级 | 覆盖 |
 |---|---|---|---|
 | `domain/service/AdminDomainServiceRealPgTest` | **20** | **E-3**（真 PG `postgres:16-alpine` + 真 Redis `redis:7-alpine` + **真 `@Transactional` 代理**） | 登录 3 态 · 邀请码一次性 · username 查重**不消耗邀请码** · GORM 的 LIMIT/OFFSET 静默抑制 · `extra_info` 装 U+0000 · 黑名单 key 前缀 · 4 步事务回滚 |
-| `http/AdminHttpContractRealTomcatTest` | **16** | **E-3**（**真 Tomcat** · `RANDOM_PORT` · 绝不用 MockMvc） | 13 端点全 POST（GET 全 405）· public 放行 · protected 401 三态 · **200 信封恰好三键** · 400 + text/plain + nosniff + 尾随换行 · 415⇒400 · **未知路径 401/500 双态**（对齐 B 侧活体）· 黑名单 401 + `admin:` 前缀隔离 · **鉴权路径前缀 ↔ 控制器映射守卫** |
+| `http/AdminHttpContractRealTomcatTest` | **17** | **E-3**（**真 Tomcat** · `RANDOM_PORT` · 绝不用 MockMvc） | 13 端点全 POST（GET 全 405）· public 放行 · protected 401 三态 · **200 信封恰好三键** · 400 + text/plain + nosniff + 尾随换行 · 415⇒400 · **未知路径 401/500 双态**（对齐 B 侧活体）· 黑名单 401 + `admin:` 前缀隔离 · **鉴权路径前缀 ↔ 控制器映射守卫** |
 | `AdminServiceApplicationTests` | **4** | **E-3**（**真上下文启动**：Tomcat + gRPC server + PG + Redis） | 4 张表建出来 · 默认 admin 密码是**硬编码 `admin`** · gRPC server 与 Tomcat 同进程 · **Nacos 注册面：自动注册被关掉、只注册 gRPC 端口**（§5-⑩） |
 
 > ⚠️ **禁用清单**：`@EnabledIfDockerAvailable` **未使用**（AGENTS.md §五.8 硬规则 ③）⇒ Docker 不可用时**必须红**，不许静默跳过。
@@ -428,12 +428,29 @@
 |---|---|---|---|---|
 | `common` | `Tests run: 224` | 0 | 0 | **0** |
 | `users-common` | `Tests run: 46` | 0 | 0 | **0** |
-| **`admin-service`（本域）** | **`Tests run: 40`** | **0** | **0** | **0** |
+| **`admin-service`（本域）** | **`Tests run: 41`** | **0** | **0** | **0** |
 
 - **BUILD SUCCESS**（EXIT=0）· `spring-boot:3.5.11:repackage` **通过**
   （`Replacing main artifact …admin-service-1.0-SNAPSHOT.jar with repackaged archive`）
   ⇒ ⇒ 本域**能打成可执行 jar**，且**不会**重蹈那 8 个空壳域 `Unable to find main class` 的覆辙。
 - ⚠️ **全量 16 模块的 `mvn -o -T1C clean verify` 仍会红，但红因不在本域** ⇒ 见 §8.2 第 6 条。
+
+### 7.5 🔴 一次**不稳定失败**的定位与修复（2026-11-02 · E-4 第二轮收尾时踩到）
+
+> **这一节记录一次真实的过程留痕**：同一份代码，**上一轮 `clean verify` 16/16 全绿、下一轮红 1 例**
+> ⇒ ⇒ 若只记「修好了」，就会把「偶发」当成「已解决」⇒ ⇒ 下面是**定位链**。
+
+| 步骤 | 读数 | 判读 |
+|---|---|---|
+| ① 失败用例 | `AdminHttpContractRealTomcatTest#protectedPathWithValidTokenIs200`：**期望 200 实得 401** | ⚠️ **不是**验签失败 ⇒ 日志里的真线索是 `AdminJwtAuthInterceptor : admin token in blacklist`（**黑名单**命中，不是 `admin JWT verify failed`） |
+| ② 同条件复跑 | 单独跑该类 **3 轮 ⇒ 17/17 全绿 ×3**；模块级 `clean verify` ⇒ **BUILD SUCCESS · 41 例 · Skipped 0** | ⇒ **时序相关**，不是稳定缺陷 |
+| ③ 机制还原 | JWT 载荷 = `{uid, iat, exp}` ⇒ **同密钥 + 同 uid + 同一秒 ⇒ token 逐字节相同**；本类夹具**每次都用默认 admin** ⇒ uid 固定 ⇒ 唯一变量是 `iat`（秒级） | ⇒ 黑名单用例写入的 `admin:jwt_blacklist:<token>`（**无 TTL**）会**误伤同一秒内**后续用例的 token |
+| ④ 修法 | ① **夹具层**：登录成功后立即 `redis.delete("admin:jwt_blacklist:" + token)` ⇒ 用例与执行顺序解耦；② **机制层**：新增 `jwtIsDeterministicForSameClaims`（同参数 ⇒ 逐字节相同；`iat+1` ⇒ 必须不同）⇒ 把机制钉成**可执行断言**（变异检验：JWT 若引入随机 nonce ⇒ 该断言立刻变红） | ✅ 已修 |
+| ⑤ 另一处同类风险 | `AdminDomainServiceRealPgTest` 的黑名单用例用**假 token**（不参与签发）⇒ **不受影响**（已排查，不是漏修） | ✅ |
+
+⇒ **登记**：`docs/Pitfalls/_cross/P-19-JWT确定性导致黑名单串味到别的用例.md`（**索引由主会话统一更新**）。
+⇒ ⚠️ **可复用的判据**：**「偶发 401」先看日志是 `in blacklist` 还是 `verify failed`** ——
+前者是**夹具隔离**问题，后者才是**验签**问题；两者修法完全不同。
 
 ---
 
@@ -466,7 +483,7 @@
 | **FRAMEWORK_DIFFERENCE** | **2** | ②（3 个空 struct 端点的非 JSON content-type）· ①（gRPC 端口，**部署面**） |
 | **INTENTIONALLY_CHANGED** | **2** | ③（D-01 文本内容 · 已登记降级）· ④（`extra_info` 继承 B 侧） |
 | **BLOCKED** | **0** | — |
-| **（另有踩坑登记）** | **5** | P-13 ~ P-17（`docs/Pitfalls/_cross/`，索引待主会话更新） |
+| **（另有踩坑登记）** | **6** | P-13 ~ P-17 ＋ **P-19**（`docs/Pitfalls/_cross/`，索引待主会话更新）|
 
 ### 8.1 本轮关键数字（**核对日期 2026-11-02**）
 
@@ -474,12 +491,12 @@
 |---|---|
 | C 侧主代码文件 | **58**（**0 空壳**；⚠️ 映射表原写 56 ⇒ 差额 2 = 验签 Filter + Verifier，§二 A-21） |
 | C 侧主代码行数 | **7,036**（§5-⑩ 修完后复测；原 7,030） |
-| 测试文件 / 例数 | **3 个 / 40 例**（`Skipped: 0`）＋ **2 个对拍探针**（仓内工具，非 JUnit） |
+| 测试文件 / 例数 | **3 个 / 41 例**（`Skipped: 0`）＋ **2 个对拍探针**（仓内工具，非 JUnit） |
 | 本轮修掉的漂移 | **9 条**（4 处 wire 错误码 + 死代码 + 起不来 + 空 body 500 + 415 vs 400 + 未知路径 401 + 未知路径 500 + DTO 改名 + **Nacos 同名双实例**） |
 | 独立词 `Go` 残留 | **0**（`\bGo\b` 全仓扫描 = 0） |
 | 未验证项 | **2**（§7.3 · gRPC 面已由 E-4 解除） |
 | **E-4 双侧活体对拍** | **已完成（两轮）**（§九）· 第一轮：HTTP 28 用例 **0 行为差异** · gRPC 13 RPC **全一致** · DB/Redis 状态**一致**；第二轮：7 判定项 **5 一致 · 2 不一致**（并发 / 事务回滚 / Redis 停 **一致**；PG 停 + 超时 **不一致** ⇒ §9.10.3 移交 `global`） |
-| 构建 | `mvn -o -pl service/users/admin -am clean verify` ⇒ **BUILD SUCCESS**（admin 40 / common 224 / users-common 46，**全部 Skipped: 0**）⇒ §7.4 |
+| 构建 | `mvn -o -pl service/users/admin -am clean verify` ⇒ **BUILD SUCCESS**（admin 41 / common 224 / users-common 46，**全部 Skipped: 0**）⇒ §7.4 |
 
 ### 8.2 未闭合项（**移交主会话**）
 
@@ -512,6 +529,9 @@
    ⇒ 按 AGENTS.md §五.3「跨域 + `common/**` 的搁置漂移全归 `global` 收口域」⇒
    **本 lane 不改 `common/`** ⇒ 复现命令与验收判据见 §9.10.3。
    ⇒ ⚠️ **影响面不止 admin 域**：凡 D2 域内直连的域都同一条 ⇒ 收口域修复后可**全域复用**该回归命令。
+8. **`docs/Pitfalls/_INDEX.md` 的 P-19 行** —— 本轮新增 **P-19**（JWT 确定性 ⇒ 黑名单串味 ⇒ 用例不稳定），
+   **文件已落** `docs/Pitfalls/_cross/P-19-JWT确定性导致黑名单串味到别的用例.md`，
+   但 **`_INDEX.md` 未改**（索引由主会话统一更新）⇒ 详见 §7.5。
 
 ---
 
