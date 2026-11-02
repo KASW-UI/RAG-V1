@@ -111,6 +111,53 @@ public class ObservabilityProperties {
         this.rpcTimeout = rpcTimeout;
     }
 
+    /**
+     * <b>内层预算</b>（= B 侧「gRPC 中间件那一层」的超时）—— <b>全仓唯一口径</b>。
+     *
+     * <p><b>为什么需要它（B 出处 · 逐层对齐）</b>：
+     * <pre>
+     *   B 侧 admin-api（HTTP，rest.RestConf.Timeout = 3s）
+     *      → gRPC admin-rpc（zrpc.RpcServerConf.Timeout = 2s）   ← **这一层就是「内层」**
+     *         → SQL（继承 gRPC 的 deadline ⇒ DeadlineState ⇒ setQueryTimeout）
+     * </pre>
+     * ⇒ B 侧真正给 SQL 兜底的是<b>内层那个 2s</b>（不是 HTTP 的 3s）
+     * ⇒ 而 RAG-V1 的 D2「域内直连」把 DB 调用搬进了 HTTP 边界
+     * ⇒ ⇒ <b>内层这一层在 C 侧缺位</b> ⇒ 「PG 不可用 / 请求超时」时两侧响应面不一致
+     * （B = {@code 200 + 信封 1015} ↔ C = {@code 503 + 裸文本 "Request Timeout"}）
+     * ⇒ ⇒ 本方法把<b>内层预算</b>重新算出来，供共享层两处使用：
+     * <ol>
+     *   <li>{@link com.rag.common.observability.HttpMiddleware} ⇒ 把 deadline 绑到
+     *       {@code DeadlineState}（⇒ {@code DeadlineQueryTimeoutInjector} 给每条 SQL 设 query timeout）；</li>
+     *   <li>{@code DeadlineBoundedConnectionTimeout} ⇒ 把连接池的「取连接超时」收到同一预算
+     *       （⇒ PG 不可用时不再干等 30s）。</li>
+     * </ol>
+     *
+     * <p><b>算法 = min(http-timeout, rpc-timeout)</b>，与 B 侧 {@code context.WithTimeout} 的
+     * <b>min 语义</b>一致（B 的 ctx deadline 3s 与 gRPC deadline 2s 取更早者 ⇒ 2s）。
+     * <p>⚠️ <b>null / 零值 = 不限时</b>（与 B 的 {@code TimeoutFromMillis(0) → 0} 一致）
+     * ⇒ ⇒ 两项都无限时 ⇒ 返回 {@code null}（= 无内层预算 ⇒ 调用方<b>不绑</b> deadline）。
+     *
+     * <p>⚠️ <b>为什么不能只取 rpc-timeout</b>：若 {@code rpc-timeout > http-timeout}
+     * （例如 5s vs 3s）⇒ B 侧真正生效的是 HTTP 的 3s（ctx 先到）
+     * ⇒ ⇒ C 侧也必须取 3s ⇒ 否则会出现「内层比外层还晚」⇒ 响应面反而更不像 B。
+     */
+    public Duration resolveInnerBudget() {
+        Duration http = this.httpTimeout;
+        Duration rpc = this.rpcTimeout;
+        boolean httpSet = http != null && !http.isZero() && !http.isNegative();
+        boolean rpcSet = rpc != null && !rpc.isZero() && !rpc.isNegative();
+        if (!httpSet && !rpcSet) {
+            return null;
+        }
+        if (!httpSet) {
+            return rpc;
+        }
+        if (!rpcSet) {
+            return http;
+        }
+        return rpc.compareTo(http) < 0 ? rpc : http;
+    }
+
     // ── B 侧 `Telemetry` 段的 3 个字段：**已移出本类**（2026-11-02 批次 F） ──
     //
     // ⚠️ **为什么移出**：B 的 `Telemetry` 段（Name / Endpoint / Sampler / Batcher）原先在本类

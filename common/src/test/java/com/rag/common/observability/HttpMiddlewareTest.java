@@ -307,6 +307,44 @@ class HttpMiddlewareTest {
         assertThat(response.getContentAsString()).contains("\"code\":200");
     }
 
+    // ── 内层预算（B 侧 gRPC 中间件那一层）· 入向 deadline 载体 ──────────────
+
+    /**
+     * 🔴 <b>HTTP 路径必须把「内层预算」绑到 {@link DeadlineState}</b> ——
+     * 这是 D2「域内直连」之后 <b>SQL 不被取消</b> 的根因。
+     *
+     * <p>⚠️ <b>为什么这条断言要写「在 worker 线程上」</b>：
+     * 业务跑在 {@code obs-http-worker} 上 ⇒ 容器线程上的 ThreadLocal 对 worker 不可见
+     * ⇒ ⇒ 绑在容器线程上 = 没绑 ⇒ ⇒ 断言必须在<b>业务体内部</b>读 {@code DeadlineState}。
+     */
+    @Test
+    @DisplayName("🔴 HTTP 路径 ⇒ 业务执行期间 DeadlineState 已绑定内层预算（min(http,rpc)）")
+    void httpPathBindsInnerDeadlineOnWorkerThread() throws Exception {
+        ObservabilityProperties properties = new ObservabilityProperties();
+        properties.setHttpTimeout(Duration.ofSeconds(3));
+        properties.setRpcTimeout(Duration.ofSeconds(2));
+        HttpMiddleware middleware = new HttpMiddleware(provider(registry(new AtomicReference<>())),
+                properties, "test-service");
+
+        AtomicReference<Long> observed = new AtomicReference<>();
+        AtomicReference<String> threadName = new AtomicReference<>();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/article");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        middleware.doFilter(request, response, (req, res) -> {
+            threadName.set(Thread.currentThread().getName());
+            observed.set(DeadlineState.remainingMillis());
+        });
+
+        assertThat(observed.get())
+                .as("业务体内必须读得到剩余预算（= 2s 附近）⇒ 若读不到说明入向载体没绑")
+                .isNotNull()
+                .isBetween(1L, 2_000L);
+        assertThat(threadName.get())
+                .as("业务跑在 worker 线程上（不是容器线程）⇒ 断言同时钉住「绑在 worker 上」")
+                .contains("obs-http-worker");
+    }
+
     // ── 测试替身 ────────────────────────────────────────────────────────
 
     private static HttpMiddleware middleware(ObservationRegistry registry, Duration httpTimeout) {

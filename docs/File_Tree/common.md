@@ -125,10 +125,15 @@
 │   │   │               │   ├── RpcStatInterceptor.java    # Stat 层 —— 对齐 B 侧 的 {@code UnaryStatInterceptor}：
 │   │   │               │   └── RpcStatMetrics.java    # B 侧 {@code core/stat} 的 Java 复刻 —— 进程内 RPC 耗时聚合器 ＋
 │   │   │               ├── persistence/
+│   │   │               │   ├── DeadlineBoundedConnectionTimeout.java    # 把连接池的「取连接超时」收到内层预算（B 侧 gRPC 中间件那一层的超时）。
 │   │   │               │   ├── DeadlineQueryTimeoutInjector.java    # B-1 缓解（第一半）：把当前 rpc 的 deadline 落到每条 SQL 上，让 SQL 的取消时刻 == deadline 时刻。
+│   │   │               │   ├── DeadlineTranslatingDataSource.java    # 把「取连接超时」翻成 gRPC {@code DEADLINE_EXCEEDED}（⇒ 域侧落业务码 1015，不是 DB 故障 5001）。
 │   │   │               │   ├── JsonTextTypeHandler.java    # PostgreSQL {@code text} 列 ↔ {@code Map} 的 TypeHandler。
 │   │   │               │   ├── JsonbTypeHandler.java    # jsonb 列 ↔ String 的 TypeHandler —— 对应 B 侧 端 PG 的 {@code jsonb} 列。
-│   │   │               │   └── SqlTimeoutStatusTranslator.java    # B-1 缓解（第二半）：把「SQL 被 deadline 取消」翻译成 gRPC 的 {@code DEADLINE_EXCEEDED}。
+│   │   │               │   ├── SqlTimeoutStatusTranslator.java    # B-1 缓解（第二半）：把「SQL 被 deadline 取消」翻译成 gRPC 的 {@code DEADLINE_EXCEEDED}。
+│   │   │               │   ├── StatusAwareSqlSession.java    # 把「持久层翻译出来的 {@code DEADLINE_EXCEEDED}」从 MyBatis 的包装层里解包出来，
+│   │   │               │   ├── StatusAwareSqlSessionFactory.java    # 把 {@link SqlSessionFactory} 产出的 session 换成 {@link StatusAwareSqlSession}
+│   │   │               │   └── StatusAwareSqlSessionFactoryPostProcessor.java    # 把容器里的 {@link SqlSessionFactory} bean 换成 {@link StatusAwareSqlSessionFactory}
 │   │   │               ├── protection/
 │   │   │               │   ├── AdaptiveShedder.java    # B 侧 {@code core/load/adaptiveshedder.go} 的 Java 复刻 —— CPU 自适应降载的判据部分。
 │   │   │               │   ├── ClientCircuitGateInterceptor.java    # L4 idiomatization：gRPC client 侧按方法的熔断，对齐 B 侧
@@ -219,6 +224,7 @@
 │                       │   ├── RpcHandleRunnerTest.java    # §3.3「机制可证」守门：非 gRPC 路径的业务调用真的带超时控制 + 观测分类。
 │                       │   └── RpcRecoverInterceptorTest.java    # §3.3「机制可证」守门：gRPC handler panic ⇒ {@code INTERNAL + "panic: "}。
 │                       ├── persistence/
+│                       │   ├── DeadlineBudgetPersistencePgTest.java    # 🔴 「DB 超时 ⇒ 1015（而不是 5001）」这条链的可判别守门。
 │                       │   └── JsonTypeHandlerPgTest.java    # 🔴 **两个 TypeHandler 的真 PostgreSQL 守门** ——
 │                       ├── protection/
 │                       │   ├── MaxConnsFilterTest.java    # §3.3「机制可证」守门：并发连接闸门真的在超限时立刻 503（而不是排队）。

@@ -569,7 +569,7 @@
 |---|---|---|
 | **PASS**（在该证据强度下一致） | **29** | A-01 ~ A-25 + **A-29** + **A-30**（E-4 gRPC 面 + 路由面）＋ **A-14**（span 面本轮由移植的 `AdminSpanWiringTest` 补齐 E-3 证据）；不含 A-05 的未验证部分 |
 | **FAIL** | **0** | ✅ 本轮发现的 **10 条**漂移**全部已修**（§五）⚠️ 其中 §5-⑥ / §5-⑦ 两条**修法被 E-4 推翻并重做**（§9.4） |
-| **⛔ 未修（跨域 · 归 `global` 收口域）** | **1** | §9.10.3 —— **PG 不可用 / 请求超时**时两侧响应面不一致（B `200+1015 信封` ↔ C `503+裸文本`），**且 C 侧超时后副作用已落库**；根因在**共享层**（HTTP 路径没绑 `DeadlineState` ⇒ SQL 不被取消）⇒ 按 AGENTS.md §五.3 归 `global` 收口域 ⇒ **本域不改 `common/`** |
+| **⛔ 未修（跨域 · 归 `global` 收口域）** | **0** | ✅ **2026-11-03 已销账** —— §9.10.3（PG 不可用 / 请求超时 ⇒ 两侧响应面不一致 ＋ **C 侧超时后副作用已落库**）**根因在共享层**（HTTP 路径没绑 `DeadlineState` ⇒ SQL 不被取消 ＋ MyBatis 的 `PersistenceException` 包装把 status 吃掉）⇒ **已由 `global` 收口域在 `common/` 修完**（**本域一行未改**）⇒ ⇒ **复测**：S3b = `200 + 信封 1015` @ 2.05s · S4 = `200 + 信封 1015` @ 2.04s ＋ `admin_admin` 里 `r2%to` **0 行** ⇒ **两侧一致** |
 | **NOT_IMPLEMENTED** | **0** | ✅ 58 个 C 文件**全部落地，0 空壳** |
 | **NOT_VERIFIED** | **1** | V-3（**真 Nacos 的注册结果**）⇒ **不计入 PASS**<br>✅ **V-1（gRPC 面）已由 E-4 解除**（§九 · 13/13 一致）<br>✅ **V-2（span 名与 audit 属性）已由本轮移植的 `AdminSpanWiringTest` 闭合**（真 OTel exporter ⇒ span 真被导出） |
 | **FRAMEWORK_DIFFERENCE** | **2** | ②（3 个空 struct 端点的非 JSON content-type）· ①（gRPC 端口，**部署面**） |
@@ -627,12 +627,13 @@
    ⇒ 同条件对照：本工作树对 `service/` 除 `admin/` 外**零改动**（`git status` 实证）⇒ ⇒ **主干自带**，非本轮引入。
    ⇒ ⇒ 本域的收口口径用 **`mvn -o -pl service/users/admin -am clean verify`**（含 `repackage`）
    ⇒ ⇒ 待那 8 个域落地（或其 `pom` 改掉 `repackage`）后，全量 build 自然转绿。
-7. **🔴 §9.10.3 的超时 / PG-不可用差异 —— 归 `global` 收口域** —— 根因在**共享层**：
+7. **✅ §9.10.3 的超时 / PG-不可用差异 —— 已由 `global` 收口域销账（2026-11-03）** —— 根因在**共享层**：
    `DeadlineState` 只在 **gRPC 服务端路径**绑定（`common/.../RpcHandleRunner.java:121`），
    HTTP 路径没绑 ⇒ ⇒ D2 域内直连的 **SQL 永不被取消** ⇒ 超时后事务照常提交（**副作用已落库**）。
    ⇒ 按 AGENTS.md §五.3「跨域 + `common/**` 的搁置漂移全归 `global` 收口域」⇒
-   **本 lane 不改 `common/`** ⇒ 复现命令与验收判据见 §9.10.3。
-   ⇒ ⚠️ **影响面不止 admin 域**：凡 D2 域内直连的域都同一条 ⇒ 收口域修复后可**全域复用**该回归命令。
+   **本 lane 未改 `common/`** ⇒ ⇒ 收口域已在共享层修完（4 件事，见 §9.10.3 顶部的销账块）
+   ⇒ ⇒ **复测一致**：S3b `200+1015` @ 2.05s · S4 `200+1015` @ 2.04s ＋ **副作用 0 行**。
+   ⇒ ⚠️ **影响面不止 admin 域**：凡 D2 域内直连的域都同一条 ⇒ **该修复可被全域复用**。
 8. **`docs/Pitfalls/_INDEX.md` 的 P-19 行** —— 本轮新增 **P-19**（JWT 确定性 ⇒ 同秒同账号 token 逐字节相同
    ⇒ 黑名单「串味」⇒ 用例与执行顺序强相关的不稳定失败），**文件已落**
    `docs/Pitfalls/_cross/P-19-JWT确定性导致黑名单串味到别的用例.md`，但 **`_INDEX.md` 未改**
@@ -810,8 +811,9 @@ E-4 推翻 §5-⑥/§5-⑦ 之后，域内**注释层**也必须跟着改 ——
 | **S2 事务回滚 · 响应面** | ✅ 一致 | 两侧都是 `HTTP 200 + 信封 code=1001「用户名已存在」` |
 | **S2 事务回滚 · 事务原子性** | ✅ 一致 | 两侧都是 **新 admin 行数 = 0** ＋ **邀请码 `used_at` 仍为 NULL** ⇒ **4 步事务整体回滚**已直接证明 |
 | **S3a Redis 停 · 响应面** | ✅ 一致 | 两侧都是 `HTTP 200 + code=200` ⇒ **黑名单 fail-open** 两侧同形 |
-| **S3b PG 停 · 响应面** | ❌ **不一致** | **B = `200 + 信封 1015「服务繁忙」`** ↔ **C = `503 + 裸文本 "Request Timeout\n"`** |
-| **S4 超时（持锁）· 响应面** | ❌ **不一致** | **B = `200 + 信封 1015`，2.03s** ↔ **C = `503 + 裸文本`，3.03s** |
+| **S3b PG 停 · 响应面** | ✅ **一致**（**2026-11-03 · 共享层收口后复测**） | **B = `200 + 信封 1015「服务繁忙」`** ↔ **C = `200 + 信封 1015「服务繁忙」`，2.05s**（修前 C = `503 + 裸文本 "Request Timeout\n"` @ 3.03s）|
+| **S4 超时（持锁）· 响应面** | ✅ **一致**（**2026-11-03 · 共享层收口后复测**） | **B = `200 + 信封 1015`，2.03s** ↔ **C = `200 + 信封 1015`，2.04s**（修前 C = `503 + 裸文本`，3.03s）|
+| **S4 超时（持锁）· 副作用** | ✅ **一致**（**2026-11-03**） | **B = `admin_admin` 里 `r2%to` 0 行** ↔ **C = `admin_admin` 里 `r2%to` 0 行**（修前 C = **1 行** ＋ 邀请码已被消费）|
 
 #### 9.10.2 S2 的注入设计（为什么它能**直接**证明回滚）
 
@@ -824,6 +826,38 @@ E-4 推翻 §5-⑥/§5-⑦ 之后，域内**注释层**也必须跟着改 ——
 - **顺带确认**：唯一约束冲突在两侧都被映射成 **1001「用户名已存在」**（语义上略粗，但**两侧同形** ⇒ 不是漂移）。
 
 #### 9.10.3 🔴 两条真实差异（S3b / S4）：**同一个根因**，落点在**共享层**
+
+> ✅✅ **2026-11-03 已销账（`global` 收口域在共享层修完）**
+>
+> **修法落在 `common/`（5 个文件 + 3 个新类）**，本 admin 域**一行未改**（符合 §五.3）。
+> **复测读数（2026-11-03 · C 侧实测 · B 侧读数取本表 §9.10.1 已记录的活体对拍值）**：
+>
+> | 场景 | 修前（C） | 修后（C） | B 侧（已记录） | 判定 |
+> |---|---|---|---|---|
+> | S3b PG 停 | `503 + 裸文本 "Request Timeout\n"` @ 3.03s | **`200 + 信封 1015`，2.05s** | `200 + 信封 1015` @ 2.03s | ✅ 一致 |
+> | S4 持锁 | `503 + 裸文本`，3.03s ＋ **`admin_admin` 1 行**（副作用已落库） | **`200 + 信封 1015`，2.04s ＋ `admin_admin` 0 行** | `200 + 信封 1015` @ 2.03s ＋ 0 行 | ✅ 一致 |
+>
+> **共享层改了什么（4 件事，缺一不可）**：
+> 1. **`HttpMiddleware` 在 worker 线程上绑入向 `DeadlineState`**（绝对时刻 = 请求开始 + 内层预算 ⇒ 排队时间也计入）
+>    ⇒ ⇒ `DeadlineQueryTimeoutInjector` 终于拿得到预算 ⇒ **SQL 会被 CancelRequest** ⇒ 事务回滚（**副作用消失**）。
+> 2. **新增内层预算口径** `ObservabilityProperties.resolveInnerBudget()` = **`min(http-timeout, rpc-timeout)`**
+>    （= B 侧 ctx 3s 与 gRPC 2s 的 **min 语义** ⇒ 2s）⇒ ⇒ 必须**严格早于** HTTP 的 3s ⇒ 才不会与中间件的 503 面撞同一刻。
+> 3. **`DeadlineBoundedConnectionTimeout`（新）**：把 Hikari 的 `connectionTimeout` **只收紧不放宽**地收到内层预算
+>    ⇒ ⇒ **PG 不可用时不再干等 30s**（`DeadlineQueryTimeoutInjector` 只管「已拿到连接上的语句」，管不到「取连接」）。
+> 4. **`DeadlineTranslatingDataSource`（新）** ＋ **`StatusAwareSqlSession`（新）** ＋ **`StatusAwareSqlSessionFactory`（新）**：
+>    把「取连接超时」与「SQL 被取消（57014）」都翻成 `StatusRuntimeException(DEADLINE_EXCEEDED)`，
+>    并**解掉 MyBatis 的 `PersistenceException` 包装** ⇒ ⇒ 域层 `catch (StatusRuntimeException e) { throw e; }` 放行它
+>    ⇒ ⇒ api 层 `mapRPCStatusToCode` 的 `default` 分支 ⇒ **1015**（**共享层不硬编码 1015** · §八 错误码逐域隔离）。
+>    ⚠️ **顺带修掉一个此前从未被发现的老洞**：`SqlTimeoutStatusTranslator` 的 `@Intercepts` **漏签 `Executor.queryCursor`**
+>    ⇒ ⇒ MP 的 `BaseMapper.selectOne(Wrapper, boolean)`（游标路径）**完全不经过翻译器** ⇒ ⇒ 57014 原样冒到域层 ⇒ 5001。
+>
+> **复现命令（收口域回归用）**：
+> ```bash
+> C_BASE=http://127.0.0.1:8889 \
+>   C_PSQL="postgresql://sea:<口令>@127.0.0.1:49432/admin_probe" \
+>   python3 tools/difftest/parity_admin_c_s4.py
+> ```
+> ⇒ 脚本会**先跑 S4（持锁）**，并**直接核对 `admin_admin` 里 `r2%to` 的行数** ⇒ 副作用不再是「另查一次」。
 
 **症状**：PG 不可用、或请求被外部持锁卡住时 ——
 

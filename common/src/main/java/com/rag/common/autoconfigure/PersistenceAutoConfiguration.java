@@ -1,7 +1,12 @@
 package com.rag.common.autoconfigure;
 
+import com.rag.common.observability.ObservabilityProperties;
+import com.rag.common.persistence.DeadlineBoundedConnectionTimeout;
 import com.rag.common.persistence.DeadlineQueryTimeoutInjector;
 import com.rag.common.persistence.SqlTimeoutStatusTranslator;
+import com.rag.common.persistence.StatusAwareSqlSessionFactoryPostProcessor;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -98,5 +103,58 @@ public class PersistenceAutoConfiguration {
     @ConditionalOnMissingBean
     public SqlTimeoutStatusTranslator sqlTimeoutStatusTranslator() {
         return new SqlTimeoutStatusTranslator();
+    }
+
+    /**
+     * 把连接池的「取连接超时」收到<b>内层预算</b>（B 侧 gRPC 中间件那一层）。
+     *
+     * <p><b>为什么必须与前两个成对（三缺一都修不好一半）</b>：
+     * <ul>
+     *   <li>只有 {@link DeadlineQueryTimeoutInjector} ⇒ 卡在<b>执行</b>阶段的查询会被取消
+     *       ⇒ 但卡在<b>取连接</b>阶段（PG 不可用 / 池被占满）时它根本不会被触发；</li>
+     *   <li>只有本类 ⇒ 取连接会超时，但已经拿到的连接上的长查询不会被取消
+     *       ⇒ 事务仍可能提交 ⇒ <b>副作用照样落库</b>；</li>
+     *   <li>两者都有 ⇒ 「等连接」与「跑查询」两段都被内层预算兜住
+     *       ⇒ 失败一律落 {@code DEADLINE_EXCEEDED} ⇒ 域侧落 <b>1015</b>（B 的口径）。</li>
+     * </ul>
+     *
+     * <p>⚠️ <b>用字符串形式的 {@code @ConditionalOnClass}</b>：本仓的 Hikari 是
+     * {@code mybatis-plus-spring-boot3-starter} 传递进来的 <b>optional</b> 依赖
+     * ⇒ ⇒ 没有 Hikari 的进程<b>不许</b>因为本类而炸 ⇒ ⇒ 条件必须走字符串形式
+     * （走类字面量会在缺类时读注解就抛 {@code TypeNotPresentException}）。
+     *
+     * <p>⚠️ <b>为什么是 {@code static} 工厂方法</b>：Spring 的
+     * {@code BeanPostProcessorChecker} 会对「非 static 的 {@code @Bean} 工厂方法」
+     * 打一条 INFO 警告（提示尽早初始化），而本 BPP 恰恰<b>不能</b>过早初始化
+     * （它依赖 {@code ObjectProvider} 现取 {@link ObservabilityProperties}）
+     * ⇒ ⇒ 用 {@code static} 消掉这条噪声警告。
+     */
+    @Bean
+    @ConditionalOnClass(name = "com.zaxxer.hikari.HikariDataSource")
+    public static BeanPostProcessor deadlineBoundedConnectionTimeout(
+            ObjectProvider<ObservabilityProperties> observability) {
+        return new DeadlineBoundedConnectionTimeout(observability);
+    }
+
+    /**
+     * 把容器里的 {@code SqlSessionFactory} bean 换成会<b>解包 status</b> 的那一个。
+     *
+     * <p><b>为什么必须与前两个成对（缺一不可）</b>：
+     * <ul>
+     *   <li>只有两个拦截器 ⇒ 超时被翻成 {@code DEADLINE_EXCEEDED}
+     *       ⇒ 但 MyBatis 会把它包进 {@code PersistenceException}
+     *       ⇒ ⇒ 域层的 {@code catch (StatusRuntimeException e) { throw e; }} <b>看不见</b>
+     *       ⇒ ⇒ 落 {@code catch (Exception e)} ⇒ 被改写成 {@code INTERNAL} ⇒ <b>5001</b>；</li>
+     *   <li>只有本 BPP ⇒ 能解包，但<b>没有超时发生器</b> ⇒ 永远不会触发。</li>
+     * </ul>
+     *
+     * <p>⚠️ <b>用字符串形式的 {@code @ConditionalOnClass}</b>：本仓的 MyBatis 是
+     * {@code mybatis-plus-spring-boot3-starter} 传递进来的 ⇒ ⇒ 没有 MyBatis 的进程
+     * <b>不许</b>因为本类而炸 ⇒ ⇒ 条件必须走字符串形式。
+     */
+    @Bean
+    @ConditionalOnClass(name = "org.apache.ibatis.session.SqlSessionFactory")
+    public static BeanPostProcessor statusAwareSqlSessionFactoryPostProcessor() {
+        return new StatusAwareSqlSessionFactoryPostProcessor();
     }
 }

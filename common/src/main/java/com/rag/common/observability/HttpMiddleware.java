@@ -229,6 +229,40 @@ public class HttpMiddleware implements Filter {
         runWithTimeout(registry, httpReq, httpResp, chain, timeout);
     }
 
+    // ── 内层预算（B 侧 gRPC 中间件那一层）· 入向 deadline 载体 ─────────────
+
+    /**
+     * 内层预算的<b>绝对</b>到期时刻（单调钟纳秒）。
+     *
+     * <p><b>为什么算的是「绝对时刻」而不是「剩余时长」</b>：
+     * 业务跑在 worker 线程上，而 worker 是<b>排队后</b>才拿到线程的
+     * ⇒ 若在 worker 里按「完整预算」绑定，排队耗掉的时间就白给了
+     * ⇒ ⇒ 必须按「请求开始的时刻 + 预算」算一个绝对时刻，在 worker 里绑定同一个时刻。
+     *
+     * <p>⚠️ <b>为什么用 {@link DeadlineState#bindAbsoluteNanos(long)} 而不是
+     * {@code bindRemainingNanos}</b>：前者绑的是<b>绝对时刻</b> ⇒ 与出向载体
+     * （{@link GoStyleRequestDeadline}）可以指向同一刻（两载体的契约，见
+     * {@link DeadlineState} 的类头）；后者是「从绑定瞬间起算」⇒ 会把排队时间补回去。
+     *
+     * @return 绝对到期时刻；{@link Long#MAX_VALUE} = <b>无内层预算</b>（⇒ 不绑）
+     */
+    private long innerDeadlineNanos(long startNanos) {
+        Duration inner = properties == null ? null : properties.resolveInnerBudget();
+        if (inner == null || inner.isZero() || inner.isNegative()) {
+            return Long.MAX_VALUE;
+        }
+        long nanos;
+        try {
+            nanos = inner.toNanos();
+        } catch (ArithmeticException overflow) {
+            return Long.MAX_VALUE;
+        }
+        if (nanos <= 0L || nanos > Long.MAX_VALUE - startNanos) {
+            return Long.MAX_VALUE;
+        }
+        return startNanos + nanos;
+    }
+
     // ── 路径一：无超时 ⇒ 同线程跑 ───────────────────────────────────────
 
     private void runInline(ObservationRegistry registry,
@@ -239,8 +273,17 @@ public class HttpMiddleware implements Filter {
         Observation observation = startObservation(registry, httpReq);
         long startNanos = System.nanoTime();
         final Throwable[] failure = new Throwable[1];
+        // 🔴 **入向 deadline 载体也要绑**：本路径只是「没有 HTTP 预算」，
+        //    「内层预算」（B 侧 gRPC 中间件那一层）仍然存在 ⇒ DB 仍要被它兜住。
+        long innerDeadline = innerDeadlineNanos(startNanos);
         try {
-            chain.doFilter(httpReq, rec);
+            if (innerDeadline == Long.MAX_VALUE) {
+                chain.doFilter(httpReq, rec);
+            } else {
+                try (DeadlineState.Scope scope = DeadlineState.bindAbsoluteNanos(innerDeadline)) {
+                    chain.doFilter(httpReq, rec);
+                }
+            }
         } catch (Throwable t) {
             failure[0] = t;
         }
@@ -265,10 +308,23 @@ public class HttpMiddleware implements Filter {
         long startNanos = System.nanoTime();
 
         Future<?> workerFuture;
+        // 🔴 **内层预算的绝对时刻在「提交 worker 之前」算好** ⇒ worker 排队的时间也算在内
+        //    （否则排队耗掉的 1.5s 不计入 ⇒ 业务实际可用预算会超过 B 侧的 2s）。
+        final long innerDeadline = innerDeadlineNanos(startNanos);
         try {
             workerFuture = httpExecutor().submit(() -> {
                 try {
-                    chain.doFilter(httpReq, rec);
+                    // ⚠️ **必须在 worker 线程上绑定**（容器线程的 ThreadLocal 对 worker 不可见）
+                    //    —— 与 {@link GoStyleRequestDeadline} 的类头「必须在 worker 线程上 set」同款纪律。
+                    //    ⇒ 绑上之后 {@code DeadlineQueryTimeoutInjector} 才能给每条 SQL 设 query timeout
+                    //    ⇒ PG 在内层预算到点时收到 CancelRequest ⇒ 事务回滚（**副作用不落库**）。
+                    if (innerDeadline == Long.MAX_VALUE) {
+                        chain.doFilter(httpReq, rec);
+                    } else {
+                        try (DeadlineState.Scope scope = DeadlineState.bindAbsoluteNanos(innerDeadline)) {
+                            chain.doFilter(httpReq, rec);
+                        }
+                    }
                 } catch (Throwable t) {
                     panicHolder[0] = t;
                 } finally {
