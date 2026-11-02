@@ -209,6 +209,18 @@ def check_paths():
                     if "target/" in c:            # Maven 生成物
                         continue
                     if "src/main/java" in c and not v1_exists(c) and not b_exists(c):
+                        # ⚠️ **豁免词与 ③ 一致（2026-11-02 修）**：③（C 列路径失效）已有
+                        # 「文档明确声明该路径不是现存文件」的豁免（待建/清空/无对应/缺/…），
+                        # 而 ③b（其它文档的 .java 路径）**没有** ⇒ 台账**登记「某文件已被删除」**
+                        # 这类**必然出现的场景**会一律报红（实测：users-user lane 的台账
+                        # `verification-users-user-2026-11-02.md:177` 登记
+                        # `RedisDisconnectedBehaviorConfig.java` 已被删除 ⇒ 假红）。
+                        # ⇒ 补齐同一豁免词表（含「已删除 / 已被删除 / 不存在」）。
+                        # ⚠️ 这**不是放松判据**：带这些词的句子明确声明该文件**不存在**，
+                        #     真正「文档指向一个应有却没有的文件」仍会照红。
+                        if any(k in ln for k in ("待建", "清空", "无对应", "缺", "无落点",
+                                                "尚未", "已删除", "已被删除", "不存在")):
+                            continue
                         failures.append(f"③ 路径失效 {md.relative_to(ROOT)}:{i}  {c}")
 
 
