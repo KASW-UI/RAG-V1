@@ -133,6 +133,11 @@
   不是 follow 域那种**三方**（C ↔ B ↔ Go 冻结字节）；
 - ⚠️ **「DB 完全不可响应」档的 HTTP 出口形态**（B `200+1015@2s` ↔ C `503@3s`）⇒ 已登记为签字偏离 **DEV-USER-010**；
 - ⚠️ **取消后在途写是否回滚**（B=0 行 ↔ C=1 行）⇒ **落点在共享层** ⇒ 本 lane 无写权面 ⇒ 归收口域；
+  ⇒ 📌 **根因已定位到一行**（代码级归因 · **待运行验证**）：**C 侧 gRPC 拦截器缺 `onHalfClose` 里的
+  `DeadlineState.bindAbsoluteNanos(...)`**（B 侧 `RpcInterceptor.java:516-517` 有；C 侧
+  `ObservabilityAutoConfiguration.java:253-262` 的 listener **只重写了 `onCancel()`**）
+  ⇒ ⇒ handler 线程上 `DeadlineState` 恒空 ⇒ ⇒ `DeadlineQueryTimeoutInjector` 不注入 `setQueryTimeout`
+  ⇒ ⇒ **不发 CancelRequest** ⇒ ⇒ 在途写不被取消 ⇒ 提交 ⇒ 1 行（B 侧有绑定 ⇒ CancelRequest ⇒ 回滚 ⇒ 0 行）。
 - ⚠️ **gRPC deadline 的 description 文案形态**不同 ⇒ 客户端可见 ⇒ 落点＝共享层 gRPC 拦截器 ⇒ 归收口域。
 
 ## 六、跑法与排障
