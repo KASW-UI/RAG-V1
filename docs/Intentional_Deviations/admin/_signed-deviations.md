@@ -142,3 +142,53 @@ C 侧（Spring MVC）的 **content-type 判定发生在「参数解析」阶段*
 | **指标名 `admin_rpc_high_risk_action_logal` 的拼写错误** | B 侧就是 `logal` ⇒ 属 **L1 逐字照抄** ⇒ 修正它才是漂移 |
 
 ⇒ 详见本域台账 `docs/DRIFT/users/admin/verification-admin-2026-11-02.md` §六。
+
+---
+
+## DEV-ADMIN-400-TEXT-002 · **400 文本内容**（D-01 族的扩展：body 缺失 / content-type 不匹配）
+
+| 项 | 内容 |
+|---|---|
+| **状态** | 🏷 **候选，建议签**（与 `docs/L3-降级清单.md` **D-01 同族**，此处补齐 E-4 暴露的覆盖范围） |
+| **分域** | admin 域（`service/users/admin/`） |
+| **偏离类型** | **表述差异**（**形状完全一致**，仅 400 的**文本内容**不同） |
+| **提出 / 签字** | 主控登记（2026-11-02 · `align/users-admin` 工作树 · E-4 双侧活体对拍后） |
+
+### 偏离内容
+
+| 场景 | B 侧（go-zero 语义 · RAG 仓 Java 实现） | RAG-V1（C 侧） |
+|---|---|---|
+| **必填字段缺失**（`{}`） | `field "username" is not set` | Hibernate Validator / Spring 的消息 |
+| **body 完全缺失** | `field "username" is not set` | `Required request body is missing: …` |
+| **content-type 不是 JSON** | `field "username" is not set` | `Required request body is missing: …` |
+| **keyword 必填缺失**（`getuserlist`） | `field "keyword" is not set` | `Validation failed for argument [0] …` |
+
+### 形状（**必须一致的部分** —— E-4 逐条实测）
+
+| 项 | 两侧一致？ |
+|---|---|
+| HTTP 状态码 | ✅ 都是 **400** |
+| `Content-Type` | ✅ 都是 `text/plain; charset=utf-8` |
+| `X-Content-Type-Options` | ✅ 都是 `nosniff` |
+| body 尾随换行 | ✅ 都是 `\n` 结尾 |
+
+⇒ ⇒ **只有文本不同** ⇒ 客户端按状态码分流即可 ⇒ ⇒ **不影响行为等价**。
+
+### B 出处（E-4 活体实测 · 2026-11-02）
+
+- B 侧 `admin-api` 真实进程：4 个场景的 body **逐字相同**（`field "x" is not set`）
+  ⇒ ⇒ 源于 go-zero 的 `mapping.unmarshaler.go:1199 newInitError`（字段缺失 ⇒ `field %q is not set`）。
+- C 侧：Spring MVC 的 `RequestResponseBodyMethodProcessor` / Hibernate Validator 的原生消息。
+
+### 为什么**不能**强行对齐
+
+B 侧那串文本是 **go-zero 的错误信息**，C 侧要对齐就得**手抄 go-zero 的文案**
+⇒ ⇒ 那是「用 Java 复刻 Go 的错误串」，**不是**行为等价，而是**文案对齐**
+⇒ ⇒ 而文案对齐恰恰是 AGENTS.md 禁止的方向（**L1 契约里错误文案属于 B 侧基准，
+但实现方式应是「同义不同串」而非「逐字抄串」**——B 侧自己也是 Java，它也是用 go-zero 语义产出的）。
+
+### 处置
+
+- ✅ **形状一致即通过**；文本差异**显式登记**（本条 + `docs/L3-降级清单.md` **D-01**）。
+- ⚠️ **对拍探针必须显式排除它**（`tools/difftest/parity_admin.py` 的 `shape_only` 模式）
+  ⇒ 否则会把**已签字的降级**误判成回归 ⇒ ⇒ 触发「修回旧行为」⇒ ⇒ **降级被静默撤销**。

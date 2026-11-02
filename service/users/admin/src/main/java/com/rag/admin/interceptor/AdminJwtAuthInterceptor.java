@@ -123,33 +123,39 @@ public class AdminJwtAuthInterceptor implements HandlerInterceptor {
         String uri = request.getRequestURI();
 
         // ==================================================================
-        // 🔴 2026-11-02 真 Tomcat 契约测试实测后加：ERROR 派发**不进鉴权**
+        // 🔴 2026-11-02 · E-4 双侧活体对拍后**校正**：ERROR 派发**不进鉴权**
         //
-        // B 出处（go-zero v1.10.2 rest/engine.go:244-268 notFoundHandler）：
-        //   未知路径 ⇒ 路由器走 **notFoundHandler** ⇒ 它**另起一条链**
-        //   （chain.New(TraceHandler) [+ 日志中间件]）⇒ **这条链里没有 JWT 鉴权**
-        //   ⇒ ⇒ B 侧未知路径 = **404**（**从不进 JWT 中间件**）
+        // 【机制】Tomcat 对 `response.sendError(...)`（例如超限 body ⇒ 413）会做一次
+        //   **ERROR 二次派发** ⇒ 重新进 DispatcherServlet ⇒ ⇒ **本拦截器会再跑一次**
+        //   （ERROR 派发时 handler 是 BasicErrorController，但 URI 仍是原请求的 URI）
+        //   ⇒ 若不跳过，鉴权会把 413 顶成 401。
         //
-        // C 侧为什么会变成 401：
-        //   ① Boot 3.5 的 `DispatcherServlet.throwExceptionIfNoHandlerFound` 默认 **false**
-        //      ⇒ 路由没命中 ⇒ `response.sendError(404)`
-        //   ② Tomcat 随后做一次 **ERROR 派发** ⇒ 重新进 DispatcherServlet
-        //      ⇒ 这次有 handler 了（`BasicErrorController` 的 `/error`）
-        //      ⇒ ⇒ `applyPreHandle` **会跑** ⇒ 本拦截器按 URI 前缀判「受保护」
-        //      ⇒ ⇒ 抛 AuthenticationException ⇒ **404 被顶成 401**
+        // 【B 出处】B 侧 `admin-api/src/main/java/com/rag/users/admin/api/auth/GoStyleJwtAuthFilter.java`
+        //   是**裸 `Filter`**（不是 `OncePerRequestFilter`）且**未设置 `dispatcherTypes`**
+        //   ⇒ Spring Boot 默认注册为 `REQUEST + ASYNC` ⇒ ⇒ **ERROR 派发根本不跑**
+        //   ⇒ ⇒ 与本行的显式跳过**同构**（C 侧多写 3 行，换来不依赖容器默认值的显式性）。
         //
-        // ⇒ 修法：ERROR 派发一律放行（它不是一次「业务请求」）
-        // ⇒ ⇒ 未知路径回到 **404**（与 B 侧一致）
-        // ⇒ ⇒ 顺带把本类 javadoc 里那条「MaxBytes 的 413 仍然压过 401」的不变式
-        //     **真正闭环**（413 也是 sendError ⇒ ERROR 派发 ⇒ 鉴权不再插手）
+        // 【⚠️ 2026-11-02 更正 · E-4 实测推翻了旧注释的依据】
+        //   旧注释写「B 侧未知路径 = 404（走 notFoundHandler，那条链里没有 JWT）」——
+        //   那个依据来自 **go-zero 原版**（`rest/engine.go:244-268 notFoundHandler`），
+        //   而 **B 侧 RAG 仓是 Java / Spring Boot 4**，不是 go-zero ⇒ ⇒ E-4 活体实测：
+        //     · POST /admin/v1/not-exist（**无 token**）⇒ **401 + 信封 1006**
+        //     · POST /admin/v1/not-exist（**有 token**）⇒ **500 + 信封 5001**
+        //     · GET /foo                          ⇒ **500 + 信封 5001**
+        //   ⇒ ⇒ **B 侧根本没有 404 响应面** ⇒ ⇒ 本域「未知路径」的行为按上述实测对齐
+        //     （判据 = 前缀语义，见 {@link AdminJwtAuthPaths#isProtected}）。
+        //   ⇒ ⇒ **本行（ERROR 派发旁路）与未知路径无关**：未知路径在 Boot 3.5 下
+        //     由静态资源 handler 兜住 ⇒ 走的是**首次 REQUEST 派发** ⇒ 不经过本分支。
         // ==================================================================
         if (request.getDispatcherType() == jakarta.servlet.DispatcherType.ERROR) {
             return true;
         }
 
-        // ⚠️ **判据是「是不是 admin 的 11 个受保护端点」，不是「URI 长不像」**（见 PROTECTED_PATHS 的论证）：
-        //   public 的 2 个端点 ⇒ 放行；
-        //   未知路径（如 /admin/v1/not-exist）⇒ **放行** ⇒ 由路由层给 404（与 B 侧 notFoundHandler 同构）。
+        // ⚠️ **判据 = 前缀语义**，与 B 侧 `AdminJwtAuthPaths#isProtected` 逐字一致（见该类 javadoc）：
+        //   public 的 2 个端点（/admin/v1/login、/admin/v1/create）⇒ 放行；
+        //   其余 /admin/v1/** ⇒ 受保护 ⇒ 验签；
+        //   /admin/v1 下的**未知路径**⇒ **同样受保护** ⇒ 无/坏 token ⇒ 401 + 信封 1006
+        //   ⇒ ⇒ 与 B 侧活体实测逐字一致（E-4 HTTP 面 28 用例）。
         if (!AdminJwtAuthPaths.isProtected(uri)) {
             return true;
         }
@@ -296,39 +302,35 @@ public class AdminJwtAuthInterceptor implements HandlerInterceptor {
         );
 
         /**
-         * <b>🔴 2026-11-02 真 Tomcat 契约测试实测后改：受保护路径从「前缀」改成<b>显式路径集合</b>。</b>
+         * 受保护路径的共同前缀 —— 与 {@code WebMvcConfig} 的 {@code /admin/v1/**} 对齐。
          *
-         * <p><b>为什么</b>：此前 {@code isProtected} 判的是「URI 以 {@code /admin/v1} 开头」，
-         * 而 Spring Boot 的静态资源 handler（{@code /**} → {@code ResourceHttpRequestHandler}）
-         * <b>会兜住任何未知路径</b> ⇒ ⇒ {@code /admin/v1/not-exist} 也<b>有 handler</b>
-         * ⇒ ⇒ 拦截器会被调用 ⇒ ⇒ 按前缀判 ⇒ <b>把 404 顶成 401</b>（实测复现）。
+         * <p><b>🔴 2026-11-02 · E-4 双侧活体对拍实测后改回<b>前缀语义</b>（原为显式路径集合）。</b>
          *
-         * <p><b>B 出处（go-zero v1.10.2）</b>：JWT 中间件是<b>挂在 route 上</b>的
-         * （{@code rest/engine.go:103 bindRoute → chn = ng.appendAuthHandler(fr, chn, verifier)}），
-         * 而<b>未知路径根本进不了 route</b>：{@code rest/engine.go:244-268 notFoundHandler}
-         * <b>另起一条链</b>（只有 TraceHandler + 日志中间件）⇒ <b>没有鉴权</b>
-         * ⇒ ⇒ B 侧未知路径 = <b>404</b>。
+         * <p><b>之前为什么改成了「显式路径集合」</b>：当时依据的是 <b>Go 原版</b>
+         * （go-zero v1.10.2 {@code rest/engine.go:244-268 notFoundHandler} —— 未知路径另起一条链、
+         * 链里没有 JWT ⇒ B 侧未知路径 = 404）⇒ ⇒ 本仓把判据改成「URI 是不是那 11 个端点之一」。
          *
-         * <p>⇒ ⇒ 判据必须与 B 侧同构：<b>「这个 URI 是不是 admin 的那 11 个受保护端点」</b>，
-         * <b>不是</b>「它是不是长这样」。
-         * ⇒ ⇒ 本集合是 <b>L1 契约</b>（与 {@code controller/AdminController} 的 13 个
-         * {@code @PostMapping} 一一对应）⇒ 由
-         * {@code AdminHttpContractRealTomcatTest#pathSetMatchesControllerMappings} 钉死，
-         * <b>加端点忘了加这里 ⇒ 测试立刻红</b>。
+         * <p><b>实测推翻了那个前提</b>：<b>B 侧 RAG 仓是 Java / Spring Boot 4</b>（不是 go-zero）
+         * ⇒ 它的 {@code AdminJwtAuthPaths#isProtected} 判的是<b>前缀</b>
+         * ⇒ ⇒ <b>B 侧活体</b>（E-4 实测）：
+         * <ul>
+         *   <li>{@code POST /admin/v1/not-exist}（<b>无 token</b>）⇒ <b>HTTP 401</b> ＋
+         *       信封 {@code {"code":1006,"msg":"TOKEN已过期","data":null}}
+         *       （⇒ 未知路径<b>落在受保护范围内</b>）；</li>
+         *   <li>{@code POST /admin/v1/not-exist}（<b>带 token</b>）⇒ <b>HTTP 500</b> ＋
+         *       信封 {@code {"code":5001,"msg":"系统内部错误","data":null}}
+         *       （⇒ B 侧<b>根本没有 404 响应面</b>）；</li>
+         *   <li>{@code GET /foo}（不在前缀下）⇒ 同上 <b>500 + 信封 5001</b>。</li>
+         * </ul>
+         *
+         * <p><b>B 出处</b>：{@code service/users/admin/admin-api/src/main/java/com/rag/users/admin/api/auth/AdminJwtAuthPaths.java}
+         * —— {@code isProtected} 的实现逐字为
+         * {@code uri.equals(PROTECTED_PREFIX) || uri.startsWith(PROTECTED_PREFIX + "/")}（非 public 时）。
+         *
+         * <p>⇒ ⇒ 本类<b>照抄 B 的前缀语义</b>（D16：B 侧是唯一基准）⇒ ⇒ 未知路径<b>先过鉴权</b>
+         * ⇒ ⇒ 与 B 侧活体行为一致。
          */
-        public static final Set<String> PROTECTED_PATHS = Set.of(
-                "/admin/v1/logout",
-                "/admin/v1/getself",
-                "/admin/v1/update",
-                "/admin/v1/updateuser",
-                "/admin/v1/delete",
-                "/admin/v1/resetuserpassword",
-                "/admin/v1/banuser",
-                "/admin/v1/unbanuser",
-                "/admin/v1/getuser",
-                "/admin/v1/getuserlist",
-                "/admin/v1/invite/create"
-        );
+        private static final String PROTECTED_PREFIX = "/admin/v1";
 
         private AdminJwtAuthPaths() {
         }
@@ -339,14 +341,22 @@ public class AdminJwtAuthInterceptor implements HandlerInterceptor {
         }
 
         /**
-         * 是否受保护（要验签）—— <b>显式路径集合</b>（见 {@link #PROTECTED_PATHS} 的论证）。
+         * 是否受保护（要验签）—— <b>前缀语义，与 B 侧逐字一致</b>。
          *
-         * <p>⚠️ <b>集合口径</b>：public 的 2 个 + protected 的 11 个 = 13 个 = B 侧全部端点。
-         * <b>集合外的任何 URI</b>（未知路径、其它域的路径）⇒ <b>一律不鉴权</b>
-         * ⇒ ⇒ 与 B 侧「JWT 挂在 route 上、未知路径走 notFoundHandler（无鉴权）」同构。
+         * <p>判据：<b>非 public</b> 且 <b>URI 等于 {@code /admin/v1} 或以 {@code /admin/v1/} 开头</b>。
+         *
+         * <p>⚠️ <b>与 {@code WebMvcConfig} 注册的 {@code /admin/v1/**} 覆盖同一集合</b>：
+         * 少覆盖 ⇒ interceptor 拿不到 Filter 的验签结果（落兜底 ⇒ 验签退回 3s 预算之内）；
+         * 多覆盖 ⇒ 只会多做一次无用验签，<b>不构成鉴权绕过</b>（B 侧同款注释）。
          */
         public static boolean isProtected(String uri) {
-            return uri != null && PROTECTED_PATHS.contains(uri);
+            if (uri == null) {
+                return false;
+            }
+            if (isPublic(uri)) {
+                return false;
+            }
+            return uri.equals(PROTECTED_PREFIX) || uri.startsWith(PROTECTED_PREFIX + "/");
         }
     }
 

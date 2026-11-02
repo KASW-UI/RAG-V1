@@ -23,12 +23,10 @@
 - `org.springframework.boot:spring-boot-starter-test`
 - `org.junit.jupiter:junit-jupiter`
 - `org.mockito:mockito-core`
-- `io.grpc:grpc-inprocess`
 - `org.testcontainers:postgresql`
 - `org.testcontainers:junit-jupiter`
 - `io.grpc:grpc-core`
 - `net.devh:grpc-server-spring-boot-starter`
-- `net.devh:grpc-client-spring-boot-starter`
 - `com.baomidou:mybatis-plus-spring-boot3-starter`
 - `org.postgresql:postgresql`
 - `com.rag:proto`
@@ -138,6 +136,8 @@
 │                       ├── http/
 │                       │   ├── AdminHttpContractRealTomcatTest.java    # admin 域 HTTP 契约测试 —— 真 Tomcat · 真 PG · 真 Redis。
 │                       │   └── NacosStubConfiguration.java    # Nacos 桩 —— 让 admin 域的测试能起真实 Spring 上下文，而不连 Nacos。
+│                       ├── parity/
+│                       │   └── GrpcParityProbe.java    # admin 域 · gRPC 面双侧活体对拍探针（E-4） —— 用 **C 侧生成的 proto stub** 同时打
 │                       └── AdminServiceApplicationTests.java    # admin 域「真启动」契约测试 —— 进程起得来这件事本身就是契约。
 └── pom.xml    # Maven 模块描述
 ```

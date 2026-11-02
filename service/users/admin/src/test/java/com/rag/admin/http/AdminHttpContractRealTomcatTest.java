@@ -182,7 +182,7 @@ class AdminHttpContractRealTomcatTest {
     // ============== 0. 鉴权路径集合 ↔ 控制器实际映射（自维护的 L1 守卫） ==============
 
     @Test
-    @DisplayName("鉴权路径集合 == AdminController 实际映射的 13 个端点（加端点忘了加集合 ⇒ 立刻红）")
+    @DisplayName("鉴权判据是「前缀 + public 白名单」（B 侧逐字）：13 个映射全在前缀内、public 恰为 2 个")
     void pathSetMatchesControllerMappings() {
         Set<String> actual = new LinkedHashSet<>();
         handlerMapping.getHandlerMethods().forEach((info, method) -> {
@@ -191,13 +191,27 @@ class AdminHttpContractRealTomcatTest {
             }
         });
 
-        Set<String> declared = new LinkedHashSet<>();
-        declared.addAll(AdminJwtAuthInterceptor.AdminJwtAuthPaths.PUBLIC_PATHS);
-        declared.addAll(AdminJwtAuthInterceptor.AdminJwtAuthPaths.PROTECTED_PATHS);
-
         assertEquals(13, actual.size(), "AdminController 应当恰好映射 13 个端点，实际=" + actual);
-        assertEquals(declared, actual,
-                "鉴权路径集合必须与控制器实际映射逐条一致（public 2 + protected 11）");
+
+        // ① 13 个映射**全部**落在受保护前缀内（B 侧 isProtected 用前缀判定 ⇒ 漏一个就少保护一个）
+        for (String path : actual) {
+            assertTrue(path.startsWith("/admin/v1/"),
+                    "端点 " + path + " 必须落在受保护前缀 /admin/v1/ 下（B 侧 isProtected 的前缀语义）");
+        }
+
+        // ② public 白名单**恰好**是那 2 个，且都在控制器映射里（B 侧 PUBLIC_PATHS 逐字一致）
+        Set<String> publicPaths = AdminJwtAuthInterceptor.AdminJwtAuthPaths.PUBLIC_PATHS;
+        assertEquals(Set.of("/admin/v1/login", "/admin/v1/create"), publicPaths,
+                "public 路径必须与 B 侧 AdminJwtAuthPaths.PUBLIC_PATHS 逐字一致");
+        assertTrue(actual.containsAll(publicPaths), "public 路径必须都是真实存在的端点，实际=" + actual);
+
+        // ③ 判据本身：B 侧语义 = 非 public 且（前缀相等或以 /admin/v1/ 开头）
+        assertTrue(AdminJwtAuthInterceptor.AdminJwtAuthPaths.isProtected("/admin/v1/getself"));
+        assertTrue(AdminJwtAuthInterceptor.AdminJwtAuthPaths.isProtected("/admin/v1/not-exist"),
+                "未知路径在 B 侧**也**受保护（E-4 活体实测：⇒ 401）");
+        assertFalse(AdminJwtAuthInterceptor.AdminJwtAuthPaths.isProtected("/admin/v1/login"));
+        assertFalse(AdminJwtAuthInterceptor.AdminJwtAuthPaths.isProtected("/admin/v1/create"));
+        assertFalse(AdminJwtAuthInterceptor.AdminJwtAuthPaths.isProtected("/other/path"));
     }
 
     // ============== 1. 13 端点全 POST ==============
@@ -365,21 +379,33 @@ class AdminHttpContractRealTomcatTest {
     // ============== 8. 路由面 ==============
 
     @Test
-    @DisplayName("未知路径 ⇒ 404 + B 侧精确形状（text/plain + nosniff + 固定文案），且不进鉴权")
-    void unknownPathIs404() {
+    @DisplayName("未知路径（无 token）⇒ 401 + 完整信封（B 侧前缀保护 ⇒ 未知路径也受保护）")
+    void unknownPathWithoutTokenIs401() {
         ResponseEntity<String> resp = rest.postForEntity("/admin/v1/not-exist", json("{}"), String.class);
 
-        // B 出处：go-zero v1.10.2 rest/engine.go:244-268 notFoundHandler
-        //   —— 未知路径另起一条链（链里**没有 JWT 鉴权**）⇒ 404（不是 401）
-        assertEquals(HttpStatus.NOT_FOUND, resp.getStatusCode(),
-                "未知路径必须 404（B 侧 notFoundHandler 不经鉴权）；不是 401（鉴权误伤）也不是 500");
-        // 形状：共享层 RouterErrorResponses 逐字复刻 B 侧 http.Error
-        //   ⇒ Content-Type: text/plain; charset=utf-8 + X-Content-Type-Options: nosniff
-        //   ⇒ body = "404 page not found\n"
-        assertTrue(resp.getHeaders().getContentType().getType().equals("text"),
-                "404 必须是 text/plain，实际=" + resp.getHeaders().getContentType());
-        assertEquals("nosniff", resp.getHeaders().getFirst("X-Content-Type-Options"));
-        assertEquals("404 page not found\n", resp.getBody(), "404 body 必须逐字节等于 B 侧的形状");
+        // B 出处：E-4 双侧活体对拍（B 侧 admin-api 真实进程）——
+        //   POST /admin/v1/not-exist（无 Authorization 头）⇒ HTTP 401
+        //   body = {"code":1006,"msg":"TOKEN已过期","data":null}
+        //   根因：B 侧 AdminJwtAuthPaths#isProtected 判的是**前缀**（/admin/v1 或 /admin/v1/ 开头）
+        //        ⇒ 未知路径落在受保护范围内 ⇒ 先被鉴权拦成 401
+        assertEquals(HttpStatus.UNAUTHORIZED, resp.getStatusCode(),
+                "未知路径在 B 侧也受保护 ⇒ 401（不是 404、不是 500）");
+        assertTrue(resp.getBody().contains("\"code\":1006"), "body 必须是 1006 信封，实际=" + resp.getBody());
+    }
+
+    @Test
+    @DisplayName("未知路径（带 token）⇒ 500 + 信封 5001（B 侧根本没有 404 响应面）")
+    void unknownPathWithTokenIs500Envelope() {
+        String token = login();
+        ResponseEntity<String> resp = rest.exchange("/admin/v1/not-exist", HttpMethod.POST,
+                json("{}", "Authorization", "Bearer " + token), String.class);
+
+        // B 出处：E-4 双侧活体对拍 —— POST /admin/v1/not-exist（带合法 token）⇒ HTTP 500
+        //   body = {"code":5001,"msg":"系统内部错误","data":null}
+        // ⇒ B 侧**没有** 404 响应面：未知路径落进通用兜底 ⇒ 500 + 信封 5001
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, resp.getStatusCode(),
+                "带 token 的未知路径必须 500（B 侧活体实测）");
+        assertTrue(resp.getBody().contains("\"code\":5001"), "body 必须是 5001 信封，实际=" + resp.getBody());
     }
 
     @Test

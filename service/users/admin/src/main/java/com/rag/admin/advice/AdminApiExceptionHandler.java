@@ -6,7 +6,6 @@ import com.rag.common.exception.BusinessException;
 import com.rag.common.logger.FatalError;
 import com.rag.common.web.BadRequestException;
 import com.rag.common.web.PlainTextErrors;
-import com.rag.common.web.RouterErrorResponses;
 import com.rag.users.common.ErrCodes;
 import com.rag.users.common.ErrMsg;
 import com.rag.users.common.IdentityResolver;
@@ -22,7 +21,6 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * <p><b>职责</b>：admin 域 HTTP 面的<b>异常出口</b> —— 把「业务层抛出的异常」翻译成
@@ -325,35 +323,28 @@ public class AdminApiExceptionHandler {
     }
 
     /**
-     * <b>🔴 2026-11-02 真 Tomcat 契约测试实测后补：未知路径 ⇒ <b>404 + B 侧精确形状</b>。</b>
+     * <b>🔴 2026-11-02 · E-4 双侧活体对拍实测后<b>删除</b>本分支（原来给未知路径返 404）。</b>
      *
-     * <p><b>现象</b>：{@code POST /admin/v1/not-exist} 原先返回 <b>500</b>。
-     * <p><b>成因链（三层，逐层实测）</b>：
-     * <ol>
-     *   <li>Spring Boot 的静态资源 handler（{@code /**} → {@code ResourceHttpRequestHandler}）
-     *       <b>兜住任何未知路径</b> ⇒ 路由「有 handler」⇒ {@code NoResourceFoundException}；</li>
-     *   <li>该异常<b>没有</b>专门的 {@code @ExceptionHandler} ⇒ 落到兜底的
-     *       {@link #handleAny(Exception)} ⇒ <b>HTTP 500</b>；</li>
-     *   <li>而 B 侧未知路径 = <b>404</b>（{@code rest/engine.go:244-268 notFoundHandler}
-     *       —— 另起一条链，<b>链里没有 JWT 鉴权</b>）⇒ ⇒ <b>「客户端打错路径」被误报成「服务端故障」</b>。</li>
-     * </ol>
+     * <p><b>为什么删</b>：本分支原先的依据是 <b>Go 原版</b>
+     * （go-zero v1.10.2 {@code rest/engine.go:244-268 notFoundHandler} ⇒ B 侧未知路径 = 404）。
+     * <p><b>但 B 侧 RAG 仓是 Java / Spring Boot 4</b>，<b>不是 go-zero</b>
+     * ⇒ ⇒ E-4 活体实测（B 侧 admin-api 真实进程）：
+     * <ul>
+     *   <li>{@code POST /admin/v1/not-exist}（<b>带 token</b>）⇒ <b>HTTP 500</b> ＋
+     *       信封 {@code {"code":5001,"msg":"系统内部错误","data":null}}；</li>
+     *   <li>{@code GET /foo}（不在 {@code /admin/v1} 前缀下）⇒ 同上 <b>500 + 信封 5001</b>。</li>
+     * </ul>
+     * ⇒ ⇒ <b>B 侧根本没有 404 响应面</b> ⇒ 「客户端打错路径」在 B 侧就<b>被报成 500</b>。
+     * ⇒ ⇒ C 侧<b>不该</b>把它改造成 404（那是<b>把 B 侧的行为改掉</b>，D16 下判 C 错）。
      *
-     * <p><b>修法</b>：本分支落到共享层的 {@link RouterErrorResponses#notFound(String)}
-     * ⇒ ⇒ <b>字节级复用 B 侧形状</b>：
-     * {@code Content-Type: text/plain; charset=utf-8} ＋
-     * {@code X-Content-Type-Options: nosniff} ＋ body {@code "404 page not found\n"}（19 字节）。
-     * <p>⚠️ <b>为什么不自己拼</b>：404 / 405 的形状<b>不是任何业务域的行为</b>
-     * （由 B 侧的路由层产出）⇒ 共享层已有一份 ⇒ 本域<b>只调用</b>，不复制。
+     * <p><b>修法</b>：<b>删掉本分支</b> ⇒ {@code NoResourceFoundException} 自然落到
+     * {@link #handleAny(Exception)} 的<b>通用兜底</b> ⇒ <b>HTTP 500 + 信封 code=5001</b>
+     * ⇒ ⇒ <b>与 B 侧活体逐字一致</b>。
      *
-     * <p>⚠️ <b>与鉴权的关系</b>：B 侧的 404 <b>不进任何路由的 chain</b> ⇒ <b>不需要鉴权**
-     * ⇒ ⇒ C 侧的鉴权判据已同步改成<b>显式路径集合</b>（见
-     * {@code interceptor/AdminJwtAuthInterceptor.AdminJwtAuthPaths#PROTECTED_PATHS}）。
+     * <p>⚠️ <b>连带</b>：鉴权判据已同步改回 <b>前缀语义</b>（B 侧 {@code AdminJwtAuthPaths#isProtected} 逐字），
+     * ⇒ ⇒ {@code /admin/v1/**} 下的未知路径<b>先过鉴权</b> ⇒ 无/坏 token ⇒ <b>401 + 信封 1006</b>
+     * ⇒ ⇒ 带 token ⇒ 过鉴权 ⇒ 落进本兜底 ⇒ <b>500 + 信封 5001</b>。
      */
-    @ExceptionHandler(NoResourceFoundException.class)
-    public ResponseEntity<byte[]> handleNoResourceFound(NoResourceFoundException e) {
-        log.warn("no static resource : {}", e.getMessage());
-        return RouterErrorResponses.notFound(e.getResourcePath() == null ? "" : e.getResourcePath());
-    }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<Void> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {

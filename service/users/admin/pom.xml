@@ -61,11 +61,6 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-inprocess</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
             <scope>test</scope>
@@ -83,17 +78,32 @@
         <dependency>
             <groupId>io.grpc</groupId><artifactId>grpc-core</artifactId>
         </dependency>
+        <!--
+            ⚠️ **这里只有 server starter，没有 client starter**（与 B 侧 admin-rpc 依赖形状一致）：
+            B 出处：`service/users/admin/admin-rpc/pom.xml` 的依赖清单里
+            **只有 `grpc-server-spring-boot-starter`，没有 `grpc-client-spring-boot-starter`**。
+
+            【为什么必须一致 —— 这是一条真实的 P0 缺陷（2026-11-02 · E-4 双侧活体对拍时暴露）】
+            devh 的 `GrpcClientAutoConfiguration`（由 client starter 引入）**无条件**创建
+            `InProcessChannelFactory` ⇒ ⇒ **运行时 classpath 必须有 `io.grpc.inprocess.InProcessChannelBuilder`**。
+            ⇒ 本仓曾同时存在「client starter（compile）」+「`grpc-inprocess`（**test** scope）」
+            ⇒ ⇒ **测试全绿**（测试跑在 test classpath 上，类就在）
+            ⇒ ⇒ **但 `admin-service` 的 fat jar 起不来**：
+                `NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`
+                ⇒ 启动即 `UnsatisfiedDependencyException: healthContributorRegistry`
+                   （`grpcChannelHealthIndicator` → `shadedNettyGrpcChannelFactory` → 缺类）。
+            ⇒ ⇒ **D2 域内直连之后本域零 `@GrpcClient`**（架构断言 A4：「@GrpcClient 0 处」）
+            ⇒ ⇒ client starter 本身是**多余的** ⇒ ⇒ **删掉它**（对齐 B 侧）
+            ⇒ ⇒ 顺带删掉 test scope 的 `grpc-inprocess`：
+                留着它会**伪装**问题 —— 将来若有人再加回 client starter，
+                测试 classpath 仍能找到那个类 ⇒ **测试照样全绿、jar 照样起不来**。
+
+            ⇒ ⚠️ **判定式**：**凡引入 devh 的 `grpc-client-spring-boot-starter`，
+              必须同时引入 compile/runtime scope 的 `grpc-inprocess`**
+              （本仓现状：admin 域两者都没有 ⇒ 零 client ⇒ 零需求）。
+        -->
         <dependency>
             <groupId>net.devh</groupId><artifactId>grpc-server-spring-boot-starter</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>io.grpc</groupId>
-                    <artifactId>grpc-core</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>net.devh</groupId><artifactId>grpc-client-spring-boot-starter</artifactId>
             <exclusions>
                 <exclusion>
                     <groupId>io.grpc</groupId>

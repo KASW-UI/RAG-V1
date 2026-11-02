@@ -91,6 +91,7 @@
 | A-27 | `admin-api/.../client/AdminRpcClient.java` | api → rpc 的自我 gRPC 往返 | **不存在**（**D2 域内直连**） | 已删除（D2） | — | — | **E-2** | 映射表 admin.md §1.2.2 已登记 |
 | A-28 | `admin-proto/src/main/proto/admin.proto` | gRPC 契约（字段号 L1） | 根级 `proto/src/main/proto/admin.proto`（**逐字节一致**） | 1:1 | 已实现 | ✅ 已验证 | **E-2** | AGENTS.md §3.4（复制粘贴，非翻译） |
 | A-29 | `admin-rpc/src/main/resources/application.yml:119` 的 `register-enabled: false` | 关掉 Nacos **自动注册**（只用显式的 gRPC 端口注册） | `service/users/admin/src/main/resources/application.yml` 的 `spring.cloud.nacos.discovery.register-enabled: false`（**逐字照抄**） | 1:1 | 已实现 | ✅ 已验证 | **E-3** | §5-⑩：`AdminServiceApplicationTests#nacosAutoRegistrationIsDisabledAndOnlyGrpcPortIsRegistered`（+ **变异检验判据能红**） |
+| A-30 | B 侧 **Java** 的 `AdminJwtAuthPaths#isProtected`（**前缀语义**）+ 未知路径落进通用兜底（**500 + 信封 5001**） | 鉴权判据 + 未知路径的响应面 | `interceptor/AdminJwtAuthInterceptor.AdminJwtAuthPaths`（前缀语义）+ **不设** 404 分支（走通用兜底） | 1:1 | 已实现 | ✅ 已验证 | **E-4** | §9.4：E-4 活体推翻旧的「显式集合 + 404」修法 ⇒ 改回 B 的前缀语义 ⇒ **HTTP 面 0 行为差异** |
 
 > **承接完整性**：B 侧 76 个 `.java` 的职责**全部有落点**（其中 2 个由兄弟文档承载：`IdentityResolver.java` → user 子域 · `JsonTextTypeHandler.java` → users-common）。
 > ⚠️ **C 侧 58 个文件 ≠ 映射表写的 56** ⇒ **差额 2 个 = A-21 新增的 `AdminJwtSignatureFilter` + `AdminJwtSignatureVerifier`**
@@ -283,6 +284,16 @@
 
 ### 5-⑥ 🔴 P1 · 未知路径 ⇒ **401**（B 侧是 404）——鉴权判据误伤
 
+> ⛔ **本节的判定已被 §9.4 推翻（2026-11-02 · E-4 双侧活体对拍实测）** ——
+> 「B 侧是 404」的依据是 **Go 原版**（`rest/engine.go:244-268 notFoundHandler`），
+> 而 **B 侧 RAG 仓是 Java / Spring Boot 4** ⇒ ⇒ **B 侧根本没有 404 响应面**。
+> **B 侧活体实测**：`POST /admin/v1/not-exist` 无 token ⇒ **401 + 信封 1006**；
+> 带 token ⇒ **500 + 信封 5001** ⇒ ⇒ **C 侧的「401」本来就是对的**，
+> 本节据以「修法」的**前提不成立** ⇒ ⇒ 「显式 11 条路径集合」的判据**已回退**为
+> **前缀语义**（B 侧 `AdminJwtAuthPaths#isProtected` 逐字）⇒ 详见 §9.4。
+> ⚠️ 本节**原文保留**作为「判据被推翻」的过程留痕（台账不删历史），
+> 但**其结论不得再被引用**（AGENTS.md §3.3.3 ③：先改/删错误断言，再改实现）。
+
 - **B 出处**：`rest/engine.go:244-268 notFoundHandler` —— 未知路径**另起一条链**（只有 `TraceHandler` + 日志中间件）⇒ **没有 JWT 鉴权** ⇒ ⇒ **404**。
 - **C 侧成因（两层）**：
   1. Spring Boot 的静态资源 handler（`/**` → `ResourceHttpRequestHandler`）**兜住任何未知路径** ⇒ `/admin/v1/not-exist` **有 handler** ⇒ ⇒ 拦截器会被调用；
@@ -293,6 +304,12 @@
 - ⚠️ **同一根因的第二层**：修完本条后未知路径变成 **500** ⇒ 见 **5-⑦**。
 
 ### 5-⑦ 🔴 P1 · 未知路径 ⇒ **500**（B 侧是 404）——`NoResourceFoundException` 落进兜底 advice
+
+> ⛔ **本节的「修法」已被 §9.4 推翻（2026-11-02 · E-4 双侧活体对拍实测）** ——
+> B 侧**没有 404 响应面** ⇒ ⇒ **不该**新增 `NoResourceFoundException` → 404 分支
+> （那会把 B 侧的行为改掉，D16 下判 C 错）⇒ ⇒ 该分支**已删除**，
+> 未知路径落回通用兜底 ⇒ **500 + 信封 5001**（与 B 侧逐字一致）。
+> ⚠️ 本节**原文保留**作为过程留痕，**结论不得再被引用**。
 
 - **现象**：修完 5-⑥ 后，未知路径从 **401 变成了 500**（**这是同一根因的第二层**）。
 - **成因链**：静态资源 handler 兜住未知路径 ⇒ 抛 `NoResourceFoundException`
@@ -384,7 +401,7 @@
 
 | 级别 | 本域状态 |
 |---|---|
-| **E-4 双侧活体对拍** | 🔴 **未做** —— B 侧（RAG 仓 · Go）**没有同时跑起来**做对拍 ⇒ ⇒ **本域所有 ✅ 一律读作「在该证据强度下一致」，不是「已闭环」** |
+| **E-4 双侧活体对拍** | ✅ **已做**（2026-11-02 · 见 §九）—— B 侧 `admin-api` + `admin-rpc`（Boot 4）与 C 侧 `admin-service`（Boot 3.5）**同时跑起来**，隔离库/Redis/Nacos ⇒ **HTTP 面 28 用例 0 行为差异 · gRPC 面 13 RPC 全一致 · DB 最终状态一致 · Redis 状态一致** ⚠️ **但**：并发 / 超时 / 外部依赖失败 / 直接回滚验证 **仍未覆盖**（§9.7）⇒ ⇒ 本域的 ✅ 读作「**在 E-4 已覆盖的维度上一致**」 |
 | **E-3 真中间件 / 真容器** | ✅ **已做**（PG · Redis · Tomcat · gRPC server） |
 | **E-2 源码级对照** | ✅ **已做**（B 侧 Go 源码 + go-zero v1.10.2 源码 + C 侧 Spring 6.2.16 / devh 3.1.0 源码逐行读） |
 | **E-1 形态级对照** | ✅ 已做（文件树 / 依赖 / 配置形状 / 签名） |
@@ -436,10 +453,10 @@
 
 | 状态 | 数 | 说明 |
 |---|---|---|
-| **PASS**（在该证据强度下一致） | **26** | A-01 ~ A-25 + **A-29**（不含 A-05 / A-14 / A-17 的未验证部分） |
-| **FAIL** | **0** | ✅ 本轮发现的 **9 条**漂移**全部已修**（§五） |
+| **PASS**（在该证据强度下一致） | **28** | A-01 ~ A-25 + **A-29** + **A-30**（E-4 gRPC 面 + 路由面；不含 A-05 / A-14 的未验证部分） |
+| **FAIL** | **0** | ✅ 本轮发现的 **9 条**漂移**全部已修**（§五）⚠️ 其中 §5-⑥ / §5-⑦ 两条**修法被 E-4 推翻并重做**（§9.4） |
 | **NOT_IMPLEMENTED** | **0** | ✅ 58 个 C 文件**全部落地，0 空壳** |
-| **NOT_VERIFIED** | **3** | V-1（gRPC 面）· V-2（span）· V-3（**真 Nacos 注册结果**）⇒ **不计入 PASS** |
+| **NOT_VERIFIED** | **2** | V-2（span 名与 audit 属性）· V-3（**真 Nacos 的注册结果**）⇒ **不计入 PASS**<br>✅ **V-1（gRPC 面）已由 E-4 解除**（§九 · 13/13 一致） |
 | **FRAMEWORK_DIFFERENCE** | **2** | ②（3 个空 struct 端点的非 JSON content-type）· ①（gRPC 端口，**部署面**） |
 | **INTENTIONALLY_CHANGED** | **2** | ③（D-01 文本内容 · 已登记降级）· ④（`extra_info` 继承 B 侧） |
 | **BLOCKED** | **0** | — |
@@ -454,7 +471,8 @@
 | 测试文件 / 例数 | **3 个 / 39 例**（`Skipped: 0`） |
 | 本轮修掉的漂移 | **9 条**（4 处 wire 错误码 + 死代码 + 起不来 + 空 body 500 + 415 vs 400 + 未知路径 401 + 未知路径 500 + DTO 改名 + **Nacos 同名双实例**） |
 | 独立词 `Go` 残留 | **0**（`\bGo\b` 全仓扫描 = 0） |
-| 未验证项 | **3**（§7.3） |
+| 未验证项 | **2**（§7.3 · gRPC 面已由 E-4 解除） |
+| **E-4 双侧活体对拍** | **已完成**（§九）· HTTP 28 用例 **0 行为差异** · gRPC 13 RPC **全一致** · DB/Redis 状态**一致** |
 | 构建 | `mvn -o -pl service/users/admin -am clean verify` ⇒ **BUILD SUCCESS**（admin 39 / common 224 / users-common 46，**全部 Skipped: 0**）⇒ §7.4 |
 
 ### 8.2 未闭合项（**移交主会话**）
@@ -482,3 +500,129 @@
    ⇒ 同条件对照：本工作树对 `service/` 除 `admin/` 外**零改动**（`git status` 实证）⇒ ⇒ **主干自带**，非本轮引入。
    ⇒ ⇒ 本域的收口口径用 **`mvn -o -pl service/users/admin -am clean verify`**（含 `repackage`）
    ⇒ ⇒ 待那 8 个域落地（或其 `pom` 改掉 `repackage`）后，全量 build 自然转绿。
+
+---
+
+## 九、E-4 双侧活体对拍（**2026-11-02 实测完成**）
+
+> **协议**：`.agents/verification.md` §九「第六阶段：行为对拍和验证」——
+> 对**同一输入**分别打 B 侧与 C 侧，比较外部可观察面，并覆盖「正常 / 边界 / 空值缺省 / 非法输入 /
+> 重复请求 / 并发 / 外部依赖失败 / 超时 / 部分成功 / 恢复清理」。
+
+### 9.1 环境与隔离
+
+| 资源 | B 侧（RAG 仓 · Boot 4.0.8） | C 侧（RAG-V1 · Boot 3.5.11） | 隔离方式 |
+|---|---|---|---|
+| PostgreSQL | 库 `admin_db` | 库 `c_admin` | 同一 PG 实例的**两个独立库**（各自跑 `SchemaInitializer` 建表） |
+| Redis | 独立容器 `:54845` | 独立容器 `:54846` | 两个独立实例（黑名单 key 前缀相同 ⇒ 必须隔离） |
+| Nacos | `:54847`（命名空间 `sea-rtw`） | 同一 Nacos | 服务名不同（`admin-rpc` / `admin-service`）⇒ 不撞 |
+| HTTP | `admin-api` :18889 | `admin-service` :18890 | env 覆盖（B 侧 `ADMIN_API_PORT`） |
+| gRPC | `admin-rpc` :18081 | `admin-service` :18082 | env 覆盖（B 侧 `ADMIN_RPC_PORT`） |
+| JWT 密钥 | 同一值 | 同一值 | ⇒ 两侧签发的 token 可互验 |
+
+> ⚠️ **B 侧是 Java / Spring Boot 4**（不是 go-zero）⇒ 其 `admin-api` 通过
+> `discovery:///admin-rpc` **走 gRPC 调 admin-rpc** ⇒ ⇒ **B 侧对拍必须起 Nacos**
+> ⇒ ⇒ 而 C 侧是 **D2 域内直连**（无 gRPC 客户端）⇒ **这是两侧结构上的根本差异**。
+
+### 9.2 对拍探针（仓内新增）
+
+| 文件 | 作用 |
+|---|---|
+| `tools/difftest/parity_admin.py` | **HTTP 面**探针：28 用例矩阵 + 归一化 + diff + **DB/Redis 状态比对** |
+| `service/users/admin/src/test/java/com/rag/admin/parity/GrpcParityProbe.java` | **gRPC 面**探针：用 **C 侧 proto stub** 同时打两侧 server（两侧 proto 契约逐条一致 ⇒ 方法路径相同） |
+
+### 9.3 实测结果
+
+| 面 | 用例 | 一致 | 降级文本差异 | **行为差异** |
+|---|---|---|---|---|
+| **HTTP** | 28 | **22** | 6（D-01 族） | **0** ✅ |
+| **gRPC** | 13 | **13** | 0 | **0** ✅ |
+| **DB 最终状态**（4 张表全量 dump 后归一化比对） | — | — | — | **✅ 一致** |
+| **Redis 状态**（键 + 类型 + 值） | — | — | — | **✅ 一致** |
+
+⇒ ⇒ **E-4 达成**：本域的 HTTP 面与 gRPC 面**行为等价**（在 E-4 证据强度下），
+且 **DB 与 Redis 的最终状态逐行一致**（含「邀请码一次性」「黑名单」「建管理员事务」的状态变更）。
+
+### 9.4 🔴 E-4 推翻了我自己的两条「修法」（§5-⑥ / §5-⑦ 作废）
+
+**这轮对拍最大的产出不是「一致」，而是「推翻了之前基于 Go 原版的判断」。**
+
+| 原判断（§5-⑥ / §5-⑦） | 依据 | **B 侧活体实测** | 处置 |
+|---|---|---|---|
+| §5-⑥ 未知路径 ⇒ 401（B 侧 404）⇒ 判据改「显式 11 条路径集合」 | **Go 原版** `rest/engine.go:244-268` | B 侧是 **Java/Boot 4** ⇒ `AdminJwtAuthPaths#isProtected` 判**前缀** ⇒ `/admin/v1/not-exist` **仍受保护** ⇒ **401 + 信封 1006** | **推翻**：判据改回**前缀语义**（与 B 逐字一致） |
+| §5-⑦ 未知路径 ⇒ 500 ⇒ 加 `NoResourceFoundException` → **404 + text/plain** | 同上（Go 原版的 404 形状） | B 侧**没有 404 响应面**：过鉴权后 ⇒ **500 + 信封 5001**（`GET /foo` 同） | **推翻**：**删掉** 404 分支 ⇒ 落回通用兜底（500 + 信封 5001） |
+
+> ⚠️ **根因**：这两条修法把 **Go 原版**（`rest/engine.go`）当成了 B 侧实现 ——
+> 而 **B 侧 RAG 仓是 Java / Spring Boot 4**，Go 只是它的**语义来源**。
+> ⇒ ⇒ **教训**：`§1.0c` 的「B 出处」必须指向 **B 侧 Java 源码**；
+> **Go 源码只能作语义佐证，不能作行为依据**。
+
+### 9.5 🔴 E-4 挖出的 P0：`admin-service` 的 fat jar **起不来**（测试全绿却不可运行）
+
+- **现象**：`java -jar admin-service-1.0-SNAPSHOT.jar` ⇒
+  `NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`
+  ⇒ 启动即 `UnsatisfiedDependencyException: healthContributorRegistry`。
+- **根因**：pom 里同时存在 **`grpc-client-spring-boot-starter`（compile）** +
+  **`grpc-inprocess`（test scope）** ⇒ devh 的 `GrpcClientAutoConfiguration`
+  **无条件**创建 `InProcessChannelFactory` ⇒ **运行时**必须有那个类 ⇒
+  ⇒ 而**测试跑在 test classpath 上，类一直在 ⇒ 测试全绿、jar 起不来**。
+- **B 侧对照**：B 侧 `admin-rpc/pom.xml` 的依赖清单里**只有 `grpc-server-spring-boot-starter`**，
+  **没有 client starter** ⇒ ⇒ 本仓这个 client starter 是**多余的**
+  （D2 域内直连后本域 **零 `@GrpcClient`**，架构断言 A4 明确「@GrpcClient 0 处」）。
+- **修法**：**删掉** `grpc-client-spring-boot-starter` + test scope 的 `grpc-inprocess`
+  ⇒ ⇒ 与 B 侧依赖形状一致 ⇒ ⇒ jar 可启动。
+  ⚠️ 顺带说明**为什么连 test scope 的 `grpc-inprocess` 一起删**：留着它会**伪装**问题 ——
+  将来若有人再加回 client starter，测试 classpath 仍能找到那个类 ⇒ **测试照样全绿、jar 照样起不来**。
+
+### 9.6 E-4 暴露的「探针自身假绿」（两处，已修）
+
+| # | 坑 | 症状 | 修法 |
+|---|---|---|---|
+| **P-1** | Python `urllib` / `http.client` 把 **`103 Early Hints`（1xx 中间响应）当成最终响应** | body 为空 ⇒ token 取不到 ⇒ 整轮 protected 用例全成 401 ⇒ **两侧同错被读成「一致」** | 改用 `curl`（只输出最终响应；`-D` 仍可留 1xx 头块作 wire 观测） |
+| **P-2** | 探针 **漏把 URL 传给 curl** ⇒ `curl: (2) no URL specified` | 两侧同样失败 ⇒ **「28 例一致」的假绿** | 加 `status == 0 ⇒ 读数无效` 的守卫（**两侧同错 ≠ 一致**） |
+
+> ⚠️ **P-2 的教训**：「两侧读数相同」**不等于**「行为一致」——
+> **必须先证明读数本身有效**（status > 0、body 非空），再谈一致。
+
+### 9.7 仍然未覆盖（E-4 的诚实边界）
+
+| # | 项 | 为什么没覆盖 |
+|---|---|---|
+| 1 | **并发请求**（同一邀请码并发创建） | 本轮矩阵是**串行**；并发需要专门的压测夹具 ⇒ 未做 |
+| 2 | **超时 / 外部依赖失败** | 需要把 PG/Redis 主动掐掉再观测 ⇒ 未做 |
+| 3 | **数据库事务回滚** | 「4 步事务中途失败」需要注入唯一冲突 ⇒ HTTP 面用「邀请码已用」间接覆盖（两侧一致），**未做直接回滚验证** |
+| 4 | **定时任务与生命周期** | admin 域无定时任务 ⇒ N/A |
+| 5 | **Kafka 消息** | admin 域不发 Kafka ⇒ N/A |
+
+### 9.8 E-4 的连带修正（域内注释按实测事实校正）
+
+E-4 推翻 §5-⑥/§5-⑦ 之后，域内**注释层**也必须跟着改 —— 否则源码里会留着
+「B 侧未知路径 = 404」这类**已被证伪**的断言（AGENTS.md §3.3.3 ③）。
+
+| 文件 | 位置 | 原断言 | 校正后 |
+|---|---|---|---|
+| `interceptor/AdminJwtAuthInterceptor.java` | `preHandle` 的 ERROR 派发分支注释 | 「B 出处（go-zero v1.10.2 `notFoundHandler`）⇒ B 侧未知路径 = 404」 | 改为：① 讲清 **ERROR 派发旁路的真实理由**（`sendError` ⇒ 二次派发 ⇒ 拦截器会再跑 ⇒ 413 会被顶成 401）；② **B 出处**换成 B 侧 Java 事实（`GoStyleJwtAuthFilter` 是裸 `Filter` 且未设 `dispatcherTypes` ⇒ Spring Boot 默认 `REQUEST + ASYNC` ⇒ ERROR 派发不跑 ⇒ 与 C 侧显式跳过**同构**）；③ 标注旧依据来自 go-zero 原版、已被 E-4 推翻 |
+| `interceptor/AdminJwtAuthInterceptor.java` | `preHandle` 的 `isProtected` 调用处 | 「判据是『是不是 admin 的 11 个受保护端点』」 | 改为**前缀语义**（与 B 侧 `isProtected` 逐字一致），并写明 `/admin/v1` 下的未知路径**同样受保护** |
+| `interceptor/AdminJwtAuthInterceptor.java` | `AdminJwtAuthPaths` 的 javadoc | 「判据 = 显式 11 条路径集合」 | 已改回**前缀语义**，并附 B 侧活体三条实测读数（401/500/500） |
+| `interceptor/AdminJwtSignatureFilter.java` | ERROR 派发分支注释 | 「B 侧未知路径走 notFoundHandler，那条链里没有鉴权」 | 同上：换成 B 侧 `Filter` 注册形状的依据 + E-4 实测更正 |
+| `advice/AdminApiExceptionHandler.java` | `NoResourceFoundException` 分支 | 新增 404 分支 | **删除**（B 侧无 404 响应面）⇒ 落回通用兜底 500 + 信封 5001 |
+
+> ⚠️ **注意**：`AdminJwtSignatureFilter` 的 ERROR 派发跳过**不是**为未知路径而设 ——
+> 未知路径在 Boot 3.5 下由**静态资源 handler** 兜住 ⇒ 走**首次 REQUEST 派发** ⇒ 不经过该分支。
+> ⇒ 该分支**只**服务于「`sendError` 触发的二次派发」（典型场景：超限 body ⇒ 413）。
+
+### 9.9 ⚠️ 域外残留：`Book/users/admin/` 的旧判据描述（**本 lane 不改**）
+
+- **事实**：`Book/` 是**用户知识库**（Obsidian vault，2026-11-02 由 `2458367` 一次性导入），
+  **不是** RAG-V1 的文档体系（`docs/`）⇒ AGENTS.md 无对应政策。
+- **问题**：其中 **14 份** admin 域流程文档仍描述**已被 E-4 推翻**的判据，例如：
+  - `Book/users/admin/14-管理员JWT认证与黑名单流程.md:146`
+    （「admin = **显式路径集合**（11 条）」）；
+  - `Book/users/admin/01-管理员登录流程.md:204`
+    （`return uri != null && PROTECTED_PATHS.contains(uri);`）；
+  - `Book/users/admin/09-用户信息查询流程.md:197`、`03-邀请码生成流程.md:144`
+    （同一段 `PROTECTED_PATHS` 集合代码）；
+  - 另有多处「B 侧未知路径 = 404」的旧结论（与 §9.4 实测相反）。
+- **处置**：**本 lane 不改**（域外 + 用户自有笔记 + 体量约 14 份）
+  ⇒ **登记在此，交主会话 / 用户决定是否同步**。
+  ⇒ ⇒ 同一口径的**权威副本**是本台账 §九 与源码 javadoc —— **以本台账为准**。

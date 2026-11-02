@@ -142,8 +142,14 @@ public class AdminJwtSignatureFilter extends OncePerRequestFilter {
             throws IOException, ServletException {
         String uri = request.getRequestURI();
         // ⚠️ ERROR 派发（Tomcat 对 sendError 的二次派发）不是一次业务请求
-        //   ⇒ 不做验签（B 侧未知路径走 notFoundHandler，那条链里没有鉴权；
-        //     见 AdminJwtAuthInterceptor 里同款说明与 B 出处）。
+        //   ⇒ 不做验签。
+        // 【B 出处】B 侧 `GoStyleJwtAuthFilter` 是**裸 `Filter`** 且未设 `dispatcherTypes`
+        //   ⇒ Spring Boot 默认注册为 `REQUEST + ASYNC` ⇒ ⇒ ERROR 派发**不跑**（同构）。
+        // 【⚠️ 2026-11-02 · E-4 实测更正】旧注释写「B 侧未知路径走 notFoundHandler」——
+        //   那是 go-zero 原版的依据，而 B 侧是 Java/Boot 4 ⇒ 实测：**B 侧无 404 响应面**
+        //   （未知路径：无 token ⇒ 401 + 信封 1006；有 token ⇒ 500 + 信封 5001）。
+        //   ⇒ ⇒ 本分支与「未知路径」无关：Boot 3.5 下未知路径由静态资源 handler 兜住，
+        //     走的是**首次 REQUEST 派发** ⇒ 不经过本分支。
         //   ⇒ 本 Filter 本来就「绝不写响应」，跳过它只是不产生误导性日志。
         if (request.getDispatcherType() == jakarta.servlet.DispatcherType.ERROR) {
             chain.doFilter(request, response);
