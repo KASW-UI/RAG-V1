@@ -845,12 +845,42 @@ E-4 推翻 §5-⑥/§5-⑦ 之后，域内**注释层**也必须跟着改 ——
      `bindRemainingNanos` ＋ `newUnaryServerInterceptor`）⇒ ⇒ **HTTP 路径没有绑定**
      ⇒ ⇒ `DeadlineQueryTimeoutInjector` 读到「无预算」⇒ **SQL 根本不设 query timeout**
      ⇒ ⇒ 阻塞的 `SELECT ... FOR UPDATE` **永不被取消** ⇒ 事务最终提交（**副作用已落库**）。
+     - ⚠️ **这一环的代码级铁证**（收口域可直接引用，**不必重走推导**）：
+       `common/src/main/java/com/rag/common/persistence/DeadlineQueryTimeoutInjector.java:163-167`
+
+       ```java
+       long remaining = DeadlineState.remainingMillis();
+       if (remaining == NO_DEADLINE || remaining > MAX_TIMEOUT_MS) {
+           return;      // ← 无 deadline ⇒ **完全不动** ⇒ 不设 query timeout
+       }
+       ```
+
+       同文件 javadoc `:87-89` 逐字：「**无 deadline 时不注入**……此时**完全不动**」⇒ ⇒
+       **「HTTP 路径没绑 `DeadlineState`」 ⇒ 「SQL 不被取消」** 是**一条可跳步的直链**。
+     - 🟢 **独立佐证（不是本轮的新猜测）**：`Book/users/users/01-用户登录流程.md:427-430`
+       早已逐字记载「`DeadlineState.isExpired()` 在未绑定时返回 `false`……而绑定动作发生在
+       **gRPC** 服务端拦截器里（`common/observability/RpcHandleRunner.java:121`）。
+       HTTP 侧的 3 秒预算是共享层 `HttpMiddleware` 用另一套机制实现的（把链条丢到 worker 线程
+       ＋ 预算计时），**不写 `DeadlineState`**」⇒ ⇒ **共享层的既有事实与本轮活体实测完全吻合**
+       ⇒ ⇒ 收口域可把这条当作**已知前提**，只需补「HTTP 路径怎么绑 + 绑哪个预算」。
    - 超时响应面也随之改变：HTTP 预算（3s）先于任何 DB deadline 到点 ⇒
      **共享层 `HttpMiddleware` 的超时面**接管 ⇒ `503 + "Request Timeout\n"`（**裸文本，无信封**）。
 
 **⇒ 归属**：修法落在 **`common/`**（`HttpMiddleware` 侧缺 `DeadlineState` 绑定；且缺「DB deadline < HTTP 预算」这一层错开），
 按 AGENTS.md §五.3 **跨域 + `common/**` 的搁置漂移归 `global` 收口域** ⇒ ⇒
 **本 lane（admin 域）不改 `common/`，只登记并移交**。
+
+> ⚠️ **收口域注意：这是「两件事」，不是「一件」** —— 只做第 ① 件只能修好**一半**：
+>
+> | # | 补什么 | 修好哪一面 | 不补会怎样 |
+> |---|---|---|---|
+> | ① | **HTTP 路径把 deadline 绑到 `DeadlineState`**（取 HTTP 预算 3s） | **副作用**：SQL 在 3s 被 CancelRequest ⇒ 事务回滚 ⇒ **「客户端失败、服务端已提交」消失**（这是**更严重**的一面） | 副作用照旧落库 ⇒ **重试撞唯一约束 / 邀请码已用** |
+> | ② | **再补一层比 HTTP 预算更紧的内层预算**（对齐 B 侧 gRPC 的 `rpc-timeout` = **2s**） | **响应面**：DB 在 2s 取消 ⇒ `DEADLINE_EXCEEDED` ⇒ 业务码 **1015「服务繁忙」** 信封 ⇒ 与 B 侧**逐字一致** | SQL 取消时刻（3s）与 middleware 超时面（3s）**撞在同一刻** ⇒ middleware 抢先写 **503 + 裸文本** ⇒ **响应面仍与 B 侧不同** |
+>
+> ⇒ ⇒ **建议两件一起做**；若只能做一件，**优先 ①**（副作用比状态码严重）。
+> ⚠️ **别用「在域内硬编一个 2s」来代替 ②** —— B 侧的 2s 来自 **gRPC 中间件**，
+> 不是业务代码 ⇒ 域内硬编 = **把架构差异藏进业务代码** ⇒ 正解是**共享层**补出等价结构
+> （HTTP 请求 ⇒ 内层 DB 预算，取 `observability.rpc-timeout`）。
 
 > ⚠️ **这不是 admin 域特有**：凡 **D2 域内直连**（DB 调用在 HTTP 边界内）的域都有同一条差异；
 > admin 域只是**第一个用活体对拍把它照出来**的域。
