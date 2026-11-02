@@ -1,48 +1,300 @@
 # =============================================================================
-# Follow 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程）
+# Follow 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程 · D1）
+#
+# 1:1 迁移原则：B 侧 follow-api/application.yml 与 follow-rpc/application.yml
+# **两段合并成这一份**（D1：api 与 rpc 合流进同一进程 ⇒ 同一份 yml 同时承载
+# HTTP 段与 gRPC 段）。不新增 B 侧不存在的开关。
+#
+# 缺口 #3 的处置：Mapping_Table §6.3 缺口 #3 列的 4 项 + 2 段业务配置
+# 已在本文件补齐 —— 每项都标注了 B 侧出处。
 # =============================================================================
 spring:
   application:
+    # B 侧 api 的 Name=followcenter（Telemetry.Name=follow-api）·
+    # B 侧 rpc 的 Name=follow.rpc（服务发现 / OTEL 均按 follow-rpc 注册）
+    # ⇒ D1 合并后取 rpc 侧的注册名（服务发现名必须与 Nacos 注册一致）
     name: follow-service
+
+  # ============== 1. Postgres（对应 Go 端 Postgres{...}）==============
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:first_db}
+    # ⚠️ 连接串里那两段参数都来自 B 侧 DSN 的逐字搬运，顺序也一致：
+    #    sslmode  ← B 侧 yaml 的 Mode（"disable" ⇒ sslmode=disable）
+    #    TimeZone  ← B 侧硬编码的 Asia/Shanghai
+    #    TimeZone 是**会话时区**，直接影响 timestamptz 的读出值；
+    #    漏掉它会让 C 侧读出的时间偏移与 B 侧不同（同一行数据、两个墙上时钟）。
+    #    ⚠️ 不要改用 spring.jackson.time-zone：那只管 JSON 序列化，不改 PG 会话。
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:first_db}?sslmode=${POSTGRES_SSLMODE:disable}&TimeZone=Asia/Shanghai
     username: ${POSTGRES_USER:admin}
-    password: ${POSTGRES_PASSWORD:password}
+    password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      # 对应 B 侧 sqlDB.SetMaxIdleConns(10) / SetMaxOpenConns(100)
+      maximum-pool-size: 100
+      minimum-idle: 10
+
+  # ============== 2. Redis（JWT 黑名单）==============
+  # ⚠️ 这是 follow 域**唯一**的 Redis 用途（B 侧 api 层没有缓存，
+  #    建连接只是为了 middleware/checkblacklistmiddleware.go 的 ExistsCtx）。
+  # ⚠️ Redis 不可用时**必须 fail-open**（放行），见 FollowBlacklistInterceptor。
   data:
     redis:
       host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      # ⚠️ 取值出处：B 侧 followcenter.yaml 完全没配 BizRedis 超时
+      #    ⇒ go-zero v1.10.2 建 red.Options 时不传任何 timeout
+      #    ⇒ go-redis/v9 的默认值：DialTimeout=5s · ReadTimeout=3s · WriteTimeout=ReadTimeout
+      #    ⇒ 读命令超时 3s、连接超时 5s。
+      # ⚠️ **本行原为 2s**（无出处、无人审过）⇒ 与 B 侧的 3s 不一致 ⇒ 已对齐成 3s。
+      timeout: 3s
+      # 连接超时：B 侧 go-redis 的 DialTimeout 默认 **5s**。
+      # ⚠️ **不配这行 = Lettuce 自己的默认 10s**（≠ B 侧的 5s）⇒ 必须显式配。
+      connect-timeout: 5s
+
+  # ============== 3. Nacos 服务发现 ===============
+  # B 侧 api 用 etcd flat key "follow.rpc"；B 侧 rpc 注册名 = follow-rpc。
+  # ⚠️ namespace / group 必须与注册侧一致（public / DEFAULT_GROUP）
+  # ⇒ 两端不一致 ⇒ 解析不到 ⇒ 所有业务码塌成 1015（service busy）。
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:nacos:8848}
+        # ⚠️ **必须是 `host` 与 `port` 分开两个变量**：
+        #    写成 `${NACOS_ADDR:nacos:8848}` 会把端口硬编码进默认值 ⇒ NACOS_PORT 被忽略。
+        server-addr: ${NACOS_ADDR:nacos}:${NACOS_PORT:8848}
+        namespace: ${NACOS_NAMESPACE:public}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+        # 🔴 **必须显式关掉自动注册**：
+        #    自动注册注册的是 **web 容器端口**（本进程是 8891），
+        #    而本域的注册是**手写的**（wiring/NacosRegistration 用 gRPC 端口）⇒
+        #    自动注册一旦生效 ⇒ Nacos 里会出现两个端口的实例 ⇒ gRPC 链路断。
+        register-enabled: false
 
+  # =============================================================================
+  # Flyway（对应 B 侧 db.AutoMigrate(&FollowRelation{}, &BlockRelation{})）
+  # =============================================================================
+  # 🔴🔴 **这一段必须在 `spring:` 下面**（键名 = `spring.flyway.*`）：
+  #   放到**顶层** ⇒ 键名变成 `flyway.*` ⇒ Spring Boot **完全读不到**
+  #   ⇒ 下面 4 项**全部静默失效**：
+  #     · baseline-on-migrate ⇒ 共享 schema 下**启动直接失败**
+  #       （"Found non-empty schema(s) but no schema history table"）；
+  #     · baseline-version: 0 ⇒ baseline 打在 version 1 ⇒ **V1 的 SQL 从未执行**
+  #       ⇒ follow_relation 表永远建不出来；
+  #     · table: flyway_schema_history_follow ⇒ 退回**默认的 schema 级账本名**
+  #       ⇒ 与其它域**撞号**（AGENTS.md §六 的核心问题）；
+  #     · locations ⇒ 恰好与默认值相同（本条不表现差异）。
+  #   ⚠️ **这 4 项失效时应用照样能起来、测试照样能跑绿**（schema 空时首次迁移正常）
+  #   ⇒ ⇒ 只能靠「schema 预先非空 + 账本不存在」的真触发场景才暴露。
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    # 🔴 **baseline-version 必须显式钉 0**：
+    #    本模块与其它 rpc 模块连同一个库、同一个 public schema ⇒ 先启动的模块已把
+    #    schema 弄非空 ⇒ 本模块启动时 Flyway 看到「非空 schema + 没有自己的账本」
+    #    ⇒ 因 baseline-on-migrate=true ⇒ **在 V1 处打 baseline 标记**（默认 baseline-version=1）
+    #    ⇒ **V1 的 SQL 从未执行** ⇒ follow_relation 表永远建不出来。
+    #    baseline-version=0 ⇒ baseline 标记打在 version 0 ⇒ **V1 之后全部迁移照常执行**。
+    baseline-version: 0
+    locations: classpath:db/migration
+    schemas: public
+    # ⚠️ **独立账本表名**：`flyway_schema_history` 是 **schema 级**账本，一个 schema 只能有一本账。
+    #    各域的 V1 版本号直接撞车且内容不同（follow_relation vs like_record vs …）
+    #    ⇒ 改账本表名即可消除病根，**迁移文件名一个字都不用动**。
+    table: flyway_schema_history_follow
+
+# =============================================================================
+# HTTP server（承载 8 个 HTTP 端点 + Actuator）
+# =============================================================================
+# B 侧 api 的 Host=0.0.0.0 / Port=8891 ⇒ 保持 Go 的 8891。
 server:
   port: ${FOLLOW_HTTP_PORT:8891}
+  address: 0.0.0.0
+  servlet:
+    context-path: /
+  # ⚠️ 容器三旋钮：对齐 B 侧（Go 的 net/http 不校验 query 里的 [ ]，
+  #    且 go-zero httpx.GetFormValues 明确支持方括号数组记法；
+  #    Go 的 form 参数上限 = 2048（go-zero httpx/util.go:15）；
+  #    Go 的真实 header 上限 = 1 MiB + 4 KiB（net/http 的 "bufio slop"）= 1028KB）
+  tomcat:
+    relaxed-query-chars: ["[", "]"]
+    max-parameter-count: 2048
+  max-http-request-header-size: 1028KB
 
+# =============================================================================
+# gRPC（承载 8 个 gRPC 用例 + 出向的 user-rpc 客户端）
+# =============================================================================
 grpc:
   server:
-    port: ${FOLLOW_GRPC_PORT:9004}
+    # ⚠️ B 侧 follow.yaml 的 ListenOn: 0.0.0.0:8082 ⇒ 默认端口一字不变。
+    #    改口时**必须同时确认 Nacos 注册地址跟着变**（devh 用这个端口既监听又注册）。
+    port: ${FOLLOW_GRPC_PORT:8082}
     address: 0.0.0.0
+    # B 侧 reflection 仅在 DevMode/TestMode 注册；C 侧 devh starter 默认开启。
     reflection-service-enabled: false
   client:
-    # ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而上游 zrpc 是明文 gRPC。
-    #    不写会静默变 TLS —— 见《完全spring化的文件树》§9.1 断言 A4。
+    # ⚠️ negotiation-type **不能省**：devh 的默认值是 TLS，
+    #    不写会静默发 TLS ClientHello，而 B 侧是明文 gRPC（zrpc.MustNewServer 无 TLS 配置）。
+    #    ⇒ 断言 A4 专门盯这条。
+    user-rpc:
+      # ⚠️ **必须是三斜杠** `discovery:///user-rpc`：
+      #    devh 的 DiscoveryClientResolverFactory 判定 uri.getPath() 必须非空、>1、以 "/" 开头
+      #    ⇒ 两斜杠写法会把服务名解析成 authority、path 留空 ⇒ 直接抛 IllegalArgumentException。
+      address: discovery:///user-rpc
+      enable-keep-alive: true
+      keep-alive-time: 30s
+      negotiation-type: plaintext
 
+# =============================================================================
+# MyBatis-Plus
+# =============================================================================
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
+    default-fetch-size: 100
+  global-config:
+    db-config:
+      # 🔴 **主键策略 = AUTO（bigserial），不是雪花**：
+      #    B 侧 GORM 对整数主键默认 autoIncrement ⇒ DDL 用 BIGSERIAL ⇒ 插入时让 PG 序列分配。
+      #    若沿用全仓的 ASSIGN_ID（雪花）⇒ 引入 B 侧不存在的 ID 生成器
+      #    ⇒ 且主键空间与 B 侧不同 ⇒ 是新增行为。
+      id-type: AUTO
+    banner: false
 
+# =============================================================================
+# ⚠️ Flyway 段**已移入上面的 `spring:` 下**（键名必须是 `spring.flyway.*`）——
+#    见上面 `spring.flyway` 处的说明：放顶层 ⇒ 4 项配置静默失效。
+# =============================================================================
+
+# =============================================================================
+# 业务配置
+# =============================================================================
+# ⚠️ 下面的 6 个数值**全部参与业务分支**，不是性能开关：
+#    它们决定「列表默认返回几行」「limit 被截断到多少」「推荐展开几层」「每层扇出多少」，
+#    每一项都会改变 RPC 的可观察输出。改 yaml = 改行为，必须走 review。
+#
+# ⚠️ **List 与 Recommend 两段必须分开**（3 个 list 与 1 个 recommend 取值不同）：
+#    Recommend.MaxLimit 是 **50**，与 List.MaxLimit 的 **100** 不是同一个值。
+#
+# ⚠️ **前缀必须与 B 侧逐字一致**（L1 配置键名）：
+#    · B 侧 `follow-api` 模块的 `FollowApiProperties` = `@ConfigurationProperties(prefix = "follow-api")`
+#      ⇒ 键名 `follow-api.user-auth.access-secret`
+#    · B 侧 `follow-rpc` 模块的 `FollowRpcProperties` = `@ConfigurationProperties(prefix = "follow")`
+#      ⇒ 键名 `follow.list.*` / `follow.recommend.*`
+#    ⇒ D1 把 api+rpc **合并进同一个进程**只改**部署形态**（一个 jar 一个进程），
+#      **不改配置键名** ⇒ 两个前缀在同一份 yml 里**共存**。
+#      ⚠️ 曾把 `user-auth` 塞进 `follow:` 前缀下 ⇒ `FollowApiProperties`（prefix=follow-api）
+#        绑不上 ⇒ access-secret=null ⇒ @PostConstruct fail-closed ⇒ **启动失败**。
+follow-api:
+  # ---- B 侧 api 段：UserAuth（JWT 验签）----
+  user-auth:
+    # ⚠️ 密钥必须与**签发方**一致：B 侧 followcenter.yaml 与 user-api 的 user 段
+    #    用的是同一个 secret ⇒ 用户拿 user-api 签发的 token 直接能访问 follow 域。
+    # ⚠️ follow 域**只验签、不签发**（B 侧本服务没有 login / register 端点）。
+    # ⚠️ **不挂明文默认值**：B 侧那个值是写在仓里的公开密钥 ⇒ 谁都能用它伪造 JWT
+    #    ⇒ 缺变量 ⇒ 启动失败。
+    access-secret: ${USER_JWT_SECRET}
+    # AccessExpire 在本模块不被读取（B 侧同样没有 logic 读它，签发在别的服务），
+    # 保留字段是为了让 yaml 与 B 侧 1:1 可对照。
+    access-expire: ${USER_JWT_EXPIRE:31536000}
+
+follow:
+  # ---- B 侧 rpc 段：ListConf（3 个 list 方法共用）----
+  list:
+    default-limit: 20
+    max-limit: 100
+  # ---- B 侧 rpc 段：RecommendConf（只有 GetRecommendations 用）----
+  recommend:
+    default-limit: 20
+    max-limit: 50
+    max-depth: 3
+    max-fanout: 50
+
+# =============================================================================
+# rag.protection —— B 侧「请求保护层」四道中间件
+# =============================================================================
+# ⚠️ 下面这些在 B 侧 followcenter.yaml 里**一个字都没写**，但在 B 侧**是开启的**
+#    （默认值藏在框架的 struct tag 里）⇒ 照 yaml 逐字段对，永远看不见这几层。
+#
+# ⚠️ **四层的拒绝响应都是「裸状态码 + 空 body + 无 Content-Type」**，不走 envelope
+#    （B 侧是裸 WriteHeader，没有走错误处理）⇒ 与本域「业务错误恒 200 + envelope」刻意不同：
+#    保护层在到达业务逻辑之前就拒绝了，没有 envelope 可包。
+rag:
+  http:
+    # B 侧 followcenter.go 注册了错误处理器 ⇒ form 超限走**业务信封** ⇒ mode: envelope
+    go-form-limit:
+      mode: envelope
+  protection:
+    max-conns: 10000
+    max-bytes: 1048576
+    cpu-shedding:
+      enabled: true
+      cpu-threshold: 900
+      cpu-source: SYSTEM
+    breaker:
+      enabled: true
+    # ⚠️ 出向客户端硬上界：B 侧恒 2000ms（go-zero zrpc/config.go 的 default=2000）
+    #    ⇒ 由**共享层唯一实现**承担 ⇒ 域侧**只配参数**，不得再造内联副本。
+    outbound-deadline:
+      cap-millis: ${FOLLOW_OUTBOUND_DEADLINE_CAP_MILLIS:2000}
+
+# =============================================================================
+# Metrics
+# =============================================================================
+# B 侧 api 的三个 metric，prometheus 子系统名 = follow_api：
+#   follow_api_request_total{route,result}          success / fail
+#   follow_api_reject_total{route,reason}           user_id_missing / forbidden_scope
+#   follow_api_request_duration_seconds{route}      Histogram(DefBuckets)
+# B 侧 rpc 的五个 metric，子系统名 = follow_rpc：
+#   follow_rpc_request_total{method,result} · follow_rpc_request_duration_seconds{method}
+#   follow_rpc_relation_action_total{action,result} · follow_rpc_db_error_total{action,type}
+#   follow_rpc_recommendation_size
+# ⚠️ **刻意不加 `tags.application`**：指标名里已经带了同一个前缀
+#    ⇒ 再叠一个 tag 是把名字里已有的信息重复一遍，且会改变时间序列的身份。
 management:
   endpoints:
     web:
       exposure:
         include: health,info,prometheus
+    enabled-by-default: false
   endpoint:
     health:
-      show-details: always
+      enabled: true
+      show-details: when_authorized
+    info:
+      enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    enable:
+      prometheus: true
+
+# =============================================================================
+# OpenTelemetry OTLP exporter（对齐 B 侧 Telemetry.*）
+# =============================================================================
+otel:
+  exporter:
+    otlp:
+      endpoint: http://${OTEL_ADDR:jaeger}:${OTLP_PORT:4317}
+      protocol: grpc
+  resource:
+    attributes:
+      service.name: follow-service
+  traces:
+    sampler: always_on
 
 logging:
   level:
+    root: INFO
     com.rag: INFO
+    io.grpc: WARN
+
+# =============================================================================
+# observability
+# =============================================================================
+# B 侧 followcenter.yaml **未配置** Timeout，实际生效值来自 go-zero v1.10.2
+# rest/config.go 的 `Timeout int64 json:",default=3000"` ⇒ 3000ms。
+# B 侧 rpc 侧对应 zrpc/config.go 的 default=2000 ⇒ 2s。
+observability:
+  http-timeout: 3s
+  rpc-timeout: 2s
