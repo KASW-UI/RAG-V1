@@ -1,5 +1,9 @@
 # =============================================================================
 # User 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程）
+#
+# 【B 出处】service/users/user/user-api/src/main/resources/application.yml
+#          ＋ service/users/user/user-rpc/src/main/resources/application.yaml
+# 【基准】D16：B 侧（RAG）是唯一行为判定基准 ⇒ 配置键名逐条一致
 # =============================================================================
 spring:
   application:
@@ -11,12 +15,66 @@ spring:
     driver-class-name: org.postgresql.Driver
   data:
     redis:
-      host: ${REDIS_HOST:redis}
+      host: ${REDIS_ADDR:redis}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      # ⚠️ 下面两个超时是 **L1 配置键**（B 侧 user-api/user-rpc 两份 yml 都写了）：
+      #   timeout: 3s          ← go-redis/v9 v9.20.0 的 ReadTimeout 默认 3s（options.go:364-370）
+      #   connect-timeout: 5s  ← go-redis/v9 v9.20.0 的 DialTimeout 默认 5s（options.go:338-339）
+      # ⇒ 两侧写死成 Go 的默认值，而不是用 Lettuce 的默认（读 60s / 连 10s）⇒ 否则超时行为与 B 不一致。
+      timeout: 3s
+      connect-timeout: 5s
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:nacos:8848}
+        server-addr: ${NACOS_ADDR:nacos}:${NACOS_PORT:8848}
+        namespace: ${NACOS_NAMESPACE:sea-rtw}
+        group: ${NACOS_GROUP:USER_GROUP}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+        # ⚠️ **必须关掉 Spring Cloud 的自动注册**（映射表锁决策「Nacos 注册项：2 个/子域 → 1 个/子域」）：
+        #   合并进程有 web 容器 ⇒ 自动注册会再冒出一个 `user-service`@HTTP 端口 的条目
+        #   ⇒ 与 `wiring/NacosRegistration` 显式注册的 `user-rpc`@gRPC 端口 叠加 ⇒ 变成 2 个 ⇒ 违反锁决策。
+        #   ⇒ 关掉后全进程**恰好 1 个** Nacos 注册项 = `user-rpc`（gRPC 端口）。
+        #   ⚠️ B 侧的 `user-api`（HTTP 端口）条目**全仓无消费者**（无 `discovery://user-api`；
+        #      admin-api 的 `grpc.client.user-rpc` 是死配置 —— B 侧 `AdminRpcClient.java:85-86` 自述）
+        #      ⇒ HTTP 客户端直连端口 ⇒ 关掉自动注册**不损失任何活行为**（登记为签字偏离）。
+        register-enabled: false
+
+# =============================================================================
+# 业务配置（L1 配置键名 · 与 B 侧两份 yml 逐条一致）
+#
+# ⚠️ **为什么合并成一个进程后还要保留两份键**：
+#   B 侧 api 与 rpc 是两个进程 ⇒ 同一把密钥在两份 yml 里各写一遍；
+#   C 侧按 D1+D7 合并成一个进程 ⇒ **两个键都还在**（键名是 L1，不可改）
+#   ⇒ 但两者都指向**同一个环境变量** ⇒ 不可能只改一边而漏掉另一边。
+#
+# ⚠️ **两个键都没有明文默认值**（B 出处：user-api/application.yml:162-165 · user-rpc/application.yaml §5）：
+#   缺变量 ⇒ 绑上的是占位符字面量 "${USER_JWT_SECRET}"
+#   ⇒ 由 `UserApiProperties` / `UserRpcProperties` 的 `@PostConstruct` **判掉** ⇒ **启动失败**。
+#   ⇒ 这是 B 侧的 fail-closed 纪律，**不得**在本仓偷偷加默认值。
+# =============================================================================
+user-api:
+  user-auth:
+    access-secret: ${USER_JWT_SECRET}
+    access-expire: ${USER_JWT_EXPIRE:2592000}    # 30 天，与 B 侧 etc/user.yaml 一致
+
+user-rpc:
+  user-auth:
+    access-secret: ${USER_JWT_SECRET}
+    access-expire: ${USER_JWT_EXPIRE:2592000}    # 30 天，与 B 侧 etc/user.yaml 一致
+
+# =============================================================================
+# observability（B 侧 user-api/application.yml:215-216 · user-rpc/application.yaml §10）
+#   http-timeout: 3s  ← B 侧 rest.RestConf.Timeout（3s 预算，共享层 HttpMiddleware 消费）
+#   rpc-timeout:  2s  ← B 侧 zrpc.RpcServerConf.Timeout 默认 2000ms（go-zero config.go:46）
+# ⚠️ **这两个键缺失 = 机制静默不生效**（AGENTS.md §3.3.1）：
+#   `ObservabilityProperties` 的两个 timeout **没有 env 兜底**，缺省即 `Duration.ZERO`（不限时）
+#   ⇒ 不配 = 3s 预算与 2s RPC 超时**都不存在** ⇒ 必须显式写。
+# =============================================================================
+observability:
+  http-timeout: 3s
+  rpc-timeout: 2s
 
 server:
   port: ${USER_HTTP_PORT:8881}
@@ -26,9 +84,14 @@ grpc:
     port: ${USER_GRPC_PORT:8081}
     address: 0.0.0.0
     reflection-service-enabled: false
-  client:
-    # ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而上游 zrpc 是明文 gRPC。
-    #    不写会静默变 TLS —— 见《完全spring化的文件树》§9.1 断言 A4。
+  # ⚠️ `client` 必须是**合法空 map**（`{}`），不能写成「只有注释的空键」。
+  #    写成空键时 YAML 把它解析成**空串**，Spring 的 relaxed binding 会拿 String 去转
+  #    `Map<String, GrpcChannelProperties>` ⇒ `ConverterNotFoundException`
+  #    ⇒ **整个上下文启动失败**（本域首次真启动时被本域的上下文测试当场抓到）。
+  #    ⚠️ 本域**无跨域 gRPC 调用**（users 域无 `rpc/client/`）⇒ 该段恒为空 ⇒ 写成 `{}` 即可。
+  #    ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而上游 zrpc 是明文 gRPC。
+  #       不写会静默变 TLS —— 见《完全spring化的文件树》§9.1 断言 A4。
+  client: {}
 
 mybatis-plus:
   configuration:

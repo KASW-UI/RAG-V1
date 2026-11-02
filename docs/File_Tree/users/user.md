@@ -47,79 +47,96 @@
 │   │   │       └── rag/
 │   │   │           └── user/
 │   │   │               ├── advice/
-│   │   │               │   ├── UserApiExceptionHandler.java
-│   │   │               │   └── UserApiResponseAdvice.java
+│   │   │               │   ├── UserApiExceptionHandler.java    # 全局异常处理器 —— {@code @RestControllerAdvice} ＋ {@code @ExceptionHandler}。
+│   │   │               │   └── UserApiResponseAdvice.java    # 全局响应包装 —— {@code @RestControllerAdvice} ＋ {@code ResponseBodyAdvice}。
 │   │   │               ├── config/
-│   │   │               │   ├── RedisDisconnectedBehaviorConfig.java
-│   │   │               │   ├── UserApiProperties.java    # @ConfigurationProperties —— 聚合本域 HTTP 层配置。
-│   │   │               │   ├── UserRpcProperties.java
-│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 对齐 B 侧同名配置类的注册形态。
+│   │   │               │   ├── UserApiProperties.java    # user 域 HTTP 层配置聚合点 —— Spring Boot {@code @ConfigurationProperties}。
+│   │   │               │   ├── UserRpcProperties.java    # user 域 gRPC / 领域层配置聚合点 —— Spring Boot {@code @ConfigurationProperties}。
+│   │   │               │   └── WebMvcConfig.java    # Spring MVC 装配点 —— 把 {@link JwtAuthInterceptor} 注册到 {@code /user/v1/**}。
 │   │   │               ├── contract/
-│   │   │               │   ├── ErrCodes.java    # 本域错误码常量集 —— B 侧 errmsg.go 的 const 块（通用段 + 域专属段）。
-│   │   │               │   └── ErrMsg.java    # code → msg 映射与 GetErrMsg(code)。⚠️ **错误文案是 L1 契约**。
+│   │   │               │   ├── ErrCodes.java    # user 子域错误码常量集（域内私有视图）。
+│   │   │               │   └── ErrMsg.java    # user 子域错误文案查询入口（域内私有视图）。
 │   │   │               ├── controller/
-│   │   │               │   └── UserController.java    # ⚠️ L1 路由契约（B 侧 正推，勿凭直觉改）
+│   │   │               │   └── UserController.java    # user 域 HTTP 网关 —— 9 个 REST 端点。
 │   │   │               ├── domain/
 │   │   │               │   ├── entity/
-│   │   │               │   │   ├── UserAvatarHistoryEntity.java
-│   │   │               │   │   └── UserEntity.java
+│   │   │               │   │   ├── UserAvatarHistoryEntity.java    # {@code users_user_avatar_history} 表实体 —— MyBatis-Plus {@code @TableName} 风格。
+│   │   │               │   │   └── UserEntity.java    # {@code users_user} 表实体 —— MyBatis-Plus {@code @TableName} ＋ {@code JsonTextTypeHandler}。
 │   │   │               │   └── service/
-│   │   │               │       ├── AvatarDomainService.java
-│   │   │               │       └── UserDomainService.java
+│   │   │               │       ├── AvatarDomainService.java    # 头像域服务 —— 头像字段归一化 ＋ proto 转换工具。
+│   │   │               │       └── UserDomainService.java    # 用户域服务 —— 把 B 侧 9 个 Logic 类合并到一个类。
 │   │   │               ├── dto/
 │   │   │               │   ├── auth/
-│   │   │               │   │   ├── LoginReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── LoginResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── LogoutReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── LogoutResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── LoginReq.java    # 登录请求体 —— immutable record（决策 D5：DTO 全部改 record ＋ Bean Validation）。
+│   │   │               │   │   ├── LoginResp.java    # 登录响应体 —— immutable record（决策 D5）。
+│   │   │               │   │   ├── LogoutReq.java    # 注销请求体 —— 空 record（决策 D5）。
+│   │   │               │   │   └── LogoutResp.java    # 注销响应体 —— immutable record（决策 D5）。
 │   │   │               │   ├── avatar/
-│   │   │               │   │   ├── AvatarHistoryItem.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetAvatarHistoryResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── SelectAvatarReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── SelectAvatarResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── UploadAvatarReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── UploadAvatarResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── AvatarHistoryItem.java    # 头像历史条目（HTTP 层） —— immutable record（决策 D5）。
+│   │   │               │   │   ├── GetAvatarHistoryResp.java    # 头像历史列表响应体 —— immutable record（决策 D5）。
+│   │   │               │   │   ├── SelectAvatarReq.java    # 选定历史头像请求体 —— immutable record（决策 D5）。
+│   │   │               │   │   ├── SelectAvatarResp.java    # 选定历史头像响应体 —— immutable record（决策 D5）。
+│   │   │               │   │   ├── UploadAvatarReq.java    # 上传头像请求体 —— immutable record（决策 D5）。
+│   │   │               │   │   └── UploadAvatarResp.java    # 上传头像响应体 —— immutable record（决策 D5）。
 │   │   │               │   └── user/
-│   │   │               │       ├── CreateUserReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── CreateUserResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── DeleteUserReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── DeleteUserResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── GetUserReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── GetUserResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── UpdateUserReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       ├── UpdateUserResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       └── UserInfo.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── CreateUserReq.java    # 注册（创建用户）请求体 —— immutable record（决策 D5）。
+│   │   │               │       ├── CreateUserResp.java    # 注册（创建用户）响应体 —— immutable record（决策 D5）。
+│   │   │               │       ├── DeleteUserReq.java    # 删除用户请求体 —— 空 record（决策 D5）。
+│   │   │               │       ├── DeleteUserResp.java    # 删除用户响应体 —— immutable record（决策 D5）。
+│   │   │               │       ├── GetUserReq.java    # 查询用户请求体 —— 空 record（决策 D5）。
+│   │   │               │       ├── GetUserResp.java    # 查询用户响应体 —— immutable record（决策 D5）。
+│   │   │               │       ├── UpdateUserReq.java    # 更新用户请求体（部分更新） —— immutable record（决策 D5）。
+│   │   │               │       ├── UpdateUserResp.java    # 更新用户响应体 —— immutable record（决策 D5）。
+│   │   │               │       └── UserInfo.java    # 用户信息（HTTP 层） —— immutable record（决策 D5）。
 │   │   │               ├── exception/
-│   │   │               │   └── UserExceptions.java
+│   │   │               │   └── UserExceptions.java    # user 域业务异常 sentinel —— 领域层抛出，gRPC 服务入口统一捕获后映射成 {@code io.grpc.Status}。
 │   │   │               ├── grpc/
-│   │   │               │   └── UserGrpcService.java
+│   │   │               │   └── UserGrpcService.java    # UserService gRPC 实现 —— 9 个 RPC 方法的 thin wrapper。
 │   │   │               ├── interceptor/
-│   │   │               │   └── JwtAuthInterceptor.java
+│   │   │               │   ├── JwtAuthFilter.java    # JWT 验签 Filter —— 把验签搬出 3s 预算，对齐 go-zero 的链序。
+│   │   │               │   ├── JwtAuthInterceptor.java    # JWT 鉴权拦截器 —— 承担 Go 端 {@code rest.WithJwt}（验签结果消费）+
+│   │   │               │   ├── JwtAuthPaths.java    # user 域的 JWT 路径判据 —— Filter 与 Interceptor 共用同一份。
+│   │   │               │   ├── JwtSignatureVerifier.java    # JWT 验签 —— 只做「解析 ＋ 验签名 ＋ 取 claim」，不写响应、不查 Redis。
+│   │   │               │   └── JwtVerificationResult.java    # 一次 JWT 验签的结果 —— 数据载体，不含行为。
 │   │   │               ├── mapper/
-│   │   │               │   ├── UserAvatarHistoryMapper.java
-│   │   │               │   └── UserMapper.java
+│   │   │               │   ├── UserAvatarHistoryMapper.java    # {@code users_user_avatar_history} 表的 MyBatis-Plus Mapper。
+│   │   │               │   └── UserMapper.java    # {@code users_user} 表的 MyBatis-Plus Mapper。
 │   │   │               ├── metrics/
-│   │   │               │   ├── UserApiMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
-│   │   │               │   └── UserRpcMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
+│   │   │               │   ├── UserApiMetrics.java    # user 域 HTTP 层业务指标收集。
+│   │   │               │   └── UserRpcMetrics.java    # user 域领域层业务指标收集。
 │   │   │               ├── service/
-│   │   │               │   ├── UserApiService.java
-│   │   │               │   └── UserApiSupport.java
+│   │   │               │   ├── UserApiService.java    # user 域 HTTP 层用例集 —— 把 B 侧 9 个 api Service 合并到一个类。
+│   │   │               │   └── UserApiSupport.java    # user 域 HTTP 层共用 helper —— 跨用例共享的工具方法聚合点。
 │   │   │               ├── wiring/
-│   │   │               │   ├── NacosRegistration.java
-│   │   │               │   ├── SnowflakeBootstrap.java
-│   │   │               │   └── UserSchemaBootstrap.java
-│   │   │               └── UserServiceApplication.java    # @SpringBootApplication + @EnableDiscoveryClient —— api 与 rpc 合并后的唯一入口。
+│   │   │               │   ├── NacosRegistration.java    # 显式注册 user 域的 gRPC 实例到 Nacos（服务名 {@code user-rpc}）。
+│   │   │               │   ├── SnowflakeBootstrap.java    # Snowflake workerId 启动期校验 —— {@code @EventListener(ApplicationReadyEvent)}。
+│   │   │               │   └── UserSchemaBootstrap.java    # user 域启动期建表 —— 把 users 域全部 DDL 幂等重放一遍。
+│   │   │               └── UserServiceApplication.java    # user 域唯一入口 —— B 侧 {@code user-api} / {@code user-rpc} 两个进程合并后的单一 app（D1）。
 │   │   └── resources/
 │   │       ├── db/
 │   │       │   └── migration/
 │   │       │       └── .gitkeep
 │   │       └── application.yml
 │   └── test/
-│       └── java/
-│           └── com/
-│               └── rag/
-│                   └── user/
-│                       └── UserServiceApplicationTests.java
+│       ├── java/
+│       │   └── com/
+│       │       └── rag/
+│       │           └── user/
+│       │               ├── api/
+│       │               │   └── UserApiHttpContractTest.java    # user 域 HTTP 契约（真 Tomcat · 真 PostgreSQL · 真 JWT）。
+│       │               ├── config/
+│       │               │   └── UserApiPropertiesSecretGuardTest.java    # 🔴 密钥 fail-closed 守门 —— 缺变量 / 空串 / 未解析占位符，一律启动失败。
+│       │               ├── grpc/
+│       │               │   └── UserGrpcServiceContractTest.java    # UserService gRPC 契约（真 gRPC server · 真 proto 编解码 · 真 starter 分发）。
+│       │               ├── mapper/
+│       │               │   └── AvatarTransactionWiringTest.java    # 「4 步 / 5 步原子」的事务边界真实测 —— 把 D-005 / D-015 从「源码上看着像」推到
+│       │               ├── support/
+│       │               │   └── TestPostgres.java    # 测试用真 PostgreSQL（进程内单例容器）。
+│       │               ├── wiring/
+│       │               │   └── UserNacosRegistrationWiringTest.java    # 🔴 Nacos 注册面守门 —— 注册名、group、端口三样都必须是对的。
+│       │               └── UserServiceApplicationTests.java    # user 域上下文装配自检 —— 证明 D1 合并后的唯一入口真能把全链条装配起来。
+│       └── resources/
+│           └── application-test.properties
 └── pom.xml    # Maven 模块描述
 ```
 
