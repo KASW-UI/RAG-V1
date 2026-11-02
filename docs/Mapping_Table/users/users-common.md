@@ -55,7 +55,9 @@
 | `users/users-common/…/jwt/`（`JwtUtil` / `BearerTokenExtractor`） | `common/src/main/java/com/rag/common/security/`（同名类）| **上收根级 `common/`**（D3）|
 | `users/users-common/…/cryptx/`（`PasswordUtil`） | `common/src/main/java/com/rag/common/security/PasswordUtil.java` | **上收根级 `common/`**（D3）|
 | `users/users-common/…/http/`（`GoStyleCoercion` / `GoStyleStringInt64` / `GoStyleRequired`） | `common/src/main/java/com/rag/common/web/`（同名类）| **上收根级 `common/`**（D3）；`GoStyleRequired*` 一族已被 D5 删除 |
-| `users/users-common/…/ddl/`（`SchemaInitializer`） | **—（C 侧无落点）** | ⚠️ 幂等 DDL 重放执行器仍缺（F-3）|
+| `users/users-common/…/ddl/`（`SchemaInitializer`） | `service/users/common/src/main/java/com/rag/users/common/SchemaInitializer.java` + `service/users/common/src/main/resources/db/01..04_*.sql` | ✅ **已落地（2026-11-02 · users-common lane）** —— 幂等 DDL 重放执行器 + 4 份 `CREATE TABLE IF NOT EXISTS` 脚本 ⇒ **F-3 已闭合**（⚠️ 执行器的**调用点**仍在 users-user / users-admin 两条 lane）|
+| `user-api/…/service/IdentityResolver.java` + `admin-api/…/service/IdentityResolver.java`（B 侧**两份重复**） | `service/users/common/src/main/java/com/rag/users/common/IdentityResolver.java`（**只 1 份**） | **2 → 1 消解**（用户 2026-11-01 定）⇒ 上收到域级共享层，user / admin 两子域共用同一份权威实现 |
+| —（B 侧无对应物：B 走跨进程 gRPC 取用户） | `service/users/common/src/main/java/com/rag/users/common/JdbcUserStatusLookup.java` | **C 新增**（D1+D7 把 api + rpc 合并成单进程 ⇒ 跨进程 gRPC 端口化为同进程 JDBC 查询端口；**判定链与 sentinel 逐条不变**）|
 | `users/users-common/`（proto） | 根级 `proto/`（pb 包名 `com.rag.proto.user`）| **集中化**（D7）|
 
 ## 1. 包结构对照
@@ -73,7 +75,9 @@
 | `users-common/.../http/GoStyleRequired.java` + `GoStyleRequiredFields.java` + `GoStyleRequest.java` + `GoRequiredFieldException.java` | **（D5 已删）** | 1:1 | D5 决定删除手写校验器，改用 **Bean Validation** ⇒ **L3 降级**：错误文案从旧校验器的 `field "uid" is not set` 变为 Bean Validation 文案 |
 | `users-common/.../http/GoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/Coercion.java` | 1:1 | Jackson `CoercionConfig` 原生机制，C 仅归位（类名去掉 `GoStyle` 前缀）⇒ **归属见 `common.md`** |
 | `users-common/.../http/GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/StringInt64.java` | 1:1 | uid 序列化为字符串（避免精度丢失）⇒ **归属见 `common.md`** |
-| `users-common/.../ddl/SchemaInitializer.java` | **（无对应物）** | 1:1 | ⚠️ C 侧 `common/` **无 `SchemaInitializer`**，且两个 `*-service` 的 `db/migration/` 只有 `.gitkeep` ⇒ **幂等 DDL 重放机制在 C 侧无执行器、无脚本**（见 §7.3 F-3） |
+| `users-common/.../ddl/SchemaInitializer.java` | `service/users/common/src/main/java/com/rag/users/common/SchemaInitializer.java` + `service/users/common/src/main/resources/db/01..04_*.sql`（**4 份幂等 DDL 脚本**） | 1:1 | ⚠️ **C 侧已落地（2026-11-02 · users-common lane）** —— 幂等 DDL 重放执行器（advisory lock 串行化 + `ScriptUtils` 重放 4 份 `CREATE TABLE IF NOT EXISTS` 脚本）落 `service/users/common/` ⇒ **§7.3 F-3 已闭合**；⚠️ **执行器的调用点仍在 users-user / users-admin 两条 lane**（跨 lane · 见域级台账 `docs/DRIFT/users/verification-users-common-2026-11-02.md` 的 D-10） |
+| `user-api/.../service/IdentityResolver.java` + `admin-api/.../service/IdentityResolver.java`（B 侧**两份重复**） | `service/users/common/src/main/java/com/rag/users/common/IdentityResolver.java`（**C 侧只 1 份**，上收到域级共享层） | N:1 | ✅ **已落地（2026-11-02 · users-common lane 填实现）**：B 的 **6 步判定链**（claim → 通道 → 有此人 → 同一人 → status presence → status==0）＋ **5 个 sentinel** 错误**逐条保留**；B 的两份重复**在 C 侧被消解**（用户 2026-11-01 定）⇒ user / admin 两子域共用同一份权威实现（见 §7.3 F-1） |
+| —（B 侧无对应物：B 侧无 JDBC 查询端口） | `service/users/common/src/main/java/com/rag/users/common/JdbcUserStatusLookup.java` | C 新增 | ✅ **已落地（2026-11-02 · users-common lane）**：D1+D7 把 api + rpc 合并成单进程 ⇒ 原「跨进程 gRPC 取用户」**端口化**为同进程 `UserStatusLookup` ＋ 本 JDBC 实现（`JdbcTemplate` 查 `users_user` 的 `status`）；⚠️ **只换通道、不换判定** —— 判定链仍在 `IdentityResolver`（D-01 · 见域级台账） |
 | `user-rpc/.../mapper/JsonTextTypeHandler.java` + `admin-rpc/.../mapper/JsonTextTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonTextTypeHandler.java` | 1:1 | `extra_info`（**text** 列）↔ `Map<String,String>` 的 TypeHandler；D3 收进 starter ⇒ **归属见 `common.md`** |
 | `admin-rpc/.../mapper/JsonbTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | 1:1 | PG `jsonb` 列的 TypeHandler（MP 自带 `JacksonTypeHandler` 会把值绑成 `varchar` ⇒ jsonb 拒收）⇒ **归属见 `common.md`** |
 
@@ -142,7 +146,7 @@
 
 ## 7. 覆盖度自查（本库）
 
-### 7.1 C 列覆盖率 —— **3 / 3 = 100%**（users-common）
+### 7.1 C 列覆盖率 —— **5 / 5 = 100%**（users-common）
 
 自查命令（`RAG-V1` 仓根）：
 
@@ -155,10 +159,10 @@ find "service/users/common" -name '*.java' -not -path '*/src/test/*' -not -path 
 
 | C 模块 | `.java` 数 | 出现在本表 C 列的位置 | 覆盖 |
 |---|---|---|---|
-| `service/users/common/src/main/java/com/rag/users/common/` | 3 | §1.3 第 1 行（`ErrCodes.java` / `ErrMsg.java`）+ `IdentityResolver.java`（**跨子域共享件**，映射行落在 [`user/user.md` §1.1.3](./user/user.md)） | ✅ 3/3 |
-| **合计** | **3** | — | ✅ **3/3** |
+| `service/users/common/src/main/java/com/rag/users/common/` | 5 | §1.3 第 1 行（`ErrCodes.java` / `ErrMsg.java`）· §1.3 `IdentityResolver.java` · §1.3 `SchemaInitializer.java` · §1.3 `JdbcUserStatusLookup.java` | ✅ 5/5 |
+| **合计** | **5** | — | ✅ **5/5** |
 
-> ⚠️ **本库在 C 侧另有 5 个文件上提到仓库根 `common/`**（`JwtUtil` / `PasswordUtil` / `BearerTokenExtractor` / `Coercion` / `StringInt64`）⇒ 归属见 [`../common.md`](../common.md)，不计入本表的 3/3。
+> ⚠️ **本库在 C 侧另有 5 个文件上提到仓库根 `common/`**（`JwtUtil` / `PasswordUtil` / `BearerTokenExtractor` / `Coercion` / `StringInt64`）⇒ 归属见 [`../common.md`](../common.md)，不计入本表的 5/5。
 
 **B 列（RAG 侧 `service/users/users-common/`）覆盖率 —— 11 / 11 = 100%**（抄写路线图 §1.0c 的 B↔C 依据）
 
@@ -176,25 +180,25 @@ find "service/users/common" -name '*.java' -not -path '*/src/test/*' -not -path 
 |---|---|---|
 | `1:1` | **9** | 单文件对单文件（多数是「B 改名 / C 归位 / C 补 DTO」）；其中 **7 行**是 B 侧引入的横切件（C 侧原样保留或归位到共享层） |
 | `1:N` | **1** | B 的 1 个文件拆成多个 C 文件（`ErrorCode.java` → `ErrCodes` + `ErrMsg`） |
-| `N:1` | **0** | — |
-| `C 新增` | **0** | 本库每个 C 文件都能在 B 列找到前身 ⇒ RAG-V1 在本库是**重组**而非新增能力 |
-| **合计** | **10** | — |
+| `N:1` | **1** | B 侧**两份重复**的 `IdentityResolver`（user-api + admin-api）消解为 C 侧**一份**（域级共享层） |
+| `C 新增` | **1** | `JdbcUserStatusLookup`（B 侧无对应物 —— 跨进程 gRPC 端口化为同进程 JDBC 查询端口） |
+| **合计** | **12** | — |
 
 > 统计命令（可复跑）：
 > ```bash
 > awk '/^## 1\. 包结构对照/{f=1} /^## 2\. 持久层差异/{f=0} f' docs/Mapping_Table/users/users-common.md \
 >   | awk -F'|' '/^\|/{t=$4; gsub(/^ +| +$/,"",t); if(t=="1:1"||t=="1:N"||t=="N:1"||t=="C 新增") print t}' \
 >   | sort | uniq -c
-> # ⇒ 9 1:1 / 1 1:N
+> # ⇒ 9 1:1 / 1 1:N / 1 N:1 / 1 C 新增
 > ```
-> ⚠️ **旧自报数（`1:1` 9 / `1:N` 1 / `N:1` 0 / `C 新增` 0 / 合计 10）与本表一致** —— 本次仅把统计口径从「第 4 列」改为「类型列（第 3 格）」，行数未变（删列不改行数）。
+> ⚠️ **旧自报数（`1:1` 9 / `1:N` 1 / `N:1` 1 / `C 新增` 1 / 合计 12）与本表一致** —— 统计口径为「类型列（第 3 格）」；行数因 users-common lane 落地 `SchemaInitializer` / `IdentityResolver` / `JdbcUserStatusLookup` 而由 10 增至 12。
 
 ---
 
 ## 8. 一句话总结（users-common 公共库）
 
 **B 列 RAG**（`service/users/users-common/`，11 个 `.java`）= **唯一真理之源**（D16 · 2026-11-02）；
-**C 列 RAG-V1**（`service/users/common/`，3 个 `.java`）= Spring 惯用目标形态（另有 5 个文件上提到仓库根 `common/`）。
+**C 列 RAG-V1**（`service/users/common/`，5 个 `.java`）= Spring 惯用目标形态（另有 5 个文件上提到仓库根 `common/`）。
 
-⇒ **users-common C 列 3/3 覆盖、B 列 11/11 覆盖、映射类型 1:1 ×9 / 1:N ×1 / N:1 ×0 / C 新增 ×0（共 10 行）。**
+⇒ **users-common C 列 5/5 覆盖、B 列 11/11 覆盖、映射类型 1:1 ×9 / 1:N ×1 / N:1 ×1 / C 新增 ×1（共 12 行）。**
 ⇒ **文件名与职责已逐条对应；行为是否一致，一律以 B 列（RAG 侧）源码为准，状态看 `RAG/docs/DRIFT/users/`。**

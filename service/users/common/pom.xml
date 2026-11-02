@@ -13,46 +13,97 @@
     <description>users 域（user + admin）共享契约 —— B 侧 service/users/users-common/ 的对应物</description>
 
     <dependencies>
-        <dependency>
-            <groupId>io.grpc</groupId><artifactId>grpc-stub</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.google.protobuf</groupId><artifactId>protobuf-java</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>javax.annotation</groupId><artifactId>javax.annotation-api</artifactId><scope>provided</scope>
-        </dependency>
         <!--
-            ══ 抄自 RAG 仓 `service/users/users-common/pom.xml` ══
-            ⚠️ **D14 · 工具链回退**：`jjwt-jackson`（Jackson 2）**恢复照抄** ⇒ 不再需要自写
-               `tools.jackson` `Serializer`（`IdentityResolver` / `common/security/JwtUtil.java` 直接用它）。
+            ══ 依赖收敛（2026-11-02 · 本 lane 落实现时）══
+
+            ⚠️ **原先这 8 条依赖在本模块已无使用者**（迁移审核实测 `grep "^import ..."` = 0 个文件）：
+               `grpc-stub` · `protobuf-java` · `javax.annotation-api` · `jjwt-api` · `jjwt-jackson` ·
+               `jackson-databind` · `jackson-annotations` · `spring-security-crypto`
+            ⇒ **根因**：这 8 条原本服务于 B 侧 users-common 里的 `JwtUtil` / `PasswordUtil` /
+               `GoStyleCoercion` / `GoStyleStringInt64` / `ErrorCode`；
+               而 D3（D3 上收到根 `common/`）已把这 4 个能力**搬到仓库根 `common/`** ⇒ 本模块不再需要它们。
+
+            ⚠️ **为什么删了不会让下游断链**（逐条核实过，**不是**「看着没用就删」）：
+               ① `jjwt-api` / `jjwt-jackson` / `jackson-*` / `spring-security-crypto`
+                  ⇒ 根 `common/pom.xml` **全部声明**（jjwt-api:91 / jjwt-jackson:117 /
+                     jackson-databind:110 / jackson-annotations:114 / spring-security-crypto:88）
+                     ⇒ 两个消费方（`service/users/user` · `service/users/admin`）都**直接依赖**
+                     `com.rag:common`（各自 pom:122）⇒ 传递链完整；
+               ② `grpc-stub` / `protobuf-java`
+                  ⇒ 根 `common` 声明 `grpc-stub`(76) / `grpc-protobuf`(79)（**protobuf-java 运行时经
+                     `grpc-protobuf` 传递进来**）⇒ 两个 app 都**直接依赖** `com.rag:common`（各自 pom:122）
+                     ⇒ 传递链完整；
+                     ⚠️ **口径澄清**：两个 app 另直接依赖根级 `proto` 模块（各自 pom:116），但那个模块
+                        **只提供 pb 生成类**（`com.rag.proto.*`）⇒ **不带 protobuf-java 运行时**
+                        ⇒ protobuf-java 的真实来源是根 `common` 的 `grpc-protobuf`(79)，**不是**根级 `proto`；
+               ③ `javax.annotation-api` 是 `provided` 作用域 ⇒ **本就不传递给下游** ⇒ 删它零风险。
+
+            ⚠️ **本模块自己真正需要的只剩 3 条**：`spring-jdbc`（`SchemaInitializer` 的 `ScriptUtils`
+               ＋ `JdbcUserStatusLookup` 的 `JdbcTemplate`）· `jakarta.servlet-api`（`HttpServletRequest`）
+               · `slf4j-api`（`SchemaInitializer` 日志）。
         -->
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId><artifactId>jjwt-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId><artifactId>jjwt-jackson</artifactId><scope>runtime</scope>
-        </dependency>
-        <!--
-            Jackson 2 —— `IdentityResolver` 要解析 JWT claims。
-            版本由根 pom 的 `com.fasterxml.jackson:jackson-bom` 统一管（2.19.4，与 Boot 3.5.11 同版本）。
-        -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-annotations</artifactId>
-        </dependency>
-        <!--
-            口令散列（`PasswordUtil`）—— Spring Security 的 `BCryptPasswordEncoder`
-            ⇒ **不用**自己实现散列（§3.2「生态优先」）。
-        -->
-        <dependency>
-            <groupId>org.springframework.security</groupId><artifactId>spring-security-crypto</artifactId>
-        </dependency>
-        <!-- JDBC（`users-common` 要经 JDBC 读用户表做 status presence 检查） -->
+        <!-- JDBC（`users-common` 要经 JDBC 读用户表做 status presence 检查；`SchemaInitializer` 用 `ScriptUtils` 跑 DDL） -->
         <dependency>
             <groupId>org.springframework</groupId><artifactId>spring-jdbc</artifactId>
+        </dependency>
+        <!--
+            Servlet API —— `IdentityResolver` 从 `HttpServletRequest` 的 attribute 取 claim。
+
+            ⚠️ **为什么是 `provided`**：本模块是**库** ⇒ servlet 容器由消费方（user-service /
+            admin-service，两者都有 `spring-boot-starter-web`）提供 ⇒ 库不应把 servlet 容器拖进来。
+            ⚠️ **`provided` 也不传递给下游**：消费方自己声明的 `spring-boot-starter-web` 才是真源。
+            ⚠️ **版本由 Boot BOM 管**（`jakarta.servlet:jakarta.servlet-api` ⇒ Boot 3.5 = 6.0.x）。
+        -->
+        <dependency>
+            <groupId>jakarta.servlet</groupId><artifactId>jakarta.servlet-api</artifactId><scope>provided</scope>
+        </dependency>
+        <!--
+            SLF4J —— `SchemaInitializer` 记日志（抄 B 的 `SchemaInitializer`，它用 slf4j）。
+            ⚠️ **只引 api，不引 logback**：日志实现由消费方（各 app 的 `spring-boot-starter-logging`）决定。
+        -->
+        <dependency>
+            <groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- ============ 测试基础设施（test 作用域**不传递给下游**） ============ -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+            Testcontainers + PG 驱动 —— `SchemaInitializer` 的 DDL 重放与 `JdbcUserStatusLookup`
+            的 status presence 判定**必须跑在真 PostgreSQL 上**（H2 不认 `TIMESTAMPTZ` / `ALTER ... TYPE` /
+            `SET TIME ZONE`，会假绿）。
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId><artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+            根级 `common`（**test 作用域**）—— 只为对拍「由 users-common 上提到 `common/web/` 的类」。
+
+            ⚠️ **为什么用 test 作用域**：本模块的**生产代码**不依赖根 `common/`（两者互不依赖 ⇒ 无环）；
+               但 `common/web/StringInt64.java`（B 侧原是 `users-common/http/GoStyleStringInt64.java`）
+               **当前全仓 0 个测试调用** ⇒ 迁移审核判 **NOT_VERIFIED**（协议 §九：不得用静态代码相似度
+               替代运行验证）⇒ 由**本 lane**（该类的原主域）补运行对拍。
+            ⚠️ **归属**：根 `common/` 的写权归收口任务（AGENTS.md §五.3 规则 3）⇒ 本测试**只落在本模块**，
+               根 `common/` **一个字未改**；后续由收口任务决定是否迁到 `common/src/test/`。
+        -->
+        <dependency>
+            <groupId>com.rag</groupId><artifactId>common</artifactId><version>${project.version}</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

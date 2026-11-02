@@ -136,7 +136,7 @@
 | 实体 | `@TableName` + `@TableId(type=ASSIGN_ID)` Entity | 同 B | — |
 | 数据访问 | `Mapper extends BaseMapper<Entity>` + `LambdaQueryWrapper` | 同 B | 按实体拆 Mapper（B/C 同构） |
 | **表名** | `users_user`、`users_user_avatar_history`、`admin_admin`、`admin_invite` | 同 B（`@TableName`） | ⚠️ **表名是 L1 级可见面**（客户端直查 / 报表 / 运维脚本都依赖）—— 见 §7.3 F-4；本表只记职责对应，不判行为 |
-| Schema 演进 | `SchemaInitializer` 幂等重放 `db/01..04_*.sql`（2026-10-21 起弃用 Flyway） | `*SchemaBootstrap` + `db/migration/`（**仅 `.gitkeep`**） | ⚠️ C 侧脚本与执行器缺失（F-3） |
+| Schema 演进 | `SchemaInitializer` 幂等重放 `db/01..04_*.sql`（2026-10-21 起弃用 Flyway） | `service/users/common/.../SchemaInitializer.java` + `service/users/common/src/main/resources/db/01..04_*.sql`（**4 份幂等脚本**） | ⚠️ **C 侧已落地（2026-11-02 · users-common lane）**：执行器 `service/users/common/.../SchemaInitializer.java` + 4 份脚本 `service/users/common/src/main/resources/db/01..04_*.sql` ⇒ **F-3 已闭合**；⚠️ 调用点仍属 users-user / users-admin 两条 lane |
 | 事务 | `@Transactional`（独立 Bean，规避 self-invocation） | 同 B | `selectAvatar` / `SelectAvatarHistory` / `CreateAdmin` 是多步原子写 ⇒ **必须独立 Bean** |
 | 雪花 ID | `common/spring/SnowflakeBean` + 各 rpc 的 `SnowflakeBootstrap` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration` + 各 service 的 `SnowflakeBootstrap` | epoch / 位段是业务契约（like 域游标依赖 `>>22`） |
 | jsonb / text 列 | `JsonTextTypeHandler`（user-rpc，text）+ `JsonbTypeHandler`（admin-rpc，jsonb） | `common/src/main/java/com/rag/common/persistence/JsonTextTypeHandler.java` + `JsonbTypeHandler.java` | ⚠️ `LambdaUpdateWrapper.set(Map)` 会丢 TypeHandler ⇒ 需 `setSql("CAST(... AS jsonb)")` 或走实体更新 |
@@ -281,7 +281,7 @@ RAG-V1 用 Spring 生态的原生形态（`@RestControllerAdvice` / Bean Validat
 
 ## 7. 覆盖度自查（域级汇总）
 
-### 7.1 C 列覆盖率 —— **104 / 104 = 100%**
+### 7.1 C 列覆盖率 —— **106 / 106 = 100%**
 
 自查命令（`RAG-V1` 仓根）：
 
@@ -294,7 +294,7 @@ find "service/users" -name '*.java' -not -path '*/src/test/*' -not -path '*/targ
 
 | C 模块 | `.java` 数 | 出现在本表 C 列的位置 | 覆盖 |
 |---|---|---|---|
-| **合计** | **104** | — | ✅ **104/104** |
+| **合计** | **106** | — | ✅ **106/106** |
 
 > ⚠️ **逐模块实测表的落点**：user 子域 2 行见 [`user/user.md`](./user/user.md) §7.1 · admin 子域 2 行见 [`admin/admin.md`](./admin/admin.md) §7.1 · users-common 1 行见 [`users-common.md`](./users-common.md) §7.1。
 
@@ -336,9 +336,9 @@ find "service/users" -name '*.java' -not -path '*/src/test/*' -not -path '*/targ
 |---|---|---|
 | `1:1` | **43** | 单文件对单文件（多数是「B 改名 / C 归位 / C 补 DTO」）；user 17 + admin 17 + users-common 9 |
 | `1:N` | **15** | B 的单文件拆成多个 C 文件 —— 逐条实测：装配拆分 **2** 行（user-rpc / admin-rpc 各 1 行）· Entity/Mapper 拆分 **4** 行（user 与 admin 各 1 组）· 路由拆分 **2** 行（Controller + `WebMvcConfig`）· DTO 拆分 **2** 行（user **19** 个 + admin **28** 个 immutable record）· `ErrorCode.java` → 错误契约 2 类 **1** 行 · JWT 验签拆分 **2** 行（user / admin 各 1 行）· `AuthFilter` → 拦截器 **2** 行 = **15** |
-| `N:1` | **71** | B 的多文件合进 1 个 C 文件（**D1/D2 的主因**：user-api 9+9、admin-api 13+13、user-rpc 9、admin-rpc 13 个 logic → 各 1 个 Service）|
-| `C 新增` | **0** | users 域每个 C 文件都能在 B 列找到前身 ⇒ RAG-V1 在本域是**重组**而非新增能力 |
-| **合计** | **129** | — |
+| `N:1` | **72** | B 的多文件合进 1 个 C 文件（**D1/D2 的主因**：user-api 9+9、admin-api 13+13、user-rpc 9、admin-rpc 13 个 logic → 各 1 个 Service）|
+| `C 新增` | **1** | `JdbcUserStatusLookup`（B 侧无对应物 —— 跨进程 gRPC 端口化为同进程 JDBC 查询端口；users-common lane 落地） |
+| **合计** | **131** | — |
 
 > 统计命令（可复跑）：
 > ```bash
@@ -362,7 +362,7 @@ find "service/users" -name '*.java' -not -path '*/src/test/*' -not -path '*/targ
 |---|---|---|---|
 | **F-1** | ✅ **已关闭（2026-11-01）—— 身份解析器在 C 侧已有承载**。B 侧 `user-api/.../service/IdentityResolver.java` 与 `admin-api/.../service/IdentityResolver.java`（**各一份，共两份重复**；权威解析器：`ClaimedUID` → `GetUser` → status presence 检查 → `SubjectRef`；`AuthorityID="rtw.identity"` / `PlatformTenantID="platform"`；5 个 sentinel 错误 `ErrInvalidClaim` / `ErrUserNotFound` / `ErrIdentityMismatch` / `ErrUserInactive` / `ErrStatusUnavailable`）⇒ C 侧落 **`service/users/common/src/main/java/com/rag/users/common/IdentityResolver.java`（只 1 份，上收到域级共享层）** ⇒ **B 侧两份重复在 C 侧被消解**（用户 2026-11-01 定；`users-common` 已被 user / admin 依赖 ⇒ **不动 pom**） | L1（`AuthorityID` / `PlatformTenantID` / `SubjectRef` 形状）+ L2（5 个错误的判定顺序） | ✅ 落点已定并落地：域级共享层 `service/users/common/` ⇒ user / admin 两子域**共用**同一份权威实现，**不复制两份** |
 | **F-2** | 🟠 **错误契约在两个子域间仍然不对称（2026-10-26 D7 后收敛为「admin 无 `contract/` 包」）**。C 侧 `service/users/user/src/main/java/com/rag/user/contract/` 有 `ErrCodes.java` + `ErrMsg.java`；**admin 侧根本没有 `contract/` 包**（`admin-contract` 模块已随 D7 删除）。而 B 侧 `service/users/users-common/.../errmsg/ErrorCode.java` 是 **user / admin 四方共用**的一份；RAG-V1 把它落在**公共库** `service/users/common/src/main/java/com/rag/users/common/`（`ErrCodes.java` + `ErrMsg.java`，artifactId `users-common`） | 若 admin 域要独立引用错误契约，须显式取公共库那份（`users-common` 是 admin 的 pom 依赖，**已接上**）；但 admin 源码**当前零引用** `ErrCodes` / `ErrMsg` | 明确 admin 域的错误码取「公共库 `users-common` 那份」还是「user 子域私有那份」；取前者则**不要**在 admin 侧复制一份（逐域隔离 ≠ 逐子域复制）。⚠️ **时点标注**：本条原文写的是「`admin/contract/` 一份都没有（该模块只有 `admin.proto`）」—— 那是 D7 之前的状态 |
-| **F-3** | 🔴 **幂等 DDL 重放机制在 C 侧无执行器、无脚本**。B 侧有 `users-common/.../ddl/SchemaInitializer.java` + `db/01..04_*.sql`（`01_create_user.sql` / `02_create_user_avatar_history.sql` / `03_create_admin.sql` / `04_create_admin_invite.sql`）；C 侧 `common/` **无 `SchemaInitializer`**，两个 `*-service` 的 `resources/db/migration/` **只有 `.gitkeep`** ⇒ `UserSchemaBootstrap` / `AdminSchemaBootstrap` 无处可重放 | B 侧 `SchemaInitializer` 的**无版本账本幂等重放**是 L2 语义（谁先启动都行） | C 侧需补执行器（建议归 `common/src/main/java/com/rag/common/persistence/`）+ 4 个幂等 SQL 脚本（`CREATE TABLE IF NOT EXISTS`） |
+| **F-3** | ✅ **已关闭（2026-11-02 · users-common lane 填实现）—— 幂等 DDL 重放执行器 + 4 份幂等脚本已在 C 侧落地**。B 侧的 `users/users-common/.../ddl/SchemaInitializer.java` + `db/01..04_*.sql` ⇒ C 侧落 **`service/users/common/src/main/java/com/rag/users/common/SchemaInitializer.java`**（幂等重放执行器：advisory lock 串行化 + `ScriptUtils` 重放）＋ **`service/users/common/src/main/resources/db/01..04_*.sql`**（4 份 `CREATE TABLE IF NOT EXISTS` 脚本，users 域 users/user_avatar_history/admin/admin_invite 四表）⇒ 执行器与脚本**均已就位**。⚠️ **剩余跨 lane 项**：**执行器的调用点**在 `users-user` / `users-admin` 两条 lane（见域级台账 `docs/DRIFT/users/verification-users-common-2026-11-02.md` 的 D-10） | **上游**的 `AutoMigrate` 是**无状态幂等**的（L2 语义：谁先启动都行） | C 侧需补执行器 + 4 个幂等 SQL 脚本（`CREATE TABLE IF NOT EXISTS`）⇒ ✅ **已落地**（执行器落 `service/users/common/`，脚本 4 份） |
 | **F-4** | 🟡 **表名：B 侧与更早一版的历史命名不同**。B 侧用 `users_user` / `users_user_avatar_history` / `admin_admin` / `admin_invite`；更早一版的历史命名是 `users` / `user_avatar_history` / `admins` / `admin_invites`（**随旧基准移除，不再作数**） | 表名是 L1 级可见面（客户端直查、报表、运维脚本都依赖） | 本表**不判**行为；**D16 下 B 是基准** ⇒ C 侧沿用 B 的 4 张表名。若 RAG-V1 要改表名，需**单独留档**并走决策流程（否则下一棒会把它当成「本来就这样」） |
 | **F-5** | 🟡 **C 的 HTTP DTO 命名与 B 侧不一致（user 1 处 / admin 1 处）**。① user 侧：B 的 `dto/` 用 `RegisterReq`/`RegisterResp`，C 改成了 `CreateUserReq`/`CreateUserResp`（B 的 proto 侧两者都叫 `CreateUser*`）；② admin 侧：B 的 `dto/` 与 proto 侧都叫 `CreateInviteCodeReq`/`CreateInviteCodeResp`，C 改成了 `CreateInviteReq`/`CreateInviteResp` | DTO 名 = HTTP 契约的一部分 | **D16 下 B 是基准** ⇒ C 侧**要么改回 B 的名，要么显式登记为签字偏离**（当前两侧都未登记） |
 | **F-6** | 🟡 **C 的 `UserController` / `AdminController` javadoc 里的 method 与端点清单，与 B 侧不一致**。javadoc 写「B 侧 method 分布：DELETE, GET, POST, PUT」并列出 `PUT /user/v1/updateuser`、`GET /user/v1/avatarhistory`、`GET /admin/v1/getself` 等；而 B 侧 `UserController` / `AdminController` **全是 `@PostMapping`**，且 B 的实际路径是 `/user/v1/get`、`/user/v1/update`、`/user/v1/delete`、`/user/v1/avatar`、`/user/v1/avatar/select`、`/user/v1/avatar/history` 与 `/admin/v1/updateuser` 等 —— 与 C 的 javadoc 清单**逐条不同**；⚠️ C 的 javadoc 首行还写「B 侧 为 `/usercenter/v1/user/*`」，而 B 侧实测是 `/user/v1/*` ⇒ **javadoc 自述的「B 出处」本身也是错的** | 这两条 javadoc 是 RAG-V1 内部的**自相矛盾**：同一仓的 `File_Tree/users/user/user-service.md` 写「method 是签字偏离：旧版 Get2·Post6·Delete1 ⇒ 本仓库统一 POST」 | 以 **B 侧 `UserController` / `AdminController`** 为准修正 javadoc；否则下一棒填实现时会把 `PUT` / `GET` 和那套路径当成契约写进去 |
@@ -376,6 +376,6 @@ find "service/users" -name '*.java' -not -path '*/src/test/*' -not -path '*/targ
 **B 列 RAG**（`service/users/`，145 个 `.java`）= **唯一真理之源**（api/rpc 分离的部署形态）；
 **C 列 RAG-V1**（`service/users/`，104 个 `.java`）= Spring 惯用目标形态（一域一 app）。
 
-⇒ **C 列 104/104 覆盖（86 个唯一文件名零遗漏）、B 列 145/145 覆盖、映射类型 1:1 ×43 / 1:N ×15 / N:1 ×71 / C 新增 ×0（共 129 行）。**
+⇒ **C 列 106/106 覆盖（88 个唯一文件名零遗漏）、B 列 145/145 覆盖、映射类型 1:1 ×43 / 1:N ×15 / N:1 ×72 / C 新增 ×1（共 131 行）。**
 ⇒ **文件名与职责已逐条对应；行为是否一致，一律以 B 列（RAG 侧）源码为准，状态看 `RAG/docs/DRIFT/users/`。**
 ⇒ **本表发现的 8 条职责缺口（F-1 ~ F-8）** 里，**F-3（DDL 重放无执行器/脚本）** 与 **F-6（Controller javadoc 与 B 侧 method / 路径不一致）** 是硬缺口，填实现前应先补。
