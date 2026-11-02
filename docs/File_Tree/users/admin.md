@@ -20,8 +20,6 @@
 - `org.springframework.boot:spring-boot-starter-actuator`
 - `io.micrometer:micrometer-registry-prometheus`
 - `com.alibaba.cloud:spring-cloud-starter-alibaba-nacos-discovery`
-- `org.flywaydb:flyway-core`
-- `org.flywaydb:flyway-database-postgresql`
 - `org.springframework.boot:spring-boot-starter-test`
 - `org.junit.jupiter:junit-jupiter`
 - `org.mockito:mockito-core`

@@ -253,7 +253,7 @@ RAG-V1 侧 10 个 `*.proto` **全部从 B 侧复制**，非翻译。改动**严�
 
 > ⚠️ **本节原记 B 仓的决策过程（📦 存档）** ⇒ 已由 [`docs/决策记录.md`](docs/决策记录.md)（**D1–D16** + P1–P7）取代，**冲突以其为准**；其中「拦截器注册用 `@Import`」RAG-V1 **不用**（D3）。
 
-🔴 **Flyway 账本撞号 —— 待拍板**：`flyway_schema_history` 是 **schema 级**账本 ⇒ 同库同 schema 只能一本；10 个 `*-service` **都有 `db/migration/`** ⇒ 共用 schema 时**任一 app 先启动，其他 app 的表就永远建不出来**。⇒ **填实现前必须拍板**（独立表名 / 独立 schema / 独立库）；B 侧有两种现成做法：① **各域独立账本表名**（`flyway_schema_history_<域>`）+ `baseline-on-migrate: true` + **`baseline-version: 0` 必钉**（B 侧 7 个域在用）② **users 域改用 `SchemaInitializer` 幂等重放**（B 侧 user/admin 两进程共库共表 ⇒ 账本必撞 ⇒ 改走无版本幂等重放）。⚠️ 本仓现状 = 9 个域 pom 已引 Flyway + yml **无 `spring.flyway` 段**（全部用默认表名）⇒ **写域迁移脚本前必须先定**。
+🔴 **Flyway 账本撞号 —— users 域已定，其余 7 域待拍板**：`flyway_schema_history` 是 **schema 级**账本 ⇒ 同库同 schema 只能一本 ⇒ 共用 schema 时**任一 app 先启动，其他 app 的表就永远建不出来**。✅ **users 域已定（2026-11-02 用户定 · D17）= 不用 Flyway**（照抄 B 侧：三 pom 零依赖 + `SchemaInitializer` 幂等重放 `db/01..04_*.sql`）⇒ `service/users/{user,admin}/pom.xml` 的 Flyway 依赖**已撤** ⇒ users 域无版本账本 ⇒ **不撞号**。🟠 **其余 7 域仍待拍板**：B 侧做法 = **各域独立账本表名**（`flyway_schema_history_<域>`）+ `baseline-on-migrate: true` + **`baseline-version: 0` 必钉**；⚠️ 本仓现状 = 7 个域 pom 已引 Flyway + yml **无 `spring.flyway` 段**（全部用默认表名）⇒ **写域迁移脚本前必须先定**。
 
 ## 七、引用清单
 

@@ -35,20 +35,15 @@
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
         </dependency>
-        <!-- ============ Flyway（DDL 迁移；**账本表名逐域独立** —— 见 docs/决策记录.md） ============ -->
+        <!-- ============ DDL 建表：**不用 Flyway**（照抄 B 侧 users 域） ============ -->
         <!--
-            ⚠️ **D14**：Boot 4 的 `spring-boot-flyway` **独立模块在 Boot 3.5 不存在**
-            ⇒ Boot 3.5 的 `FlywayAutoConfiguration` 在 `spring-boot-autoconfigure` 里
-            ⇒ 只需 `flyway-core` + `flyway-database-postgresql`（版本由根 pom 统一管）。
+            B 侧 `service/users/{user,admin,users-common}` 三个 pom **均无 Flyway 依赖**
+            ⇒ 建表走 `users-common` 的 `SchemaInitializer`（幂等重放 `db/01..04_*.sql`，
+               advisory lock 串行化 ⇒ 谁先启动都行，重复重放恒等）
+            ⇒ **D16**：B 侧是唯一真理 ⇒ 本仓照抄，**不引 Flyway**
+            ⇒ 顺带消除「两个域共用默认账本表 `flyway_schema_history`」的撞号隐患
+               （users 域无版本化账本 ⇒ 不存在账本撞号）
         -->
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-database-postgresql</artifactId>
-        </dependency>
         <!-- ============ 测试基础设施（抄 RAG；test 作用域**不传递给下游**） ============ -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
