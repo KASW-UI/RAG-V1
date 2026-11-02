@@ -49,71 +49,96 @@
 │   │   │       └── rag/
 │   │   │           └── follow/
 │   │   │               ├── advice/
-│   │   │               │   ├── FollowApiExceptionHandler.java
-│   │   │               │   └── FollowApiResponseAdvice.java
+│   │   │               │   ├── FollowApiExceptionHandler.java    # 全局异常处理器 —— 对应 B 侧
+│   │   │               │   └── FollowApiResponseAdvice.java    # 全局响应包装 —— 对应 B 侧
 │   │   │               ├── client/
-│   │   │               │   └── UserRpcClient.java    # 跨域 gRPC 客户端 —— 域内调用已直连，此处只保留跨域依赖。
+│   │   │               │   └── UserRpcClient.java    # user-rpc gRPC 客户端门面 —— 逐条照抄 B 侧
 │   │   │               ├── config/
-│   │   │               │   ├── FollowApiProperties.java    # @ConfigurationProperties —— 聚合本域 HTTP 层配置。
-│   │   │               │   ├── FollowRpcProperties.java
-│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 对齐 B 侧同名配置类的注册形态。
+│   │   │               │   ├── FollowApiProperties.java    # follow 域 HTTP 层配置聚合点 —— Spring Boot {@code @ConfigurationProperties}。
+│   │   │               │   ├── FollowRpcProperties.java    # follow 域 gRPC 侧的业务配置 —— 逐条对应 B 侧
+│   │   │               │   └── WebMvcConfig.java    # Spring MVC 装配点 —— 挂两条鉴权路径 ＋ 注册本域那条 Jackson 强转补强。
 │   │   │               ├── contract/
-│   │   │               │   ├── CodeError.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│   │   │               │   ├── ErrCodes.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│   │   │               │   ├── ErrMsg.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│   │   │               │   └── GrpcErrorMapper.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
+│   │   │               │   ├── CodeError.java    # follow 域业务错误载体（L1 契约层） —— 对应 B 侧
+│   │   │               │   ├── ErrCodes.java    # follow 域业务错误码常量集（域内私有 · L1 契约层）。
+│   │   │               │   ├── ErrMsg.java    # follow 域 code → msg 查表（L1 契约层 · 域内私有）。
+│   │   │               │   └── GrpcErrorMapper.java    # follow 域 gRPC 错误双向转换（L1 契约层 · 域内私有） —— 对应 B 侧
 │   │   │               ├── controller/
-│   │   │               │   └── FollowController.java    # ⚠️ L1 路由契约（B 侧 正推，勿凭直觉改）
+│   │   │               │   └── FollowController.java    # follow 域全部 8 个端点 —— B 侧
 │   │   │               ├── domain/
 │   │   │               │   ├── entity/
-│   │   │               │   │   ├── BlockRelationEntity.java
-│   │   │               │   │   └── FollowRelationEntity.java
+│   │   │               │   │   ├── BlockRelationEntity.java    # 拉黑关系表 ORM 实体 —— 对应 B 侧
+│   │   │               │   │   └── FollowRelationEntity.java    # 关注关系表 ORM 实体 —— 对应 B 侧
 │   │   │               │   └── service/
-│   │   │               │       └── FollowDomainService.java
+│   │   │               │       └── FollowDomainService.java    # follow 域 8 个 gRPC 用例的业务编排 —— 逐条照抄 B 侧
 │   │   │               ├── dto/
 │   │   │               │   ├── list/
-│   │   │               │   │   ├── FollowListReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── FollowUserListResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── FollowListReq.java    # 列表类请求体 —— immutable record（决策 D5 · A9）。
+│   │   │               │   │   └── FollowUserListResp.java    # 用户 id 列表响应体 —— immutable record（决策 D5 · A9）。
 │   │   │               │   ├── recommend/
-│   │   │               │   │   ├── RecommendListResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── RecommendUser.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── RecommendListResp.java    # 推荐列表响应体 —— immutable record（决策 D5 · A9）。
+│   │   │               │   │   └── RecommendUser.java    # 推荐列表里的一项 —— immutable record（决策 D5 · A9）。
 │   │   │               │   └── relation/
-│   │   │               │       ├── RelationActionReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       └── RelationActionResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── RelationActionReq.java    # 关注 / 取关 / 拉黑 / 解拉黑四个动作的请求体 —— immutable record（决策 D5 · A9）。
+│   │   │               │       └── RelationActionResp.java    # 动作类响应体 —— immutable record（决策 D5 · A9）。
 │   │   │               ├── grpc/
-│   │   │               │   └── FollowGrpcService.java
+│   │   │               │   └── FollowGrpcService.java    # gRPC 服务入口 —— 逐条照抄 B 侧
 │   │   │               ├── interceptor/
-│   │   │               │   ├── FollowBlacklistInterceptor.java
-│   │   │               │   └── FollowJwtAuthInterceptor.java
+│   │   │               │   ├── FollowBlacklistInterceptor.java    # follow 域的 JWT 黑名单闸门 —— 对应 B 侧
+│   │   │               │   └── FollowJwtAuthInterceptor.java    # follow 域的 JWT 验签拦截器 —— 对应 B 侧
 │   │   │               ├── mapper/
-│   │   │               │   ├── BlockRelationMapper.java
-│   │   │               │   ├── FollowRelationMapper.java
-│   │   │               │   └── GoStyleLimitOffset.java
+│   │   │               │   ├── BlockRelationMapper.java    # 拉黑关系数据访问 —— 对应 B 侧
+│   │   │               │   ├── FollowRelationMapper.java    # 关注关系数据访问 —— 对应 B 侧
+│   │   │               │   └── GoStyleLimitOffset.java    # 🔴 分页子句的 Go 复刻 —— 对应 GORM 的
 │   │   │               ├── metrics/
-│   │   │               │   ├── FollowApiMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
-│   │   │               │   └── FollowRpcMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
+│   │   │               │   ├── FollowApiMetrics.java    # follow 域 HTTP 层三个 metric —— B 侧
+│   │   │               │   └── FollowRpcMetrics.java    # follow-rpc 业务指标（L1 观测契约） —— 对应 B 侧
 │   │   │               ├── service/
-│   │   │               │   ├── FollowApiSupport.java
-│   │   │               │   ├── FollowBlockTransactionService.java
-│   │   │               │   ├── FollowQueryService.java
-│   │   │               │   ├── FollowRecommendationService.java
-│   │   │               │   ├── FollowRelationService.java
-│   │   │               │   ├── FollowRpcSupport.java
-│   │   │               │   └── FollowUserExistenceService.java
+│   │   │               │   ├── FollowApiSupport.java    # follow 域 HTTP 层跨 8 个端点共享的行为 —— B 侧
+│   │   │               │   ├── FollowBlockTransactionService.java    # follow 域唯一一笔多语句事务 —— 对应 B 侧
+│   │   │               │   ├── FollowQueryService.java    # follow 域 HTTP 层「读用例组」 —— 4 个列表端点（follow/list · follower/list · block/list · recommendations）的编排。
+│   │   │               │   ├── FollowRecommendationService.java    # 二度人脉推荐算法 —— 逐条照抄 B 侧
+│   │   │               │   ├── FollowRelationService.java    # follow 域 HTTP 层「写用例组」 —— 4 个动作端点（follow / unfollow / block / unblock）的编排。
+│   │   │               │   ├── FollowRpcSupport.java    # follow 域 gRPC 侧的跨用例共享业务工具 —— 逐条照抄 B 侧
+│   │   │               │   └── FollowUserExistenceService.java    # 用户存在性校验 —— 逐条照抄 B 侧
 │   │   │               ├── wiring/
-│   │   │               │   └── NacosRegistration.java
-│   │   │               └── FollowServiceApplication.java    # @SpringBootApplication + @EnableDiscoveryClient —— api 与 rpc 合并后的唯一入口。
+│   │   │               │   └── NacosRegistration.java    # follow 域 gRPC 实例注册到 Nacos —— 逐条照抄 B 侧
+│   │   │               └── FollowServiceApplication.java    # follow 域唯一入口 —— B 侧 {@code follow-api} / {@code follow-rpc} 两个进程合并后的单一 app（D1）。
 │   │   └── resources/
 │   │       ├── db/
 │   │       │   └── migration/
-│   │       │       └── .gitkeep
+│   │       │       ├── .gitkeep
+│   │       │       ├── V1__create_follow_relation.sql
+│   │       │       └── V2__create_block_relation.sql
 │   │       └── application.yml
 │   └── test/
-│       └── java/
-│           └── com/
-│               └── rag/
-│                   └── follow/
-│                       └── FollowServiceApplicationTests.java
+│       ├── java/
+│       │   └── com/
+│       │       └── rag/
+│       │           └── follow/
+│       │               ├── contract/
+│       │               │   └── FollowErrorContractTest.java    # follow 域 L1 错误契约（纯单测 · 不需要容器） —— 16 个码值 + 16 条文案 + 回落 + gRPC 反查。
+│       │               ├── grpc/
+│       │               │   └── FollowGrpcServiceContractTest.java    # follow 域 8 个 gRPC 用例的契约（真 gRPC server · 真 proto 编解码 · 真 PG）。
+│       │               ├── http/
+│       │               │   ├── FollowHttpBusinessCodeRealTomcatTest.java    # follow 域 HTTP 层的「业务码还原链路」端到端断言（真 Tomcat · 真 PG · 真 user-rpc gRPC）。
+│       │               │   └── FollowHttpContractRealTomcatTest.java    # follow 域 HTTP 契约（真 Tomcat · 真 PostgreSQL · 真 Redis · 真 JWT）。
+│       │               ├── metrics/
+│       │               │   └── FollowMetricsContractTest.java    # follow 域的 5 个 rpc 指标（L1 观测契约 · 真 PG 触发 + 真 Prometheus 文本格式断言）。
+│       │               ├── service/
+│       │               │   ├── FollowBlockTransactionRealPgTest.java    # 🔴 P0-1 · 「插 block + 双向删 follow」是一笔事务 —— 真 PG + 真约束冲突 + 变异证据。
+│       │               │   ├── FollowConcurrencyRealPgTest.java    # follow 域「并发请求」场景的真触发测试（真 Tomcat · 真 PostgreSQL · 真 Redis · 真 user-rpc gRPC）。
+│       │               │   ├── FollowDomainServiceRealPgTest.java    # follow 域 8 个 gRPC 用例的业务语义（真 PostgreSQL + 真 user-rpc gRPC）。
+│       │               │   └── FollowFlywayBaselineRealPgTest.java    # Flyway 守门：共享 schema 已被别的 app 占用时，follow 域的 V1 仍必须执行。
+│       │               ├── support/
+│       │               │   ├── FakeUserRpcServer.java    # 「假 user-rpc」—— 真 gRPC server（随机 TCP 端口）。
+│       │               │   ├── FollowTestSupport.java    # follow 域测试用 JWT 构造器。
+│       │               │   ├── NacosStubConfiguration.java    # Nacos 桩 —— 让 follow 域的测试能起真实 Spring 上下文，而不连 Nacos。
+│       │               │   ├── PrometheusTestRegistryConfiguration.java    # 测试上下文里注入「真 Prometheus registry」 —— 让 Micrometer 真正吐出
+│       │               │   ├── TestPostgres.java    # 测试用真 PostgreSQL（进程内单例容器）。
+│       │               │   └── TestRedis.java    # 测试用真 Redis（进程内单例容器） —— follow 域唯一的 Redis 用途是
+│       │               └── FollowServiceApplicationTests.java    # follow 域上下文装配自检 —— 证明 D1 合并后的唯一入口真能把全链条装配起来。
+│       └── resources/
+│           └── application-test.properties
 └── pom.xml    # Maven 模块描述
 ```
 
