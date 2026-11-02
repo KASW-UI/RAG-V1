@@ -428,17 +428,18 @@
 
 ### 7.1 本域测试（**19 个类 · 151 例**）
 
-> 📌 **三类资产**：① **3 个原有类 / 40 例**（本域自建）② **16 个移植类 / 108 例**（**B 侧期望值逐字沿用** · 明细见 §十一·11.3）③ **2 个对拍探针**（**仓内工具**，不是 JUnit ⇒ 不计入例数）。
+> 📌 **三类资产**：① **3 个原有类 / 41 例**（本域自建）② **16 个移植类 / 110 例**（**B 侧期望值逐字沿用** · 明细见 §十一·11.3）③ **2 个对拍探针**（**仓内工具**，不是 JUnit ⇒ 不计入例数）⇒ **合计 19 个类 / 151 例**。
+> 📌 **计数口径**：逐文件 `grep -cE '^\s*@Test\s*$'`（**排除 `@Testcontainers` 的误匹配**）⇒ 与 surefire 的模块级汇总行 `Tests run: 151` 逐字相符。
 
 #### 7.1.1 原有资产（**3 个类 · 41 例**）
 
 | 测试类 | 例数 | 触发层级 | 覆盖 |
 |---|---|---|---|
 | `domain/service/AdminDomainServiceRealPgTest` | **20** | **E-3**（真 PG `postgres:16-alpine` + 真 Redis `redis:7-alpine` + **真 `@Transactional` 代理**） | 登录 3 态 · 邀请码一次性 · username 查重**不消耗邀请码** · GORM 的 LIMIT/OFFSET 静默抑制 · `extra_info` 装 U+0000 · 黑名单 key 前缀 · 4 步事务回滚 |
-| `http/AdminHttpContractRealTomcatTest` | **16** | **E-3**（**真 Tomcat** · `RANDOM_PORT` · 绝不用 MockMvc） | 13 端点全 POST（GET 全 405）· public 放行 · protected 401 三态 · **200 信封恰好三键** · 400 + text/plain + nosniff + 尾随换行 · 415⇒400 · **未知路径 401/500 双态**（对齐 B 侧活体）· 黑名单 401 + `admin:` 前缀隔离 · **鉴权路径前缀 ↔ 控制器映射守卫** |
+| `http/AdminHttpContractRealTomcatTest` | **17** | **E-3**（**真 Tomcat** · `RANDOM_PORT` · 绝不用 MockMvc） | 13 端点全 POST（GET 全 405）· public 放行 · protected 401 三态 · **200 信封恰好三键** · 400 + text/plain + nosniff + 尾随换行 · 415⇒400 · **未知路径 401/500 双态**（对齐 B 侧活体）· 黑名单 401 + `admin:` 前缀隔离 · **鉴权路径前缀 ↔ 控制器映射守卫** |
 | `AdminServiceApplicationTests` | **4** | **E-3**（**真上下文启动**：Tomcat + gRPC server + PG + Redis） | 4 张表建出来 · 默认 admin 密码是**硬编码 `admin`** · gRPC server 与 Tomcat 同进程 · **Nacos 注册面：自动注册被关掉、只注册 gRPC 端口**（§5-⑩）＋ **运行期注册名 == `admin-rpc`**（§5-⑪）＋ **`spring.application.name` == `admin-service`**（两轴刻意分叉） |
 
-#### 7.1.2 移植资产（**16 个类 · 108 例** · 明细见 §十一·11.3）
+#### 7.1.2 移植资产（**16 个类 · 110 例** · 明细见 §十一·11.3）
 
 | 分组 | 类 | 例数 |
 |---|---|---|
@@ -1035,7 +1036,9 @@ B_BASE=http://127.0.0.1:18889 C_BASE=http://127.0.0.1:18890 \
 > 📌 **落地方式**：3 个**隔离 worktree**（`admin-parity-{a,b,c}`，基线 `ae17325`）并行移植 ⇒ 互不踩 `target/`；
 > 产物**全部拷回本工作树**，在**含本轮注册名修正的新代码态**上**重跑全量**（§8.1 读数即该次）。
 
-#### 11.3.1 移植清单（**16 个类 / 108 例** · `Skipped: 0`）
+#### 11.3.1 移植清单（**16 个类 / 110 例** · `Skipped: 0`）
+
+> 📌 **口径拆开**（避免把「移植」与「本域新增」混成一笔）：**16 个类 / 110 例** = **108 例 B 侧逐字移植** ＋ **2 例 C 侧新增**（`AdminRpcNacosGroupTest` 的注册名默认 / 覆盖口断言 · §五·5-⑪）。
 
 | # | C 侧类（`service/users/admin/src/test/java/com/rag/admin/…`） | B 侧出处（`service/users/admin/…`） | 例数 | **断言面**（`@DisplayName` 摘要） |
 |---|---|---|---|---|
@@ -1043,7 +1046,7 @@ B_BASE=http://127.0.0.1:18889 C_BASE=http://127.0.0.1:18890 \
 | 2 | `grpc/AdminRpcLogoutClientVisibleGrpcStatusTest` | `admin-rpc/…/rpc/AdminRpcLogoutClientVisibleGrpcStatusTest` + `AdminRpcRedisDisconnectedFastFailTest` | 1 | Redis 断连 ⇒ **客户端可见** status = INTERNAL「注销失败,Redis写入异常」 |
 | 3 | `grpc/AdminRpcLogoutClientVisibleGrpcStatusDefaultBehaviorTest` | `admin-rpc/…/rpc/AdminRpcLogoutClientVisibleGrpcStatusDefaultBehaviorTest` | 1 | 断连策略=DEFAULT ⇒ 命令排队 ⇒ **2s rpc 预算先到** ⇒ 客户端看到 DEADLINE_EXCEEDED(1015) |
 | 4 | `service/AdminSpanWiringTest` | `admin-rpc/…/rpc/AdminSpanWiringTest` | 3 | `resetUserPassword` 真导出 `Action-Admin-ResetUserPassword` + 2 个 audit 属性 · Go 没打 span 的方法 RAG 也不许凭空加 · Go 有 span 的 8 个方法与 `AdminSpans` 常量逐条对应 |
-| 5 | `wiring/AdminRpcNacosGroupTest` | `admin-rpc/…/rpc/AdminRpcNacosGroupTest` | 3 | group **来自配置**（非写死）· 默认行为零变化（仍 `USER_GROUP`）· yml 里那行还在（删掉 ⇒ `NACOS_GROUP` 失效） |
+| 5 | `wiring/AdminRpcNacosGroupTest` | `admin-rpc/…/rpc/AdminRpcNacosGroupTest` | **5** | **B 侧 3 例**：group **来自配置**（非写死）· 默认行为零变化（仍 `USER_GROUP`）· yml 里那行还在（删掉 ⇒ `NACOS_GROUP` 失效）<br>**C 侧另加 2 例**（§五·5-⑪ · 非移植）：注册名**默认**逐字 == `admin-rpc`（跨域寻址键的守门）· 注册名**覆盖口真的被消费**（配了就跟着变 ＋ 不再注册默认名 ⇒ 证明「配置项存在」≠「配置项被消费」的反面） |
 | 6 | `domain/service/AdminSemanticDriftRegressionTest` | `admin-rpc/…/rpc/service/AdminSemanticDriftRegressionTest` | 13 | seeder 密码 = `admin`（非 `default-password`）· seeder 不重复插入 · keyword 空白/前后空格/空串三态 · **GORM LIMIT/OFFSET 静默抑制**（`page=0` / `pageSize=-5` / `pageSize=0`）· `username` 空串不报 INVALID_ARGUMENT · `inviteCode` 空仍 PERMISSION_DENIED · `total` 来自独立 count |
 | 7 | `domain/service/AdminDomainServiceCatchStructureTest` | `admin-rpc/…/rpc/service/AdminDomainServiceCatchStructureTest` | 3 | 每个 `catch(Exception)` 前邻都有 `catch(StatusRuntimeException){throw e;}` · **守恒计数 29/29** · 自检 Range/Entry 的 equals 依赖 Label 的 hashCode |
 | 8 | `domain/service/AdminRpcColumnTypeParityTest` | `admin-rpc/…/rpc/AdminRpcColumnTypeParityTest` | 6 | `extra_info` 是 **text**、6 个时间列是 **timestamptz**（对齐 Go AutoMigrate）· 非 UTC 会话时区下重放 DDL 时刻不漂移 · jsonb 会拒收的 `\u0000` payload · invite 有效期按绝对时刻判定 · `users_user.extra_info` 逐字节落库（CAST 残留守门） |
@@ -1055,7 +1058,7 @@ B_BASE=http://127.0.0.1:18889 C_BASE=http://127.0.0.1:18890 \
 | 14 | `http/AdminApiRealTomcatResponseBytesTest` | `admin-api/…/api/AdminApiRealTomcatResponseBytesTest` | 3 | **真 Tomcat** CASE-24：400 text/plain 带 `charset=utf-8` + `nosniff` + 尾随换行 · CASE-26：下游睡过 3s ⇒ **503** + text/plain + nosniff · **对照组**：同一路由 + 快下游 ⇒ 200 + application/json（证明 503 是超时触发的） |
 | 15 | `http/AdminApiPlainText400ContentTypeTest` | `admin-api/…/api/AdminApiPlainText400ContentTypeTest` | 2 | 400 text/plain 的 Content-Type = `text/plain; charset=utf-8`（与 Go 逐字节相同）· **畸形 JSON** 的 400 同样带 charset（同一分支，不能只测必填缺失） |
 | 16 | `http/AdminApiPlainText400HeaderProbeTest` | `admin-api/…/api/AdminApiPlainText400HeaderProbeTest` | 2 | 取证：畸形 JSON ⇒ 400 text/plain 时 Content-Type 是否真的丢了 · **取证对照**：200 JSON 的 Content-Type 是否正常（鉴别 wrapper 是否普遍吞 header） |
-| | **合计** | | **108** | |
+| | **合计** | | **110**（**108 移植 ＋ 2 C 侧新增**） | |
 
 #### 11.3.2 🟢 **B ↔ C 用例数守恒核对**（移植完整性的硬证据）
 
@@ -1063,7 +1066,8 @@ B_BASE=http://127.0.0.1:18889 C_BASE=http://127.0.0.1:18890 \
 
 | 核对项 | 结果 |
 |---|---|
-| 16 个移植类，**逐文件** B 侧 `@Test` 数 vs C 侧 `@Test` 数 | **16/16 完全相等**（9·3·6·7·13·6·18·2·2·3·26·5·1·1·3·3 = **108**） |
+| **B 侧 108 例 ⇒ C 侧逐字存在**（逐文件比对 `@Test` 数） | ✅ **成立**：15 个类 **B 侧 @Test 数 == C 侧 @Test 数**（9·3·6·7·13·6·18·2·2·3·26·5·1·1·3 = **105**）＋ `AdminRpcNacosGroupTest` 的 **B 侧 3 例逐字相等**（C 侧该类另**加 2 例**，见 §11.3.1）⇒ **B 侧 108 例无一丢失、无一被改写** |
+| ⚠️ **「16/16 逐文件相等」的口径已修正** | 原表述在 `AdminRpcNacosGroupTest` 加了 2 条 C 侧断言后**不再准确**（B=3 / C=5）⇒ 改为「**B 侧 108 例逐字存在 ＋ C 侧另加 2 例**」⇒ **不把本域新增算成移植**（AGENTS.md §1.0c「测试资产单独一档」的诚实写法） |
 | B 侧 16 个源文件**真实存在**（`ls` 逐个核对，非「推测有」） | **16/16 存在** |
 | C 侧实跑例数 vs 守恒预期 | **一致**（见 §8.1） |
 | 「期望值是不是本域自拟的」 | ❌ 不是 —— 逐条沿用 B 侧断言（AGENTS.md §1.0c「测试资产单独一档」＋ D13） |

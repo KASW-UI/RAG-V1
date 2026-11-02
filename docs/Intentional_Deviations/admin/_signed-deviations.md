@@ -51,7 +51,7 @@
 | 维度 | 是否等价 |
 |---|---|
 | **gRPC 方法全名 / 消息格式 / 字段号** | ✅ **等价**（端口不进 wire 契约；proto 逐字节一致） |
-| **服务注册名** | ⚠️ 已随 D1 改为进程身份 `admin-service`（B 侧是 `admin-rpc`）⇒ **这是 D1 的一部分，不是本条** |
+| **服务注册名** | ✅ **等价**（B 侧 = `admin-rpc`，C 侧 = `admin-rpc` ⇒ **逐字一致**）—— ⚠️ **本行 2026-11-02 已修正**：初版曾写「已随 D1 改为进程身份 `admin-service`」，该前提**已被推翻**（message 域按 B 侧逐字寻址 `discovery:///admin-rpc` ⇒ 注册名不叫 `admin-rpc` ⇒ **寻址落空**）⇒ 现落点见 `DEV-ADMIN-APPNAME-003` |
 | **调用方寻址方式** | ✅ 等价（B 侧靠 env 错开；C 侧靠固定端口错开 ⇒ 同一个进程对 ⇒ 同一个端口） |
 | **客户端代码** | ✅ 等价（proto stub 不含端口 ⇒ 端口由配置注入） |
 
@@ -251,3 +251,19 @@ B 侧那串文本是 **go-zero 的错误信息**，C 侧要对齐就得**手抄 
 - ✅ **显式登记**（本条），避免日后被当成「注册名漂移」而误改（**注册名 ≠ 进程名**，两者已由
   `AdminServiceApplicationTests` 的两条断言分别钉死：注册名 == `admin-rpc`、进程名 == `admin-service`）。
 - ⚠️ **`docs/Intentional_Deviations/_INDEX.md` 的索引由主会话统一更新**（本 lane 不碰）。
+
+---
+
+## 本域登记一览（**核对日期 2026-11-02**）
+
+| 编号 | 一句话 | 状态 |
+|---|---|---|
+| `DEV-ADMIN-GRPC-PORT-001` | admin 的 gRPC 端口 8081 → **8082**（部署面） | 🏷 候选，建议签 |
+| `DEV-ADMIN-CONTENTTYPE-002` | 3 个空 struct 端点在「非 JSON content-type」下 C 侧 400 / B 侧受理 | 🏷 候选，建议签 |
+| `DEV-ADMIN-400-TEXT-002` | 400 的**文本内容**（D-01 族扩展 · body 缺失 / content-type 不匹配） | 🏷 候选，建议签 |
+| `DEV-ADMIN-APPNAME-003` | `spring.application.name`：`admin-rpc` → **`admin-service`**（进程名 · 与 Nacos 注册名**刻意分叉**） | 🏷 候选，建议签 |
+
+> ⚠️ **本表只登记，不升级为「请用户拍板」**（用户 2026-10-25 的明确要求）⇒ 按「🏷 候选，建议签」登记即算交付。
+> 📌 **2026-11-02 修正记录**：初版把「Nacos 服务注册名 = `admin-service`」当作 D1 的一部分登记为偏离
+> ⇒ **该前提已被推翻**（message 域按 B 侧逐字寻址 `discovery:///admin-rpc`）⇒ **注册名已回到 B 侧逐字值 `admin-rpc`**
+> ⇒ **本表里「服务注册名」那一行已改写** ⇒ ⇒ **登记的是「进程名」这一条，不是「注册名」**。
