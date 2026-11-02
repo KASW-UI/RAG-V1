@@ -177,6 +177,46 @@ step "HTTP 对拍矩阵（20 例）"
 python3 "${HERE}/compare.py" "http://127.0.0.1:${B_API_PORT}" "http://127.0.0.1:${C_HTTP_PORT}" \
   "e4u$$" "1" || FAILED=1
 
+step "编译 gRPC wire 探针（同一份 class 打两侧 ⇒ 比的是纯粹的 wire 字节）"
+M2="${HOME}/.m2/repository"
+pick_jar() { find "${M2}/$1" -name "$2-*.jar" ! -name '*-sources.jar' ! -name '*-javadoc.jar' 2>/dev/null | sort -V | tail -1; }
+GRPC_CP=""
+for a in "io/grpc grpc-api" "io/grpc grpc-stub" "io/grpc grpc-core" \
+         "io/grpc grpc-netty-shaded" "io/grpc grpc-context" \
+         "com/google/guava guava" "com/google/guava failureaccess" \
+         "com/google/code/gson gson" "io/perfmark perfmark-api" \
+         "com/google/errorprone error_prone_annotations" \
+         "org/codehaus/mojo animal-sniffer-annotations" \
+         "javax/annotation javax.annotation-api"; do
+  g="${a% *}"; ar="${a##* }"
+  j="$(pick_jar "${g}" "${ar}")"
+  [ -n "${j}" ] || die "本地仓缺 jar：${g}/${ar}（gRPC 探针需要它才能编译）"
+  GRPC_CP="${GRPC_CP:+${GRPC_CP}:}${j}"
+done
+PROBE_DIR="${WORK}/probe"
+mkdir -p "${PROBE_DIR}"
+javac -encoding UTF-8 -cp "${GRPC_CP}" -d "${PROBE_DIR}" "${HERE}/grpc-wire/UserWireProbe.java" \
+  || die "gRPC wire 探针编译失败"
+say "   ✅ 探针编译完成（grpc-api $(basename "$(pick_jar io/grpc grpc-api)")）"
+
+step "gRPC wire 对拍矩阵（18 例 · 9 个方法全覆盖 + 错误路径 + 成功路径）"
+# ⚠️ 用户名两侧必须**相同**（同输入），但**每轮唯一** ⇒ 避免上一轮崩在中途留下的残user 撞 ALREADY_EXISTS。
+WIRE_USER="e4ug$(date +%s)$$"
+java -cp "${GRPC_CP}:${PROBE_DIR}" com.rag.user.parity.UserWireProbe \
+  127.0.0.1 "${B_RPC_PORT}" "${WORK}/wire-b.txt" "${WIRE_USER}" > "${WORK}/wire-b.log" 2>&1
+B_WIRE_RC=$?
+java -cp "${GRPC_CP}:${PROBE_DIR}" com.rag.user.parity.UserWireProbe \
+  127.0.0.1 "${C_GRPC_PORT}" "${WORK}/wire-c.txt" "${WIRE_USER}" > "${WORK}/wire-c.log" 2>&1
+C_WIRE_RC=$?
+if [ "${B_WIRE_RC}" != "0" ] || [ "${C_WIRE_RC}" != "0" ]; then
+  FAILED=1
+  say "   ❌ wire 探针异常退出：B=${B_WIRE_RC} · C=${C_WIRE_RC}"
+  say "   --- B 侧日志 ---"; tail -20 "${WORK}/wire-b.log" | sed 's/^/      | /'
+  say "   --- C 侧日志 ---"; tail -20 "${WORK}/wire-c.log" | sed 's/^/      | /'
+else
+  python3 "${HERE}/wire_compare.py" "${WORK}/wire-b.txt" "${WORK}/wire-c.txt" || FAILED=1
+fi
+
 step "DB 最终态对拍（§6.4 状态和副作用）"
 DB_ROWS_B="$(docker exec "${B_PG_CONTAINER}" psql -U "${PG_USER}" -d "${PG_DB_B}" -tAc \
   "SELECT username||'|'||status||'|'||coalesce(score::text,'-')||'|'||coalesce(extra_info,'-')||'|'||(password IS NOT NULL)::text||'|'||coalesce(email,'-') FROM users_user ORDER BY username")"
@@ -190,6 +230,19 @@ else
   say "   ❌ users_user 最终态不一致"
   say "      B:"; printf '%s\n' "${DB_ROWS_B}" | sed 's/^/      | /'
   say "      C:"; printf '%s\n' "${DB_ROWS_C}" | sed 's/^/      | /'
+fi
+# ⚠️ 头像历史表：gRPC 维度上传了 2 个头像 ⇒ 比「行数 / 当前头像数 / 内容序列」。
+#    ⚠️ **不比对 history_id**（服务端雪花 ⇒ 两侧必然不同）；也**不比对 create_time**（写入时刻）。
+#    ⇒ 若两侧的「删用户是否级联删头像」行为不同 ⇒ 行数不同 ⇒ 这里会红。
+AV_B="$(docker exec "${B_PG_CONTAINER}" psql -U "${PG_USER}" -d "${PG_DB_B}" -tAc \
+  "SELECT count(*)||'/'||count(*) FILTER (WHERE is_current)||'/'||coalesce(string_agg(content_type||':'||size_bytes::text,',' ORDER BY id),'-') FROM users_user_avatar_history")"
+AV_C="$(docker exec "${C_PG_CONTAINER}" psql -U "${PG_USER}" -d "${PG_DB_C}" -tAc \
+  "SELECT count(*)||'/'||count(*) FILTER (WHERE is_current)||'/'||coalesce(string_agg(content_type||':'||size_bytes::text,',' ORDER BY id),'-') FROM users_user_avatar_history")"
+if [ "${AV_B}" = "${AV_C}" ]; then
+  say "   ✅ users_user_avatar_history 最终态一致（${AV_B}）"
+else
+  FAILED=1
+  say "   ❌ users_user_avatar_history 最终态不一致：B=${AV_B} · C=${AV_C}"
 fi
 TBL_B="$(docker exec "${B_PG_CONTAINER}" psql -U "${PG_USER}" -d "${PG_DB_B}" -tAc \
   "SELECT string_agg(tablename,',' ORDER BY tablename) FROM pg_tables WHERE schemaname='public'")"

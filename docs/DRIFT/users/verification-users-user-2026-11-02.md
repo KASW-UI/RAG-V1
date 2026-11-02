@@ -374,7 +374,7 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 ## 11.8 审核结果状态（按 `.agents/verification.md` §十 的状态词表）
 
 > ⚠️ **本报告的证据边界（必须先读）**：
-> 本轮**做完了「C 侧运行验证」**（39 例真触发测试，见 §11.6.3）与**「B 侧源码逐条对照」**（58/58 文件全读）；
+> 本轮**做完了「C 侧运行验证」**（**40 例**真触发测试，见 §11.6.3）与**「B 侧源码逐条对照」**（58/58 文件全读）；
 > ⇒ 但**没有做「双侧活体对拍」**（同一输入同时打 B 与 C，逐字节比对响应）⇒ ⇒
 > ⇒ 下表的 `PASS` 含义是「**C 侧运行证据 + B 侧源码逐条对照一致**」，
 > **不等于**「双侧活体对拍已闭合」。
@@ -401,9 +401,9 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 | 表名 / 列类型 L1 | **PASS** | `users/user.md` §6 ＋ `UserServiceApplicationTests#tableNamesMatchB` |
 | 指标名 + label（**只有 `result`**） | **PASS**（静态 + B 侧源码逐条对照） | `metrics/{UserApiMetrics,UserRpcMetrics}.java`（逐条照抄 B 侧） |
 | 事务边界（4/5 步原子 · D-005 / D-015） | **PASS**（C 侧实测 · **含变异证据**） | `mapper/UserAvatarHistoryMapper.java:135,198`（`@Transactional` 挂在 mapper 接口的 **default** 方法上 —— 本仓最易静默失效的形态）＋ `AvatarTransactionWiringTest#createAvatarHistoryRollsBackTheEarlierWriteOnMidwayFailure`（**真 UNIQUE 约束冲突** ⇒ W2 的 UPDATE 被回滚 ⇒ 旧 history 仍是 current）＋ `#createAvatarHistoryCommitsAllFourSteps`（同序列成功路径 ⇒ 非空洞对照）＋ `#mapperBeanIsWrappedByTransactionAdvisor`（advisor 真在）＋ **变异证据**（摘掉 `@Transactional` ⇒ 判据变红，见 §11.7） |
-| `updateById` vs `update(null, wrapper)` 的写路径形态 | **NOT_VERIFIED** | ⚠️ B 侧与 C 侧的写入 API 形态差异需逐语句对拍 ⇒ ⇒ 未做 |
+| `updateById` vs `update(null, wrapper)` 的写路径形态 | **PASS**（逐语句对拍 · 2026-11-03 闭合） | ⚠️ **两侧领域服务的「可执行语句集」逐行 diff**（归一化空白 / 换行折叠 / 错误码常量名 `ErrorCode.X.getCode()`→`ErrCodes.X` / pb 包名后）⇒ **唯一差异 = 一处 `logger.logBusinessErr(...)` 的换行折叠** ⇒ 语义等价。**写路径 13 个调用点（顺序 / 参数 / 方法名）逐条一一对应**：`findOneByUserName`×3 · `insert`×1 · `findOneByUid`×5 · `updateUserById`×1 · `deleteUserByUid`×1 · `selectAvatarHistory`×1 · `createAvatarHistory`×1 · `listAvatarHistory`×1。且 **两侧都不是 `updateById`** ⇒ 都走 `update(null, wrapper)`（`mapper/UserMapper.java`）⇒ ⇒ **「形态差异」本就不存在**；两侧 `UserMapper.java` / `UserAvatarHistoryMapper.java` 归一化 diff 后**只差包名 + TypeHandler import 落点 + 大括号风格** |
 | 端到端「register → login → get」 | **PASS**（C 侧单侧） | `UserApiHttpContractTest#registerLoginGetHappyPath`（**真 PG + 真 bcrypt + 真 JWT 签发 + 真 uid 字符串化**） |
-| **双侧活体对拍**（同一输入打 B 与 C 比对） | **PASS**（**HTTP 20 例 + DB 最终态**）· gRPC wire 仍 `NOT_VERIFIED` | ⚠️ **2026-11-03 实跑**（`tools/difftest/users-user/run.sh`，两侧真进程：真 Tomcat + 真 gRPC + 真 PG + 真 Redis + 真 Nacos）：HTTP **真差异 0/20**（探针 **EXIT=0**）· **字节级 12/20**（8 例差异 = 🔶 键序 4 ＋ 文案形态 4，两者**均已归因登记**）· DB `users_user` 最终态**逐字段一致** · 表清单一致（4 张）· 详见 §十二 |
+| **双侧活体对拍**（同一输入打 B 与 C 比对） | **PASS**（**HTTP 20 例 + gRPC wire 18 例 + DB 最终态**） | ⚠️ **2026-11-03 实跑**（`tools/difftest/users-user/run.sh`，两侧真进程：真 Tomcat + 真 gRPC + 真 PG + 真 Redis + 真 Nacos）：HTTP **真差异 0/20**（探针 **EXIT=0**）· **字节级 12/20**（8 例差异 = 🔶 键序 4 ＋ 文案形态 4，两者**均已归因登记**）· **gRPC wire 真差异 0/18**（9 个方法全覆盖 + 错误路径 + 成功路径；**只屏蔽易变值、不屏蔽 presence**；**变异证据**：植入 presence 差异 ⇒ **只有 gRPC 维度变红**）· DB `users_user` 与 `users_user_avatar_history` **逐字段一致** · 表清单一致（4 张）· 详见 §十二 / §12.2.1 |
 | C 侧 **fat jar 真能起得来**（生产类路径 ≠ 测试类路径） | **PASS**（本轮修） | 🔴 2026-11-03 对拍实测：`grpc-inprocess` 声明成 **test scope** ⇒ **生产 jar 缺类 ⇒ 启动即挂**（`NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`）⇒ **39 例测试全绿却零告警**。已修（去 scope）＋ B 侧类路径取证 + 探针自检。详见 §十二.3 |
 | 🔴 400 的「报哪个字段」**确定性** | **PASS**（本轮修） | 原实现 `getFieldErrors().findFirst()` ⇒ Hibernate Validator 违规集合是 `HashSet` ⇒ **同一输入 6 次出 3 种文案** ⇒ C 侧 400 **不是确定性输出**。已改为**按 DTO 声明序取第一条**（与 B 侧 `GoStyleRequired` 判定序逐个一致 ⇒ **报同一字段**）+ 新增断言连打 8 次逐次相同。详见 §十二.3 |
 | 其余 9 域的 `grpc.client:` 空键 | **FAIL（跨域）** | DRIFT-USER-IMPL-004（那些域**一启动就挂**） |
@@ -428,33 +428,46 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 | 9 | 事务边界是否一致？ | ✅ **实现同形 + 已实测**：`@Transactional` 挂在 mapper 的 default 方法上 ⇒ **真 UNIQUE 约束冲突**下 W2 的 UPDATE 确实被回滚（+ 变异证据）⇒ **PASS** |
 | 10 | 指标名/label 是否一致？ | ✅ `user_api_intercept_total{path,result}` · `user_rpc_login_total{result}` · `user_rpc_register_total{result}`（**只有 `result`**） |
 | 11 | 是否有「无出处的 idiomatization」？ | ✅ **零** —— 每个改写点都带 **B 出处 ＋ 语义等价论证**（javadoc 三段式） |
-| 12 | 框架机制是否有真触发测试？ | ✅ 39 例、`skipped=0`；**真 Tomcat** ＋ **真 gRPC** ＋ **真 PostgreSQL**（Testcontainers `postgres:16-alpine`） |
+| 12 | 框架机制是否有真触发测试？ | ✅ **40 例**、`skipped=0`；**真 Tomcat** ＋ **真 gRPC** ＋ **真 PostgreSQL**（Testcontainers `postgres:16-alpine`） |
 
 ### 最终结论（**按 §十 的状态词表**）
 
-> **本域实现层：PASS**（文件级承接 48/48、零空壳、C 侧运行证据 39 例全绿 `skipped=0`、映射表守门 EXIT=0）。
+> **本域实现层：PASS**（文件级承接 48/48、零空壳、C 侧运行证据 40 例全绿 `skipped=0`、映射表守门 EXIT=0）。
 >
-> ⚠️ **但「行为与 B 侧完全等价」这一命题本身是 `NOT_VERIFIED`** —— 本轮做的是
-> **「B 侧源码逐条对照 ＋ C 侧运行验证」**，**不是**「双侧活体对拍」。
-> ⇒ ⇒ 需补：**双侧对拍**（同一输入打 B 与 C 比对）与 **写路径形态逐语句对拍**。
-> （**事务回滚实测已于本轮补上** ⇒ 由 `NOT_VERIFIED` 升为 `PASS`，含变异证据。）
+> ⚠️ **但「行为与 B 侧完全等价」这一命题本身是 `NOT_VERIFIED`** —— **表内**能自闭合的三项
+> （事务边界实测 · **双侧活体对拍**〔HTTP 20 例 + **gRPC wire 18 例** + DB 两张表〕· **写路径形态逐语句对拍**）
+> **已于 2026-11-03 全部闭合**（每项都带变异证据）。
+> ⇒ ⇒ **剩下的缺口全在「表外」**：**B 侧 Go 真源第三方锚不可得**（本机无 `Sea-etcd`）·
+> **并发/超时/外部依赖失败/恢复场景轮未做** · **gRPC deadline/取消传播未对拍**（§12.5）。
+> ⇒ ⇒ **表内 `NOT_VERIFIED` 归零 ≠ 元命题闭合**（见 P-USER-14）。
 >
-> ⚠️ **另有 4 条跨域 `FAIL`**（DRIFT-USER-IMPL-004/005/006/008）⇒ 归属收口域与 admin lane ⇒
+> ⚠️ **另有 6 条跨域 `FAIL`**（DRIFT-USER-IMPL-004/005/006/008 ＋ **PARITY-002**〔7 域同型 jar 缺陷〕＋ **PARITY-003**〔JSON 键序 · 共享层〕）⇒ 归属收口域与各域 lane ⇒
 > **不在本 lane 的写权面**，已逐条登记。
 
 ### 审核状态汇总
 
 | 状态 | 项数 |
 |---|---|
-| **PASS** | **22** |
+| **PASS** | **23** |
 | **INTENTIONALLY_CHANGED**（L3 降级 D-01） | 1 |
-| **NOT_VERIFIED**（写路径形态 · **gRPC wire 逐字节对拍**） | **1 + 1** |
+| **NOT_VERIFIED** | **0** |
 | **FAIL（跨域 · 不在本 lane 写权面）** | **6** |
 | **合计** | **30** |
 
-> 📌 **口径**：本表 30 行**逐行点过**（脚本按行取状态列统计）⇒ 22 + 1 + 2 + 6 = 31 ⇒
-> 其中「双侧活体对拍」一行含**两个子项**（HTTP+DB = PASS · gRPC wire = NOT_VERIFIED）⇒ **行数 30 · 计分 31**。
-> （**初稿此处写的是 17，自身少算了 1 ⇒ 2026-11-02 复核时按行重数并订正；2026-11-03 对拍后再订正为 22/1/2/6。**）
+> 📌 **口径**：本表 **30 行**逐行点过 ⇒ 23 + 1 + 0 + 6 = **30**。
+> （**初稿此处写的是 17，自身少算了 1 ⇒ 2026-11-02 复核时按行重数并订正；**
+> **2026-11-03 对拍后订正为 22/1/2/6；**
+> **2026-11-03 第二轮（gRPC wire 维度 + 写路径形态闭合）后订正为 23/1/0/6。**）
+> ⚠️ **这四个数字是脚本按行复算出来的，不是手数的** —— 手数第一次写成了 24 ⇒ **被机器复算当场纠正**
+> （同款教训见 [`P-08`](../../Pitfalls/_cross/P-08-落地证据未经机器复算.md)）。
+>
+> ⚠️ **「行为与 B 侧完全等价」这一命题本身**（§11.8 表**上方**那段结论文字）
+> **仍标 `NOT_VERIFIED`** —— 它是**元命题**，不是表里的一行 ⇒
+> ⇒ **不再有「表内 NOT_VERIFIED 项」**（已全部闭合或移交）⇒
+> ⇒ 但**元命题**仍未闭合，原因是**表外**的三条：**B 侧 Go 真源第三方锚不可得** ·
+> **并发/超时/外部依赖失败/恢复场景轮未做** · **gRPC deadline/取消传播未对拍**（§12.5）。
+>
+> 🔴 **不要把「表内 0 个 NOT_VERIFIED」读成「命题已闭合」** —— 那正是把**表**当**命题**。
 
 ---
 
@@ -474,6 +487,15 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 | **P-USER-06** | **「事务注解挂在 MyBatis-Plus mapper 接口的 `default` 方法上」是本仓最易静默失效的形态**：mapper 是 MyBatis 的 JDK 代理 ⇒ `@Transactional` 能不能生效取决于 ① auto-proxy 是否包住 `FactoryBean` 产出的代理 ② advisor 是否认得 default 方法上的注解 ③ `SqlSessionTemplate` 是否参与进已开事务 —— **三者任一不成立，注解就是装饰品，且零报错** | ⇒ **判据 = 真 DB 约束冲突**（拿 `UNIQUE(history_id)` 让 W3 真失败）⇒ 断言 **W2 的 UPDATE 不留痕**；<br/>⇒ **必须配「同序列成功路径」作非空洞对照**（否则「回滚了」可能只是「压根没写」）；<br/>⇒ **必须做变异测试**（摘掉注解 ⇒ 判据变红）⇒ 否则「跑绿」证不了「期望值对」；<br/>⇒ ⚠️ **Mockito 桩掉 mapper 方法不算数** —— 桩了就连真实 SQL 都不发 ⇒ 证不了回滚 |
 | **P-USER-07** | **默认 `mvn clean verify` 是 fail-fast ⇒ 失败面被截断在第一个模块** ⇒ 拿它做「同条件对照」会得出**错误的结论**（看起来只有 1 个域红，实际有 9 个红） | ⇒ ⇒ **做跨树对照必须加 `-fae`（fail-at-end）** 才能拿到**完整**失败模块集合；<br/>⇒ ⇒ 失败模块集合相同 ⇒ 才是「基线自带」的证据；**集合差一条** ⇒ 那一条正是本轮的贡献（本次：10 → 9，差额 = 本域）；<br/>⇒ ⇒ 根因要**代码级取证**（本轮：逐个 `Application` 查 `static void main`），不能只从报错反推 |
 
+> 📌 **P-USER-08 ~ P-USER-14**（本轮后半程追加，**全文见坑台账**）：
+> **08** 测试类路径 ≠ 生产 jar 类路径（`mvn test` 全绿证不了 fat jar 起得来）·
+> **09** Bean Validation 的违规集合是 `HashSet` ⇒ `findFirst()` 不确定 ·
+> **10** Python 打 HTTP 会把 `1xx` 当最终响应（`urllib` 只跳 100 ⇒ 改用 `curl`）·
+> **11** bash 的 `$!` 是子 shell 的 PID ⇒ cleanup 杀不到 java（⇒ 子 shell 里用 `exec`）·
+> **12** 拿**屏蔽后的规范化文本**去断言**原始值** ⇒ 恒 false ⇒ **两侧同时 FAIL ≠ 行为差异** ·
+> **13** 用「有 schema 的反序列化」判 wire 等价 ⇒ **契约漂移被解码器吃掉** ⇒ 假绿 ·
+> **14** 「表内 `NOT_VERIFIED` 归零」**≠**「元命题闭合」⇒ 别把**表**当**命题**。
+
 ---
 
 ## 11.10 一句话结论（本 lane 汇报口径）
@@ -481,8 +503,9 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 **user 子域 48 个主代码文件已全部落地并编译通过，40 例真触发测试（真 Tomcat + 真 gRPC + 真 PostgreSQL）全绿、`skipped=0`，映射表守门 EXIT=0（C 列 109/109、B 列 145/145）；**
 **全仓 `mvn -o -fae clean verify` 的同条件对照：失败面由基线的 10 个域收敛到 9 个域，差额恰好是本域（基线 10 个 Application 全缺 `main` ⇒ `repackage` 必挂 ⇒ 基线自带，非本轮引入）；**
 **事务边界（D-005 / D-015）已由 `NOT_VERIFIED` 升为 `PASS` —— 用真 UNIQUE 约束冲突证明 W2 的 UPDATE 确实被回滚，并用变异测试证明该判据非空洞；**
-**2026-11-03 已完成**双侧活体对拍（HTTP 20 例 + DB 最终态）：结构级 16/20 一致（4 例差异全是**已登记**的 400 文案形态）、字节级 12/20、DB 最终态逐字段一致；**
-**⇒ 但「行为与 B 侧完全等价」这一命题本身仍是 `NOT_VERIFIED`** —— **gRPC wire 逐字节对拍**尚未做（且 B 侧 Go 真源本机无法活体，无第三方锚）；**
+**2026-11-03 已完成**双侧活体对拍（**HTTP 20 例 + gRPC wire 18 例 + DB 最终态**）：HTTP 结构级 16/20 一致（4 例差异全是**已登记**的 400 文案形态）、字节级 12/20、**gRPC wire 真差异 0/18**（9 个方法全覆盖；**只屏蔽易变值、不屏蔽 presence**）、DB 两张表最终态逐字段一致；**
+**⇒ 写路径形态（`updateById` vs `update(null, wrapper)`）已由 `NOT_VERIFIED` 升为 `PASS` —— 两侧领域服务的可执行语句集逐行 diff（唯一差异 = 一处日志调用的换行折叠），13 个写路径调用点逐条一一对应，且**两侧都不是 `updateById`**；**
+**⇒ 但「行为与 B 侧完全等价」这一命题本身仍是 `NOT_VERIFIED`** —— 剩下的缺口都在**表外**：**B 侧 Go 真源第三方锚不可得**（本机无 `Sea-etcd`）· **并发/超时/外部依赖失败/恢复场景轮未做** · **gRPC deadline/取消传播未对拍**；**
 **另有 6 条跨域 FAIL：DRIFT-USER-IMPL-004/005/006/008（收口域与 admin lane）＋ **DRIFT-USER-PARITY-002（其余 7 域 fat jar 起不来）＋ DRIFT-USER-PARITY-003（JSON 键序 · 共享层）** —— 本 lane 不越权代改，已逐条登记。**
 
 ---
@@ -491,6 +514,7 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 
 > **目的**：把 §十一 里唯一还能在本 lane 内自闭合的 `NOT_VERIFIED`（**双侧活体对拍**）闭合。
 > **探针**：[`tools/difftest/users-user/run.sh`](../../../tools/difftest/users-user/run.sh)（设计见其 [README](../../../tools/difftest/users-user/README.md)）
+> **⚠️ 第二轮（2026-11-03 同日）把维度从「HTTP + DB」扩到「HTTP + gRPC wire + DB」** ⇒ §12.2.1。
 > **口径**：**B 侧**（RAG / Boot 4.0.8 · 双进程 `user-api` + `user-rpc`）↔ **C 侧**（RAG-V1 / Boot 3.5.11 · D1 合并单进程）
 > ⇒ **两侧同时起真进程**（真 Tomcat + 真 gRPC + 真 PG + 真 Redis + 真 Nacos）+ **同输入** + **同字节**比对。
 
@@ -505,13 +529,14 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 > ⚠️ **只走宿主发布口**（Nacos `49848` · Redis `49380`）：Docker Desktop(macOS) 的宿主**不可达容器 IP**
 > ⇒ B 侧 user-rpc 注册的是宿主机 LAN IP ⇒ 宿主机上的 user-api 可达 ✔（实测通）。
 
-## 12.2 结果（HTTP 20 例 + DB 最终态）
+## 12.2 结果（HTTP 20 例 + **gRPC wire 18 例** + DB 最终态）
 
 | 口径 | 结果 |
 |---|---|
 | **真差异**（归一化 uid/history_id/JWT/时间戳/哈希 ＋ **JSON 键序** ＋ **文案形态** 后仍不一致） | **0 / 20** ⇒ 探针 **EXIT=0** |
 | **字节级**（只归一化 ID/JWT/时间戳/哈希，**键序与文案参与比较**） | **12 / 20 一致**；8 例差异 = **🔶 键序 4**（DRIFT-USER-PARITY-003）＋ **文案形态 4**（已登记 D-01） |
-| **DB 最终态** | ✅ `users_user` **逐字段一致**（username/status/score/extra_info/密码存在性/email）· ✅ **表清单一致**（4 张） |
+| **gRPC wire 真差异**（**9 个方法全覆盖** ＋ 错误路径 ＋ 成功路径，**只屏蔽易变值、不屏蔽 presence**） | **0 / 18** ⇒ 探针 **EXIT=0**；7 条**同侧自洽断言**全绿 ⇒ 详见 §12.2.1 |
+| **DB 最终态** | ✅ `users_user` **逐字段一致**（username/status/score/extra_info/密码存在性/email）· ✅ `users_user_avatar_history` **一致**（2 行 / 1 个 current / 内容序列一致）· ✅ **表清单一致**（4 张） |
 | **B 侧只读** | ✅ 收尾断言 B 仓 `service/` 干净 |
 
 > 📌 **口径**：探针把差异分**三档**并**分别归因** ⇒ **「已登记的偏离」与「未闭合的漂移」不混进同一个失败桶**：
@@ -532,6 +557,78 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 | 未知路径 `/user/v1` **外** | **500** | **5001** |
 | **GET 打 POST 端点** | **405** | —（**裸状态码**） |
 | logout / logout 后再用 token | 200 / **401** | 200 / **1006** |
+
+## 12.2.1 🔴 gRPC wire 维度（**9 个方法全覆盖** · 18 例 · 真差异 0）
+
+> **本节把「双侧活体对拍」从「HTTP + DB 两维」扩到「HTTP + gRPC wire + DB 三维」。**
+> 探针：`tools/difftest/users-user/grpc-wire/UserWireProbe.java`（**新增**）＋
+> `tools/difftest/users-user/wire_compare.py`（**新增**）⇒ 由 `tools/difftest/users-user/run.sh` 调用。
+
+### 探针形态（**为什么这么写** —— 三个「不用 XX」）
+
+| 不用 | 原因 |
+|---|---|
+| **两侧各自的 pb 生成类** | 两侧 pb 包名**不同**（B = `com.rag.users.user.proto` · C = `com.rag.proto.user`）⇒ 用各自生成类构造/解析 ⇒ 两侧跑的**不是同一段代码** ⇒ 「字节一致」的证据被「两侧实现不同」污染 ⇒ ⇒ 本探针**只用原始字节**：请求按 proto3 wire format **手工构造**，响应用 `byte[]` marshaller **原样取出** ⇒ ⇒ **同一个 class 打两侧** |
+| **「反序列化成对象再比」** | 那比的是**对象语义**、不是 wire：若两侧 proto 字段号不一致，解析器会把对方的多余字段当 unknown **丢掉** ⇒ **契约漂移被解码器吃掉** ⇒ 假绿 ⇒ ⇒ 本探针用 **schema 驱动的自研解码器**：按字段号逐个吐 `f<号>=<值>`，**未知字段照样打印**（`f=unknown(...)`）⇒ 字段号漂移**必然显形** |
+| **「直接比 hex」** | user 域响应里带**两侧必然不同**的量（雪花 uid / 各自生成的历史 id / 写入时刻）⇒ 直接比 hex **恒红** ⇒ ⇒ **只屏蔽「值」，不屏蔽 presence** |
+
+### 屏蔽表（**只屏蔽值 · presence 仍参与比对**）
+
+| 字段 | 占位符 | 理由 |
+|---|---|---|
+| `UserInfo.uid` / `CreateUserResp.uid` / `LoginResp.uid` | `<UID>` | 雪花 ID ⇒ 两侧必然不同 |
+| `AvatarHistoryItem.id` | `<HISTORY_ID>` | 服务端生成的 opaque id |
+| `AvatarHistoryItem.create_time` | `<TIME>` | 写入时刻 ⇒ 必然不同 |
+
+> ⇒ **B 有该字段而 C 没有 ⇒ 打印结果不同 ⇒ 照样红** ⇒ 即「屏蔽的是**两侧必然不同的那个值**」，不是「这个字段存不存在」。
+
+### 18 例矩阵（**9 个方法全覆盖** + 错误路径 + 成功路径）
+
+| # | 用例 | 方法 | 覆盖 |
+|---|---|---|---|
+| 1 | `wire_register` | Register | 注册成功（返回 uid） |
+| 2 | `wire_register_dup` | Register | `ALREADY_EXISTS`「用户名已存在」 |
+| 3 | `wire_get_user` | GetUser | 命中（UserInfo **含 status**） |
+| 4 | `wire_get_user_missing` | GetUser | `NOT_FOUND`「用户不存在」 |
+| 5 | `wire_login_ok` | Login | 成功（uid 有 / status=0 **不编码**） |
+| 6 | `wire_login_wrong_password` | Login | `status=1`（与用户不存在**同码**，防枚举） |
+| 7 | `wire_login_user_missing` | Login | `status=1` |
+| 8 | `wire_update_user_same_name` | UpdateUser | `ALREADY_EXISTS`（**D-004 不排除自己**，见下） |
+| 9 | `wire_update_user_rename` | UpdateUser | **成功路径**（UserInfo **不含 status**） |
+| 10 | `wire_logout_empty_token` | Logout | `INVALID_ARGUMENT`「Token不能为空」 |
+| 11 | `wire_logout` | Logout | 成功（**响应是空消息 · 0 字节**） |
+| 12-13 | `wire_upload_avatar_1/2` | UploadAvatar | 上传 + 回显 history |
+| 14 | `wire_get_avatar_history` | GetAvatarHistory | **repeated 列表（顺序参与比较）** |
+| 15 | `wire_select_avatar` | SelectAvatar | 选中成功 |
+| 16 | `wire_select_avatar_empty_id` | SelectAvatar | `INVALID_ARGUMENT`「history_id is required」 |
+| 17 | `wire_delete_user` | DeleteUser | 成功（`success=true`） |
+| 18 | `wire_delete_user_missing` | DeleteUser | `NOT_FOUND`「用户不存在」 |
+
+> 📌 **7 条同侧自洽断言**（`SELFCHECK`）：`select_echoes_uploaded_url` · `select_history_id_echoes_request` ·
+> `upload_returns_current_avatar` · `login_ok_has_uid` · `get_user_found_true` · `logout_response_is_empty` ·
+> `history_list_has_two_items` · `rename_update_returns_new_username`
+> ⇒ 它们保证「两侧 id 必然不同」这件事**不至于让语义判定落空**（语义靠**每侧自己的因果链自洽**判定，不靠「两侧 id 恰好一样」）。
+
+### 🔴 变异证据（**证明这一维的判据不是空洞的**）
+
+- **植入的变异**：在 C 侧 `UpdateUserResp` 的 `UserInfo` 上**多设一个 `status`**（`service/users/user/.../UserDomainService.java`）
+  ⇒ ⇒ C 侧 wire 上**多出 `f6=0`**（`optional int64 status` 的 **presence** 差异）。
+- **读数**：
+  | 维度 | 结果 |
+  |---|---|
+  | **HTTP 20 例** | ✅ **真差异 0**（该字段**只出现在 gRPC 响应里** ⇒ HTTP 维度**完全看不见**） |
+  | **gRPC wire 18 例** | ❌ **真差异 1** ⇒ **只有 `wire_update_user_rename` 变红**，其余 17 例仍绿 |
+  | 差异内容 | `B: …;f5{…};f5{…}` ↔ `C: …;f5{…};f5{…};**f6=0**` |
+  | **退出码** | **EXIT=1** ⇒ 门禁**有牙齿** |
+- **还原**：用**文件备份 + `cp` 回来**（不依赖 git）⇒ 重建 ⇒ **同条件复跑** ⇒ EXIT=0。
+- ⇒ **结论**：gRPC wire 维度能抓到 **HTTP 维度结构性看不见**的一类差异 —— **proto3 presence 语义**。
+  这正是 §3.4「复制忠实 ≠ 消费方式已验」的最后一维。
+
+### 📌 顺带**钉住**一个两侧共有的怪癖（**不是漂移**）
+
+`UpdateUser` 用**自己的** username 更新 ⇒ 撞唯一性检查 ⇒ `ALREADY_EXISTS`。
+⇒ 两侧**逐字一致**（`wire_update_user_same_name` 两边都是 `ERROR_ALREADY_EXISTS`）
+⇒ ⇒ **不是 C 侧漂移**，是**继承自 B 侧**的行为（D16：继承，不回溯）⇒ **登记为「已钉住」而非偏离**。
 
 ## 12.3 🔴 本轮抓出并**已修**的 2 个真缺陷
 
@@ -608,9 +705,10 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 
 | 项 | 状态 | 备注 |
 |---|---|---|
-| **gRPC wire 逐字节对拍**（9 个方法） | **NOT_VERIFIED** | 本轮只对拍了 HTTP + DB ⇒ gRPC 那一维**没做** ⇒ 探针 README §五已显式声明 |
+| ~~**gRPC wire 逐字节对拍**（9 个方法）~~ | ✅ **已闭合**（2026-11-03 第二轮） | ⇒ **18 例真差异 0** · 7 条同侧自洽断言全绿 · **变异证据**：植入 presence 差异 ⇒ **只有**该维度变红 ⇒ 详见 §12.2.1 |
 | **B 侧 Go 真源第三方锚** | **不可得** | 本机无 `Sea-etcd` ⇒ Go 侧无法活体 ⇒ 本探针是**双侧**（C ↔ B），**不是** follow 域那种**三方** |
 | **并发 / 超时 / 外部依赖失败 / 恢复**场景轮 | **未做** | follow 域已有 6 类（`tools/difftest/follow/run.sh`）⇒ 可借形 |
+| **gRPC 的 deadline / 取消传播** | **未做** | ⚠️ 本轮 wire 探针每个调用都带 20s deadline（只为「探针不许挂死」）⇒ **两侧同样带** ⇒ 对称；但「B 侧 zrpc 的 2s 内部预算 vs C 侧 `observability.rpc-timeout: 2s`」的**预算落点**差异**未对拍** |
 
 ## 12.6 可复跑
 
@@ -619,3 +717,12 @@ cd /Users/pr/Documents/GitHub/RAG-V1.worktrees/users-user
 bash tools/difftest/users-user/run.sh          # ⇒ 退出码 0 = 结构级一致 · 1 = 有差异 · 2 = 环境问题
 # 派发器口径：bash tools/difftest/run-parity.sh users-user
 ```
+
+> 📌 **本轮新增文件**（都在**域私有**目录 `tools/difftest/users-user/` ⇒ **不属共享层**）：
+> | 文件 | 作用 |
+> |---|---|
+> | `grpc-wire/UserWireProbe.java` | **gRPC wire 层原始字节探针**（同一份 class 打两侧） |
+> | `wire_compare.py` | gRPC wire 维度比对器（**三档分档**：一致 / 🔶 已登记偏离 / ❌ 真差异） |
+> | `run.sh` | 新增「编译探针 → 打两侧 → 归一化比对」两段 ＋ `users_user_avatar_history` 最终态比对 |
+>
+> ⚠️ **探针自检**：起 C 侧之前先断言 fat jar 内含 `grpc-inprocess` ⇒ **缺了直接 die**（不是起不来才发现）。

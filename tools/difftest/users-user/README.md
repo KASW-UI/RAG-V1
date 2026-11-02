@@ -34,7 +34,9 @@
 > B 侧自己的 javadoc 记录了这条机制（`hot-api/HotArticleCard.java` 的「字段顺序必须显式钉住」段）。
 > ⇒ 该差异是**共享层**问题（10 个域同受影响）⇒ 归收口域，见台账 §十二.4。
 
-## 三、用例矩阵（HTTP 20 例 · DB 最终态）
+## 三、用例矩阵（HTTP 20 例 · **gRPC wire 18 例** · DB 最终态）
+
+### 3.1 HTTP 20 例
 
 | 组 | 用例 | 覆盖 |
 |---|---|---|
@@ -45,28 +47,55 @@
 | 路由 | `未知路径 /user/v1 内` · `未知路径 /user/v1 外` · `GET 打 POST 端点` | **B 侧继承差异**：401 / 500+5001 / 405 |
 | 写路径 | `update 改用户名` · `update 后 get` | 写入 + 回读 |
 | 登出 | `logout` · `logout 后再用 token` | 黑名单生效（401 + 1006） |
-| DB | `users_user` 最终态 + 表清单 | §6.4 状态和副作用 |
+| DB | `users_user` + `users_user_avatar_history` 最终态 + 表清单 | §6.4 状态和副作用 |
 
-## 四、本轮实测结论（2026-11-03）
+### 3.2 gRPC wire 18 例（**9 个方法全覆盖**）
+
+> 探针：`grpc-wire/UserWireProbe.java`（**同一份 class 打两侧**）· 比对器：`wire_compare.py`。
+
+| 组 | 用例 | 覆盖 |
+|---|---|---|
+| 注册 | `wire_register` · `wire_register_dup` | 成功（返回 uid）· `ALREADY_EXISTS` |
+| 读用户 | `wire_get_user` · `wire_get_user_missing` | 命中（UserInfo **含** `status`）· `NOT_FOUND` |
+| 登录 | `wire_login_ok` · `wire_login_wrong_password` · `wire_login_user_missing` | `status=0/1/1`（**`status=0` 是 proto3 默认值 ⇒ wire 上不出现**） |
+| 更新 | `wire_update_user_same_name` · `wire_update_user_rename` | **D-004 不排除自己**（同名 ⇒ `ALREADY_EXISTS`）· **成功路径**（UserInfo **不含** `status`） |
+| 登出 | `wire_logout_empty_token` · `wire_logout` | `INVALID_ARGUMENT`「Token不能为空」· **空消息（0 字节）** |
+| 头像 | `wire_upload_avatar_1/2` · `wire_get_avatar_history` · `wire_select_avatar` · `wire_select_avatar_empty_id` | 回显 history · **repeated 列表（顺序参与比较）** · `INVALID_ARGUMENT` |
+| 删用户 | `wire_delete_user` · `wire_delete_user_missing` | `success=true` · `NOT_FOUND` |
+
+**判据**（`wire_compare.py`）：**只屏蔽「值」，不屏蔽 presence** ⇒
+`uid`→`<UID>` · `history_id`→`<HISTORY_ID>` · `create_time`→`<TIME>`
+⇒ ⇒ 「B 有这个字段、C 没有」**照样红** ⇒ ⇒ **presence 语义**是被抓的。
+⇒ 另有 **7 条同侧自洽断言**（`SELFCHECK`）⇒ 语义靠**每侧自己的因果链自洽**判定，
+不靠「两侧 id 恰好一样」。
+
+## 四、本轮实测结论（2026-11-03 · 第二轮加 gRPC 维度）
 
 | 口径 | 结果 |
 |---|---|
-| **结构级** | **16/20 一致** · 4 例不一致 = **全是 400 文案形态**（go-zero `field "x" is not set` ↔ Bean Validation `x 不能为null`）⇒ **已登记 D-01 / DEV-USER-002** |
-| **字节级** | **12/20 一致** · 8 例不一致 = 4 文案 ＋ **4 JSON 键序**（⇒ 共享层，收口域） |
-| DB 最终态 | ✅ `users_user` 行逐字段一致 · ✅ 表清单一致（4 张） |
+| **HTTP 结构级** | **16/20 一致** · 4 例不一致 = **全是 400 文案形态**（go-zero `field "x" is not set` ↔ Bean Validation `x 不能为null`）⇒ **已登记 D-01 / DEV-USER-002** |
+| **HTTP 字节级** | **12/20 一致** · 8 例不一致 = 4 文案 ＋ **4 JSON 键序**（⇒ 共享层，收口域） |
+| **gRPC wire** | **18/18 一致 ⇒ 真差异 0**（探针 **EXIT=0**）· 7 条自洽断言全绿 |
+| DB 最终态 | ✅ `users_user` 行逐字段一致 · ✅ `users_user_avatar_history` 一致（2 行 / 1 current / 内容序列一致）· ✅ 表清单一致（4 张） |
 | B 侧只读 | ✅ 收尾断言 B 仓 `service/` 干净 |
 
 ⇒ **本探针抓出并修掉 2 个真缺陷**（详见台账 §十二.3）：
 ① `grpc-inprocess` 声明成 test scope ⇒ **C 侧 fat jar 起不来**（39 例测试全绿却没暴露）；
 ② 400 的「报哪个字段」**不确定**（Hibernate Validator 违规集合是 `HashSet`）⇒ 同一输入 6 次出 3 种文案。
 
+⇒ **gRPC wire 维度的变异证据**（证明判据非空洞）：
+在 C 侧 `UpdateUserResp` 的 `UserInfo` 上多设一个 `status` ⇒ wire 上多出 `f6=0`
+⇒ ⇒ **HTTP 维度真差异仍是 0**（该字段只在 gRPC 响应里），
+**只有 gRPC wire 的 `wire_update_user_rename` 变红** ⇒ **EXIT=1**
+⇒ ⇒ 还原（**文件备份 + `cp` 回来**，不依赖 git）⇒ 重建 ⇒ 同条件复跑 ⇒ **EXIT=0**。
+
 ## 五、已知未覆盖（本探针**不**声称闭合）
 
-- ⚠️ **gRPC wire 逐字节对拍**（9 个方法）**未做** ⇒ 台账里该项仍标 `NOT_VERIFIED`
-  （follow 域的 `tools/difftest/follow/grpc-wire/` 有先例可循）；
 - ⚠️ **B 侧 Go 真源**未活体（本机无 `Sea-etcd`）⇒ 第三方锚缺失 ⇒ 本探针是**双侧**（C ↔ B），
   不是 follow 域那种**三方**（C ↔ B ↔ Go 冻结字节）；
-- ⚠️ **并发 / 超时 / 外部依赖失败 / 恢复**四类场景轮**未做**（follow 域已有 6 类 ⇒ 可借形）。
+- ⚠️ **并发 / 超时 / 外部依赖失败 / 恢复**四类场景轮**未做**（follow 域已有 6 类 ⇒ 可借形）；
+- ⚠️ **gRPC 的 deadline / 取消传播**未对拍（wire 探针每个调用都带 20s deadline，只为「探针不许挂死」，
+  两侧对称；但 B 侧 zrpc 的 2s 内部预算 vs C 侧 `observability.rpc-timeout: 2s` 的**预算落点**差异未测）。
 
 ## 六、跑法与排障
 
