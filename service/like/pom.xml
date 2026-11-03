@@ -65,10 +65,39 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+            🔴 **grpc-inprocess 的 scope 必须是 compile（默认），不能是 test**
+            （2026-11-03 · 双侧活体对拍实测修正 · **B 出处 = B 侧 `service/like/like-rpc/pom.xml:313-344`**）
+
+            【B 侧已经踩过并写进注释的同一个坑 · 逐字照抄其根因】
+              1) net.devh:grpc-client-spring-boot-starter:3.1.0.RELEASE **自身就传递依赖**
+                 io.grpc:grpc-inprocess（compile scope）⇒ 它带 net.devh:grpc-client
+                 → `InProcessChannelFactory`，而那个类的常量池里**硬引用**
+                 `io.grpc.inprocess.InProcessChannelBuilder`；
+              2) 本模块**又**显式声明了 grpc-inprocess ⇒ **直接声明永远压过传递声明**
+                 ⇒ scope 一旦写成 test ⇒ **运行时 classpath 上 grpc-inprocess 整个消失**
+                 （fat jar 的 `BOOT-INF/lib` 里也没有它）；
+              3) devh 的 `shadedNettyGrpcChannelFactory` 在创建 channel 时要链接
+                 `InProcessChannelFactory` ⇒ 运行期抛
+                 `NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`
+                 ⇒ `MessageRpcClient` Bean 创建失败 ⇒ **整个服务起不来**（硬失败，不是静默失效）。
+
+            【本仓的实测证据 · 2026-11-03】
+              现象 = `java -jar service/like/target/like-service-1.0-SNAPSHOT.jar` 启动即失败：
+                `BeanCreationException: Error creating bean with name 'grpcClientBeanPostProcessor'`
+                → `Caused by: java.lang.NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`
+              ⇒ **修前**：`mvn -o -pl service/like -am test` = **102/102 全绿**
+                 （测试跑在 test classpath 上 ⇒ grpc-inprocess 本来就在 ⇒ 缺陷看不见）
+                 ⇒ 这是 AGENTS.md §3.3.3「**跑绿 ≠ 本来就绿**」的教科书形态。
+
+            【版本不写】由根 pom 的 `<dependencyManagement>`（`pom.xml:213-215`）统一管
+              （`${grpc.version}` = 1.63.0）⇒ 与 grpc-stub / -core / -netty-shaded 同源。
+              ⚠️ **B 侧要显式写 `<version>`** 是因为 B 的根 pom **没管** grpc-inprocess
+              （漏写会让整个 reactor 在读 POM 阶段就失败）⇒ C 侧的根 pom 已管 ⇒ **不写**（D14 口径）。
+        -->
         <dependency>
             <groupId>io.grpc</groupId>
             <artifactId>grpc-inprocess</artifactId>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
