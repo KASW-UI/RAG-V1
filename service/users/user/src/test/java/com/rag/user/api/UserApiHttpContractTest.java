@@ -197,6 +197,50 @@ class UserApiHttpContractTest {
         assertThat(resp.getHeaders().getFirst("X-Content-Type-Options")).isEqualTo("nosniff");
     }
 
+    @Test
+    @DisplayName("🔴 400 的「报哪个字段」是确定的，且与 B 侧 GoStyleRequired 判定序一致（2026-11-03 对拍抓出）")
+    void validationViolationSelectionIsDeterministicAndMatchesB() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        // ① login：声明序 = username, password ⇒ 多个违规并存时必须**稳定**报 username
+        //    （原实现用 getFieldErrors().findFirst() ⇒ Hibernate Validator 的违规集合是 HashSet
+        //      ⇒ 顺序随 hash 变 ⇒ 实测 6 次里出 3 种不同文案）
+        String first = null;
+        for (int i = 0; i < 8; i++) {
+            ResponseEntity<String> resp = rest.exchange("/user/v1/login", HttpMethod.POST,
+                    new HttpEntity<>("{}", headers), String.class);
+            assertThat(resp.getStatusCode().value()).isEqualTo(400);
+            String body = resp.getBody();
+            assertThat(body).isNotNull();
+            if (first == null) {
+                first = body;
+            } else {
+                assertThat(body)
+                        .as("同一输入的 400 响应体必须逐次相同（确定性）")
+                        .isEqualTo(first);
+            }
+        }
+        // ② 报的是**声明序里的第一个字段** = username（与 B 侧 LoginReq 的判定序一致）
+        assertThat(first).startsWith("username ");
+
+        // ③ register：声明序 = username, password, email ⇒ 同样稳定报 username
+        String regFirst = null;
+        for (int i = 0; i < 8; i++) {
+            ResponseEntity<String> resp = rest.exchange("/user/v1/register", HttpMethod.POST,
+                    new HttpEntity<>("{}", headers), String.class);
+            assertThat(resp.getStatusCode().value()).isEqualTo(400);
+            String body = resp.getBody();
+            assertThat(body).isNotNull();
+            if (regFirst == null) {
+                regFirst = body;
+            } else {
+                assertThat(body).as("register 的 400 响应体必须逐次相同").isEqualTo(regFirst);
+            }
+        }
+        assertThat(regFirst).startsWith("username ");
+    }
+
     // ============== 6. 🔴 JWT 验签真的在 Filter 里（DRIFT-USERAPI-009②） ==============
 
     @Test

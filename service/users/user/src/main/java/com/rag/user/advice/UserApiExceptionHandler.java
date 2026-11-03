@@ -12,14 +12,21 @@ import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.lang.reflect.RecordComponent;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 /**
  * <p><b>全局异常处理器</b> —— {@code @RestControllerAdvice} ＋ {@code @ExceptionHandler}。
@@ -191,9 +198,17 @@ public class UserApiExceptionHandler {
      * <ul>
      *   <li><b>状态码 400</b> ⇒ 不变；</li>
      *   <li><b>错误结构</b>（text/plain ＋ nosniff ＋ 尾换行）⇒ 不变；</li>
-     *   <li><b>错误文案</b> ⇒ 由 Hibernate Validator 决定 ⇒ <b>与 B 不同</b>（已登记）。</li>
+     *   <li><b>错误文案形态</b> ⇒ 由 Hibernate Validator 决定 ⇒ <b>与 B 不同</b>（已登记）。</li>
      * </ul>
-     * ⇒ ⇒ 对拍时<b>断言 status ＋ content-type ＋ 结构</b>，<b>不断言文案</b>。
+     * ⇒ ⇒ 对拍时<b>断言 status ＋ content-type ＋ 结构</b>，<b>不断言文案形态</b>。
+     *
+     * <p>🔴 <b>但「报哪个字段」已对齐 B（2026-11-03 双侧活体对拍抓出并修掉）</b>：
+     * 原实现用 {@code getFieldErrors().findFirst()} ⇒ Hibernate Validator 的违规集合是
+     * {@code HashSet} ⇒ 遍历顺序<b>不稳定</b> ⇒ 同一输入多次请求会报出<b>不同字段</b>
+     * （实测 6 次里出 3 种文案）⇒ C 侧 400 响应体<b>不是确定性输出</b>。
+     * ⇒ 现改为<b>按 DTO 声明序取第一条违规</b> ⇒ 既确定，又与 B 的
+     * {@code GoStyleRequired} <b>判定序逐个一致</b> ⇒ <b>报同一个字段</b>。
+     * 详见 {@link #firstViolationInDeclarationOrder(MethodArgumentNotValidException)}。
      *
      * <p>⚠️ <b>为什么不并进 {@link #handleBusiness}</b>：{@code BusinessException} 会被渲染成
      * {@code HTTP 200 + envelope}，而这里是 {@code HTTP 400 + text/plain} ⇒
@@ -201,13 +216,84 @@ public class UserApiExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<byte[]> handleBeanValidation(MethodArgumentNotValidException e) {
-        String message = e.getBindingResult().getFieldErrors().stream()
-                .findFirst()
-                .map(fe -> fe.getField() + " " + fe.getDefaultMessage())
-                .orElse(e.getMessage());
+        String message = firstViolationInDeclarationOrder(e);
         log.warn("bean validation failed : {}", message);
         return PlainTextErrors.badRequest(message);
     }
+
+    /**
+     * <p><b>取「DTO 声明顺序里的第一个违规」</b> —— 2026-11-03 双侧活体对拍抓出并修掉的一处
+     * <b>不确定性</b>。
+     *
+     * <h3>🔴 为什么不能直接 {@code getFieldErrors().findFirst()}</h3>
+     * <p>Hibernate Validator 把所有违规装进一个 <b>{@code HashSet}</b>
+     * ⇒ {@code BindingResult#getFieldErrors()} 的遍历顺序<b>取决于 hash</b>
+     * ⇒ ⇒ <b>同一输入、同一次启动，多次请求可能报出不同的字段</b>。
+     * <p>实测（2026-11-03 · 对拍）：{@code POST /user/v1/register} 带 {@code {}} 连打 6 次 ⇒
+     * 实得 <b>3 种不同文案</b>（{@code password 不能为null} ×4 / {@code username 不能为null} ×1 /
+     * {@code email 不能为null} ×1）。
+     * <p>⇒ ⇒ C 侧的 400 响应体<b>不是确定性输出</b> ⇒ 客户端按文案解析会不稳、回归断言也钉不住。
+     *
+     * <h3>B 出处（B 侧是判定基准 · D16）</h3>
+     * <p>B 侧 {@code GoStyleRequiredFields#assertGoRequiredFields} 是<b>按固定顺序逐个判</b>，
+     * 遇到第一个缺失就抛 ⇒ 报哪个字段<b>确定</b>：
+     * <pre>
+     *   RegisterReq:      GoStyleRequired.field("username", …); → field("password", …); → field("email", …);
+     *   LoginReq:         GoStyleRequired.field("username", …); → field("password", …);
+     *   SelectAvatarReq:  GoStyleRequired.field("history_id", …);
+     *   UploadAvatarReq:  GoStyleRequired.field("avatar_url", …);
+     * </pre>
+     * <p>⇒ 而 C 侧各 request record 的<b>声明顺序恰好与 B 的判定顺序逐个一致</b>
+     * （{@code CreateUserReq}=username,password,email · {@code LoginReq}=username,password ·
+     * {@code SelectAvatarReq}=historyId · {@code UploadAvatarReq}=avatarUrl,…）
+     * ⇒ ⇒ <b>按声明序取第一条违规</b> ⇒ 既<b>确定</b>，又与 B <b>报同一个字段</b>。
+     *
+     * <h3>⚠️ 边界</h3>
+     * <ul>
+     *   <li>本方法只决定<b>「报哪个字段」</b>；<b>文案形态</b>仍是 Bean Validation 的
+     *       {@code "<字段> <默认消息>"}，与 B 的 go-zero {@code field "x" is not set}
+     *       <b>不同</b> ⇒ 那是 <b>已登记的 L3 降级 D-01</b>（DEV-USER-002），本方法<b>不</b>改它；</li>
+     *   <li>非 record 的目标类（未来若有）⇒ 退化为<b>按字段名字典序</b>取第一条 ⇒ 仍是<b>确定</b>的；</li>
+     *   <li>取不到字段级违规（理论上只有对象级约束）⇒ 退化为异常自带消息。</li>
+     * </ul>
+     */
+    private static String firstViolationInDeclarationOrder(MethodArgumentNotValidException e) {
+        List<FieldError> errors = e.getBindingResult().getFieldErrors();
+        if (errors.isEmpty()) {
+            return e.getMessage();
+        }
+        List<String> order = declarationOrder(e);
+        FieldError chosen = errors.stream()
+                .min(Comparator.comparingInt((FieldError fe) -> {
+                    int idx = order.indexOf(fe.getField());
+                    // 声明序里没有的字段（理论上不会出现）⇒ 排到最后，但**仍按字段名定序** ⇒ 保确定
+                    return idx >= 0 ? idx : order.size() + fe.getField().hashCode();
+                }).thenComparing(FieldError::getField))
+                .orElse(errors.get(0));
+        return chosen.getField() + " " + chosen.getDefaultMessage();
+    }
+
+    /**
+     * 取目标 request record 的<b>声明顺序</b>（字段名列表）。
+     * <p>拿不到（目标不是 record / 拿不到参数类型）⇒ 返回空表 ⇒ 调用方退化为「按字段名定序」。
+     */
+    private static List<String> declarationOrder(MethodArgumentNotValidException e) {
+        MethodParameter parameter = e.getParameter();
+        if (parameter == null) {
+            return List.of();
+        }
+        Class<?> type = parameter.getParameterType();
+        if (!type.isRecord()) {
+            return List.of();
+        }
+        RecordComponent[] components = type.getRecordComponents();
+        List<String> names = new ArrayList<>(components.length);
+        for (RecordComponent component : components) {
+            names.add(component.getName());
+        }
+        return names;
+    }
+
 
     /** HTTP 方法不支持 → <b>405（裸状态码 · 无 Allow 头 · 无 body）</b>。 */
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
