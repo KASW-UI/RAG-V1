@@ -1,48 +1,548 @@
 # =============================================================================
-# Like 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程）
+# Like 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程 · D1）
+#
+# 1:1 迁移原则：B 侧 **两份** yml
+#   ① service/like/like-api/src/main/resources/application.yml
+#   ② service/like/like-rpc/src/main/resources/application.yml
+# **合并成这一份**（D1：api 与 rpc 合流进同一进程 ⇒ 同一份 yml 同时承载
+# HTTP 段与 gRPC 段）。**不新增 B 侧不存在的开关**。
+#
+# ⚠️ 两份 B 侧 yml 的**值冲突**逐条处置见下面各处「🔴 合并裁决」注释。
+# ⚠️ **配置键名是 L1 契约**（AGENTS §3.1）：`like-api.*` / `like.*` /
+#    `observability.*` / `otel.*` / `rag.*` 的**前缀一字不改**。
 # =============================================================================
+
 spring:
   application:
+    # B 侧 api 的 Name=likecenter（Telemetry.Name=like-api）·
+    # B 侧 rpc 的 Name=like-rpc（服务发现 / OTEL 均按 like-rpc 注册）
+    # ⇒ D1 合并后取 **C 侧单进程名**（artifactId 同款：like-service）
+    # ⇒ ⚠️ **服务发现名不取这里的值**：Nacos 注册名由
+    #    wiring/NacosRegistration 手写为 `like-rpc`（用 gRPC 端口），
+    #    与 B 侧 `zrpc.MustNewServer` 注册 `ListenOn` 的语义一致。
     name: like-service
+
+  # ============== 1. Postgres（对应 Go 端 Storage.Postgres.DataSource）==============
   datasource:
+    # ⚠️ 连接串**逐字照抄** B 侧 like-rpc 的 url（未加 follow 域那两段参数）：
+    #    B 侧 like-rpc = `jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:first_db}`
+    #    ⇒ like 域**不加** `sslmode` / `TimeZone` 参数（那是 follow 域按其 Go DSN 单独加的）。
+    #    ⚠️ **不要顺手对齐**：加 `TimeZone=Asia/Shanghai` 会改会话时区
+    #    ⇒ 改的是 timestamptz 的读出墙钟 ⇒ 属行为变更（L1 契约）。
     url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:first_db}
     username: ${POSTGRES_USER:admin}
-    password: ${POSTGRES_PASSWORD:password}
+    # 🔴 口令**不加默认值**（逐字照抄 B 侧 like-rpc）。
+    #   B 侧出处：service/like/rpc/etc/like.yaml:56 的 DataSource 里是**裸**占位符
+    #   `${POSTGRES_PASSWORD}`（无默认值）⇒ Go 的 os.ExpandEnv 不认 `${VAR:default}`
+    #   ⇒ 缺变量 ⇒ 空串 ⇒ 连库失败。
+    #   ⇒ 而 Spring 的 `${VAR:default}` 会让**缺变量时用默认口令连上去**
+    #   ⇒ RAG 比 Go **松** ⇒ 真漂移 ⇒ 不为「保留兜底」签字。
+    #   ⚠️ 残余差异（**失败时刻**不同）：Go = 启动成功、连库时失败；
+    #   RAG = **启动即失败**（占位符解析不到 ⇒ DataSource bean 创建失败）
+    #   ⇒ 属「RAG 更严的一侧」⇒ 按 P0 #8 同款口径登记为有意偏离候选。
+    password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      # 对应 Go servicecontext.go:34-35
+      #   sqlDB.SetMaxIdleConns(10) / sqlDB.SetMaxOpenConns(100)
+      maximum-pool-size: 100
+      minimum-idle: 10
+
+  # ============== 2. Redis ==============
+  # 对应 Go Storage.Redis（go-zero rest.RedisConf：Host/Type/Pass）
+  # ⚠️ Type: node 表示单节点直连，不是集群。Java 端 Lettuce 默认即单节点，
+  #    **不要配 cluster 相关项**，否则会变成 CLUSTER 拓扑解析。
   data:
     redis:
       host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      # ⚠️ 取值出处：B 侧 like-rpc 的 yaml 写 `timeout: 3s`
+      #    ⇒ 读命令超时 3s（与 go-redis 库默认 ReadTimeout=3s 一致）。
+      timeout: 3s
+      # ⚠️ 连接超时 = 5s，对齐 go-redis v9 的 DialTimeout 默认值
+      #    （`options.go:338-340`：`if opt.DialTimeout == 0 { opt.DialTimeout = 5s }`）。
+      #    ⚠️ **不配会落 Lettuce 的默认 10s** ⇒ 与 Go 差 2 倍。
+      #    属性名 = `spring.data.redis.connect-timeout`。
+      connect-timeout: 5s
+      # ⚠️ 连接池 = 与 B 侧**逐轴**对齐（B 侧 like-rpc 的 yaml 同款）：
+      #    min-idle: 8  ← go-zero 构造 red.Options 时只传 `MinIdleConns: idleConns`
+      #                    （常量 idleConns = 8 ⇒ 有确切值 ⇒ 精确对齐）
+      #    max-active: 64 ← Go 的 PoolSize **未设** ⇒ 落库默认 `10 × GOMAXPROCS`
+      #                    （机器相关、无法逐值对齐）⇒ 按**数量级**对齐（性能面）
+      #    max-idle: 16   ← Go 的 MaxIdleConns **无对应项**（默认 0 = 无上限）
+      #                    ⇒ 本项 16 = **比 Go 更严**（只影响空闲连接回收时机，
+      #                      **不影响命令结果**）⇒ 属可登记残留
+      #    max-wait: 4s   ← Go 的 PoolTimeout 未设 ⇒ 落库默认 ReadTimeout+1s = 4s
+      #                    ⇒ ⚠️ **不配的后果**：commons-pool2 的 DEFAULT_MAX_WAIT_MILLIS = -1
+      #                    ⇒ 借连接走 `takeFirst()`（无参 = 永久阻塞）
+      #                    ⇒ **无限等**，且 Lettuce 的 3s 命令超时救不了场
+      #                    ⇒ **比 Go 更糟**（Go 4s 失败 / RAG 无限挂起）
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 64
+          max-idle: 16
+          min-idle: 8
+          max-wait: 4s
+
+  # ============== 3. Kafka ==============
+  # 对应 Go KafkaConf（producer）/ mq.yaml 的 Kafka（consumer）
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:kafka:9092}
+
+    # ---------- 消费者 ----------
+    consumer:
+      # 对应 Go mq.yaml Kafka.Group: like-update-group
+      group-id: like-update-group
+      # 对应 Go Offset: first —— 从最早开始消费。
+      auto-offset-reset: earliest
+      # ⚠️ 关掉自动提交，改由容器在 listener 正常返回后提交（RECORD ack mode）。
+      #    ⚠️ 「enable-auto-commit: false」关的是**容器自动提交**，
+      #    位点由 RECORD ack mode 在**成功处理后**提交。
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # ⚠️ acks=1 与 Go kafka.Writer 的默认 RequiredAcks(1) 一致。
+      # ⚠️ 2026-11-03 补齐：B 侧 like-rpc 的 application.yml:207 **显式写了 `acks: 1`**
+      #    （其注释第 206 行明写「acks=1 本身保留：它与 Go kafka.Writer 的默认 RequiredAcks(1) 一致」）
+      #    ⇒ 本轮 C 侧只把这句话留在了注释里、**没有落配置**
+      #    ⇒ 生效值虽与 Kafka 3.x 客户端默认相同（=1），但那是**依赖客户端默认值**而非显式声明
+      #    ⇒ 按 D16「L1/L2/L4 一律以 B 侧为准」显式补齐（零行为差）。
+      acks: 1
+      # ⚠️ 2026-10-23 修正：原注释写「Go 的 Push 是同步阻塞写」「选 acks=1 + 异步 + 失败回调日志」，
+      #    其中**两点都不成立**：
+      #    ① Go 的 kq.NewPusher 默认挂 ChunkExecutor（pusher.go:66-89）⇒ Push 只入队即返回，
+      #       写失败发生在 executor 里、走 logx.Error，**不是同步阻塞、也不会回传调用方**；
+      #    ② 「失败回调日志」此前在本域**并不存在**（全模块零 whenComplete/exceptionally），
+      #       异步失败连日志都没有。已在 KafkaLikeMsgPublisher / LikeHotEventOutboxRelay 补上 whenComplete。
+      # ⚠️ 未对齐项（有意留档）：Go writer 固定 Balancer=&kafka.LeastBytes{} + Compression=Snappy
+      #    （pusher.go:44-49）。Java 侧未配自定义 Partitioner（默认按 key 哈希），
+      #    也未配 Snappy 压缩。二者**不改变消息内容与业务结果**（消费端按 group 均衡），
+      #    仅影响「消息落在哪个分区 / 网络占用」⇒ 记为 OBSERVABLE。
+    listener:
+      # RECORD = listener 正常返回后提交位点。这是 drop/retry 契约的实现载体。
+      # ⚠️ 与 Go 的 ForceCommit=true（失败也提交、不重投）等价：
+      #    Java 侧等价物 = DefaultErrorHandler(recoverer, new FixedBackOff(0, 0))
+      #    ⇒ 第一次失败即 STOP ⇒ FailedRecordTracker.recovered 返回 true
+      #    ⇒ SeekUtils.doSeeks **不 seek** ⇒ 跳过这条、继续处理后续消息 ⇒ 同样丢弃。
+      ack-mode: record
+
+  # =============================================================================
+  # Flyway（对应 B 侧 like-rpc 的 6 个迁移脚本 + 独立账本表）
+  # =============================================================================
+  # 🔴🔴 **这一段必须在 `spring:` 下面**（键名 = `spring.flyway.*`）：
+  #   放到**顶层** ⇒ 键名变成 `flyway.*` ⇒ Spring Boot **完全读不到**
+  #   ⇒ 下面 4 项**全部静默失效**：
+  #     · baseline-on-migrate ⇒ 共享 schema 下**启动直接失败**
+  #       （"Found non-empty schema(s) but no schema history table"）；
+  #     · baseline-version: 0 ⇒ baseline 打在 version 1 ⇒ **V1 的 SQL 从未执行**
+  #       ⇒ like_record 表永远建不出来；
+  #     · table: flyway_schema_history_like ⇒ 退回**默认的 schema 级账本名**
+  #       ⇒ 与其它域**撞号**（AGENTS.md §六 的核心问题）；
+  #     · locations ⇒ 恰好与默认值相同（本条不表现差异）。
+  #   ⚠️ **这 4 项失效时应用照样能起来、测试照样能跑绿**（schema 空时首次迁移正常）
+  #   ⇒ ⇒ 只能靠「schema 预先非空 + 账本不存在」的真触发场景才暴露。
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    # 🔴 **baseline-version 必须显式钉 0**：
+    #    本模块与其它域连同一个库、同一个 public schema ⇒ 先启动的模块已把
+    #    schema 弄非空 ⇒ 本模块启动时 Flyway 看到「非空 schema + 没有自己的账本」
+    #    ⇒ 因 baseline-on-migrate=true ⇒ **在 V1 处打 baseline 标记**（默认 baseline-version=1）
+    #    ⇒ **V1 的 SQL 从未执行** ⇒ like_record 表永远建不出来。
+    #    baseline-version=0 ⇒ baseline 标记打在 version 0 ⇒ **V1 之后全部迁移照常执行**。
+    baseline-version: 0
+    locations: classpath:db/migration
+    schemas: public
+    # ⚠️ **独立账本表名**：`flyway_schema_history` 是 **schema 级**账本，一个 schema 只能有一本账。
+    #    各域的 V1 版本号直接撞车且内容不同（like_record vs follow_relation vs …）
+    #    ⇒ 改账本表名即可消除病根，**迁移文件名一个字都不用动**。
+    table: flyway_schema_history_like
+
+  jpa:
+    hibernate:
+      # ⚠️ B 侧 like-rpc 的 yaml 有这一行 ⇒ 逐字照抄。
+      # ⚠️ 但本模块**无 JPA 依赖** ⇒ `spring.jpa.*` **没有消费者**（B 侧同样如此）
+      #    ⇒ 纯「原样搬运」，不构成任何行为差异。
+      ddl-auto: none
+
+  # ============== 5. Nacos 服务发现 ==============
+  # B 侧 api 与 rpc 两份 yml 都写 server-addr，且都**没有** namespace / group
+  #    ⇒ B 侧只有 api 段写了 server-addr（rpc 段写了同样的两行）。
+  # ⚠️ namespace / group 必须与注册侧一致（public / DEFAULT_GROUP）
+  # ⇒ 两端不一致 ⇒ 解析不到 ⇒ 所有业务码塌成 1015（service busy）。
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:nacos:8848}
+        # ⚠️ **必须是 `host` 与 `port` 分开两个变量**（R1-ENV-001 · 2026-11-01 收口轮）：
+        #    写成 `${NACOS_ADDR:nacos:8848}` 会把端口硬编码进默认值 ⇒ NACOS_PORT 被忽略。
+        server-addr: ${NACOS_ADDR:nacos}:${NACOS_PORT:8848}
+        namespace: ${NACOS_NAMESPACE:public}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+        # 🔴 **必须显式关掉自动注册**（逐字照抄 B 侧 like-rpc 的 yaml）：
+        #    自动注册（`NacosAutoServiceRegistration`）注册的是 **web 容器端口**（本进程 8896），
+        #    而本域的注册是**手写的**（wiring/NacosRegistration 用 gRPC 端口 9005）⇒
+        #    自动注册一旦生效 ⇒ Nacos 里会出现两个端口的实例 ⇒ gRPC 链路断。
+        register-enabled: false
 
+# =============================================================================
+# HTTP server（承载 6 个 HTTP 端点 + Actuator）
+# =============================================================================
+# 🔴 **合并裁决（端口）**：B 侧 api = 18887（业务）、B 侧 rpc = 9098（**只有** Actuator）。
+#    D1 合并成单进程 ⇒ **只有一个 HTTP 监听** ⇒ 取 C 侧约定的 LIKE_HTTP_PORT:8896
+#    （映射表 §4 进程拓扑行：C = HTTP 8896 + gRPC 9005）。
+#    ⇒ 9098 这个「观测口」在 C 侧**不再单独存在**：Actuator 与业务端点同端口。
+#    ⇒ 抓取配置**改端口不改路径**（路径仍是 /actuator/prometheus）。
 server:
   port: ${LIKE_HTTP_PORT:8896}
+  address: 0.0.0.0
+  servlet:
+    context-path: /
+  # ⚠️ 容器三旋钮：对齐 B 侧 like-api 的 yaml（逐字照抄）：
+  #    ① relaxed-query-chars：Go 的 net/http 不校验 query 里的 [ ]，且 go-zero httpx.GetFormValues
+  #       明确支持方括号数组记法；Tomcat 默认拒绝 ⇒ 400 + HTML 错误页（不是业务信封）
+  #    ② max-parameter-count：Go = go-zero httpx/util.go:15 maxFormParamCount=2048（应用层判）
+  #    ③ max-http-request-header-size：Go 的**真实**上限 = DefaultMaxHeaderBytes(1<<20)
+  #       + 4096（net/http/server.go:941 `return int64(s.maxHeaderBytes()) + 4096 // bufio slop`）
+  #       ⇒ 1 MiB + 4 KiB = **1028KB**；Boot 默认 8KB
+  # ⚠️ **② 是「写了但被共享层覆盖」的值（B 侧同样如此，不是 C 侧漂移）**：
+  #    共享层 `common/.../WebAutoConfiguration#seaTomcatParameterLimitCustomizer`
+  #    **无条件**把 Tomcat 的 maxParameterCount 抬到 **10001**
+  #    （= Go `net/url` 的段数上限 10000 + 1）⇒ 判定权交还应用层
+  #    （`ValueLimitInterceptor` 按 Go 的「非空值 2048」口径判定）。
+  #    ⚠️ B 侧 like-api 的 yaml 也写 2048、也被同一份共享层覆盖 ⇒ **两侧同形** ⇒ 照抄。
+  tomcat:
+    relaxed-query-chars: ["[", "]"]
+    max-parameter-count: 2048
+  max-http-request-header-size: 1028KB
 
+# =============================================================================
+# gRPC（承载 LikeGrpcService 的 6 个用例 + 出向的 message-rpc 客户端）
+# =============================================================================
 grpc:
   server:
+    # 🔴 **合并裁决（端口）**：B 侧 rpc = 8082 ⇒ C 侧取映射表 §4 钉死的 9005。
+    #    ⚠️ 改口时**必须同时确认 Nacos 注册地址跟着变**
+    #    （wiring/NacosRegistration 用 GrpcServerProperties.getPort() 注册）。
     port: ${LIKE_GRPC_PORT:9005}
     address: 0.0.0.0
-    reflection-service-enabled: false
+    # ⚠️ **本键刻意不配**：B 侧 like-rpc 的 yaml 明确写「Java 侧 devh starter 默认即开启
+    #    reflection，此处不额外配置」（Go 侧只在 DevMode/TestMode 注册 reflection）。
+    #    ⇒ 逐字照抄 B 侧 = 保持 devh 的默认（开启）。
+    #    （follow 域写 false 是**另一个域**的裁决，不外推到本域。）
   client:
-    # ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而上游 zrpc 是明文 gRPC。
-    #    不写会静默变 TLS —— 见《完全spring化的文件树》§9.1 断言 A4。
+    # ⚠️ **地址必须是三斜杠 `discovery:///message-rpc`**：
+    #    devh 的 `DiscoveryClientResolverFactory#newNameResolver` 判定 uri.getPath()
+    #    必须非空、长度 > 1、以 "/" 开头 ⇒ 两斜杠写法会直接抛 IllegalArgumentException。
+    #    ⇒ 校验发生在任何网络调用之前 ⇒ **与 Nacos 在不在线无关**。
+    # ⚠️ **本域没有 like-rpc 客户端**：D2 域内直连（api 直接注入 domain service）⇒
+    #    B 侧 api 的 `grpc.client.like-rpc` 那一段**不迁**（那是「自己 gRPC 调自己」）。
+    # ⚠️ negotiation-type **不能省**：devh 的默认值是 TLS，
+    #    不写会静默发 TLS ClientHello，而 B 侧是明文 gRPC（zrpc.MustNewServer 无 TLS 配置）。
+    #    ⇒ 断言 A4 专门盯这条。
+    message-rpc:
+      address: discovery:///message-rpc
+      enable-keep-alive: true
+      keep-alive-time: 30s
+      negotiation-type: plaintext
 
+# =============================================================================
+# MyBatis-Plus
+# =============================================================================
+# 🔴 **位置纠偏（不是抄错，是抄「生效值」）**：
+#    B 侧 like-rpc 的 yaml 把这一段写在 **`spring:` 下面**（`spring.mybatis-plus.*`），
+#    而 MyBatis-Plus 的绑定前缀是**根级** `mybatis-plus`
+#    （`com.baomidou.mybatisplus.autoconfigure.MybatisPlusProperties`
+#      = `@ConfigurationProperties(prefix = "mybatis-plus")`）
+#    ⇒ ⇒ **B 侧这一整段永远绑不上** ⇒ B 侧的**生效值 = MP 自己的默认值**。
+#    ⇒ ⇒ C 侧把它放回**根级**（与本仓 follow / message 域同款），
+#      并且**只写那些「两侧生效值一致」的键**：
+#      ① map-underscore-to-camel-case: true
+#         —— MP 的 `MybatisConfiguration` 构造器里就是 `mapUnderscoreToCamelCase = true`
+#            （javap 实测：构造器字节码 `iconst_1; putfield mapUnderscoreToCamelCase:Z`）
+#            ⇒ **两侧生效值都是 true** ⇒ 写不写都一样 ⇒ 写出来只为「显式可见」。
+#      ② ⚠️ **default-fetch-size 刻意不写**：
+#         B 侧那个键写在 `spring.mybatis-plus.*` 下 ⇒ **没绑上**
+#         ⇒ B 侧生效值 = MP 默认（`CoreConfiguration.defaultFetchSize` = `Integer` null）
+#         ⇒ C 侧补上 100 就是**新增行为**（给每条 JDBC 语句设 fetchSize）⇒ 按 L1 纪律**不补**。
+#      ③ id-type: ASSIGN_ID —— MP 默认就是 ASSIGN_ID，且本域 5 个 Entity 全部显式
+#         `@TableId(type=…)` ⇒ **实际不生效**（like_record = AUTO 走 PG 的 BIGSERIAL，
+#         其余 4 张表 = INPUT）⇒ 这里写它只为与 B 侧 yaml 逐字一致。
+#         ⚠️ **禁复用 common/Snowflake** 的理由见 LikeCursorIdGenerator 的类注释。
+#      ④ banner: false —— 只影响启动横幅（stdout），不影响任何业务判定；
+#         与本仓 follow / message 域同款。
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      # ⚠️ id-type 在本域**实际不生效**（5 个 Entity 全部显式 `@TableId(type=…)`）：
+      #    like_record = AUTO（PG 的 BIGSERIAL 分配），
+      #    其余 4 张表 = INPUT（业务主键 / 字符串键）。
+      #    ⇒ 这里写 ASSIGN_ID 只是**与 B 侧 like-rpc 的 yaml 逐字一致**，
+      #      不是「本域用雪花」的声明（禁复用 common/Snowflake 的理由见 LikeCursorIdGenerator）。
+      id-type: ASSIGN_ID
+    banner: false
 
+# =============================================================================
+# 业务配置 —— B 侧 like-api 段
+# =============================================================================
+# ⚠️ **前缀必须与 B 侧逐字一致**（L1 配置键名）：
+#    B 侧 `LikeApiProperties` = `@ConfigurationProperties(prefix = "like-api")`
+#    ⇒ 键名 `like-api.user-auth.access-secret`
+#    ⚠️ 曾把 `user-auth` 塞进 `like:` 前缀下 ⇒ 绑不上 ⇒ access-secret=null
+#      ⇒ @PostConstruct fail-closed ⇒ **启动失败**。
+like-api:
+  # ---- B 侧 api 段：UserAuth（JWT 验签）----
+  user-auth:
+    # ⚠️ 密钥必须与**签发方**一致：B 侧 like-api 与 user-api 的 user 段用的是同一个 secret
+    #    ⇒ 用户拿 user-api 签发的 token 直接能访问 like 域。
+    # ⚠️ like 域**只验签、不签发**（本服务没有 login / register 端点）。
+    # ⚠️ **不挂明文默认值**：B 侧那个值是写在仓里的公开密钥（36 字节 UUID）
+    #    ⇒ 谁都能用它伪造 JWT ⇒ 缺变量 ⇒ 启动失败。
+    # 🔴 **「yaml 不给默认值」只挡得住一半** ⇒ 另一半由**代码守卫**挡
+    #    （LikeApiProperties#verifyAccessSecret，@PostConstruct）：
+    #      · 变量完全没设 ⇒ Spring 的绑定器**不报错**、把**占位符原文**当成值绑上去
+    #        ⇒ 那是**仓里公开可知的一串字符** ⇒ 🔴 比空密钥更危险；
+    #      · 变量存在但值为空串 ⇒ PropertyPlaceholderHelper 把**空串当合法值**
+    #        ⇒ 属性绑成 "" ⇒ 空签名密钥 ⇒ token 可伪造。
+    #    ⇒ ⇒ 「未解析占位符」与「空串」**两条都**由守卫显式拒 ⇒ **fail-closed**。
+    # ⚠️ 本条属「RAG 更严」的一侧 ⇒ 登记为有意偏离，不是「RAG 抄错了 Go」。
+    access-secret: ${USER_JWT_SECRET}
+    # Go: likecenter.yaml:7  AccessExpire: 31536000（365 天）
+    # ⚠️ 本模块只验签、不签发，**不读**该值；
+    #   保留是为了让 yaml 与 Go 端 1:1 可对照。
+    access-expire: 31536000
+
+# =============================================================================
+# 业务配置 —— B 侧 like-rpc 段
+# =============================================================================
+# ⚠️ 前缀 `like` = B 侧 `LikeRpcProperties` = `@ConfigurationProperties(prefix = "like")`
+#    ⇒ 三个子段 `redis` / `kafka` / `fact` + `authority` 都是 **`like` 的直接子节点**。
+like:
+  redis:
+    # Go: CacheTTL int `default=3600`（yaml 显式写 3600）
+    #     —— GetUserTotalLike 的 SETEX / 命中后的 EXPIRE 用它
+    cache-ttl: 3600s
+    # Go: HotspotTTL int `default=1800`
+    # ⚠️ Go 代码里**没有任何地方读 HotspotTTL**（全量 grep 确认）。
+    #    这里保留只为配置面完整，Java 侧同样不读 —— 见 LikeRpcProperties.Redis#hotspotTtl 的注释。
+    hotspot-ttl: 1800s
+    # 列表类 ZSet 的 TTL —— ⚠️ Go 侧是**硬编码常量**，不在 yaml 里：
+    #   getuserlikelistlogic.go:120   Expire(redisKey, 3600*24*7)   // 7 天
+    #   gettargetlikerlistlogic.go:128 Expire(redisKey, 86400*7)     // 7 天
+    # 两处数值相同。提到 yaml 是为了让「改这个值」必须显式可见，而不是藏在代码魔数里。
+    list-ttl: 7d
+    # ⚠️ Go 的 RedisExtConf.BatchSize（yaml 写 1000）**无任何读取点**，
+    #    因此 Java 侧刻意不映射这个属性 —— 映射了会让人误以为批量上限已生效。
+
+  # ---------- Kafka 主题（对应 Go 各 PusherConf 的 Topic）----------
+  kafka:
+    # ---------- 消费并发度：Go mq.yaml `Kafka.Consumers: 8` ----------
+    # ⚠️ 这条键**只**被 LikeServiceApplication 的 kafkaListenerContainerFactory
+    #    读（setConcurrency）—— 应用自己 new 了这个 factory，
+    #    Boot 的 ConcurrentKafkaListenerContainerFactoryConfigurer **不会**参与
+    #    ⇒ 写成 `spring.kafka.listener.concurrency` 会成为无消费点的死配置（§3.3）。
+    consumers: 8
+    # Go KafkaConf.Topic: like_promotion_topic
+    # ★ 同时也是 Go mq.yaml 的消费 Topic（生产与消费同一个 topic —— 是 Go 的现状，不是笔误）
+    like-topic: like_promotion_topic
+    # Go TaskUserPusherConf.Topic: task.logs.filtered.User
+    task-user-topic: task.logs.filtered.User
+    # Go TaskArticlePusherConf.Topic: task.logs.filtered.Article
+    task-article-topic: task.logs.filtered.Article
+    # Go mq.yaml HotEventPusherConf.Topic: article-hot-events
+    hot-event-topic: article-hot-events
+
+    # ---------- 可选 producer 的启用开关 ----------
+    # ⚠️ 2026-10-23 拆分：此前是**一个** task-pushers-enabled 管两路（DRIFT-LIKE-012）。
+    # Go 侧是两路**各自独立**判空：servicecontext.go:43-44 分别 newOptionalPusher(c.TaskUserPusherConf)
+    # / newOptionalPusher(c.TaskArticlePusherConf)，判空条件是 Brokers 或 Topic 任一为空。
+    # ⇒ 配置面随之拆成两个键，与两个 KqConf 一一对应。
+    task-user-pusher-enabled: true
+    task-article-pusher-enabled: true
+
+  # ---------- 事实流派发（P3 fact-dispatch）----------
+  # Go cmd/fact-dispatch/main.go 要求同时具备：
+  #   LIKE_DATABASE_URL 非空 / DC_PLATFORM_EVENT_URL 非空 / DC_PLATFORM_SERVICE_TOKEN ≥32 字节
+  # 任一不满足即 return error → 进程退出。
+  # Java 侧是单 JVM 合并进程，不能因为缺 DC 配置就让整个 like 起不来，
+  # 因此改为「默认关闭 + 启动时显式告警」，关闭时该功能完全不参与运行。
+  fact:
+    dispatch-enabled: false
+    # Go: communityfact.NewDCEventSender(endpoint, token, &http.Client{Timeout: 8s})
+    dc-endpoint: ${DC_PLATFORM_EVENT_URL:}
+    dc-token: ${DC_PLATFORM_SERVICE_TOKEN:}
+    dc-timeout: 8s
+    # Go cmd/fact-dispatch/main.go:24 的 -once flag（默认 false）：只投递至多一条待发事实
+    once: false
+    # ---- 进程级 logger 的身份三元组（**C 侧新增 · 表达层**）----
+    # ⚠️ B 侧的 `bootstrap/LikeFactProcessLogging` 是**骨架占位**（只写了几行注释），
+    #    ⇒ Go 的 4 个进程（like / like-mq / like-fact-dispatch / like-fact-authority）
+    #    各自的 logger 身份在 B 侧**没有落点**。
+    #    ⇒ C 侧补成可用实现（4 份**独立** logger，**不得用 SLF4J 全局 MDC**），
+    #    身份三元组从这里读 ⇒ 部署形态变了（单进程）⇒ 这三个值是**新增表达层**，
+    #    不参与任何业务判定 ⇒ 登记为「C 侧补齐 B 侧骨架」的表达层偏离。
+    process:
+      environment: ${LIKE_ENV:local}
+      instance-id: ${HOSTNAME:unknown-instance}
+      version: ${LIKE_VERSION:}
+
+  # ---------- 权威读（P4 fact-authority）----------
+  # Go cmd/fact-authority/main.go 要求 LIKE_FACT_AUTHORITY_LISTEN / _TOKEN（≥32 字节）。
+  # 默认关闭；关闭时不注册任何额外 HTTP 端口。
+  # 🔴 **键名必须是 `like.authority.*`（不是 `like.fact.authority.*`）**：
+  #    B 侧 `LikeRpcProperties` 的 `Authority` 是 `like` 的**直接子节点**
+  #    ⇒ 绑定键 = `like.authority.enabled` / `like.authority.token`
+  #    ⇒ wiring/LikeAuthorityEndpointConfig 的 @ConditionalOnProperty 也必须用同一前缀，
+  #      否则「开关」与「token」各绑各的 ⇒ 开关开了但 token 是空串 ⇒ 启动失败。
+  authority:
+    enabled: false
+    token: ${LIKE_FACT_AUTHORITY_TOKEN:}
+
+# =============================================================================
+# rag.protection —— B 侧「请求保护层」四道中间件
+# =============================================================================
+# ⚠️ 这些值在 B 侧 likecenter.yaml 里**一个字都没写**，但在 B 侧**是开启的**
+#    （默认值藏在框架的 struct tag 里）⇒ 照 yaml 逐字段对，永远看不见这几层。
+#    B 侧出处：rest/config.go:52 MaxConns `json:",default=10000"` ·
+#              rest/config.go:53 MaxBytes `json:",default=1048576"` ·
+#              rest/config.go:56 CpuThreshold `json:",default=900,range=[0:1000)"` ·
+#              rest/config.go:12-22 MiddlewaresConf 九个开关 **全部** `json:",default=true"`
+# ⇒ 「yaml 里没写」≠「没开」（AGENTS.md §3.3.1）。
+#
+# ⚠️ 拒绝响应是 **裸状态码 + 空 body + 无 Content-Type**（Go 是裸 w.WriteHeader，
+#    没有 httpx.Error），刻意不走本模块的 200+envelope 约定。
+rag:
+  http:
+    # =============================================================================
+    # 🔴 Go 风格 form 值上限闸门
+    # =============================================================================
+    # Go 出处：go-zero rest/httpx/util.go:15  maxFormParamCount = 2048
+    #          （数的是**非空值**；util.go:44-45 空值 continue 不计数）
+    #          Go 1.25 net/url/url.go:1001  defaultMaxParams = 10000（数的是**段数**）
+    #
+    # mode = 本域的 form 超限时应该输出什么形状 —— 依据是「Go 侧该 api 有没有注册
+    #        httpx.SetErrorHandler」（逐域取证）：
+    #   · raw      ⇒ Go 未注册 SetErrorHandler ⇒ http.Error(w, err.Error(), 400)
+    #                ⇒ **400 + text/plain; charset=utf-8 + nosniff + Go 原文**
+    #   · envelope ⇒ Go 注册了 SetErrorHandler ⇒ 走业务信封
+    #                ⇒ **200 + {"code":5001,"msg":"<该域自己的错误码表文案>","data":null}**
+    #
+    # Go 侧 like/api/likecenter.go:48 **注册了** httpx.SetErrorHandler ⇒ **200 + 业务信封**
+    # ⇒ 该域 5001 的文案是「系统内部错误」（不是 "internal server error"）⇒ mode: envelope
+    go-form-limit:
+      mode: envelope
+  protection:
+    max-conns: 10000
+    max-bytes: 1048576
+    cpu-shedding:
+      enabled: true
+      cpu-threshold: 900
+      cpu-source: SYSTEM
+    breaker:
+      enabled: true
+    outbound-deadline:
+      # ==========================================================================
+      # 🔴 出向 gRPC 客户端硬上界
+      # Go 出处：go-zero@v1.10.2/zrpc/config.go:31 `Timeout int64 json:",default=2000"`
+      #   ⇒ 默认 2000ms；本域 Go 侧 service/like/rpc/etc/like.yaml 的
+      #     `MessageRpc:` 段**无显式 Timeout** ⇒ ⇒ 恒 2000ms。
+      # ⚠️ 本域**只配参数**：封顶逻辑由共享层 `GoStyleOutboundDeadlineInterceptor`
+      #   （`@GrpcGlobalClientInterceptor` ⇒ 装在**每个**出向 devh 调用上）**唯一**承担
+      #   ⇒ 域侧不得再造私有副本。**不要**改用空配的 `grpc.client.*.deadline`。
+      # env 覆盖：LIKE_OUTBOUND_DEADLINE_CAP_MILLIS（Go 的 Timeout 也是域级字段）
+      cap-millis: ${LIKE_OUTBOUND_DEADLINE_CAP_MILLIS:2000}
+
+# =============================================================================
+# Metrics
+# =============================================================================
+# B 侧 api 的 metric：like_api_reject_total{route,reason}
+# B 侧 rpc 的 metric：like_rpc_action_total{target_type,action,result} ·
+#                     like_rpc_query_cache_total{target_type,result} ·
+#                     like_mq_consume_total{action,result}
+# ⚠️ **刻意不加 `tags.application`**：指标名里已经带了同一个前缀
+#    ⇒ 再叠一个 tag 是把名字里已有的信息重复一遍，且会改变时间序列的身份。
+#    （B 侧 like-rpc 侧曾加过 application=like-rpc，2026-10-30 与 Go 对照后移除；
+#      Go 的 InitMetrics() 在 Go 侧**无任何调用点** ⇒ Go 从不注册这两个指标。
+#      C 侧保留注册 ⇒ 属「C 侧比 B 侧多」的可观察面差异 ⇒ 登记为 OBSERVABLE。）
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        # 🔴 **合并裁决**：B 侧 api 写 `health,info,prometheus`；
+        #    B 侧 rpc 写 `health,info,prometheus,metrics` ⇒ 取**并集**。
+        include: health,info,prometheus,metrics
+    enabled-by-default: false
   endpoint:
     health:
-      show-details: always
+      enabled: true
+      # 🔴 **合并裁决**：B 侧 api = `always`、B 侧 rpc = `when_authorized`
+      #    ⇒ 取**更严**的一侧（when_authorized）⇒ 合并后不泄露组件明细。
+      show-details: when_authorized
+    info:
+      enabled: true
+    prometheus:
+      enabled: true
+    metrics:
+      enabled: true
+  metrics:
+    enable:
+      prometheus: true
+
+# =============================================================================
+# OpenTelemetry OTLP exporter（对齐 B 侧 Telemetry.*）
+# =============================================================================
+# ⚠️ 共享层 `GoStyleOtelConfig` 读的是 **B 侧那套键名**：
+#    `otel.service.name` / `otel.resource.attributes.service.name`（两套拼法都认）·
+#    `otel.exporter.otlp.endpoint` / `otel.exporter.otlp.protocol` /
+#    `otel.traces.sampler` / `otel.traces.sampler.arg`
+# ⇒ 端点**没有 scheme** 时共享层会补 `http://`（= B 的 WithInsecure() 明文）。
+otel:
+  # B 侧 rpc 侧的拼法（Go: Name: like.rpc）
+  service:
+    name: like-service
+  exporter:
+    otlp:
+      # 🔴 **合并裁决（scheme）**：B 侧 api 写 `http://${OTEL_ADDR}:${OTLP_PORT}`（带 scheme）、
+      #    B 侧 rpc 写裸 `host:port`（不带 scheme）⇒ 共享层两种都认 ⇒ 取**带 scheme** 的
+      #    那一侧（显式优于隐式）。protocol=grpc 同样取 api 侧写法。
+      endpoint: http://${OTEL_ADDR:jaeger}:${OTLP_PORT:4317}
+      protocol: grpc
+  resource:
+    attributes:
+      # B 侧 api 侧的拼法（Go: Telemetry.Name）—— 两套都写 ⇒ 值一致 ⇒ 无歧义
+      service.name: like-service
+  traces:
+    # B 侧 api 写 `always_on`、B 侧 rpc 写 `parentbased_always_on`
+    # ⇒ 共享层 `GoStyleOtelConfig#toRatio` 把两者都映射成 ratio = 1.0
+    # ⇒ 取 api 侧写法（follow 域同款）。
+    sampler: always_on
 
 logging:
   level:
+    root: INFO
     com.rag: INFO
+    io.grpc: WARN
+
+# =============================================================================
+# observability
+# =============================================================================
+# B 侧 like-api 的 yaml **未配置** Timeout，实际生效值来自 go-zero v1.10.2
+# rest/config.go:55 `Timeout int64 json:",default=3000"` ⇒ 3000ms（3s）。
+# ⚠️ 这正是 B 侧 like-api 的 **DRIFT-LIKEAPI-001**（当年误以为「yaml 没写 ⇒ 无超时」），
+#    后由三个兄弟模块（message / user / admin）的 3s 配置反证并修正。
+# ⇒ C 侧**必须显式写出 3s**（共享层 ObservabilityProperties 的 javadoc 也点名要求
+#    「各模块 yaml 须显式写出同值，不得留空」）。
+#
+# B 侧 like-rpc 侧对应 zrpc/config.go 的 default=2000 ⇒ 2s。
+observability:
+  http-timeout: 3s
+  rpc-timeout: 2s

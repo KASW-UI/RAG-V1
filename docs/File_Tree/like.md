@@ -50,106 +50,141 @@
 │   │   │       └── rag/
 │   │   │           └── like/
 │   │   │               ├── advice/
-│   │   │               │   ├── LikeApiExceptionHandler.java
-│   │   │               │   └── LikeApiResponseAdvice.java
+│   │   │               │   ├── LikeApiExceptionHandler.java    # 全局异常处理器 —— 对应 B 侧
+│   │   │               │   └── LikeApiResponseAdvice.java    # 成功出口的响应信封包装 —— 对应 B 侧
 │   │   │               ├── client/
-│   │   │               │   └── MessageRpcClient.java    # 跨域 gRPC 客户端 —— 域内调用已直连，此处只保留跨域依赖。
+│   │   │               │   └── MessageRpcClient.java    # message 域 gRPC 客户端 —— 对应 B 侧
 │   │   │               ├── config/
-│   │   │               │   ├── LikeApiProperties.java    # @ConfigurationProperties —— 聚合本域 HTTP 层配置。
-│   │   │               │   ├── LikeRpcProperties.java
-│   │   │               │   └── WebMvcConfig.java    # 注册 JwtAuthInterceptor + public 路径白名单 —— 对齐 B 侧同名配置类的注册形态。
+│   │   │               │   ├── LikeApiProperties.java    # like-api 模块配置聚合点 —— Spring Boot {@code @ConfigurationProperties}。
+│   │   │               │   ├── LikeRpcProperties.java    # like 域配置 —— 对应 Go 端 {@code service/like/rpc/internal/config/config.go} 的
+│   │   │               │   └── WebMvcConfig.java    # like 域的 MVC 装配 —— 对应 B 侧
 │   │   │               ├── contract/
-│   │   │               │   ├── ArticleHotEvent.java    # B 出处：service/hot/hot-rpc/src/main/java/com/rag/hot/hot/rpc/mq/ArticleHotEvent.java。like → hot 的跨域事件
-│   │   │               │   ├── CodeError.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│   │   │               │   ├── ErrCodes.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│   │   │               │   ├── ErrMsg.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│   │   │               │   ├── GrpcErrFactory.java    # ⚠️ 硬约束：错误契约逐域隔离，不可跨域统一
-│   │   │               │   ├── KafkaLikeMsg.java    # B 出处：service/like/rpc/internal/types/types.go。like 域的 Kafka 消息载荷
-│   │   │               │   └── TaskArticleProgressMsg.java    # B 出处：service/like/rpc/internal/types/types.go。like → task 的跨域事件
+│   │   │               │   ├── ArticleHotEvent.java    # 文章热点事件 —— B 侧
+│   │   │               │   ├── CodeError.java    # like 域业务错误载体 —— 携带业务码 {@code code} + 业务文案 {@code msg} 的 unchecked 异常。
+│   │   │               │   ├── ErrCodes.java    # like 域业务错误码常量集（域内私有 · L1 契约层）。
+│   │   │               │   ├── ErrMsg.java    # like 域 code → msg 文案映射 —— 29 条文案的唯一真源（L1 契约 · 含语言）。
+│   │   │               │   ├── GrpcErrFactory.java    # like 域 gRPC 错误构造与业务码还原（L1 契约层 · 域内私有）—— 对应 B 侧
+│   │   │               │   ├── KafkaLikeMsg.java    # 点赞动作事件 —— B 侧
+│   │   │               │   └── TaskArticleProgressMsg.java    # 任务进度事件 —— B 侧
 │   │   │               ├── controller/
-│   │   │               │   └── LikeController.java    # ⚠️ L1 路由契约（B 侧 正推，勿凭直觉改）
+│   │   │               │   └── LikeController.java    # like 域全部 6 个 HTTP 端点 —— B 侧
 │   │   │               ├── domain/
 │   │   │               │   ├── entity/
-│   │   │               │   │   ├── LikeConsumeInboxEntity.java
-│   │   │               │   │   ├── LikeDomainFactOutboxEntity.java
-│   │   │               │   │   ├── LikeFactStreamEntity.java
-│   │   │               │   │   ├── LikeOutboxEventEntity.java
-│   │   │               │   │   └── LikeRecordEntity.java
+│   │   │               │   │   ├── LikeConsumeInboxEntity.java    # 消费收件箱 ORM 实体 —— 对应 B 侧
+│   │   │               │   │   ├── LikeDomainFactOutboxEntity.java    # 领域事实发件箱 ORM 实体 —— 对应 B 侧
+│   │   │               │   │   ├── LikeFactStreamEntity.java    # 事实流版本号 ORM 实体 —— 对应 B 侧
+│   │   │               │   │   ├── LikeOutboxEventEntity.java    # 热点事件发件箱 ORM 实体 —— 对应 B 侧
+│   │   │               │   │   └── LikeRecordEntity.java    # 点赞记录表 ORM 实体 —— 对应 B 侧
 │   │   │               │   └── service/
-│   │   │               │       ├── LikeDomainFactService.java
-│   │   │               │       └── LikeDomainService.java
+│   │   │               │       ├── LikeDomainFactService.java    # 领域事实追加 —— 1:1 对应 Go 端
+│   │   │               │       └── LikeDomainService.java    # like 域 6 个 gRPC 用例的业务实现 —— 逐个对应 Go 端
 │   │   │               ├── dto/
 │   │   │               │   ├── action/
-│   │   │               │   │   ├── LikeActionReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── LikeActionResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── LikeActionReq.java    # 点赞动作请求体 —— immutable record（决策 D5 · A9）。
+│   │   │               │   │   └── LikeActionResp.java    # 点赞动作响应体 —— immutable record（决策 D5 · A9）。
 │   │   │               │   ├── count/
-│   │   │               │   │   ├── GetLikeCountReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetLikeCountResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetUserTotalLikeReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetUserTotalLikeResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── LikeCountItem.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetLikeCountReq.java    # 批量点赞 / 点踩数查询请求体 —— immutable record（决策 D5 · A9）。
+│   │   │               │   │   ├── GetLikeCountResp.java    # 批量点赞 / 点踩数查询响应体 —— immutable record（决策 D5 · A9）。
+│   │   │               │   │   ├── GetUserTotalLikeReq.java    # 某用户总获赞数查询请求体 —— immutable record（决策 D5 · A9）。
+│   │   │               │   │   ├── GetUserTotalLikeResp.java    # 某用户总获赞数响应体 —— immutable record（决策 D5 · A9）。
+│   │   │               │   │   └── LikeCountItem.java    # 点赞 / 点踩计数项 —— immutable record（决策 D5 · A9）。
 │   │   │               │   ├── list/
-│   │   │               │   │   ├── GetTargetLikerListReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetTargetLikerListResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetUserLikeListReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── GetUserLikeListResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   ├── LikeItem.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │   │   └── LikeRecordItem.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │   │   ├── GetTargetLikerListReq.java    # 某稿件的点赞人列表查询请求体 —— immutable record（决策 D5 · A9）。
+│   │   │               │   │   ├── GetTargetLikerListResp.java    # 某稿件的点赞人列表响应体 —— immutable record（决策 D5 · A9）。
+│   │   │               │   │   ├── GetUserLikeListReq.java    # 某用户点赞列表查询请求体 —— immutable record（决策 D5 · A9）。
+│   │   │               │   │   ├── GetUserLikeListResp.java    # 某用户点赞列表响应体 —— immutable record（决策 D5 · A9）。
+│   │   │               │   │   ├── LikeItem.java    # 点赞人条目 —— immutable record（决策 D5 · A9）。
+│   │   │               │   │   └── LikeRecordItem.java    # 点赞记录条目 —— immutable record（决策 D5 · A9）。
 │   │   │               │   └── state/
-│   │   │               │       ├── GetLikeStateReq.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
-│   │   │               │       └── GetLikeStateResp.java    # immutable record —— 替代上游的可变 struct（见《完全spring化的文件树》D5）。
+│   │   │               │       ├── GetLikeStateReq.java    # 某用户对一批目标的点赞状态查询请求体 —— immutable record（决策 D5 · A9）。
+│   │   │               │       └── GetLikeStateResp.java    # 某用户对一批目标的点赞状态响应体 —— immutable record（决策 D5 · A9）。
 │   │   │               ├── exception/
-│   │   │               │   └── LikeExceptions.java
+│   │   │               │   └── LikeExceptions.java    # like 域业务异常集合 —— 承载 B 侧各处 {@code errmsg.NewGrpcErr(code, msg)} 的那两个参数。
 │   │   │               ├── grpc/
-│   │   │               │   └── LikeGrpcService.java
+│   │   │               │   └── LikeGrpcService.java    # gRPC 服务入口 —— 对应 B 侧
 │   │   │               ├── interceptor/
-│   │   │               │   └── LikeJwtAuthInterceptor.java
+│   │   │               │   └── LikeJwtAuthInterceptor.java    # like 域的 JWT 验签拦截器 —— 对应 B 侧
 │   │   │               ├── mapper/
-│   │   │               │   ├── LikeConsumeInboxMapper.java
-│   │   │               │   ├── LikeDomainFactOutboxMapper.java
-│   │   │               │   ├── LikeFactStreamMapper.java
-│   │   │               │   ├── LikeOutboxEventMapper.java
-│   │   │               │   └── LikeRecordMapper.java
+│   │   │               │   ├── LikeConsumeInboxMapper.java    # 消费收件箱数据访问 —— 对应 B 侧
+│   │   │               │   ├── LikeDomainFactOutboxMapper.java    # 领域事实发件箱 + 事实流版本号数据访问 —— 对应 B 侧
+│   │   │               │   ├── LikeFactStreamMapper.java    # 事实流版本号数据访问 —— 对应 B 侧
+│   │   │               │   ├── LikeOutboxEventMapper.java    # 热点事件发件箱数据访问 —— 对应 B 侧
+│   │   │               │   └── LikeRecordMapper.java    # 点赞记录数据访问 —— 对应 B 侧
 │   │   │               ├── messaging/
-│   │   │               │   ├── LikeHotEventOutboxRelay.java    # 点赞域的发件箱中继 —— 推 article-hot-events，单条失败不中断批次。
-│   │   │               │   ├── LikeKafkaTopics.java
-│   │   │               │   ├── LikeTaskProgressPublisher.java
-│   │   │               │   └── LikeUpdateKafkaListener.java    # 点赞变更的 Kafka 消费入口 —— 验签 + 校验 + 写 inbox/outbox（单事务）。
+│   │   │               │   ├── LikeHotEventOutboxRelay.java    # 热点事件发件箱中继 —— 对应 B 侧
+│   │   │               │   ├── LikeKafkaTopics.java    # like 域 Kafka 主题 —— 对应 Go 端各处 {@code PusherConf} / {@code KqConf} 的 Topic 字段。
+│   │   │               │   ├── LikeTaskProgressPublisher.java    # 推广任务进度推送 —— 1:1 对应 Go 端
+│   │   │               │   └── LikeUpdateKafkaListener.java    # 点赞消息消费入口 —— 对应 B 侧
 │   │   │               ├── metrics/
-│   │   │               │   ├── LikeApiMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
-│   │   │               │   ├── LikeMqMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
-│   │   │               │   └── LikeRpcMetrics.java    # ⚠️ L1 观测契约：指标完整名（= namespace_subsystem_name）
+│   │   │               │   ├── LikeApiMetrics.java    # like 域的 网关层拒绝计数 —— 对应 B 侧
+│   │   │               │   ├── LikeMqMetrics.java    # like 域的 MQ 消费计数 —— 对应 B 侧
+│   │   │               │   └── LikeRpcMetrics.java    # like 域的 RPC 侧指标 + span 属性埋点 —— 对应 B 侧两个文件：
 │   │   │               ├── service/
-│   │   │               │   ├── GoCompatibleJson.java
-│   │   │               │   ├── LikeActionScript.java
-│   │   │               │   ├── LikeApiService.java
-│   │   │               │   ├── LikeApiSupport.java
-│   │   │               │   ├── LikeAuthorityLookupService.java
-│   │   │               │   ├── LikeCursorIdGenerator.java
-│   │   │               │   ├── LikeDeliveryValidator.java
-│   │   │               │   ├── LikeFactDispatchService.java
-│   │   │               │   ├── LikeKafkaPushKey.java
-│   │   │               │   ├── LikeMessageDigest.java
-│   │   │               │   ├── LikeMessageIngestService.java
-│   │   │               │   └── LikeRedisKeys.java
+│   │   │               │   ├── GoCompatibleJson.java    # 与 Go {@code encoding/json} 输出字节一致的 JSON 序列化 + SHA-256。
+│   │   │               │   ├── LikeActionScript.java    # 点赞写操作的 Lua 脚本 —— 逐字对应 B 侧
+│   │   │               │   ├── LikeApiService.java    # like 域 6 个 HTTP 用例 —— 对应 B 侧
+│   │   │               │   ├── LikeApiSupport.java    # api 侧的共享支撑 —— 对应 B 侧
+│   │   │               │   ├── LikeAuthorityLookupService.java    # 权威读 —— 对应 Go 端 {@code service/like/rpc/internal/model/fact_authority.go:12-146} 的
+│   │   │               │   ├── LikeCursorIdGenerator.java    # 列表游标 ID 生成 —— 1:1 对应 Go 端 {@code service/like/rpc/internal/logic/likeactionlogic.go:26-54}。
+│   │   │               │   ├── LikeDeliveryValidator.java    # 冻结信封合法性校验 —— 对应 Go 端
+│   │   │               │   ├── LikeFactDispatchService.java    # 单条事实投递 —— 对应 Go 端
+│   │   │               │   ├── LikeKafkaPushKey.java    # 推送 key 的生成 —— 对齐 Go {@code go-queue@v1.2.2/kq/pusher.go:123-125}。
+│   │   │               │   ├── LikeMessageDigest.java    # 消费消息的语义哈希 —— 1:1 对应 Go 端
+│   │   │               │   ├── LikeMessageIngestService.java    # 点赞消息落库 —— 1:1 对应 Go 端
+│   │   │               │   └── LikeRedisKeys.java    # like 域 Redis key 构造 —— 对应 Go 端散落在 6 个 logic 里的 {@code fmt.Sprintf} 拼键。
 │   │   │               ├── wiring/
-│   │   │               │   ├── LikeAuthorityEndpointConfig.java    # B 出处
-│   │   │               │   ├── LikeFactDispatchScheduler.java    # B 出处
-│   │   │               │   ├── LikeFactProcessLogging.java
-│   │   │               │   ├── LikeSchemaGate.java
-│   │   │               │   └── NacosRegistration.java
-│   │   │               └── LikeServiceApplication.java    # @SpringBootApplication + @EnableDiscoveryClient —— api 与 rpc 合并后的唯一入口。
+│   │   │               │   ├── LikeAuthorityEndpointConfig.java    # 权威读端点的 Servlet 注册 —— 对应 B 侧
+│   │   │               │   ├── LikeFactDispatchScheduler.java    # 事实流派发调度器 —— 对应 B 侧
+│   │   │               │   ├── LikeFactProcessLogging.java    # 进程级日志身份隔离 —— 对应 B 侧
+│   │   │               │   ├── LikeSchemaGate.java    # 表存在性启动闸 —— 对应 B 侧
+│   │   │               │   └── NacosRegistration.java    # Nacos 服务注册 —— 对应 B 侧
+│   │   │               └── LikeServiceApplication.java    # like 域应用入口 —— 对应 B 侧两个入口
 │   │   └── resources/
 │   │       ├── db/
 │   │       │   └── migration/
-│   │       │       └── .gitkeep
+│   │       │       ├── .gitkeep
+│   │       │       ├── V1__create_like_record.sql
+│   │       │       ├── V2__create_like_consume_inbox.sql
+│   │       │       ├── V3__create_like_outbox_event.sql
+│   │       │       ├── V4__create_like_domain_fact_outbox.sql
+│   │       │       ├── V5__create_like_fact_stream.sql
+│   │       │       └── V6__align_like_domain_fact_outbox_with_go.sql
 │   │       └── application.yml
 │   └── test/
-│       └── java/
-│           └── com/
-│               └── rag/
-│                   └── like/
-│                       └── LikeServiceApplicationTests.java
+│       ├── java/
+│       │   └── com/
+│       │       └── rag/
+│       │           └── like/
+│       │               ├── contract/
+│       │               │   └── LikeErrorContractTest.java    # like 域错误契约的逐条冻结断言（纯单元，不起 Spring 上下文）。
+│       │               ├── dto/
+│       │               │   ├── LikeDtoWireShapeTest.java    # like 域 DTO 的「线上 wire 形状」逐条断言（纯单元，不起 Spring 上下文）。
+│       │               │   └── LikeJsonCreatorAnnotationScopeTest.java    # 🔴 「record 的 {@code @JsonCreator} 工厂会不会顶替组件上的 {@code @JsonDeserialize}」——
+│       │               ├── grpc/
+│       │               │   ├── LikeGrpcNettyServerRealTest.java    # like 域 gRPC server 的「真 netty 传输层」启动守门
+│       │               │   └── LikeGrpcServiceContractTest.java    # like 域 6 个 gRPC 用例的契约（真 gRPC server · 真 proto 编解码 · 真 PG · 真 Redis）。
+│       │               ├── http/
+│       │               │   ├── LikeHttpWireContractRealTomcatTest.java    # like 域 HTTP 层的「线上形状」逐条断言（真 Tomcat · 真 PG · 真 Redis）。
+│       │               │   └── LikePrometheusEndpointRealTest.java    # 🔴 {@code /actuator/prometheus} 在生产形态上下文里的可用性
+│       │               ├── messaging/
+│       │               │   └── LikeKafkaThreeFaceRealTest.java    # like 域 Kafka 三面（生产 / 消费 / 推送）的真链路守门
+│       │               ├── service/
+│       │               │   ├── LikeFlywayBaselineRealPgTest.java    # Flyway 守门：共享 schema 已被别的 app 占用时，like 域的 V1..V6 仍必须全部执行
+│       │               │   ├── LikeFlywayRuntimeVersionTest.java    # Flyway 运行时版本的显式断言（不靠「迁移跑通了 ⇒ 版本肯定对」的间接覆盖）。
+│       │               │   ├── LikeMessageIngestRealPgTest.java    # like 域「MQ 消费落库」链路的事务与幂等断言（真 PostgreSQL 16 · 真 MyBatis-Plus）。
+│       │               │   ├── LikeMessageRpcCrossDomainRealTest.java    # like 域 → message 域的跨域通知：真链路守门。
+│       │               │   └── LikeUnitSemanticsTest.java    # like 域「纯逻辑协作者」的逐条断言（纯单元，不起 Spring 上下文）。
+│       │               ├── support/
+│       │               │   ├── FakeMessageRpcServer.java    # 假 message-rpc 的真 netty server —— 给 like 域测「跨域通知」用。
+│       │               │   ├── GrpcServerPortCapture.java    # 捕获 devh 真 netty gRPC server 的「实际绑定端口」与「实际 server 实现类」。
+│       │               │   ├── LikeTestSupport.java    # like 域测试用 JWT 构造器。
+│       │               │   ├── NacosStubConfiguration.java    # Nacos 桩 —— 让 like 域的测试能起真实 Spring 上下文，而不连 Nacos。
+│       │               │   ├── PrometheusTestRegistryConfiguration.java    # 测试上下文里注入「真 Prometheus registry」 —— 让 Micrometer 真正吐出
+│       │               │   ├── TestPostgres.java    # 测试用真 PostgreSQL（进程内单例容器）。
+│       │               │   └── TestRedis.java    # 测试用真 Redis（进程内单例容器） —— like 域的 Redis 用途是
+│       │               └── LikeServiceApplicationTests.java    # like 域应用上下文能真正起来（真 PG ＋ 真 Redis ＋ 真 Flyway ＋ 真 Tomcat）。
+│       └── resources/
+│           └── application-test.properties
 └── pom.xml    # Maven 模块描述
 ```
 
