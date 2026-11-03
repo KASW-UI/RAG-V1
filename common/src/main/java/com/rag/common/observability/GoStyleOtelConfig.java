@@ -108,7 +108,7 @@ public final class GoStyleOtelConfig {
      * 从 Spring {@link Environment} 读出 B 的 Telemetry 四字段。
      *
      * <p>⚠️ <b>为什么必须直接读 {@link Environment} 而不是注入配置 Bean</b>：
-     * 装配点是 {@link GoStyleOtelAutoConfiguration} 里的
+     * 装配点是 {@link com.rag.common.autoconfigure.GoStyleOtelAutoConfiguration} 里的
      * {@code BeanFactoryPostProcessor} ⇒ 它跑在<b>所有单例创建之前</b>
      * ⇒ ⇒ 此时 {@code @ConfigurationProperties} 绑定的 Bean <b>还不存在</b>
      * ⇒ ⇒ 只能直接读 {@code Environment}。

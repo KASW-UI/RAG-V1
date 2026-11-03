@@ -629,8 +629,18 @@
    ⇒ ⇒ 本域的收口口径用 **`mvn -o -pl service/users/admin -am clean verify`**（含 `repackage`）
    ⇒ ⇒ 待那 8 个域落地（或其 `pom` 改掉 `repackage`）后，全量 build 自然转绿。
 7. **✅ §9.10.3 的超时 / PG-不可用差异 —— 已由 `global` 收口域销账（2026-11-03）** —— 根因在**共享层**：
-   `DeadlineState` 只在 **gRPC 服务端路径**绑定（`common/.../RpcHandleRunner.java:121`），
-   HTTP 路径没绑 ⇒ ⇒ D2 域内直连的 **SQL 永不被取消** ⇒ 超时后事务照常提交（**副作用已落库**）。
+   `DeadlineState` 在 C 侧**生产路径上零绑定点** ⇒ HTTP 路径没绑
+   ⇒ ⇒ D2 域内直连的 **SQL 永不被取消** ⇒ 超时后事务照常提交（**副作用已落库**）。
+   ⚠️ **口径订正（2026-11-03 · `global` 收口域复核）**：本条原先写
+   「`DeadlineState` **只在 gRPC 服务端路径**绑定（`common/.../RpcHandleRunner.java:121`）」
+   ⇒ ⇒ **该说法经全仓源码 ＋ git 历史核对为假**，两半都不成立：
+   ① `RpcHandleRunner` 这个类在**生产代码里零引用**（只有 javadoc 提及）⇒ 它那处
+   `bindRemainingNanos` **不是生产绑定点**；② gRPC 服务端路径上的绑定点**从未存在** ——
+   B 侧 `RpcInterceptor.newUnaryServerInterceptor` 的 `onHalfClose`（`RpcInterceptor.java:516-522`）
+   里的双载体绑定，在 C 侧拆包时**整块丢失**（`newUnaryServerInterceptor` 在 C 侧从无实现）
+   ⇒ ⇒ 「gRPC 服务端路径有绑定」是**假断言**。
+   ⇒ ⇒ 修前的准确表述 = 「**生产路径上零绑定点**」；修后 = HTTP 路径两处（`HttpMiddleware`）。
+   ⇒ ⇒ 详见 common 域台账 **DRIFT-COMMON-V17**（gRPC 服务端绑定点缺失 · PARITY-006 根因）。
    ⇒ 按 AGENTS.md §五.3「跨域 + `common/**` 的搁置漂移全归 `global` 收口域」⇒
    **本 lane 未改 `common/`** ⇒ ⇒ 收口域已在共享层修完（4 件事，见 §9.10.3 顶部的销账块）
    ⇒ ⇒ **复测一致**：S3b `200+1015` @ 2.05s · S4 `200+1015` @ 2.04s ＋ **副作用 0 行**。
@@ -877,10 +887,16 @@ E-4 推翻 §5-⑥/§5-⑦ 之后，域内**注释层**也必须跟着改 ——
    ⇒ `SqlTimeoutStatusTranslator` 翻成 `DEADLINE_EXCEEDED` ⇒ 事务回滚（无副作用）
    ⇒ gRPC 状态 ⇒ `admin-api` 映射成 **1015 信封**。
 3. **C 侧 D2「域内直连」把 DB 调用搬进了 HTTP 边界** ⇒ ⇒ **内层那层预算没了**：
-   - `DeadlineState` 的**生产绑定点只有 gRPC 服务端路径**（`common/.../RpcHandleRunner.java:121`
-     `bindRemainingNanos` ＋ `newUnaryServerInterceptor`）⇒ ⇒ **HTTP 路径没有绑定**
-     ⇒ ⇒ `DeadlineQueryTimeoutInjector` 读到「无预算」⇒ **SQL 根本不设 query timeout**
-     ⇒ ⇒ 阻塞的 `SELECT ... FOR UPDATE` **永不被取消** ⇒ 事务最终提交（**副作用已落库**）。
+   - ⚠️ **口径订正（2026-11-03 · `global` 收口域复核）** —— 本条原先写「`DeadlineState` 的
+     **生产绑定点只有 gRPC 服务端路径**（`common/.../RpcHandleRunner.java:121`
+     `bindRemainingNanos` ＋ `newUnaryServerInterceptor`）」⇒ ⇒ **该说法经全仓源码 ＋ git 历史
+     核对为假**，两半都不成立：
+     ① `RpcHandleRunner` **在生产代码里零引用**（死代码）⇒ 它那处绑定**不是生产绑定点**；
+     ② `newUnaryServerInterceptor` 在 C 侧**从无实现** —— B 侧 `RpcInterceptor.java:516-522`
+     那段 `onHalfClose`（同时绑 `DeadlineState` ＋ `GoStyleRequestDeadline` 两个载体）
+     在 C 侧拆包时**整块丢失** ⇒ ⇒ gRPC 服务端路径**零绑定点**。
+     ⇒ ⇒ 修前的准确表述 = 「**C 侧 `DeadlineState` 在生产路径上零绑定点**」（HTTP 路径没绑）
+     ⇒ ⇒ 后果链（无预算 ⇒ 不设 query timeout ⇒ 不发 CancelRequest ⇒ 事务提交）**不受影响**。
      - ⚠️ **这一环的代码级铁证**（收口域可直接引用，**不必重走推导**）：
        `common/src/main/java/com/rag/common/persistence/DeadlineQueryTimeoutInjector.java:163-167`
 
@@ -894,11 +910,14 @@ E-4 推翻 §5-⑥/§5-⑦ 之后，域内**注释层**也必须跟着改 ——
        同文件 javadoc `:87-89` 逐字：「**无 deadline 时不注入**……此时**完全不动**」⇒ ⇒
        **「HTTP 路径没绑 `DeadlineState`」 ⇒ 「SQL 不被取消」** 是**一条可跳步的直链**。
      - 🟢 **独立佐证（不是本轮的新猜测）**：`Book/users/users/01-用户登录流程.md:427-430`
-       早已逐字记载「`DeadlineState.isExpired()` 在未绑定时返回 `false`……而绑定动作发生在
-       **gRPC** 服务端拦截器里（`common/observability/RpcHandleRunner.java:121`）。
-       HTTP 侧的 3 秒预算是共享层 `HttpMiddleware` 用另一套机制实现的（把链条丢到 worker 线程
-       ＋ 预算计时），**不写 `DeadlineState`**」⇒ ⇒ **共享层的既有事实与本轮活体实测完全吻合**
-       ⇒ ⇒ 收口域可把这条当作**已知前提**，只需补「HTTP 路径怎么绑 + 绑哪个预算」。
+       早已逐字记载「`DeadlineState.isExpired()` 在未绑定时返回 `false`……」⇒ ⇒ **共享层的既有事实
+       与本轮活体实测吻合** ⇒ ⇒ 收口域可把这条当作**已知前提**。
+       ⚠️ **但该段的后半截已过时（2026-11-03 订正）**：它原写「绑定动作 `bindToCurrent(...)`
+       发生在 **gRPC** 服务端拦截器里（`common/observability/RpcHandleRunner.java:121`）……
+       HTTP 侧……**不写 `DeadlineState`**」⇒ ⇒ **两处都不成立**：
+       ① 绑定点**不在** gRPC 服务端（那里从无绑定，见上一条）；② HTTP 侧**现已写** `DeadlineState`
+       （2026-11-03 · V15 修复：`HttpMiddleware` 在 worker 线程上绑 `bindAbsoluteNanos`）。
+       ⇒ ⇒ **Book 该段需同步订正**（归 Book 域；本轮未改 ⇒ 登记见 common 台账 DRIFT-COMMON-V17）。
    - 超时响应面也随之改变：HTTP 预算（3s）先于任何 DB deadline 到点 ⇒
      **共享层 `HttpMiddleware` 的超时面**接管 ⇒ `503 + "Request Timeout\n"`（**裸文本，无信封**）。
 
@@ -1179,4 +1198,4 @@ B_BASE=http://127.0.0.1:18889 C_BASE=http://127.0.0.1:18890 \
 | N-6 | **变异证据**（证「断言不是假绿」） | 本轮**随移植带进 2 条真实变异用例**（B 侧自带，已在 C 侧跑绿）：① `AdminRpcPaginationGormSemanticsTest#theOldSqlWouldIndeedFailOnRealPg` —— **手工执行修复前的拼法**（`LIMIT -5 OFFSET -10`）⇒ PG **必须**报 `OFFSET must not be negative`（22023）⇒ 否则「上面几条」就可能因「压根没查库」而假绿；② `AdminDomainServiceCatchStructureTest` 的**守恒计数 29/29** ＋ 邻接结构断言 ⇒ 摘掉任一放行分支即红。<br>⚠️ **但「本轮新修的 11 条漂移」仍无逐条变异记录**（变异必然要改 `src/main/**` ⇒ 需单独授权，改后必须还原） | 已有**一处**变异检验记录（§5-⑩：注释掉 `register-enabled` ⇒ 出现两次注册 ⇒ 判据能红）＋ 上述 **2 条移植带进的变异用例** | **NOT_VERIFIED**（**部分**） |
 | ~~N-7~~ | ~~B 侧活体对拍~~ | ~~B 侧是 Boot 4 + go-zero 服务链，起真环境需 etcd + Nacos + PG + Redis~~ | — | ✅ **已闭合（2026-11-02 · 另一条 lane）**：**E-4 双侧活体对拍两轮**（§九）—— ⚠️ **一条重要的口径订正**：**B 侧实现是 Java/Boot 4**（`admin-api` + `admin-rpc`），**go-zero 只是语义来源** ⇒ ⇒ 活体对拍已用**隔离的 PG 库 / Redis 容器 / Nacos**跑通，**探针已入库**（`tools/difftest/parity_admin.py` + `parity_admin_round2.py` + `GrpcParityProbe.java`）⇒ **可复现** |
 | N-8 | **跨域 gRPC 链路**（message → admin-rpc） | 真 Nacos + 真 message + 真 admin 三方同跑 | 🔴 **本轮已修**（§5-⑪：注册名回到 B 侧逐字值 `admin-rpc` ⇒ 与 message 的 `discovery:///admin-rpc` 对齐；namespace `sea-rtw` / group `USER_GROUP` 两侧一致）⇒ **三轴全对齐** ⇒ 但**三方活体未跑** | **NOT_VERIFIED**（缺陷已修 · 链路待活体验） |
-| N-9 | 🔴 **PG 不可用 / 请求超时 ⇒ 两侧响应面不一致** | **不缺环境** —— E-4-R2 已实测出来：B `200+1015 信封` ↔ C `503+裸文本`，且 **C 侧超时后副作用已落库** | 根因在**共享层**：`DeadlineState` 只在 **gRPC 服务端路径**绑定（`common/…/RpcHandleRunner.java:121`）⇒ **HTTP 路径没绑 ⇒ SQL 不被取消** ⇒ 事务照常提交 | ⛔ **跨域未修**（按 AGENTS.md §五.3 归 **`global` 收口域**）⇒ 复现命令与验收判据见 §9.10.3 |
+| N-9 | 🔴 **PG 不可用 / 请求超时 ⇒ 两侧响应面不一致** | **不缺环境** —— E-4-R2 已实测出来：B `200+1015 信封` ↔ C `503+裸文本`，且 **C 侧超时后副作用已落库** | 根因在**共享层**：`DeadlineState` 在 C 侧**生产路径上零绑定点** ⇒ **HTTP 路径没绑 ⇒ SQL 不被取消** ⇒ 事务照常提交（⚠️ 口径订正：原写「只在 **gRPC 服务端路径**绑定（`RpcHandleRunner.java:121`）」⇒ 经全仓源码 ＋ git 历史核对为**假**：`RpcHandleRunner` 生产零引用；gRPC 服务端绑定点从未存在 ⇒ 见 common 台账 **DRIFT-COMMON-V17**） | ✅ **已修**（2026-11-03 · `global` 收口域 · **DRIFT-COMMON-V15**）⇒ 复现命令与验收判据见 §9.10.3；复测一致：S3b `200+1015` @ 2.05s · S4 `200+1015` @ 2.04s ＋ **副作用 0 行** |

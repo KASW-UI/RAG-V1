@@ -111,11 +111,11 @@ RAG-V1 的目标架构（落地以 `docs/File_Tree/` 为准）：
 ⚠️ **artifactId 未对齐生态惯例**（`common` / `proto` / `users-common` / `*-service`，而非 `xxx-spring-boot-starter` 形态）—— 属 **L4 实现机制，可重选**，**未拍板**。
 > ⚠️ **物理目录 ≠ artifactId** —— 目录 `service/users/user/` 的 artifactId 是 `user-service`（reactor 内须唯一 ⇒ 改目录不改坐标）⇒ **别用目录名反推 artifactId**。**形状债已清零（P4-③ · D7）**；**命名债 P4-④ 余 6**（`Rag*` 已清）⇒ [`docs/命名债与包形状.md`](docs/命名债与包形状.md)。
 
-### 2.3 `common/` 的准入（实测 · 有待裁决项）
+### 2.3 `common/` 的准入（实测 · 归属已裁决）
 
 `common/` 共 **104** 个主代码类 / **12 个包**（**104 已落地 · 0 空壳**）—— 包级明细 ⇒ [`docs/README.md`](docs/README.md) §四。
 
-🔴 **待裁决**：`communityfact/` 13 类 = **7 个协议 DTO** ＋ **6 个行为类**（`Dispatcher`/`EventDispatcher`/`EventSender`/`AuthorityHandler`/`ProcessLogger`/`Wire`）。行为类**带域归属**（comment·favorite·like 共享）⇒ 与 §五.3 R1「`common/` 只放无域归属能力」**有张力**；10 个 app 全依赖 `common/` ⇒ 改一行锁住 10 域。⇒ **填实现前必须裁决**这 6 类归 `common/` 还是域内（另：G-2 `CanonicalHash` 在此 —— JCS 指纹不一致 ⇒ 幂等失效）
+✅ **已裁决（2026-11-03 · 用户定）**：`communityfact/` 13 类 = **7 个协议 DTO** ＋ **6 个行为类**（`Dispatcher`/`EventDispatcher`/`EventSender`/`AuthorityHandler`/`ProcessLogger`/`Wire`）。行为类**带域归属**（comment·favorite·like 共享）⇒ 与 §五.3 R1「`common/` 只放无域归属能力」**有张力**；10 个 app 全依赖 `common/` ⇒ 改一行锁住 10 域。⇒ ⇒ **裁决：行为侧 C ≡ B（实测 favorite 两侧都走共享层）⇒ 不是漂移 ⇒ 归属不动** ⇒ `common/communityfact/` **维持现状** ⇒ ⇒ **本条不再阻塞任何后续工作**（治理原则 R1 继续保留，将来若要动归属走映射表 §7.4 #1 的治理流程，**不是漂移修复**）。⇒ 台账：[`docs/DRIFT/common/verification-common-2026-11-02.md`](docs/DRIFT/common/verification-common-2026-11-02.md) **DRIFT-COMMON-V11**（另：G-2 `CanonicalHash` 在此 —— JCS 指纹不一致 ⇒ 幂等失效）
 ## 三、语义对齐纪律（Spring idiomatization 的唯一防线）
 RAG-V1 与 B 侧的差异只允许出现在**表达层**。
 

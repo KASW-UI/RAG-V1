@@ -20,7 +20,7 @@ import java.util.Date;
  * ⇒ 改用新 API {@code Jwts.SIG.HS256}（类型 {@code SecureDigestAlgorithm}）。
  * ⇒ ⇒ <b>签名结果逐字节相同</b>（HS256 本身没变）⇒ 与 B 的互通性不受影响。
  *
- * <p>⚠️ <b>签名算法必须钉死 HS256</b>：{@code signWith(Key) 单参重载会<b>照着 key 的 JCA 算法名</b>
+ * <p>⚠️ <b>签名算法必须钉死 HS256</b>：{@code signWith(Key)} 单参重载会<b>照着 key 的 JCA 算法名</b>
  * 选算法 ⇒ 密钥长度漂移时 {@code header.alg} 会跟着漂 ⇒ B 侧是
  * {@code jwt.New(jwt.SigningMethodHS256)} 显式写死的 ⇒ ⇒ 这里两件事都钉死：
  * JCA 算法名 = {@code HmacSHA256} ＋ 签名算法 = {@code HS256}。

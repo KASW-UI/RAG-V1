@@ -51,23 +51,31 @@ import java.util.function.LongSupplier;
  * 它的 {@code RESOURCE_EXHAUSTED} 是<b>作为返回值冒泡到熔断器</b>的
  * ⇒ 熔断器会把它记成失败（{@code RESOURCE_EXHAUSTED} 在 B 的 6 码失败名单里）
  * ⇒ <b>持续降载最终会把熔断器打开</b>。
- * <p>若本类把拒绝吞掉（不经过 {@code call.close}），{@link GoStyleRpcBreakerInterceptor}
- * 就<b>观察不到</b> ⇒ 熔断永远不会因降载而打开 ⇒ <b>与 B 侧 行为不同</b>。
+ * <p>若本类把拒绝吞掉（不经过 {@code call.close}），B 侧 {@code GoStyleRpcBreakerInterceptor}
+ * （C 侧对应 = {@link RpcCircuitGateInterceptor}）就<b>观察不到</b> ⇒ 熔断永远不会因降载而打开 ⇒ <b>与 B 侧 行为不同</b>。
  * ⇒ 本类的拒绝一律走 {@code call.close(...)}，让错误自然冒泡到外层。
  *
  * <h3>🔴 ② {@code fail()} 的判据是「<b>ctx 超时</b>」，不是「任何 DEADLINE_EXCEEDED」</h3>
  * <p>B 侧 判的是 {@code errors.Is(err, context.DeadlineExceeded)} ——
  * 即<b>客户端 deadline 过期</b>；若是服务端<b>自己</b>返回 {@code status.Error(DEADLINE_EXCEEDED, …)}，
  * B 侧 判的是 {@code promise.Pass()}（<b>不是</b> Fail）。
- * <p>⇒ Java 侧用 {@link ServerCall#getDeadline()} 的 {@link Deadline#isExpired()} 来区分这两者：
+ * <p>⇒ C 侧的实际判据 = <b>{@code close} 的 status 码 == {@code DEADLINE_EXCEEDED}</b>
+ * （见 {@code isCtxDeadlineExpired(Status.Code)}）⇒ ⇒ <b>不是</b>「客户端 deadline 是否已到」。
+ * <p>🔴 <b>⚠️ 这两者不是同一件事</b>：服务端<b>自己</b>造 {@code DEADLINE_EXCEEDED} 时，
+ * C 侧会判 {@code Fail()}、B 侧判 {@code Pass()} ⇒ ⇒ 本仓能等价，靠的是
+ * <b>「没有任何 handler 显式造 {@code DEADLINE_EXCEEDED}」</b>这个实测前提
+ * （唯一来源 = {@code SqlTimeoutStatusTranslator} 把 PG 的 57014 翻成它，那是<b>真超时</b> ⇒ 两侧都判 Fail）
+ * ⇒ ⇒ 该前提及其失效后果，见 {@code isCtxDeadlineExpired(Status.Code)} 的 javadoc。
  * <ul>
- *   <li>客户端 deadline 过期 ⇒ deadline 已到 ⇒ {@code fail()} ✔ 与 B 侧 一致</li>
- *   <li>服务端自己返回 DEADLINE_EXCEEDED 但客户端 deadline 未到 ⇒ {@code pass()} ✔ 与 B 侧 一致</li>
+ *   <li>真超时（客户端 deadline 过期 ⇒ 服务端也收到 DEADLINE_EXCEEDED）⇒ {@code fail()} ✔ 与 B 侧 一致</li>
+ *   <li>服务端自己返回 DEADLINE_EXCEEDED ⇒ C 侧 {@code fail()} ✘ / B 侧 {@code pass()} ⇒ <b>分岔</b>（靠上面的前提挡着）</li>
  * </ul>
  * ⚠️ <b>不能用 {@code Context.current().isCancelled()} 代替</b>：它对「客户端主动取消」也为 true，
  * 而 B 的名单里<b>没有</b> {@code context.Canceled} ⇒ 客户端取消在 B 侧是 {@code Pass()}。
  *
- * <h3>⚠️ 与 REST 侧（{@link GoStyleCpuSheddingFilter}）的两处刻意不同</h3>
+ * <h3>⚠️ 与 REST 侧（B 侧 {@code GoStyleCpuSheddingFilter}；C 侧对应 =
+ * {@link com.rag.common.autoconfigure.ProtectionAutoConfiguration} 里的 {@code CpuSheddingFilter}）
+ * 的两处刻意不同</h3>
  * <ol>
  *   <li><b>{@code promise.Fail()} 的判据</b>：REST 侧看「响应码 == 503」
  *       （{@code service/common/src/main/java/com/rag/common/protection/GoStyleRpcSheddingInterceptor.java:73:45}），zrpc 侧看「ctx 超时」。<b>B 侧两者就是不同</b>。</li>

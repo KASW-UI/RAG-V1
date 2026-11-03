@@ -59,11 +59,25 @@ import org.springframework.http.HttpStatus;
  * （L2 业务语义层以 RAG 为基准整段抄 · D13；本类<b>无</b> Jackson 3 / Boot 4 专有写法 ⇒ 零回改）。
  * <p><b>⚠️ 落点差异</b>：RAG 侧在 <b>article-api</b> 模块 ⇒ RAG-V1 归位到全局 {@code common/web/}
  * ⇒ ⇒ **包名与类名都变了** ⇒ 调用点要同步改 import 与类名。
- * <p><b>⚠️ 职责重叠（映射表 §7「三列职责对不上 #2」· <b>待拍板</b>）</b>：
- * 本类与 {@code common/autoconfigure/GrpcExceptionMapperAutoConfiguration} <b>都做</b>
- * 「gRPC code → 业务码」映射 ⇒ ⇒ 装配顺序不同 ⇒ 同一异常可能映射出<b>两个不同 code</b>
- * ⇒ ⇒ §7 #2 的建议是「<b>删 {@code web/GrpcStatusMapper.java}</b>，统一由 auto-config 的 mapper 承担」
- * ⇒ ⇒ ⚠️ 但那是<b>待拍板项</b> ⇒ ⇒ 本轮<b>先按映射表 §1.11 落位</b>，<b>不擅自删除</b>。
+ * <p><b>⚠️ 职责重叠（映射表 §7「三列职责对不上 #2」· <b>2026-11-03 已裁决：两个都保留</b>）</b>：
+ * 本类与 {@code common/autoconfigure/GrpcExceptionMapperAutoConfiguration} 都落在
+ * 「gRPC code → 业务码」这条主题上 ⇒ ⇒ **能力重复**。
+ * <p>🔴 <b>⚠️ 口径订正（2026-11-03 · 全仓实测）</b>：本段原先写「装配顺序不同 ⇒ 同一异常可能映射出
+ * <b>两个不同 code</b>」⇒ ⇒ <b>该说法与当前代码对不上</b>：
+ * <ul>
+ *   <li>本类 <b>零生产引用</b>（全仓唯一命中是 {@code HttpErrorException} 的 javadoc {@code @link}）
+ *       ⇒ <b>它现在不参与任何请求路径</b> ⇒ 产不出 code；</li>
+ *   <li>{@code GrpcExceptionMapperAutoConfiguration.toBusinessException} <b>零生产调用</b>
+ *       （只有 {@code GrpcExceptionMapperAutoConfigurationTest} 用它）⇒ 它是「从异常还原业务异常」的
+ *       <b>辅助函数</b>，不是映射器；</li>
+ *   <li>真正在跑的是 {@code GrpcExceptionMapperAutoConfiguration} <b>本体</b>注册的 devh
+ *       {@code GrpcExceptionMapper}（走 trailer {@code sea-biz-code}）⇒ ⇒ <b>当前只有一条映射路径</b>。</li>
+ * </ul>
+ * ⇒ ⇒ 「两个 code」当前<b>不成立</b>（那是<b>理论风险</b>：若将来有人开始调本类）。
+ * ⇒ ⇒ §7 #2 的处置措辞已改为「<b>两个都保留，等 article / task 域落地时再判</b>」
+ * ⇒ ⇒ <b>为什么那时才判</b>：{@code HttpErrorException}（裸 HTTP 状态码路径）同样零生产引用
+ * ⇒ ⇒ 因为它的消费方 <b>article 域还是空壳</b> ⇒ ⇒ article 域落地、那条路径真跑起来时，
+ * 才需要决定本类要不要接上去 ⇒ ⇒ <b>恰恰在那时不能删</b>。
  */
 public final class GrpcStatusMapper {
 

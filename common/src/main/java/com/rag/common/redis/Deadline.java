@@ -45,7 +45,7 @@ import org.springframework.dao.QueryTimeoutException;
  * —— 那句话<b>只看了 ②、漏了 ① ⇒ 是错的</b>（2026-10-30 15:2x 由 G4 本层自查订正，
  * 见 {@code docs/DRIFT/global/vs-common.md} §4.19.5）。⇒ ⇒ <b>正确结论：E66 是真漂移</b>，
  * 本能力面正是<b>补上 B 侧 已有的 ①</b>（⇒ ⇒ 这<b>不是</b>「比 B 侧 更严」，
- * 而是<b>把 RAG 拉回与 B 侧 同形</b>）。</p>
+ * 而是<b>把 RAG 拉回与 B 侧 同形</b>）。</b></p>
  *
  * <h2>那本类为什么存在</h2>
  * <p>让 <b>RAG 的 Redis 调用在「下发命令之前」就感知请求预算</b> ⇒ 这正是 B 侧 已有的 ①

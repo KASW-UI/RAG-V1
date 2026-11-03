@@ -54,6 +54,7 @@ import lombok.Setter;
  *         this.msg = msg;
  *         this.data = data;
  *     }
+ * }
  * }</pre>
  */
 @Getter

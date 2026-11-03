@@ -137,8 +137,12 @@ public class ObservabilityAutoConfiguration {
      * HTTP 观测 filter：计时 + 判错 + 打业务标记。
      *
      * <p>⚠️ <b>判错的输入是「响应信封 + 最终状态码」</b> ⇒ ⇒ 必须能拿到响应体
-     * ⇒ ⇒ 用 Spring 的 {@link ContentCachingResponseWrapper} 缓存一份（读完之后
-     * {@code copyBodyToResponse()} 原样写回）。
+     * ⇒ ⇒ 用<b>自研</b>的 {@link com.rag.common.observability.ObservabilityResponseWriter}
+     * 缓存一份（读完之后原样写回）。
+     * <p>🔴 <b>刻意不用 Spring 的 {@code ContentCachingResponseWrapper}</b>：
+     * 它的 {@code flushBuffer()} 会<b>透传</b>到底层响应 ⇒ worker 线程（业务）能抢先提交响应
+     * ⇒ 两个写者 ⇒ 状态码被抢 + Tomcat 的 {@code MimeHeaders} 被写坏 ⇒ NPE
+     * ⇒ ⇒ 详见 {@link com.rag.common.observability.ObservabilityResponseWriter} 的类注释。
      *
      * <p>⚠️ <b>判定顺序（可观察）</b>：
      * <pre>

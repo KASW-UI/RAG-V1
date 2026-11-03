@@ -35,10 +35,12 @@ docs/Pitfalls/
 | P-18 | **域还是空壳 ⇒ 没有 `main` ⇒ `repackage` 失败 ⇒ `mvn verify` 恒红** | 报错出现在**打包阶段**（看着像 pom 配错）⇒ 真因是**域未实现** ⇒ 红绿分布只反映「实现到哪一步」，**与代码质量无关** ⇒ ⇒ **红也要做同条件对照**（`git archive HEAD` 基线副本 + **`-fae`**）⇒ 域实现完成前，全仓验收信号用 `mvn -o clean test-compile` / `mvn -o clean test` |
 | P-20 | **MyBatis 把 mapper 调用里的任何异常包成 `PersistenceException`** | `DefaultSqlSession` 对每个异常都 `catch (Exception e) → wrapException` ⇒ ⇒ 持久层翻好的 `StatusRuntimeException(DEADLINE_EXCEEDED)` **在离开持久层前就被吃掉一层** ⇒ ⇒ 域层的 `catch (StatusRuntimeException e) { throw e; }` **看不见它** ⇒ ⇒ 落 `catch (Exception e)` ⇒ ⇒ **被改写成 5001**（不是 B 侧的 1015）⇒ 解包点选在 `SqlSessionFactory`（两条 mapper 路径都经它） |
 | P-21 | **MyBatis 拦截器的 `@Intercepts` 漏签一个方法 ⇒ 那条路径整条绕过** | `Executor.queryCursor` 漏签 ⇒ MP 的 `BaseMapper.selectOne(Wrapper, boolean)`（**游标路径**）**完全不经过翻译器** ⇒ 57014 原样冒到域层 ⇒ 5001；⇒ **签错一个方法 ⇒ 启动期 `PluginException`**（3 参 `Executor.query` 在 MyBatis 3.5.19 里不存在）⇒ **漏签零报错、写错启动炸**，两者都是「零功能性报错」 |
+| P-22 | **javadoc 断链有三类，其中一类**工具永远扫不到**；且注释里写的机制**可能压根没实现** | ① 类名已改（`{@link RpcInterceptor}`）② 作用域写错（`{@link #compose(List)}` 指向别的类）③ 🔴 **藏在 `/* */` 里 ⇒ javadoc 工具永远扫不到**（本轮最要命那处：`{@link #newUnaryServerInterceptor}` —— **该方法从无实现**）⇒ ⇒ 工具报「0 错」≠「没有断链」；⇒ ⇒ **注释宣称 A、代码做 B**：注释说用 `ServerCall#getDeadline()` 区分两类超时，而 **grpc-api 1.63.0 的 `ServerCall` 没有这个方法**（`javap` 实测）⇒ ⇒ 注释里的「机制断言」必须能被证伪；⚠️ **改注释格式前先问「有没有机器守门认这个格式」** —— A13 的判据就是 `<pre>\s*\{@code`（Lombok 展开块）⇒ ⇒ 为了消 javadoc 的「未终止的内嵌标记」把 `{@code}` 换成纯 `<pre>` ⇒ ⇒ **A13 从 PASS 24/24 变成 FAIL 2/24**（靠基线对照才发现）⇒ ⇒ 正确解法 = **`{@code}` 块结尾多写一个 `}`**（闭合 inline tag，不属于代码、不渲染）|
 
 > 📖 详情 → [`_cross/P-08-落地证据未经机器复算.md`](_cross/P-08-落地证据未经机器复算.md) ·
 [`_cross/P-20-MyBatis包装异常导致status到不了域层.md`](_cross/P-20-MyBatis包装异常导致status到不了域层.md) ·
 [`_cross/P-21-MyBatis拦截器漏签与写错签名.md`](_cross/P-21-MyBatis拦截器漏签与写错签名.md) ·
+[`_cross/P-22-javadoc断链的三类与注释里的假机制断言.md`](_cross/P-22-javadoc断链的三类与注释里的假机制断言.md) ·
 > [`_cross/P-09-批量替换的三个静默失效.md`](_cross/P-09-批量替换的三个静默失效.md) ·
 [`_cross/P-12-变异没变红等于那条断言没覆盖到.md`](_cross/P-12-变异没变红等于那条断言没覆盖到.md) ·
 > [`_cross/P-18-域还是空壳导致repackage找不到main方法.md`](_cross/P-18-域还是空壳导致repackage找不到main方法.md) ·

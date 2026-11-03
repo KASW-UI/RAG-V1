@@ -15,9 +15,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * <h3>B 出处（消费点，不是声明点）</h3>
  * <pre>
  *   core/load/sheddingstat.go:37-49
- *       func (s *SheddingStat) IncrementTotal() { atomic.AddInt64(&s.total, 1) }
- *       func (s *SheddingStat) IncrementPass()  { atomic.AddInt64(&s.pass,  1) }
- *       func (s *SheddingStat) IncrementDrop()  { atomic.AddInt64(&s.drop,  1) }
+ *       func (s *SheddingStat) IncrementTotal() { atomic.AddInt64(&amp;s.total, 1) }
+ *       func (s *SheddingStat) IncrementPass()  { atomic.AddInt64(&amp;s.pass,  1) }
+ *       func (s *SheddingStat) IncrementDrop()  { atomic.AddInt64(&amp;s.drop,  1) }
  *
  *   core/load/sheddingstat.go:51-68  loop()
  *       st := s.reset()

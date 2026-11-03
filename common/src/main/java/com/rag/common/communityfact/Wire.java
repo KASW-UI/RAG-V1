@@ -21,7 +21,7 @@ import java.time.format.DateTimeParseException;
  *   <li>{@link #strictDecode} —— 严格反序列化（禁未知字段 + 禁尾随 JSON）；</li>
  *   <li>{@link #validateReceipt} —— receipt 校验；</li>
  *   <li>{@link #parseRTWSubject} —— subject 解析；</li>
- *   <li>{@link #Result} —— B 侧 多返回值的 Java 包装；</li>
+ *   <li>{@link Wire.Result} —— B 侧 多返回值的 Java 包装；</li>
  *   <li>2 个 sentinel（{@link #ERR_FROZEN_ENVELOPE_BLOCKED} / {@link #ERR_AUTHORITY_UNAVAILABLE}）。</li>
  * </ul>
  * ⇒ 拆出去的：4 个 wire 类型 ⇒ {@code Event} / {@code TechnicalReceipt} /

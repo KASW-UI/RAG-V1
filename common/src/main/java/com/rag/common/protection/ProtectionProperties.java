@@ -213,7 +213,7 @@ public class ProtectionProperties {
      * Redis 的「请求期限感知」开关。
      *
      * <p>🆕 2026-10-30（G1 反馈单 2/3 · G4 lane）：见
-     * {@link com.rag.common.redis.GoStyleRedisDeadline}。
+     * {@link com.rag.common.redis.Deadline}。
      *
      * <p>⚠️ <b>本开关默认开启，且这一层让 RAG <b>比 B 侧 更严</b></b>（Jason 2026-10-30 明确批准）：
      * B 侧的 Redis 命令<b>本来就不受请求 deadline 约束</b>
@@ -429,7 +429,12 @@ public class ProtectionProperties {
      * <p>⚠️ <b>这个开关不进 {@code Composition}</b>：{@code Composition} 是 record，
      * 加字段会<b>破坏 8 个域级守门的编译</b>（域侧写权面）⇒
      * ⇒ 保护层的构成仍由 {@code compose()} 唯一计算；观测层的开关在
-     * {@link GoStyleRpcProtectionChain#build} 内直接读本属性。
+     * B 侧 {@code GoStyleRpcProtectionChain#build} 内直接读本属性。
+     * <p>🔴 <b>⚠️ C 侧现状：本开关未接线</b> ——
+     * C 侧的装配点 {@link com.rag.common.autoconfigure.ProtectionAutoConfiguration#rpcStatInterceptor}
+     * <b>不读</b>本开关 ⇒ Stat 层<b>恒装</b>。
+     * ⇒ ⇒ <b>现行配置下行为与 B 侧 等价</b>（B 侧默认 {@code true}，且真源各域 yaml <b>未覆盖</b>）
+     * ⇒ ⇒ 属「<b>接线缺口</b>」而非行为漂移（登记见 common 域台账 DRIFT-COMMON-V16）。
      */
     public static class Stat {
 
