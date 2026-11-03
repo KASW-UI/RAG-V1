@@ -65,9 +65,10 @@
 | `article/api/client/` | `client/` | 直接压平 |
 | `article/api/config/` | `config/` | 与 rpc 侧合并 |
 | `article/api/controller/` | `controller/` | 直接压平 |
-| `article/api/dto/` | `dto/article/` + `dto/upload/` | 直接压平后**按业务对象拆 2 个子包**（D11：`article` 11 / `upload` 2） |
-| `article/api/form/`（`GoFormValues`） | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java` | **上收 `common/`**（D3）|
+| `article/api/dto/` | `dto/article/` + `dto/upload/` ＋ `web/ArticleStringFields.java`（`GoStyleStringFields` 的域内副本） | 直接压平后**按业务对象拆 2 个子包**（D11：`article` 11 / `upload` 2）；⚠️ `GoStyleStringFields` **不是 DTO**（是取值/类型判定工具）⇒ 落 `web/` 工具包 |
+| `article/api/form/`（`GoFormValues`） | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java`（**仅上限闸门**）＋ 域内副本 `service/article/src/main/java/com/rag/article/web/ArticleQueryValues.java`（**取值真值表**） | ⚠️ **取值真值表未上收**（2026-11-03 实测）—— 共享层 `GetFormValuesFilter` 只有「form 体大小上限闸门」，**没有** `raw`/`first`/`bool`/`int32`/`text` 的取值真值表 ⇒ 域内副本兜底 ⇒ **待收口**（见 `docs/DRIFT/article/vs-common.md` §2）|
 | `article/api/http/`（4 类） | `common/src/main/java/com/rag/common/web/`（4 个同名类）| **上收 `common/`**（D3）|
+| `article/api/auth/`（4 类） | `interceptor/ArticleJwtAuthFilter.java`（Servlet Filter 段）＋ `interceptor/JwtAuthInterceptor.java`（HandlerInterceptor 段）| **域内自持**（B 侧「验签拆两段」是 article 域自己的口径，不上收共享层）|
 | `article/api/interceptor/` | `interceptor/` | 直接压平 |
 | `article/api/service/` | `service/` | 与 rpc 侧合并 |
 | `article/common/errmsg/` | `contract/` | 错误码 + 事件 DTO（`ErrCodes` / `ErrMsg` / `ArticleSyncEvent` / `CommunityArticleEvent`）|
@@ -78,7 +79,7 @@
 | `article/rpc/exception/` | `exception/` | 直接压平 |
 | `article/rpc/mapper/` | `mapper/` | 直接压平 |
 | `article/rpc/metrics/` | `metrics/` | 与 api 侧合并 |
-| `article/rpc/mq/`（4 类） | **—（C 侧无 `messaging/` 包）** | ⚠️ **消费者 / 发件箱中继无落点**（见 §1.5）|
+| `article/rpc/mq/`（4 类） | `messaging/`（`ArticleReviewConsumer` / `ArticleSyncOutboxRelay` / `ArticleSyncResultConsumer`）＋ `contract/ArticleSyncEvent.java`（事件类型常量与载荷） | ✅ **已落地（2026-11-03）** —— C 侧新建 `messaging/` 包 ⇒ **缺口 G-1 关闭**；⚠️ `ArticleSyncEventTypes.java` 的常量与 `ArticleReviewMessage` / `ArticleSyncResult` 载荷拆进 `contract/ArticleSyncEvent.java`（**缺口 G-6 关闭**）|
 | `article/rpc/service/` | `service/` + `domain/service/` | 领域服务另出 `domain/service/` |
 | `article/rpc/service/impl/` | `grpc/` | 压平 + 类改名 `ArticleServiceGrpcImpl` → `ArticleGrpcService` |
 | `article-proto/` | 根级 `proto/`（pb 包名 `com.rag.proto.article`）| **集中化**（D7）|
@@ -95,6 +96,7 @@
 | `article-api/…/ArticleApiApplication.java` | `service/article/src/main/java/com/rag/article/ArticleServiceApplication.java` | N:1 | **D1**：与 `article-rpc/…/ArticleRpcApplication.java` 合并为唯一入口（`@SpringBootApplication` + `@EnableDiscoveryClient`）；C 侧不再有第二个 Application |
 | `article-api/…/config/ArticleApiProperties.java` | `service/article/src/main/java/com/rag/article/config/ArticleApiProperties.java` | 1:1 | 静态字段 → `@ConfigurationProperties`；`SecurityRpcConf` 两侧均不迁移（B 侧死配置，见 §1.4-④） |
 | `article-api/…/config/WebMvcConfig.java` + `article-api/…/controller/ArticleController.java` + `article-api/…/interceptor/JwtAuthInterceptor.java` | `service/article/src/main/java/com/rag/article/config/WebMvcConfig.java` + `service/article/src/main/java/com/rag/article/controller/ArticleController.java` + `service/article/src/main/java/com/rag/article/interceptor/JwtAuthInterceptor.java` | 1:N | **代码注册路由 → 注解式路由**；`/v1` 前缀、4 组 method、public 段、10 MiB 上限、70s 超时**逐字保留** |
+| `article-api/…/config/ArticleGoStyleCorsFilter.java` | `service/article/src/main/java/com/rag/article/config/ArticleCorsFilter.java` | 1:1 | ✅ **2026-11-03 已落地**（本轮新发现并补齐的**真实缺失**）—— CORS（Go `rest.WithCors()` **无参** ⇒ **通配 + OPTIONS 恒 204**）；⚠️ **刻意落域内、不上收**（message/like/hot 三域**明确不要**这个响应头 ⇒ 上收就得给所有 api 域加开关）；⚠️ **必须用 Servlet `Filter`、不能用 `addCorsMappings`**（Go 的 `corsRouter` 包在 router **外面** ⇒ 连**未注册路径**也要带 CORS 头）；`@Order(HIGHEST_PRECEDENCE + 1)` ⇒ 整条链**最外层**（比共享层 `TraceparentFilter`(+3) 更外 ⇒ 204 预检**不带** traceparent，与 Go 一致）|
 | `article-api/…/controller/ArticleController.java`（`@PostMapping("/article")`） | `service/article/src/main/java/com/rag/article/controller/ArticleController.java` | 1:N | 7 个薄 handler 同质（parse → logic → 信封）⇒ 合 1 个 Controller |
 | 同上（`@PutMapping("/article/{id}")`） | 同上 | 1:N |  |
 | 同上（`@DeleteMapping("/article/{id}")`） | 同上 | 1:N |  |
@@ -112,10 +114,13 @@
 | `article-api/…/service/ArticleApiSupport.java` + `article-api/…/service/ArticleAuthorResolver.java` | `service/article/src/main/java/com/rag/article/service/ArticleApiSupport.java` | 1:N | C 侧 `ArticleAuthorResolver`（作者名补全 + **吞错**策略）**无独立载体** ⇒ 缺口 G-2 |
 | `article-api/…/client/ArticleRpcClient.java` | （域内直连）`service/article/src/main/java/com/rag/article/service/ArticleApiService.java` | N:1 | **D2**：同域不再走网络；C 侧无 client 文件 |
 | `article-api/…/client/UserRpcClient.java` | **无对应文件** | N:1 | ⚠️ **缺口 G-2**：跨域调用仍在（D6），但 C 侧 article 域**没有 `UserRpcClient`** |
-| `article-api/…/dto/`（13 个文件：`Article.java` / `CreateArticleReq.java` / `CreateArticleResp.java` / `DeleteArticleReq.java` / `DeleteArticleResp.java` / `GetArticleReq.java` / `GetArticleResp.java` / `ListArticlesReq.java` / `ListArticlesResp.java` / `UpdateArticleReq.java` / `UpdateArticleResp.java` / `UploadImageResp.java` / `GoStyleStringFields.java`） | `service/article/src/main/java/com/rag/article/dto`（13 个文件：`Article.java` / `CreateArticleReq.java` / `CreateArticleResp.java` / `DeleteArticleReq.java` / `DeleteArticleResp.java` / `GetArticleReq.java` / `GetArticleResp.java` / `ListArticlesReq.java` / `ListArticlesResp.java` / `UpdateArticleReq.java` / `UpdateArticleResp.java` / `UploadImageReq.java` / `UploadImageResp.java`） | 1:N | B 侧 13 个 DTO 文件 → C 侧 13 个 DTO 文件（1 个 B 文件对应 1 个 C 文件）；C 侧全部改 **immutable record**（D5）；`UploadImageReq.java` 是 C 新增位置（B 侧无，因 B 侧是空 struct） |
+| `article-api/…/dto/`（13 个文件：`Article.java` / `CreateArticleReq.java` / `CreateArticleResp.java` / `DeleteArticleReq.java` / `DeleteArticleResp.java` / `GetArticleReq.java` / `GetArticleResp.java` / `ListArticlesReq.java` / `ListArticlesResp.java` / `UpdateArticleReq.java` / `UpdateArticleResp.java` / `UploadImageResp.java` / `GoStyleStringFields.java`） | `service/article/src/main/java/com/rag/article/dto/article`（11 个）＋ `dto/upload`（2 个）＝ **13 个 record**；**另加** `web/ArticleStringFields.java`（承接 B 侧 `dto/GoStyleStringFields.java`） | 1:N | B 侧 13 个 DTO 文件 → C 侧 **13 个 record + 1 个工具类**；C 侧全部改 **immutable record**（D5）；`UploadImageReq.java` 是 C 新增位置（B 侧无，因 B 侧是空 struct）；⚠️ `GoStyleStringFields` **不是 DTO**（是 JSON 取值/类型判定工具）⇒ 落 `web/` 包而非 `dto/` |
+| `article-api/…/dto/GoStyleStringFields.java` | `service/article/src/main/java/com/rag/article/web/ArticleStringFields.java` | 1:1 | ⚠️ **域内副本**（2026-11-03）—— 共享层 `common/web/StringFields` 是**包私有** `final class` + 包私有 `static parse` ⇒ **域内调不到**（实测编译产物 `final class com.rag.common.web.StringFields`）⇒ ⇒ 域内副本逐行照抄 B 侧 ⇒ **待收口**（共享层提升可见性后删副本；⚠️ **两份不得分叉**）|
+| `article-api/…/form/GoFormValues.java` | `service/article/src/main/java/com/rag/article/web/ArticleQueryValues.java` | 1:1 | ⚠️ **域内副本**（2026-11-03）—— 共享层 `common/web/GetFormValuesFilter` **只有上限闸门、无取值真值表** ⇒ ⇒ 域内副本承载 `raw`/`first`/`bool`/`int32`/`text` 五条真值表 ⇒ **待收口**（⚠️ **两份不得分叉**）|
 | `article-api/…/advice/GlobalResponseAdvice.java` | `service/article/src/main/java/com/rag/article/advice/ArticleApiResponseAdvice.java` | 1:1 | 信封是 L1（客户端按 `{code,msg,data}` 解析）⇒ **不能用 `ProblemDetail` 替换**；**必须排除 `/upload`** |
 | `article-api/…/advice/GlobalExceptionHandler.java` | `service/article/src/main/java/com/rag/article/advice/ArticleApiExceptionHandler.java` | 1:1 | 框架级 400 / 405 / 415 → `text/plain`（B 侧 `article-api/…/advice/GlobalExceptionHandler.java:34-52` 自记：article-api **未注册**错误信封处理器 ⇒ 解析失败与上传失败都走 400 + `text/plain`） |
-| `article-api/…/interceptor/JwtAuthInterceptor.java` | `service/article/src/main/java/com/rag/article/interceptor/JwtAuthInterceptor.java` | 1:1 | 验签 + Redis blacklist + public 前缀放行；**需独立 Bean**（密钥 / public 路径与 users 域不同） |
+| `article-api/…/interceptor/JwtAuthInterceptor.java` | `service/article/src/main/java/com/rag/article/interceptor/JwtAuthInterceptor.java` | 1:1 | 验签 + Redis blacklist + public 前缀放行；**需独立 Bean**（密钥 / public 路径与 users 域不同）；⚠️ **本域无 Redis 黑名单**（B 侧 `routes.go` 未挂 `rest.WithMiddlewares`）⇒ C 侧**不补**黑名单分支 |
+| `article-api/…/auth/GoStyleJwtAuthFilter.java` | `service/article/src/main/java/com/rag/article/interceptor/ArticleJwtAuthFilter.java` | 1:1 | ✅ **已落地（2026-11-03）** —— B 侧「验签拆两段」（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（70s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧补上 `OncePerRequestFilter` ⇒ **该缺口在 article 域闭环**；⚠️ 共享层 Filter 槽位取 **+6**（C 侧共享层已有 +2 PathNormalizing / +3 Traceparent / +4 MaxConns / +5 RouteIsolation / +6 CpuShedding / +7 HttpMiddleware / +8 MaxBytes / +9 JsonBodyLimit ⇒ 本域必须排在 CpuShedding 之后、HttpMiddleware 之前）|
 
 ### 1.2 rpc 侧（领域 / 服务端能力层）
 
@@ -142,13 +147,13 @@
 | `article-rpc/…/service/ArticleDomainService.java` | `service/article/src/main/java/com/rag/article/domain/service/ArticleDomainService.java` | N:1 |  |
 | `article-rpc/…/domain/ArticleEntity.java` | `service/article/src/main/java/com/rag/article/domain/entity/ArticleEntity.java` | 1:1 | `@TableName("article")`；列类型 / 可空性 / 索引逐列对拍 |
 | `article-rpc/…/mapper/ArticleMapper.java` | `service/article/src/main/java/com/rag/article/mapper/ArticleMapper.java` | 1:1 | `BaseMapper` + `@Select` / `@Update` |
-| `article-rpc/…/mapper/JsonbTypeHandler.java` | （共享层）`common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | 1:N | B 侧 jsonb 走独立 TypeHandler ⇒ C 侧归入 `common/src/main/java/com/rag/common/persistence/`（D3：跨域去重） |
+| `article-rpc/…/mapper/JsonbTypeHandler.java` | `service/article/src/main/java/com/rag/article/mapper/JsonbTypeHandler.java` | 1:1 | ⚠️ **域内副本**（2026-11-03）—— **类型不兼容**：共享层 `common/persistence/JsonbTypeHandler` 是 `extends BaseTypeHandler<String>`（jsonb ↔ **文本**），而 B 侧本类要 `List<String>`（`secondary_tags`）**与** `Map<String,String>`（`ext_info`）**两种**形态 ⇒ ⇒ 不上提 ⇒ **待收口**（先例：message 域 `JsonbMapTypeHandler`）；⚠️ 域内副本的类结构（`final class` + 两个嵌套 handler + `readList`/`readMap`）与 B 侧**逐条同构** ⇒ 属「照抄」不是「域内改造」|
 | `article-rpc/…/mapper/ArticlePublicMapper.java` | `service/article/src/main/java/com/rag/article/mapper/ArticlePublicMapper.java` | 1:1 | **公开可见谓词是独立 SQL 资产**（含 legacy `status=2` 回退 + revision 标签过滤） |
 | `article-rpc/…/domain/ArticleSyncOutboxEntity.java` + `article-rpc/…/mapper/ArticleSyncOutboxMapper.java` | `service/article/src/main/java/com/rag/article/domain/entity/ArticleSyncOutboxEntity.java` + `service/article/src/main/java/com/rag/article/mapper/ArticleSyncOutboxMapper.java` | 1:N | B 侧实体与 Mapper 分列 2 个文件 ⇒ C 侧同样拆 2 个（实体 + Mapper）；`event_key` 唯一键保留 |
 | `article-rpc/…/domain/ArticleRevisionEntity.java` + `domain/ArticlePublicationEntity.java` + `domain/ArticleDomainOutboxEntity.java` | `service/article/src/main/java/com/rag/article/domain/entity/ArticleRevisionEntity.java` + `service/article/src/main/java/com/rag/article/domain/entity/ArticlePublicationEntity.java` + `service/article/src/main/java/com/rag/article/domain/entity/ArticleDomainOutboxEntity.java` | 1:N | 三表持久化用途不同 ⇒ 三实体分开 |
 | `article-rpc/…/mapper/ArticleRevisionMapper.java` + `mapper/ArticlePublicationMapper.java` + `mapper/ArticleDomainOutboxMapper.java` | `service/article/src/main/java/com/rag/article/mapper/ArticleRevisionMapper.java` + `service/article/src/main/java/com/rag/article/mapper/ArticlePublicationMapper.java` + `service/article/src/main/java/com/rag/article/mapper/ArticleDomainOutboxMapper.java` | 1:N | `article_domain_outbox` 的 `UNIQUE(aggregate_id, aggregate_version)` 是事件顺序保证，**不可省** |
 | `article-rpc/…/service/ArticleAtomicService.java` | `service/article/src/main/java/com/rag/article/domain/service/ArticleAtomicService.java` | 1:1 | B 侧事务闭包 → `@Transactional` + Mapper `last("FOR UPDATE")` |
-| `article-rpc/src/main/resources/db/migration/V8__create_article.sql` / `V9__create_article_sync_outbox.sql` / `V10__create_article_community_revision.sql` | `service/article/src/main/resources/db/migration/`（**仅 `.gitkeep`，DDL 未落地**） | 1:N | ⚠️ **缺口 G-5**：C 侧迁移目录为空 |
+| `article-rpc/src/main/resources/db/migration/V8__create_article.sql` / `V9__create_article_sync_outbox.sql` / `V10__create_article_community_revision.sql` | `service/article/src/main/resources/db/migration/V8__create_article.sql` / `V9__create_article_sync_outbox.sql` / `V10__create_article_community_revision.sql` | 1:1 | ✅ **已落地（2026-11-03）** —— **逐字节照抄** B 侧（`diff -q` ⇒ IDENTICAL）⇒ **缺口 G-5 关闭**；⚠️ **不重编号**（B 侧就是 V8/V9/V10 ⇒ 重编号会与 B 侧账本错位）；⚠️ 独立账本表名 `flyway_schema_history_article` + `baseline-on-migrate: true` + **`baseline-version: 0` 必钉**（schema 级账本共用会撞号，AGENTS.md §六）|
 | `article-rpc/…/mq/ArticleReviewConsumer.java` | `service/article/src/main/java/com/rag/article/messaging/ArticleReviewConsumer.java` | 1:1 | ✅ **已落地（2026-11-01）**：C 侧新建 `messaging/` 包 ⇒ **缺口 G-1 关闭**；⚠️ 其内部的内容安全调用走 `ContentAuditPort`（恒 fail-loud，见上） |
 | `article-rpc/…/mq/ArticleSyncResultConsumer.java` | `service/article/src/main/java/com/rag/article/messaging/ArticleSyncResultConsumer.java` | 1:1 | ✅ **已落地（2026-11-01）**：同上，落 `messaging/` |
 | `article-rpc/…/mq/ArticleSyncOutboxRelay.java` | `service/article/src/main/java/com/rag/article/messaging/ArticleSyncOutboxRelay.java` | 1:1 | ✅ **已落地（2026-11-01）**：同上，落 `messaging/`；⚠️ `article_domain_outbox` 的 `UNIQUE(aggregate_id, aggregate_version)` 是事件顺序保证，**不可省** |
@@ -159,8 +164,8 @@
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|
-| `article-common/…/errmsg/ErrorCode.java` | `service/users/common/src/main/java/com/rag/users/common/ErrCodes.java` + `service/users/common/src/main/java/com/rag/users/common/ErrMsg.java` | 1:N | C 拆「码值表」与「文案表」两个类；⚠️ **错误契约逐域隔离，不可跨域统一**（article 的 5004=文件上传失败 / 5005=文件删除失败 / 5006=文件下载失败，与 users 域同值不同义） |
-| `article-rpc/…/mq/ArticleSyncEventTypes.java` | `service/article/src/main/java/com/rag/article/contract/ArticleSyncEvent.java` | 1:N | ⚠️ C 侧只有 1 个类承载 ⇒ **`ArticleReviewMessage` / `ArticleSyncResult` 无载体**（缺口 G-6） |
+| `article-common/…/errmsg/ErrorCode.java` | `service/article/src/main/java/com/rag/article/contract/ErrCodes.java` + `service/article/src/main/java/com/rag/article/contract/ErrMsg.java` | 1:N | C 拆「码值表」与「文案表」两个类；⚠️ **错误契约逐域隔离，不可跨域统一**（article 的 5004=文件上传失败 / 5005=文件删除失败 / 5006=文件下载失败，与 users 域同值不同义）；⚠️ **本文档原先把落点误写成 `service/users/common/…`（2026-11-03 已订正）** —— article 的错误码**不**进 `users-common`，落**域内 `contract/`** |
+| `article-rpc/…/mq/ArticleSyncEventTypes.java` | `service/article/src/main/java/com/rag/article/contract/ArticleSyncEvent.java` | 1:N | ✅ **已闭合（2026-11-03）** —— C 侧 **1 个顶层 record** 承载 ⇒ 内嵌 `ArticleReviewMessage` / `ArticleSyncResult` 两个嵌套 record ⇒ **缺口 G-6 关闭** |
 | `article-rpc/…/mq/ArticleSyncEventTypes.java`（payload 部分）+ `service/common/…/communityfact/Wire.java`（信封部分） | `service/article/src/main/java/com/rag/article/contract/CommunityArticleEvent.java` + `common/src/main/java/com/rag/common/communityfact/Event.java` | 1:N | 信封（`event_id`/`event_type`/`schema_version`/`producer`/`aggregate_id`/`aggregate_version`/`operation_id`/`occurred_at`/`payload`）是 **L1**；payload 是 article 特有 ⇒ 域内契约模块 |
 | `article-proto/src/main/proto/article.proto` | `proto/src/main/proto/article.proto` | 1:1 | **message 名 / 字段名 / 字段号 / 类型 / 枚举值逐条一致**；**B↔C 的 diff 只差 `java_package` 一行**（B = `com.rag.article.article.proto` ⇒ C = `com.rag.proto.article`，实测 diff 仅此一行）—— 两侧 option 块都只有 `java_package` + `java_multiple_files` |
 | `service/article/article-proto/src/main/proto/`（protoc 插件段） | `proto/src/main/proto/`（protoc 插件段） | 1:1 | 生成物，非手写源码；⚠️ **「有 `.proto`」≠「生成了代码」**（插件段必须接上） |
@@ -176,18 +181,19 @@
 | `article-rpc` 侧**无** `HotEventPusher` | **零调用点**（只在装配里 new 出来）⇒ 死配置。B、C 两侧均不迁移；topic `article-hot-events` 仅在 yaml 里出现 |
 | `article-proto`（protoc 生成物，无手写客户端桩） | 生成物 + 客户端桩 ⇒ 两侧都改用 starter 的生成 stub，无独立文件（见 §1.3 契约模块两行） |
 
-### 1.5 C 侧职责缺口清单（B 有、C 无）
+### 1.5 C 侧职责缺口清单（B 有、C 无）—— ✅ 6/6 已闭合（2026-11-03）
 
 > ⚠️ 这些是**填实现前必须先解决**的位置，否则 C 侧会静默丢职责。
+> 📌 **本表状态列已按 2026-11-03 的实际落地情况复核**（核对日期见表内）。
 
-| # | 缺口 | B 列载体 | 后果 |
-|---|---|---|---|
-| **G-1** | **无 `mq/` 包** —— 审核消费者 / 同步结果消费者 / outbox relay 三个消息入口无载体 | `mq/ArticleReviewConsumer.java` · `mq/ArticleSyncResultConsumer.java` · `mq/ArticleSyncOutboxRelay.java` | 审核链路、发布落地链路、outbox 投递链路**整条丢失** |
-| **G-2** | **无 `UserRpcClient`** —— 作者名补全无跨域出口 | `article-api/…/client/UserRpcClient.java` + `service/ArticleAuthorResolver.java` | 文章列表 / 详情**没有 `author_name`**；且 C 侧 `ArticleAuthorResolver` 这个独立职责点也不存在 |
-| **G-3** | **无对象存储客户端** —— MinIO put/get 无载体 | `article-rpc/…/client/ArticleObjectStorageClient.java` | 上传、正文存取、哈希对象名全部无载体（只剩 `MinioBucketBootstrap` 建桶） |
-| **G-4** | **无内容安全 / 图片安全客户端** | `client/SecurityRpcClient.java` · `client/ImageSecurityRpcClient.java` | 审核四元组里的两项检查无处执行 |
-| **G-5** | **DDL 未落地** —— `db/migration/` 只有 `.gitkeep` | Flyway `V8` / `V9` / `V10` | 五张表 + 不可变触发器 + CHECK 约束全部缺失；`ArticleSchemaGate` 会 **fail-fast 起不来** |
-| **G-6** | **`ArticleReviewMessage` / `ArticleSyncResult` 无载体** | `mq/ArticleSyncEventTypes.java` | 审核消息与同步结果两个 wire 载荷在 C 侧无处安放 |
+| # | 缺口 | B 列载体 | 后果 | 状态（2026-11-03） |
+|---|---|---|---|---|
+| **G-1** | **无 `mq/` 包** —— 审核消费者 / 同步结果消费者 / outbox relay 三个消息入口无载体 | `mq/ArticleReviewConsumer.java` · `mq/ArticleSyncResultConsumer.java` · `mq/ArticleSyncOutboxRelay.java` | 审核链路、发布落地链路、outbox 投递链路**整条丢失** | ✅ **已闭合** —— C 侧 `messaging/` 3 个类落地（`ArticleReviewConsumer` / `ArticleSyncOutboxRelay` / `ArticleSyncResultConsumer`）|
+| **G-2** | **无 `UserRpcClient`** —— 作者名补全无跨域出口 | `article-api/…/client/UserRpcClient.java` + `service/ArticleAuthorResolver.java` | 文章列表 / 详情**没有 `author_name`**；且 C 侧 `ArticleAuthorResolver` 这个独立职责点也不存在 | 🟠 **部分闭合 · 签字偏离** —— 本仓**不含 users 域**，跨域出口无对端 ⇒ 走 B 侧 `resolveAuthorName` 的**失败分支**（恒回落 `"用户 <id>"` / `"未知作者"`）⇒ ⚠️ **刻意不选「干脆不输出 `author_name`」**（那样连**键存在性**都变了，差异面更大）⇒ 登记为签字偏离 |
+| **G-3** | **无对象存储客户端** —— MinIO put/get 无载体 | `article-rpc/…/client/ArticleObjectStorageClient.java` | 上传、正文存取、哈希对象名全部无载体（只剩 `MinioBucketBootstrap` 建桶） | ✅ **已闭合** —— C 侧 `client/ArticleObjectStorageClient.java` 落地 |
+| **G-4** | **无内容安全 / 图片安全客户端** | `client/SecurityRpcClient.java` · `client/ImageSecurityRpcClient.java` | 审核四元组里的两项检查无处执行 | 🟠 **有意不建 · 签字偏离** —— 迁移范围排除 `security` 域 ⇒ 改为 `ContentAuditPort` + `UnavailableContentAuditClient`（**恒抛 · fail-loud**）+ `ContentAuditAutoConfiguration` ⇒ 审核链路**恒 fail-loud**（B 侧 `SecurityRpc == nil` 分支的等价物）⇒ 登记 `docs/Intentional_Deviations/article/content-audit-fail-loud.md` |
+| **G-5** | **DDL 未落地** —— `db/migration/` 只有 `.gitkeep` | Flyway `V8` / `V9` / `V10` | 五张表 + 不可变触发器 + CHECK 约束全部缺失；`ArticleSchemaGate` 会 **fail-fast 起不来** | ✅ **已闭合** —— V8/V9/V10 **逐字节照抄** B 侧（`diff -q` ⇒ IDENTICAL）|
+| **G-6** | **`ArticleReviewMessage` / `ArticleSyncResult` 无载体** | `mq/ArticleSyncEventTypes.java` | 审核消息与同步结果两个 wire 载荷在 C 侧无处安放 | ✅ **已闭合** —— C 侧 `contract/ArticleSyncEvent.java`（**顶层 record** + 嵌套 `ArticleReviewMessage` / `ArticleSyncResult`）|
 
 > 本节决策锁：**L-1 / L-2**（详见 §5）。
 
@@ -199,7 +205,7 @@
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|
-| `article-api/…/auth/ArticleJwtProtectedRoutes.java` ＋ `article-api/…/auth/ArticleJwtSignatureVerifier.java` ＋ `article-api/…/auth/ArticleJwtVerificationResult.java` ＋ `article-api/…/auth/GoStyleJwtAuthFilter.java` | `service/article/src/main/java/com/rag/article/interceptor/JwtAuthInterceptor.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 1 个 `HandlerInterceptor`** ⇒ 🔴 **C 侧缺口**：要么补 1 个 `OncePerRequestFilter` 承载验签，要么显式登记为签字偏离。⚠️ **受保护路由表 ＋ public 前缀集合是 L1**（逐条一致，不可凭直觉改） |
+| `article-api/…/auth/ArticleJwtProtectedRoutes.java` ＋ `article-api/…/auth/ArticleJwtSignatureVerifier.java` ＋ `article-api/…/auth/ArticleJwtVerificationResult.java` ＋ `article-api/…/auth/GoStyleJwtAuthFilter.java` | `service/article/src/main/java/com/rag/article/interceptor/JwtAuthInterceptor.java`（HandlerInterceptor 段）＋ `service/article/src/main/java/com/rag/article/interceptor/ArticleJwtAuthFilter.java`（Servlet Filter 段） | N:1 | RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ ✅ **2026-11-03 已补 `ArticleJwtAuthFilter`（`OncePerRequestFilter`）承载验签** ⇒ **该缺口在 article 域闭环**；⚠️ **受保护路由表 ＋ public 前缀集合是 L1**（逐条一致，不可凭直觉改）|
 | `article-rpc/…/service/ArticleSpans.java` | `service/article/src/main/java/com/rag/article/metrics/ArticleRpcMetrics.java` | 1:1 | B 侧把 span 名常量从指标类里**拆出** ⇒ C 侧并回 `ArticleRpcMetrics`；⚠️ 指标**完整名**带 `article_service_` 前缀（B 侧 `article-rpc/…/metrics/ArticleRpcMetrics.java:59` 的 `NAMESPACE`），`article_status_total` 只有 `reviewing` 有调用点，**不许补全** |
 
 ---
@@ -211,9 +217,9 @@
 | ORM 注解 | `@TableName` + `@TableId(type=ASSIGN_ID)` + `@TableField` | 同 B | 表名显式声明 |
 | 数据访问 | `Mapper extends BaseMapper<Entity>` + `@Select` / `@Update` | 同 B | 查询条件必须逐条保留 |
 | 复合 SQL 谓词 | `ArticlePublicMapper` 的 `@Select` 原样 SQL | 同 B | 公开可见谓词 = 独立 SQL 资产 |
-| jsonb 列 | `mapper/JsonbTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | **D3**：跨域去重后收进共享层 |
-| Schema 演进 | Flyway `V8` / `V9` / `V10` + `ArticleSchemaGate` | `db/migration/` **空**（缺口 G-5） | ⚠️ C 侧尚未落地 |
-| 不可变触发器 | Flyway `V10` | 未落地（缺口 G-5） | 缺触发器 ⇒ 门禁 fail-fast |
+| jsonb 列 | `mapper/JsonbTypeHandler.java`（`StringListTypeHandler` + `StringMapTypeHandler`） | `service/article/src/main/java/com/rag/article/mapper/JsonbTypeHandler.java`（**域内副本**，结构与 B 侧同构） | ⚠️ **未上收共享层**（2026-11-03）—— 共享层 `common/persistence/JsonbTypeHandler` 是 `BaseTypeHandler<String>`（jsonb ↔ **文本**）⇒ **类型不兼容** ⇒ **待收口** |
+| Schema 演进 | Flyway `V8` / `V9` / `V10` + `ArticleSchemaGate` | Flyway `V8` / `V9` / `V10`（**逐字节照抄**）+ `wiring/ArticleSchemaGate.java` | ✅ **已落地（2026-11-03）**；⚠️ 独立账本 `flyway_schema_history_article` + `baseline-on-migrate: true` + `baseline-version: 0` |
+| 不可变触发器 | Flyway `V10` | Flyway `V10`（**逐字节照抄**） | ✅ 触发器已落地 ⇒ `ArticleSchemaGate` 的 fail-fast 前提成立 |
 | 事务边界 | `ArticleAtomicService` 的 `@Transactional` | 同 B | ⚠️ **必须独立 Bean**，否则 self-invocation 使 `@Transactional` 失效 |
 | 行级悲观锁 | Mapper `last("FOR UPDATE")` | 同 B | 同 article 的指针推进 |
 | 只读快照 | `ArticlePublicMapper` + 只读事务 | 同 B | ⚠️ 拆开就读到不一致快照 |
@@ -392,45 +398,51 @@
 
 > 判据来自 `docs/Mapping_Table/README.MD` §四。
 
-### 7.1 C 列零遗漏 —— ✅ 51/51（100%）
+### 7.1 C 列零遗漏 —— ✅ 63/63（100%）
 
 ```bash
-find "/Users/pr/Documents/GitHub/RAG-V1/service/article" -name '*.java' \
-  -not -path '*/src/test/*' -not -path '*/target/*' | xargs -n1 basename | sort -u
+find "service/article/src/main" -name '*.java' | xargs -n1 basename | sort -u
 ```
 
-实测 **51** 个唯一文件名，逐条比对结果：
+实测 **63** 个唯一文件名（= `service/article/src/main` 下 **63** 个 `.java`，**无重名**），逐条比对结果：
 
 | # | C 列文件 | 出现在 | # | C 列文件 | 出现在 |
 |---|---|---|---|---|---|
-| 1 | `Article.java` | §1.1 dto 行 | 27 | `ArticleGrpcService.java` | §1.2 |
-| 2 | `ArticleApiExceptionHandler.java` | §1.1 advice 行 | 28 | `ArticleSyncEvent.java` | §1.3 |
-| 3 | `ArticleApiProperties.java` | §1.1 config 行 | 29 | `ArticleSyncOutboxEntity.java` | §1.2 |
-| 4 | `ArticleApiResponseAdvice.java` | §1.1 advice 行 | 30 | `ArticleSyncOutboxMapper.java` | §1.2 |
-| 5 | `ArticleApiService.java` | §1.1 logic 行 | 31 | `CommunityArticleEvent.java` | §1.3 |
-| 6 | `ArticleApiSupport.java` | §1.1 helper 行 | 32 | `CreateArticleReq.java` | §1.1 dto 行 |
-| 7 | `ArticleAtomicService.java` | §1.2 | 33 | `CreateArticleResp.java` | §1.1 dto 行 |
-| 8 | `ArticleController.java` | §1.1 | 34 | `DeleteArticleReq.java` | §1.1 dto 行 |
-| 9 | `ArticleDomainOutboxEntity.java` | §1.2 | 35 | `DeleteArticleResp.java` | §1.1 dto 行 |
-| 10 | `ArticleDomainOutboxMapper.java` | §1.2 | 36 | `ErrCodes.java` | §1.3 |
-| 11 | `ArticleDomainService.java` | §1.2 | 37 | `ErrMsg.java` | §1.3 |
-| 12 | `ArticleEntity.java` | §1.2 | 38 | `GetArticleReq.java` | §1.1 dto 行 |
-| 13 | `ArticleExceptions.java` | §1.2 | 39 | `GetArticleResp.java` | §1.1 dto 行 |
-| 14 | `ArticleKafkaChannelValidator.java` | §1.2 | 40 | `JwtAuthInterceptor.java` | §1.1 |
-| 15 | `ArticleMapper.java` | §1.2 | 41 | `ListArticlesReq.java` | §1.1 dto 行 |
-| 16 | `ArticleMetaObjectHandler.java` | §1.2 | 42 | `ListArticlesResp.java` | §1.1 dto 行 |
-| 17 | `ArticlePublicDomainService.java` | §1.2 | 43 | `MessageRpcClient.java` | §1.2 |
-| 18 | `ArticlePublicMapper.java` | §1.2 | 44 | `MinioBucketBootstrap.java` | §1.2 |
-| 19 | `ArticlePublicationEntity.java` | §1.2 | 45 | `NacosRegistration.java` | §1.2 |
-| 20 | `ArticlePublicationMapper.java` | §1.2 | 46 | `SnowflakeBootstrap.java` | §1.2 |
-| 21 | `ArticleRevisionEntity.java` | §1.2 | 47 | `UpdateArticleReq.java` | §1.1 dto 行 |
-| 22 | `ArticleRevisionMapper.java` | §1.2 | 48 | `UpdateArticleResp.java` | §1.1 dto 行 |
-| 23 | `ArticleRpcMetrics.java` | §1.2 | 49 | `UploadImageReq.java` | §1.1 dto 行 |
-| 24 | `ArticleRpcProperties.java` | §1.2 | 50 | `UploadImageResp.java` | §1.1 dto 行 |
-| 25 | `ArticleSchemaGate.java` | §1.2 | 51 | `WebMvcConfig.java` | §1.1 |
-| 26 | `ArticleServiceApplication.java` | §0 / §1.1 | | | |
+| 1 | `Article.java` | §1.1 dto 行 | 33 | `ArticleStringFields.java` | §1.1（`GoStyleStringFields` 行） |
+| 2 | `ArticleApiExceptionHandler.java` | §1.1 advice 行 | 34 | `ArticleSyncEvent.java` | §1.3 |
+| 3 | `ArticleApiProperties.java` | §1.1 config 行 | 35 | `ArticleSyncOutboxEntity.java` | §1.2 |
+| 4 | `ArticleApiResponseAdvice.java` | §1.1 advice 行 | 36 | `ArticleSyncOutboxMapper.java` | §1.2 |
+| 5 | `ArticleApiService.java` | §1.1 logic 行 | 37 | `ArticleSyncOutboxRelay.java` | §1.2 mq 行 |
+| 6 | `ArticleApiSupport.java` | §1.1 helper 行 | 38 | `ArticleSyncResultConsumer.java` | §1.2 mq 行 |
+| 7 | `ArticleAtomicService.java` | §1.2 | 39 | `CommunityArticleEvent.java` | §1.3 |
+| 8 | `ArticleController.java` | §1.1 | 40 | `ContentAuditAutoConfiguration.java` | §1.2 client 行 |
+| 9 | `ArticleCorsFilter.java` | §1.1（`ArticleGoStyleCorsFilter` 行） | 41 | `ContentAuditPort.java` | §1.2 client 行 |
+| 10 | `ArticleDomainOutboxEntity.java` | §1.2 | 42 | `CreateArticleReq.java` | §1.1 dto 行 |
+| 11 | `ArticleDomainOutboxMapper.java` | §1.2 | 43 | `CreateArticleResp.java` | §1.1 dto 行 |
+| 12 | `ArticleDomainService.java` | §1.2 | 44 | `DeleteArticleReq.java` | §1.1 dto 行 |
+| 13 | `ArticleEntity.java` | §1.2 | 45 | `DeleteArticleResp.java` | §1.1 dto 行 |
+| 14 | `ArticleExceptions.java` | §1.2 | 46 | `ErrCodes.java` | §1.3 |
+| 15 | `ArticleGrpcService.java` | §1.2 | 47 | `ErrMsg.java` | §1.3 |
+| 16 | `ArticleJwtAuthFilter.java` | §1.1（`GoStyleJwtAuthFilter` 行） | 48 | `GetArticleReq.java` | §1.1 dto 行 |
+| 17 | `ArticleKafkaChannelValidator.java` | §1.2 | 49 | `GetArticleResp.java` | §1.1 dto 行 |
+| 18 | `ArticleMapper.java` | §1.2 | 50 | `JsonbTypeHandler.java` | §1.2 mapper 行 |
+| 19 | `ArticleMetaObjectHandler.java` | §1.2 | 51 | `JwtAuthInterceptor.java` | §1.1 |
+| 20 | `ArticleObjectStorageClient.java` | §1.2 | 52 | `ListArticlesReq.java` | §1.1 dto 行 |
+| 21 | `ArticlePublicDomainService.java` | §1.2 | 53 | `ListArticlesResp.java` | §1.1 dto 行 |
+| 22 | `ArticlePublicMapper.java` | §1.2 | 54 | `MessageRpcClient.java` | §1.2 |
+| 23 | `ArticlePublicationEntity.java` | §1.2 | 55 | `MinioBucketBootstrap.java` | §1.2 |
+| 24 | `ArticlePublicationMapper.java` | §1.2 | 56 | `NacosRegistration.java` | §1.2 |
+| 25 | `ArticleQueryValues.java` | §1.1（`GoFormValues` 行） | 57 | `SnowflakeBootstrap.java` | §1.2 |
+| 26 | `ArticleReviewConsumer.java` | §1.2 mq 行 | 58 | `UnavailableContentAuditClient.java` | §1.2 client 行 |
+| 27 | `ArticleRevisionEntity.java` | §1.2 | 59 | `UpdateArticleReq.java` | §1.1 dto 行 |
+| 28 | `ArticleRevisionMapper.java` | §1.2 | 60 | `UpdateArticleResp.java` | §1.1 dto 行 |
+| 29 | `ArticleRpcMetrics.java` | §1.2 | 61 | `UploadImageReq.java` | §1.1 dto 行 |
+| 30 | `ArticleRpcProperties.java` | §1.2 | 62 | `UploadImageResp.java` | §1.1 dto 行 |
+| 31 | `ArticleSchemaGate.java` | §1.2 | 63 | `WebMvcConfig.java` | §1.1 |
+| 32 | `ArticleServiceApplication.java` | §0 / §1.1 | | | |
 
-> **结论：51/51，无遗漏。**
+> **结论：63/63，无遗漏。**
+> ⚠️ **与旧版 51/51 的差额 12 个**（2026-11-03 补登）：`ArticleJwtAuthFilter` · `ArticleQueryValues` · `ArticleStringFields` · `JsonbTypeHandler` · `ArticleReviewConsumer` · `ArticleSyncOutboxRelay` · `ArticleSyncResultConsumer` · `ContentAuditPort` · `ContentAuditAutoConfiguration` · `UnavailableContentAuditClient` · `ArticleObjectStorageClient` · **`ArticleCorsFilter`**（后者是本轮新发现并补齐的**真实缺失**，见 §1.1 与配套报告 §11.5.1 · D-13）。
 
 ### 7.2 映射类型分布（实测计数）
 
@@ -438,37 +450,39 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/article" -name '*.java' \
 
 | 映射类型 | §0 顶层 | §1 包结构 | 合计 | 占比 |
 |---|---|---|---|---|
-| `1:1` | 1 | 28 | **29** | 40.3% |
-| `1:N` | 4 | 18 | **22** | 30.6% |
-| `N:1` | 1 | 19 | **20** | 27.8% |
-| `C 新增` | 1 | 0 | **1** | 1.4% |
-| **合计** | **7** | **65** | **72** | 100% |
+| `1:1` | 1 | 34 | **35** | 46.1% |
+| `1:N` | 4 | 16 | **20** | 26.3% |
+| `N:1` | 1 | 19 | **20** | 26.3% |
+| `C 新增` | 1 | 0 | **1** | 1.3% |
+| **合计** | **7** | **69** | **76** | 100% |
 
 > 每行都填了映射类型，且只用 `1:1` / `1:N` / `N:1` / `C 新增` 四种词（未发明新词）。
-> ⇒ `N:1` 与 `1:N` 合计 **42/72（58%）** 是 article 域的常态：**B 侧按 codegen 模板切成 7 个 api Service + 6 个 rpc Service，RAG-V1 按职责收敛成 1 个 `ArticleApiService` + 1 个 `ArticleDomainService`**。
-> ⚠️ **核对日期 2026-11-02**（删列后重算）。**重算依据**：逐行扫主表（`§0` 7 行 + `§1.1` 24 + `§1.2` 33 + `§1.3` 6 + `§1.6` 2 = **72 行**），按第 3 格取值计数；
-> 与删列前的同一批行**逐行比对，映射类型判定未变**（删列只影响列数，不影响 B→C 的行数关系）⇒ **行数仍为 72，类型分布按 B→C 口径重列**。
+> ⇒ `N:1` 与 `1:N` 合计 **40/76（52.6%）** 是 article 域的常态：**B 侧按 codegen 模板切成 7 个 api Service + 6 个 rpc Service，RAG-V1 按职责收敛成 1 个 `ArticleApiService` + 1 个 `ArticleDomainService`**。
+> ⚠️ **核对日期 2026-11-03**（补 4 行 + 改判 2 行后**机器重算**，非手数）。
+> **重算依据**：脚本逐行扫主表（`§0` 7 行 + `§1.1` 28 + `§1.2` 33 + `§1.3` 6 + `§1.6` 2 = **76 行**），按第 3 格取值计数。
+> ⚠️ **口径自证**：同一脚本在**改前的原文件**上复算得 **72 行 / 1:1=29 / 1:N=22 / N:1=20 / C 新增=1** ⇒ 与旧文档**逐项一致** ⇒ ⇒ 脚本口径可信 ⇒ 本次差额来自真实编辑：
+> **① +4 行**（`GoStyleStringFields` / `GoFormValues` / `GoStyleJwtAuthFilter` / **`ArticleGoStyleCorsFilter`** 各 1 行）⇒ **② 改判 2 行**（`JsonbTypeHandler` 与 `db/migration` 由 `1:N` 改判 `1:1` —— 它们**现在真的是 1:1**：副本与 B 侧同构、DDL 逐字节照抄）。
 
 ### 7.3 ⚠️ 两方之间「职责对不上」的地方（单独列出）
 
-> 本表产出的待订正项，分两类：**① B 有、C 无**（§1.5 的 6 处缺口，G-1 ~ G-6）· **② C 列现有文档 / TODO 与 B 侧源码不符**（D-1 / D-2）。
+> 本表产出的待订正项，分两类：**① B 有、C 无**（§1.5 的 6 处缺口，G-1 ~ G-6 —— **2026-11-03 已全部闭合**）· **② C 列现有文档 / TODO 与 B 侧源码不符**（D-1 / D-2 —— **已随实现回修**）。
 
-> 📌 **2026-11-02 · D16 复核 · ③ B 侧有类、但本表 B 列未登记（9 个）** —— `python3 tools/check-mapping-coverage.py article` 实测本域 B 列覆盖 **74/83（89%）**。逐个如下（**全部是「域内副本上收共享层」的账单，不是漏抄**）：
+> 📌 **2026-11-03 · D16 复核（已过期，保留作历史）· ③ B 侧有类、但本表 B 列未登记（9 个）** —— 当时 `python3 tools/check-mapping-coverage.py article` 实测本域 B 列覆盖 **74/83（89%）**。逐个如下（**全部是「域内副本上收共享层」的账单，不是漏抄**）：
 >
 > - `ArticleGoStyleCoercion` · `ArticleGoStyleCorsFilter` —— **故意不写**：两者登记在 `tools/check-mapping-coverage.py` 的 `B_COLUMN_WHITELIST` 里（「RAG 域内局部副本 ⇒ C 侧由 `common/web/` 承担」）⇒ 写进 B 列会让白名单条目被判「已失效」；
 > - `GoStyleJsonBodyLimitFilter`（B：`article-api/…/config/`）· `GoFormValues`（B：`article-api/…/form/`）· `GoStyleBadRequestException` / `GoStyleGrpcStatusMapper` / `GoStyleHttpErrorException` / `GoStylePlainTextErrors`（B：`article-api/…/http/`）· `Jackson2ObjectMapperConfiguration`（B：`article-rpc/…/config/`）—— 这 7 个类的 C 侧落点**全部在 `common/` 共享层**（D3 上收）：`common/src/main/java/com/rag/common/web/{JsonBodyLimitFilter,GetFormValuesFilter,BadRequestException,GrpcStatusMapper,HttpErrorException,PlainTextErrors}.java`，以及 `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java`（Boot 3.5 自带 Jackson 2 自动配置 ⇒ 不再需要域内补 Bean）；
 >
-> ⇒ 本表 §0.5 已按**包级**记到 `article/api/form/` / `article/api/http/` 两行；⚠️ 但 `tools/check-mapping-coverage.py` 的**按域**统计只认**精确类名**（目录 token 不参与命中，见 `_covered_by`）⇒ 仍记为未覆盖。
-> ⇒ **本次不补登进 §1 主表**：补登要新增映射行（会改「条目数」与映射类型分布，并牵动 `_INDEX.md` 对账）⇒ 超出「只改依据指向」的边界 ⇒ **登记在此备查**。
+> ✅ **2026-11-03 现状**：该脚本的 `_covered_by` 已改为**目录 token = 前缀语义**（D16 · 2026-11-02）⇒ **本域 B 列实测 83/83 = 100%**（见 §7.1 与 `_INDEX.md`）⇒ 上面的「74/83」**已过期**。
+> ✅ **另已补登进 §1 主表**：`GoFormValues` ⇒ `web/ArticleQueryValues.java`（域内副本，**取值真值表** —— 共享层 `GetFormValuesFilter` 只有上限闸门 ⇒ 副本是必需的，不是重复造轮子）⇒ **映射行 72 → 75**。
 
 | # | 位置 | 问题 | 处置 |
 |---|---|---|---|
-| **D-1** | `RAG-V1/docs/第二轮深挖-契约盘点.md:134,150` **与** `RAG-V1/service/article/article/service/.../metrics/ArticleRpcMetrics.java` 的 TODO javadoc | 声称「article/rpc **完全没有** Namespace/Subsystem ⇒ 指标名是裸名（`article_total` 等）」。**与 B 侧源码不符**：B 侧 `article-rpc/…/metrics/ArticleRpcMetrics.java:59` 明确写着 `NAMESPACE = "article_service"` ⇒ 完整名应为 `article_service_article_total` 等。 | 本表 §6 按 **B 侧源码**记录带前缀的完整名；C 侧填实现时以本表为准，并应回修这两处文档/TODO |
-| **D-2** | `RAG-V1/service/article/article/service/.../controller/ArticleController.java` 的 TODO javadoc | 端点清单写成 `GET /v1/article` / `PUT /v1/article` / `DELETE /v1/article` / `GET /v1/user/articles` —— **4 条缺 `:id`、1 条路径写错**。B 侧真值是 `GET /v1/article/:id` / `PUT /v1/article/:id` / `DELETE /v1/article/:id` / `GET /v1/me/article/:id`（`ArticleController.java:123,137,152,167,181,201,237`）。method 分布（Get3·Post2·Put1·Delete1）✅ 正确 | 本表 §6 按 B 侧记录；C 侧填实现时以本表为准，并应回修该 TODO |
-| **D-3** | C 列**整体**（详见 §1.5） | 6 处职责缺口：**G-1** `mq/` 包（3 个消费者：审核 / 同步结果 / outbox relay）· **G-2** `UserRpcClient`（作者名补全）· **G-3** 对象存储客户端（MinIO put/get）· **G-4** 内容安全 / 图片安全客户端 · **G-5** DDL 未落地（`db/migration/` 仅 `.gitkeep`）· **G-6** `ArticleReviewMessage` / `ArticleSyncResult` 载荷无载体 | §1.5 已逐条登记 B 列载体 + 后果；**填实现前须先补齐**，否则会静默丢职责（其中 G-5 会让 `ArticleSchemaGate` 直接 fail-fast 起不来） |
+| **D-1** | `RAG-V1/docs/第二轮深挖-契约盘点.md:134,150` **与** `RAG-V1/service/article/article/service/.../metrics/ArticleRpcMetrics.java` 的 TODO javadoc | 声称「article/rpc **完全没有** Namespace/Subsystem ⇒ 指标名是裸名（`article_total` 等）」。**与 B 侧源码不符**：B 侧 `article-rpc/…/metrics/ArticleRpcMetrics.java:59` 明确写着 `NAMESPACE = "article_service"` ⇒ 完整名应为 `article_service_article_total` 等。 | 本表 §6 按 **B 侧源码**记录带前缀的完整名；✅ **2026-11-03 已随实现落地** —— C 侧 `metrics/ArticleRpcMetrics.java` 按 B 侧 `NAMESPACE = "article_service"` 实现（**含前缀**）⇒ C 侧无此漂移 |
+| **D-2** | `RAG-V1/service/article/article/service/.../controller/ArticleController.java` 的 TODO javadoc | 端点清单写成 `GET /v1/article` / `PUT /v1/article` / `DELETE /v1/article` / `GET /v1/user/articles` —— **4 条缺 `:id`、1 条路径写错**。B 侧真值是 `GET /v1/article/:id` / `PUT /v1/article/:id` / `DELETE /v1/article/:id` / `GET /v1/me/article/:id`（`ArticleController.java:123,137,152,167,181,201,237`）。method 分布（Get3·Post2·Put1·Delete1）✅ 正确 | 本表 §6 按 B 侧记录；✅ **2026-11-03 已随实现落地** —— C 侧 `controller/ArticleController.java` 的 7 条路由逐条对齐 B 侧（`/v1` 前缀 + `:id` 段 + `GET /v1/me/article/{id}`）⇒ C 侧无此漂移 |
+| **D-3** | C 列**整体**（详见 §1.5） | 6 处职责缺口：**G-1** `mq/` 包 · **G-2** `UserRpcClient` · **G-3** 对象存储客户端 · **G-4** 内容安全 / 图片安全客户端 · **G-5** DDL 未落地 · **G-6** `ArticleReviewMessage` / `ArticleSyncResult` 载荷无载体 | ✅ **2026-11-03 已闭合 4 项**（G-1 / G-3 / G-5 / G-6）· 🟠 **G-2 与 G-4 为签字偏离**（无对端域 ⇒ 回落分支 / 恒 fail-loud）⇒ 详见 §1.5 与 `docs/Intentional_Deviations/article/` |
 
 ### 7.4 一句话总览
 
 `B 列 RAG` = 2 进程（api + rpc）· 注解式路由 + MyBatis-Plus + Flyway V8/V9/V10 + api/rpc 分离 + 7 个 api Service + 3 个 domain Service + `mq/` 包 4 类 + `article_service_` 指标前缀 ·
-`C 列 RAG-V1` = api/rpc 合并为单 app + `advice + config + controller + dto + interceptor + service` 与 `wiring + client + config + domain/entity + domain/service + exception + grpc + mapper + metrics` 两个包内分区 + **7 个用例合 1 个 `ArticleApiService`** + 契约落在域内 `contract/` 包（proto 在根级 `proto/`） + **6 处职责缺口待补**。
+`C 列 RAG-V1` = api/rpc 合并为单 app + `advice + config + controller + dto + interceptor + service` 与 `wiring + client + config + domain/entity + domain/service + exception + grpc + mapper + metrics` 两个包内分区 + **7 个用例合 1 个 `ArticleApiService`** + 契约落在域内 `contract/` 包（proto 在根级 `proto/`） + **6 处职责缺口 4 项已闭合 · 2 项签字偏离**（G-2 / G-4）+ **3 份域内副本待收口**（`web/ArticleStringFields` · `web/ArticleQueryValues` · `mapper/JsonbTypeHandler`）。
 proto 字段号 / 错误码 / JWT claim / 表名 / HTTP path / Kafka topic / 指标完整名 —— **全部以 B 侧源码为准逐条核对**。
