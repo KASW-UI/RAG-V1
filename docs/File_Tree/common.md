@@ -129,7 +129,9 @@
 │   │   │               │   ├── DeadlineQueryTimeoutInjector.java    # B-1 缓解（第一半）：把当前 rpc 的 deadline 落到每条 SQL 上，让 SQL 的取消时刻 == deadline 时刻。
 │   │   │               │   ├── DeadlineTranslatingDataSource.java    # 把「取连接超时」翻成 gRPC {@code DEADLINE_EXCEEDED}（⇒ 域侧落业务码 1015，不是 DB 故障 5001）。
 │   │   │               │   ├── JsonTextTypeHandler.java    # PostgreSQL {@code text} 列 ↔ {@code Map} 的 TypeHandler。
+│   │   │               │   ├── JsonbMapTypeHandler.java    # {@code jsonb} 列 ↔ {@code Map} 的 TypeHandler。
 │   │   │               │   ├── JsonbTypeHandler.java    # jsonb 列 ↔ String 的 TypeHandler —— 对应 B 侧 端 PG 的 {@code jsonb} 列。
+│   │   │               │   ├── JsonbValueTypeHandler.java    # 职责：jsonb 列 ↔ 结构化值（{@code List} / {@code Map}）
 │   │   │               │   ├── SqlTimeoutStatusTranslator.java    # B-1 缓解（第二半）：把「SQL 被 deadline 取消」翻译成 gRPC 的 {@code DEADLINE_EXCEEDED}。
 │   │   │               │   ├── StatusAwareSqlSession.java    # 把「持久层翻译出来的 {@code DEADLINE_EXCEEDED}」从 MyBatis 的包装层里解包出来，
 │   │   │               │   ├── StatusAwareSqlSessionFactory.java    # 把 {@link SqlSessionFactory} 产出的 session 换成 {@link StatusAwareSqlSession}
@@ -169,6 +171,7 @@
 │   │   │                   ├── BadRequestException.java    # 承载「B 侧 {@code httpx.ErrorCtx} 会写出的那种错误」—— 即裸状态码 + text/plain，
 │   │   │                   ├── Coercion.java    # E-3 根因 **R1** 的修复规则：关掉 Jackson 的标量强转与浮点截断，对齐 B 侧的解析层。
 │   │   │                   ├── Float64Deserializer.java    # {@code float64} 字段的「B 侧 风格」反序列化 —— 修 DRIFT-LIKEAPI-016。
+│   │   │                   ├── FormValues.java    # 职责：query string 的输入解释规则 —— go-zero {@code httpx.ParseForm} 的 Java 等价物。
 │   │   │                   ├── GetFormValuesFilter.java    # 🔴 B 侧 风格的 query 解析与 form 值上限判据 —— 对应 B 侧
 │   │   │                   ├── GrpcStatusMapper.java    # B 侧 {@code rest/internal/errcode/grpc.go} 的两条函数的 Java 等价物 ——
 │   │   │                   ├── HttpErrorException.java    # B 侧 {@code http.Error(w, err.Error(), )} 的载体。

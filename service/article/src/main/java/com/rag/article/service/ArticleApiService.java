@@ -19,9 +19,9 @@ import com.rag.article.exception.ArticleExceptions;
 import com.rag.common.exception.BusinessException;
 import com.rag.common.protection.ServiceBusyException;
 import com.rag.common.web.BadRequestException;
+import com.rag.common.web.FormValues;
 import com.rag.common.web.GrpcStatusMapper;
 import com.rag.common.web.HttpErrorException;
-import com.rag.article.web.ArticleQueryValues;
 import com.rag.proto.article.ArticleStatus;
 import com.rag.proto.article.CreateArticleRequest;
 import com.rag.proto.article.CreateArticleResponse;
@@ -209,9 +209,9 @@ public class ArticleApiService {
      * <p>B 出处：{@code …/api/service/ArticleGetService.java:25-53}。
      */
     public GetArticleResp getArticle(String articleId, String rawIncrView) {
-        // Go: form 的 bool 真值表（1/0/true/false，非法值 ⇒ 400）由 ArticleQueryValues 承担
+        // Go: form 的 bool 真值表（1/0/true/false，非法值 ⇒ 400）由 FormValues 承担
         // B 出处：…/api/service/ArticleGetService.java:26
-        boolean incrView = ArticleQueryValues.bool(rawIncrView, "incr_view", false);
+        boolean incrView = FormValues.bool(rawIncrView, "incr_view", false);
         ArticlePublicDomainService.PublicArticleView view;
         try {
             view = publicService.getPublicArticle(articleId, incrView);

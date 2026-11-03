@@ -245,7 +245,7 @@ public class ArticleApiExceptionHandler {
      *       （Go: {@code unmarshal field %q, %w} 或 {@code type mismatch for field %q}）；</li>
      *   <li>{@link MethodArgumentTypeMismatchException}：{@code path}/{@code form} 标量转换失败
      *       （Go: {@code processNamedFieldWithValueFromString} 的 type mismatch，
-     *       本模块走 {@code ArticleQueryValues} 的 bool / int32 分支）；</li>
+     *       本模块走 {@code FormValues} 的 bool / int32 分支）；</li>
      *   <li>{@link MissingServletRequestParameterException} / {@link MissingServletRequestPartException}：</li>
      *   <li>{@link BindException}：多参数绑定失败。</li>
      * </ul>

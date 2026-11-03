@@ -65,8 +65,9 @@
 | `article/api/client/` | `client/` | 直接压平 |
 | `article/api/config/` | `config/` | 与 rpc 侧合并 |
 | `article/api/controller/` | `controller/` | 直接压平 |
-| `article/api/dto/` | `dto/article/` + `dto/upload/` ＋ `web/ArticleStringFields.java`（`GoStyleStringFields` 的域内副本） | 直接压平后**按业务对象拆 2 个子包**（D11：`article` 11 / `upload` 2）；⚠️ `GoStyleStringFields` **不是 DTO**（是取值/类型判定工具）⇒ 落 `web/` 工具包 |
-| `article/api/form/`（`GoFormValues`） | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java`（**仅上限闸门**）＋ 域内副本 `service/article/src/main/java/com/rag/article/web/ArticleQueryValues.java`（**取值真值表**） | ⚠️ **取值真值表未上收**（2026-11-03 实测）—— 共享层 `GetFormValuesFilter` 只有「form 体大小上限闸门」，**没有** `raw`/`first`/`bool`/`int32`/`text` 的取值真值表 ⇒ 域内副本兜底 ⇒ **待收口**（见 `docs/DRIFT/article/vs-common.md` §2）|
+| `article/api/dto/` | `dto/article/` + `dto/upload/` ＋ **共享层** `common/web/StringFields.java`（承接 `GoStyleStringFields`） | 直接压平后**按业务对象拆 2 个子包**（D11：`article` 11 / `upload` 2）；⚠️ `GoStyleStringFields` **不是 DTO**（是取值/类型判定工具）⇒ ✅ **D-09 已收口（2026-11-03）**：原先落域内 `web/ArticleStringFields.java`（共享层那份**包私有** ⇒ 域内调不到）⇒ 现共享层放开可见性、**域内副本已删** |
+| `article/api/form/`（`GoFormValues` · **取值真值表**：`raw`/`first`/`bool`/`int32`/`text`） | `common/src/main/java/com/rag/common/web/FormValues.java` | ✅ **D-10 已收口（2026-11-03）** —— 原先落域内 `web/ArticleQueryValues.java`（共享层**缺对应物**：`GetFormValuesFilter` 只是**上限闸门**、不提供取值方法）⇒ 现上收到共享层、**域内副本已删** |
+| `common/http/GoStyleFormValues`（**上限闸门** —— 归位到共享层 `common/web/`） | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java` | ⚠️ **与上一行不是同一个类**：B 侧 `common/http/GoStyleFormValues` 是**闸门/判据**，`article-api/…/form/GoFormValues` 是**取值真值表** ⇒ 🔴 **旧版把这两个 B 类并成一条映射 = 缺陷**（2026-11-03 已拆为两条）|
 | `article/api/http/`（4 类） | `common/src/main/java/com/rag/common/web/`（4 个同名类）| **上收 `common/`**（D3）|
 | `article/api/auth/`（4 类） | `interceptor/ArticleJwtAuthFilter.java`（Servlet Filter 段）＋ `interceptor/JwtAuthInterceptor.java`（HandlerInterceptor 段）| **域内自持**（B 侧「验签拆两段」是 article 域自己的口径，不上收共享层）|
 | `article/api/interceptor/` | `interceptor/` | 直接压平 |
@@ -114,9 +115,9 @@
 | `article-api/…/service/ArticleApiSupport.java` + `article-api/…/service/ArticleAuthorResolver.java` | `service/article/src/main/java/com/rag/article/service/ArticleApiSupport.java` | 1:N | C 侧 `ArticleAuthorResolver`（作者名补全 + **吞错**策略）**无独立载体** ⇒ 缺口 G-2 |
 | `article-api/…/client/ArticleRpcClient.java` | （域内直连）`service/article/src/main/java/com/rag/article/service/ArticleApiService.java` | N:1 | **D2**：同域不再走网络；C 侧无 client 文件 |
 | `article-api/…/client/UserRpcClient.java` | **无对应文件** | N:1 | ⚠️ **缺口 G-2**：跨域调用仍在（D6），但 C 侧 article 域**没有 `UserRpcClient`** |
-| `article-api/…/dto/`（13 个文件：`Article.java` / `CreateArticleReq.java` / `CreateArticleResp.java` / `DeleteArticleReq.java` / `DeleteArticleResp.java` / `GetArticleReq.java` / `GetArticleResp.java` / `ListArticlesReq.java` / `ListArticlesResp.java` / `UpdateArticleReq.java` / `UpdateArticleResp.java` / `UploadImageResp.java` / `GoStyleStringFields.java`） | `service/article/src/main/java/com/rag/article/dto/article`（11 个）＋ `dto/upload`（2 个）＝ **13 个 record**；**另加** `web/ArticleStringFields.java`（承接 B 侧 `dto/GoStyleStringFields.java`） | 1:N | B 侧 13 个 DTO 文件 → C 侧 **13 个 record + 1 个工具类**；C 侧全部改 **immutable record**（D5）；`UploadImageReq.java` 是 C 新增位置（B 侧无，因 B 侧是空 struct）；⚠️ `GoStyleStringFields` **不是 DTO**（是 JSON 取值/类型判定工具）⇒ 落 `web/` 包而非 `dto/` |
-| `article-api/…/dto/GoStyleStringFields.java` | `service/article/src/main/java/com/rag/article/web/ArticleStringFields.java` | 1:1 | ⚠️ **域内副本**（2026-11-03）—— 共享层 `common/web/StringFields` 是**包私有** `final class` + 包私有 `static parse` ⇒ **域内调不到**（实测编译产物 `final class com.rag.common.web.StringFields`）⇒ ⇒ 域内副本逐行照抄 B 侧 ⇒ **待收口**（共享层提升可见性后删副本；⚠️ **两份不得分叉**）|
-| `article-api/…/form/GoFormValues.java` | `service/article/src/main/java/com/rag/article/web/ArticleQueryValues.java` | 1:1 | ⚠️ **域内副本**（2026-11-03）—— 共享层 `common/web/GetFormValuesFilter` **只有上限闸门、无取值真值表** ⇒ ⇒ 域内副本承载 `raw`/`first`/`bool`/`int32`/`text` 五条真值表 ⇒ **待收口**（⚠️ **两份不得分叉**）|
+| `article-api/…/dto/`（13 个文件：`Article.java` / `CreateArticleReq.java` / `CreateArticleResp.java` / `DeleteArticleReq.java` / `DeleteArticleResp.java` / `GetArticleReq.java` / `GetArticleResp.java` / `ListArticlesReq.java` / `ListArticlesResp.java` / `UpdateArticleReq.java` / `UpdateArticleResp.java` / `UploadImageResp.java` / `GoStyleStringFields.java`） | `service/article/src/main/java/com/rag/article/dto/article`（11 个）＋ `dto/upload`（2 个）＝ **13 个 record**；**工具类已上收**到共享层 `common/web/StringFields.java`（承接 B 侧 `dto/GoStyleStringFields.java`） | 1:N | B 侧 13 个 DTO 文件 → C 侧 **13 个 record**（＋ 1 个工具类，**落在共享层**）；C 侧全部改 **immutable record**（D5）；`UploadImageReq.java` 是 C 新增位置（B 侧无，因 B 侧是空 struct）；⚠️ `GoStyleStringFields` **不是 DTO**（是 JSON 取值/类型判定工具）⇒ 落 `web/` 包而非 `dto/` |
+| `article-api/…/dto/GoStyleStringFields.java` | `common/src/main/java/com/rag/common/web/StringFields.java` | 1:1 | ✅ **D-09 已收口（2026-11-03）** —— 原先 C 侧落**域内** `web/ArticleStringFields.java`（域内副本），因共享层 `common/web/StringFields` 是**包私有** `final class` + 包私有 `static parse` ⇒ **域内调不到**（实测编译产物 `final class com.rag.common.web.StringFields`）⇒ 现**共享层放开可见性**（`public final class` + `public static parse`）＋ **域内副本已删** ⇒ 副本数 1 → 0；⚠️ 可见性属 L4 表达层 ⇒ **方法体一字未改** ⇒ 错误文案逐字节相同 |
+| `article-api/…/form/GoFormValues.java` | `common/src/main/java/com/rag/common/web/FormValues.java` | 1:1 | ✅ **D-10 已收口（2026-11-03）** —— 原先 C 侧落**域内** `web/ArticleQueryValues.java`（域内副本），因共享层 `common/web/GetFormValuesFilter` **只有上限闸门、无取值真值表** ⇒ 现**共享层新增 `FormValues`**（照抄 B 侧 195→**204 行**原类，方法体逐条照抄）＋ **域内副本已删** ⇒ 副本数 1 → 0；⚠️ **类名去 `Go` 前缀** + **异常类型换共享层 `BadRequestException`** ⇒ 两条错误文案**逐字未变** |
 | `article-api/…/advice/GlobalResponseAdvice.java` | `service/article/src/main/java/com/rag/article/advice/ArticleApiResponseAdvice.java` | 1:1 | 信封是 L1（客户端按 `{code,msg,data}` 解析）⇒ **不能用 `ProblemDetail` 替换**；**必须排除 `/upload`** |
 | `article-api/…/advice/GlobalExceptionHandler.java` | `service/article/src/main/java/com/rag/article/advice/ArticleApiExceptionHandler.java` | 1:1 | 框架级 400 / 405 / 415 → `text/plain`（B 侧 `article-api/…/advice/GlobalExceptionHandler.java:34-52` 自记：article-api **未注册**错误信封处理器 ⇒ 解析失败与上传失败都走 400 + `text/plain`） |
 | `article-api/…/interceptor/JwtAuthInterceptor.java` | `service/article/src/main/java/com/rag/article/interceptor/JwtAuthInterceptor.java` | 1:1 | 验签 + Redis blacklist + public 前缀放行；**需独立 Bean**（密钥 / public 路径与 users 域不同）；⚠️ **本域无 Redis 黑名单**（B 侧 `routes.go` 未挂 `rest.WithMiddlewares`）⇒ C 侧**不补**黑名单分支 |
@@ -147,7 +148,7 @@
 | `article-rpc/…/service/ArticleDomainService.java` | `service/article/src/main/java/com/rag/article/domain/service/ArticleDomainService.java` | N:1 |  |
 | `article-rpc/…/domain/ArticleEntity.java` | `service/article/src/main/java/com/rag/article/domain/entity/ArticleEntity.java` | 1:1 | `@TableName("article")`；列类型 / 可空性 / 索引逐列对拍 |
 | `article-rpc/…/mapper/ArticleMapper.java` | `service/article/src/main/java/com/rag/article/mapper/ArticleMapper.java` | 1:1 | `BaseMapper` + `@Select` / `@Update` |
-| `article-rpc/…/mapper/JsonbTypeHandler.java` | `service/article/src/main/java/com/rag/article/mapper/JsonbTypeHandler.java` | 1:1 | ⚠️ **域内副本**（2026-11-03）—— **类型不兼容**：共享层 `common/persistence/JsonbTypeHandler` 是 `extends BaseTypeHandler<String>`（jsonb ↔ **文本**），而 B 侧本类要 `List<String>`（`secondary_tags`）**与** `Map<String,String>`（`ext_info`）**两种**形态 ⇒ ⇒ 不上提 ⇒ **待收口**（先例：message 域 `JsonbMapTypeHandler`）；⚠️ 域内副本的类结构（`final class` + 两个嵌套 handler + `readList`/`readMap`）与 B 侧**逐条同构** ⇒ 属「照抄」不是「域内改造」|
+| `article-rpc/…/mapper/JsonbTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbValueTypeHandler.java` | 1:1 | ✅ **D-11 已收口（2026-11-03）** —— 原先 C 侧落**域内** `mapper/JsonbTypeHandler.java`（域内副本），因共享层 `common/persistence/JsonbTypeHandler` 是 `extends BaseTypeHandler<String>`（jsonb ↔ **文本**），而 B 侧本类要 `List<String>`（`secondary_tags`）**与** `Map<String,String>`（`ext_info`）**两种**形态 ⇒ 现**共享层新增 `JsonbValueTypeHandler`**（照抄 B 侧 195 行原类，代码体逐行一致）＋ **域内副本已删** ⇒ 副本数 1 → 0；⚠️ **类名改了**（共享层已有同名 `JsonbTypeHandler` ⇒ 撞车）⇒ `JsonbValueTypeHandler`（**Value = jsonb 列的结构化值**）；⚠️ **三处带 `"article"` 前缀的异常文案逐字保留**（L1 以 B 侧为准）|
 | `article-rpc/…/mapper/ArticlePublicMapper.java` | `service/article/src/main/java/com/rag/article/mapper/ArticlePublicMapper.java` | 1:1 | **公开可见谓词是独立 SQL 资产**（含 legacy `status=2` 回退 + revision 标签过滤） |
 | `article-rpc/…/domain/ArticleSyncOutboxEntity.java` + `article-rpc/…/mapper/ArticleSyncOutboxMapper.java` | `service/article/src/main/java/com/rag/article/domain/entity/ArticleSyncOutboxEntity.java` + `service/article/src/main/java/com/rag/article/mapper/ArticleSyncOutboxMapper.java` | 1:N | B 侧实体与 Mapper 分列 2 个文件 ⇒ C 侧同样拆 2 个（实体 + Mapper）；`event_key` 唯一键保留 |
 | `article-rpc/…/domain/ArticleRevisionEntity.java` + `domain/ArticlePublicationEntity.java` + `domain/ArticleDomainOutboxEntity.java` | `service/article/src/main/java/com/rag/article/domain/entity/ArticleRevisionEntity.java` + `service/article/src/main/java/com/rag/article/domain/entity/ArticlePublicationEntity.java` + `service/article/src/main/java/com/rag/article/domain/entity/ArticleDomainOutboxEntity.java` | 1:N | 三表持久化用途不同 ⇒ 三实体分开 |
@@ -217,7 +218,7 @@
 | ORM 注解 | `@TableName` + `@TableId(type=ASSIGN_ID)` + `@TableField` | 同 B | 表名显式声明 |
 | 数据访问 | `Mapper extends BaseMapper<Entity>` + `@Select` / `@Update` | 同 B | 查询条件必须逐条保留 |
 | 复合 SQL 谓词 | `ArticlePublicMapper` 的 `@Select` 原样 SQL | 同 B | 公开可见谓词 = 独立 SQL 资产 |
-| jsonb 列 | `mapper/JsonbTypeHandler.java`（`StringListTypeHandler` + `StringMapTypeHandler`） | `service/article/src/main/java/com/rag/article/mapper/JsonbTypeHandler.java`（**域内副本**，结构与 B 侧同构） | ⚠️ **未上收共享层**（2026-11-03）—— 共享层 `common/persistence/JsonbTypeHandler` 是 `BaseTypeHandler<String>`（jsonb ↔ **文本**）⇒ **类型不兼容** ⇒ **待收口** |
+| jsonb 列 | `mapper/JsonbTypeHandler.java`（`StringListTypeHandler` + `StringMapTypeHandler`） | `common/src/main/java/com/rag/common/persistence/JsonbValueTypeHandler.java`（**共享层**，结构与 B 侧同构） | ✅ **D-11 已收口（2026-11-03）** —— 原先是域内副本（共享层 `common/persistence/JsonbTypeHandler` 是 `BaseTypeHandler<String>`（jsonb ↔ **文本**）⇒ **类型不兼容**）⇒ 现上收到共享层 `JsonbValueTypeHandler`、**域内副本已删** ⇒ 副本数 1 → 0 |
 | Schema 演进 | Flyway `V8` / `V9` / `V10` + `ArticleSchemaGate` | Flyway `V8` / `V9` / `V10`（**逐字节照抄**）+ `wiring/ArticleSchemaGate.java` | ✅ **已落地（2026-11-03）**；⚠️ 独立账本 `flyway_schema_history_article` + `baseline-on-migrate: true` + `baseline-version: 0` |
 | 不可变触发器 | Flyway `V10` | Flyway `V10`（**逐字节照抄**） | ✅ 触发器已落地 ⇒ `ArticleSchemaGate` 的 fail-fast 前提成立 |
 | 事务边界 | `ArticleAtomicService` 的 `@Transactional` | 同 B | ⚠️ **必须独立 Bean**，否则 self-invocation 使 `@Transactional` 失效 |
@@ -269,7 +270,7 @@
 | gRPC 异常映射 | 无统一件 | `common/src/main/java/com/rag/common/autoconfigure/GrpcExceptionMapperAutoConfiguration.java` | **共享层**（D2 的关键设计点） |
 | JWT 工具 | `service/common/…/jwt/JwtUtil.java` | `common/src/main/java/com/rag/common/security/JwtUtil.java` + `BearerTokenExtractor.java` | **共享层** |
 | 雪花 ID | `service/common/…/snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration` | **共享层**（epoch / 位段是业务契约） |
-| jsonb TypeHandler | `article-rpc/…/mapper/JsonbTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | **共享层**（D3 跨域去重） |
+| jsonb TypeHandler | `article-rpc/…/mapper/JsonbTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbValueTypeHandler.java` | **共享层**（D3 跨域去重）· ✅ **D-11 已收口（2026-11-03）**；⚠️ **本行旧版写 `common/persistence/JsonbTypeHandler.java` = 错映射**（那份是 **jsonb ↔ 文本**，与 B 侧本类的 jsonb ↔ List/Map **类型不兼容**）⇒ 已订正 |
 | community 事件信封 | `service/common/…/communityfact/Wire.java` | `common/src/main/java/com/rag/common/communityfact/Event.java` + `Wire.java` | **共享层**（comment / favorite / like / article 共用） |
 | community 域事件 payload | `article-rpc/…/mq/ArticleSyncEventTypes.java` | `service/article/src/main/java/com/rag/article/contract/CommunityArticleEvent.java` | **域内**（article 特有 payload） |
 | MQ 事件载荷 | `article-rpc/…/mq/ArticleSyncEventTypes.java` | `service/article/src/main/java/com/rag/article/contract/ArticleSyncEvent.java` | **域内契约**（跨服务共享 ⇒ 放 contract 模块） |
@@ -310,7 +311,7 @@
 
 ### L-3 · 持久层载体归位（含 jsonb 去重与 DDL 补齐）— 6 处同时改
 
-1. `article-rpc/…/mapper/JsonbTypeHandler.java` 删掉，改注入 `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java`
+1. `article-rpc/…/mapper/JsonbTypeHandler.java` 删掉，改注入 `common/src/main/java/com/rag/common/persistence/JsonbValueTypeHandler.java`（✅ **2026-11-03 D-11 已落地**：共享层新增该类 ＋ 域内副本删除）
 2. `ArticleEntity` 的 `secondary_tags` / `ext_info` 两列挂上共享 TypeHandler
 3. `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` 补 `article` 域需要的「数组 + 对象」两种形态（共享层已承载其它域）
 4. **补齐 `db/migration/`**：五张表 + `article_revision_immutable` 触发器 + 两处 CHECK 约束（缺口 G-5）
@@ -398,51 +399,50 @@
 
 > 判据来自 `docs/Mapping_Table/README.MD` §四。
 
-### 7.1 C 列零遗漏 —— ✅ 63/63（100%）
+### 7.1 C 列零遗漏 —— ✅ 60/60（100%）
 
 ```bash
 find "service/article/src/main" -name '*.java' | xargs -n1 basename | sort -u
 ```
 
-实测 **63** 个唯一文件名（= `service/article/src/main` 下 **63** 个 `.java`，**无重名**），逐条比对结果：
+实测 **60** 个唯一文件名（= `service/article/src/main` 下 **60** 个 `.java`，**无重名**），逐条比对结果：
 
 | # | C 列文件 | 出现在 | # | C 列文件 | 出现在 |
 |---|---|---|---|---|---|
-| 1 | `Article.java` | §1.1 dto 行 | 33 | `ArticleStringFields.java` | §1.1（`GoStyleStringFields` 行） |
-| 2 | `ArticleApiExceptionHandler.java` | §1.1 advice 行 | 34 | `ArticleSyncEvent.java` | §1.3 |
-| 3 | `ArticleApiProperties.java` | §1.1 config 行 | 35 | `ArticleSyncOutboxEntity.java` | §1.2 |
-| 4 | `ArticleApiResponseAdvice.java` | §1.1 advice 行 | 36 | `ArticleSyncOutboxMapper.java` | §1.2 |
-| 5 | `ArticleApiService.java` | §1.1 logic 行 | 37 | `ArticleSyncOutboxRelay.java` | §1.2 mq 行 |
-| 6 | `ArticleApiSupport.java` | §1.1 helper 行 | 38 | `ArticleSyncResultConsumer.java` | §1.2 mq 行 |
-| 7 | `ArticleAtomicService.java` | §1.2 | 39 | `CommunityArticleEvent.java` | §1.3 |
-| 8 | `ArticleController.java` | §1.1 | 40 | `ContentAuditAutoConfiguration.java` | §1.2 client 行 |
-| 9 | `ArticleCorsFilter.java` | §1.1（`ArticleGoStyleCorsFilter` 行） | 41 | `ContentAuditPort.java` | §1.2 client 行 |
-| 10 | `ArticleDomainOutboxEntity.java` | §1.2 | 42 | `CreateArticleReq.java` | §1.1 dto 行 |
-| 11 | `ArticleDomainOutboxMapper.java` | §1.2 | 43 | `CreateArticleResp.java` | §1.1 dto 行 |
-| 12 | `ArticleDomainService.java` | §1.2 | 44 | `DeleteArticleReq.java` | §1.1 dto 行 |
-| 13 | `ArticleEntity.java` | §1.2 | 45 | `DeleteArticleResp.java` | §1.1 dto 行 |
-| 14 | `ArticleExceptions.java` | §1.2 | 46 | `ErrCodes.java` | §1.3 |
-| 15 | `ArticleGrpcService.java` | §1.2 | 47 | `ErrMsg.java` | §1.3 |
-| 16 | `ArticleJwtAuthFilter.java` | §1.1（`GoStyleJwtAuthFilter` 行） | 48 | `GetArticleReq.java` | §1.1 dto 行 |
-| 17 | `ArticleKafkaChannelValidator.java` | §1.2 | 49 | `GetArticleResp.java` | §1.1 dto 行 |
-| 18 | `ArticleMapper.java` | §1.2 | 50 | `JsonbTypeHandler.java` | §1.2 mapper 行 |
-| 19 | `ArticleMetaObjectHandler.java` | §1.2 | 51 | `JwtAuthInterceptor.java` | §1.1 |
-| 20 | `ArticleObjectStorageClient.java` | §1.2 | 52 | `ListArticlesReq.java` | §1.1 dto 行 |
-| 21 | `ArticlePublicDomainService.java` | §1.2 | 53 | `ListArticlesResp.java` | §1.1 dto 行 |
-| 22 | `ArticlePublicMapper.java` | §1.2 | 54 | `MessageRpcClient.java` | §1.2 |
-| 23 | `ArticlePublicationEntity.java` | §1.2 | 55 | `MinioBucketBootstrap.java` | §1.2 |
-| 24 | `ArticlePublicationMapper.java` | §1.2 | 56 | `NacosRegistration.java` | §1.2 |
-| 25 | `ArticleQueryValues.java` | §1.1（`GoFormValues` 行） | 57 | `SnowflakeBootstrap.java` | §1.2 |
-| 26 | `ArticleReviewConsumer.java` | §1.2 mq 行 | 58 | `UnavailableContentAuditClient.java` | §1.2 client 行 |
-| 27 | `ArticleRevisionEntity.java` | §1.2 | 59 | `UpdateArticleReq.java` | §1.1 dto 行 |
-| 28 | `ArticleRevisionMapper.java` | §1.2 | 60 | `UpdateArticleResp.java` | §1.1 dto 行 |
-| 29 | `ArticleRpcMetrics.java` | §1.2 | 61 | `UploadImageReq.java` | §1.1 dto 行 |
-| 30 | `ArticleRpcProperties.java` | §1.2 | 62 | `UploadImageResp.java` | §1.1 dto 行 |
-| 31 | `ArticleSchemaGate.java` | §1.2 | 63 | `WebMvcConfig.java` | §1.1 |
-| 32 | `ArticleServiceApplication.java` | §0 / §1.1 | | | |
+| 1 | `Article.java` | §1.1 dto 行 | 31 | `GetArticleReq.java` | §1.1 dto 行 |
+| 2 | `ArticleApiExceptionHandler.java` | §1.1 advice 行 | 32 | `ArticleKafkaChannelValidator.java` | §1.2 |
+| 3 | `ArticleSyncEvent.java` | §1.3 | 33 | `GetArticleResp.java` | §1.1 dto 行 |
+| 4 | `ArticleApiProperties.java` | §1.1 config 行 | 34 | `ArticleMapper.java` | §1.2 |
+| 5 | `ArticleSyncOutboxEntity.java` | §1.2 | 35 | `ArticleMetaObjectHandler.java` | §1.2 |
+| 6 | `ArticleApiResponseAdvice.java` | §1.1 advice 行 | 36 | `JwtAuthInterceptor.java` | §1.1 |
+| 7 | `ArticleSyncOutboxMapper.java` | §1.2 | 37 | `ArticleObjectStorageClient.java` | §1.2 |
+| 8 | `ArticleApiService.java` | §1.1 logic 行 | 38 | `ListArticlesReq.java` | §1.1 dto 行 |
+| 9 | `ArticleSyncOutboxRelay.java` | §1.2 mq 行 | 39 | `ArticlePublicDomainService.java` | §1.2 |
+| 10 | `ArticleApiSupport.java` | §1.1 helper 行 | 40 | `ListArticlesResp.java` | §1.1 dto 行 |
+| 11 | `ArticleSyncResultConsumer.java` | §1.2 mq 行 | 41 | `ArticlePublicMapper.java` | §1.2 |
+| 12 | `ArticleAtomicService.java` | §1.2 | 42 | `MessageRpcClient.java` | §1.2 |
+| 13 | `CommunityArticleEvent.java` | §1.3 | 43 | `ArticlePublicationEntity.java` | §1.2 |
+| 14 | `ArticleController.java` | §1.1 | 44 | `MinioBucketBootstrap.java` | §1.2 |
+| 15 | `ContentAuditAutoConfiguration.java` | §1.2 client 行 | 45 | `ArticlePublicationMapper.java` | §1.2 |
+| 16 | `ArticleCorsFilter.java` | §1.1（`ArticleGoStyleCorsFilter` 行） | 46 | `NacosRegistration.java` | §1.2 |
+| 17 | `ContentAuditPort.java` | §1.2 client 行 | 47 | `SnowflakeBootstrap.java` | §1.2 |
+| 18 | `ArticleDomainOutboxEntity.java` | §1.2 | 48 | `ArticleReviewConsumer.java` | §1.2 mq 行 |
+| 19 | `CreateArticleReq.java` | §1.1 dto 行 | 49 | `UnavailableContentAuditClient.java` | §1.2 client 行 |
+| 20 | `ArticleDomainOutboxMapper.java` | §1.2 | 50 | `ArticleRevisionEntity.java` | §1.2 |
+| 21 | `CreateArticleResp.java` | §1.1 dto 行 | 51 | `UpdateArticleReq.java` | §1.1 dto 行 |
+| 22 | `ArticleDomainService.java` | §1.2 | 52 | `ArticleRevisionMapper.java` | §1.2 |
+| 23 | `DeleteArticleReq.java` | §1.1 dto 行 | 53 | `UpdateArticleResp.java` | §1.1 dto 行 |
+| 24 | `ArticleEntity.java` | §1.2 | 54 | `ArticleRpcMetrics.java` | §1.2 |
+| 25 | `DeleteArticleResp.java` | §1.1 dto 行 | 55 | `UploadImageReq.java` | §1.1 dto 行 |
+| 26 | `ArticleExceptions.java` | §1.2 | 56 | `ArticleRpcProperties.java` | §1.2 |
+| 27 | `ErrCodes.java` | §1.3 | 57 | `UploadImageResp.java` | §1.1 dto 行 |
+| 28 | `ArticleGrpcService.java` | §1.2 | 58 | `ArticleSchemaGate.java` | §1.2 |
+| 29 | `ErrMsg.java` | §1.3 | 59 | `WebMvcConfig.java` | §1.1 |
+| 30 | `ArticleJwtAuthFilter.java` | §1.1（`GoStyleJwtAuthFilter` 行） | 60 | `ArticleServiceApplication.java` | §0 / §1.1 |
 
-> **结论：63/63，无遗漏。**
+> **结论：60/60，无遗漏。**
 > ⚠️ **与旧版 51/51 的差额 12 个**（2026-11-03 补登）：`ArticleJwtAuthFilter` · `ArticleQueryValues` · `ArticleStringFields` · `JsonbTypeHandler` · `ArticleReviewConsumer` · `ArticleSyncOutboxRelay` · `ArticleSyncResultConsumer` · `ContentAuditPort` · `ContentAuditAutoConfiguration` · `UnavailableContentAuditClient` · `ArticleObjectStorageClient` · **`ArticleCorsFilter`**（后者是本轮新发现并补齐的**真实缺失**，见 §1.1 与配套报告 §11.5.1 · D-13）。
+> ✅ **2026-11-03 · D-09 / D-10 / D-11 收口后重算为 60/60** —— 上述 12 个里的 **`ArticleQueryValues` / `ArticleStringFields` / `JsonbTypeHandler` 三份域内副本已上收共享层并删除** ⇒ C 侧文件数 63 → 60（**其余 9 个补登项仍在**）。
 
 ### 7.2 映射类型分布（实测计数）
 
@@ -473,7 +473,7 @@ find "service/article/src/main" -name '*.java' | xargs -n1 basename | sort -u
 > - `GoStyleJsonBodyLimitFilter`（B：`article-api/…/config/`）· `GoFormValues`（B：`article-api/…/form/`）· `GoStyleBadRequestException` / `GoStyleGrpcStatusMapper` / `GoStyleHttpErrorException` / `GoStylePlainTextErrors`（B：`article-api/…/http/`）· `Jackson2ObjectMapperConfiguration`（B：`article-rpc/…/config/`）—— 这 7 个类的 C 侧落点**全部在 `common/` 共享层**（D3 上收）：`common/src/main/java/com/rag/common/web/{JsonBodyLimitFilter,GetFormValuesFilter,BadRequestException,GrpcStatusMapper,HttpErrorException,PlainTextErrors}.java`，以及 `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java`（Boot 3.5 自带 Jackson 2 自动配置 ⇒ 不再需要域内补 Bean）；
 >
 > ✅ **2026-11-03 现状**：该脚本的 `_covered_by` 已改为**目录 token = 前缀语义**（D16 · 2026-11-02）⇒ **本域 B 列实测 83/83 = 100%**（见 §7.1 与 `_INDEX.md`）⇒ 上面的「74/83」**已过期**。
-> ✅ **另已补登进 §1 主表**：`GoFormValues` ⇒ `web/ArticleQueryValues.java`（域内副本，**取值真值表** —— 共享层 `GetFormValuesFilter` 只有上限闸门 ⇒ 副本是必需的，不是重复造轮子）⇒ **映射行 72 → 75**。
+> ✅ **另已补登进 §1 主表**：`GoFormValues` ⇒ **共享层 `common/web/FormValues.java`**（**取值真值表** —— 共享层 `GetFormValuesFilter` 只有上限闸门 ⇒ 原先域内副本是必需的；**2026-11-03 D-10 收口后副本已删、只留共享层一份**）⇒ **映射行 72 → 75**。
 
 | # | 位置 | 问题 | 处置 |
 |---|---|---|---|
@@ -484,5 +484,5 @@ find "service/article/src/main" -name '*.java' | xargs -n1 basename | sort -u
 ### 7.4 一句话总览
 
 `B 列 RAG` = 2 进程（api + rpc）· 注解式路由 + MyBatis-Plus + Flyway V8/V9/V10 + api/rpc 分离 + 7 个 api Service + 3 个 domain Service + `mq/` 包 4 类 + `article_service_` 指标前缀 ·
-`C 列 RAG-V1` = api/rpc 合并为单 app + `advice + config + controller + dto + interceptor + service` 与 `wiring + client + config + domain/entity + domain/service + exception + grpc + mapper + metrics` 两个包内分区 + **7 个用例合 1 个 `ArticleApiService`** + 契约落在域内 `contract/` 包（proto 在根级 `proto/`） + **6 处职责缺口 4 项已闭合 · 2 项签字偏离**（G-2 / G-4）+ **3 份域内副本待收口**（`web/ArticleStringFields` · `web/ArticleQueryValues` · `mapper/JsonbTypeHandler`）。
+`C 列 RAG-V1` = api/rpc 合并为单 app + `advice + config + controller + dto + interceptor + service` 与 `wiring + client + config + domain/entity + domain/service + exception + grpc + mapper + metrics` 两个包内分区 + **7 个用例合 1 个 `ArticleApiService`** + 契约落在域内 `contract/` 包（proto 在根级 `proto/`） + **6 处职责缺口 4 项已闭合 · 2 项签字偏离**（G-2 / G-4）+ ✅ **3 份域内副本已全部收口**（2026-11-03 · **D-09** `web/ArticleStringFields` → 共享层 `common/web/StringFields`（放开可见性）· **D-10** `web/ArticleQueryValues` → 共享层 `common/web/FormValues`（新增）· **D-11** `mapper/JsonbTypeHandler` → 共享层 `common/persistence/JsonbValueTypeHandler`（新增）⇒ **副本数 3 → 0**）。
 proto 字段号 / 错误码 / JWT claim / 表名 / HTTP path / Kafka topic / 指标完整名 —— **全部以 B 侧源码为准逐条核对**。

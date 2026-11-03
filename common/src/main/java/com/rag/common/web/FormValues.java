@@ -1,26 +1,27 @@
-package com.rag.article.web;
-
-import com.rag.common.web.BadRequestException;
+package com.rag.common.web;
 
 /**
- * <p><b>职责</b>：<b>query string 的输入解释规则</b> —— Go {@code httpx.ParseForm} 的 Java 等价物。
+ * <p><b>职责</b>：<b>query string 的输入解释规则</b> —— go-zero {@code httpx.ParseForm} 的 Java 等价物。
  *
- * <p><b>B 出处</b>：{@code service/article/article-api/src/main/java/com/rag/article/article/api/form/GoFormValues.java}
+ * <p><b>抄写基准</b>：RAG {@code service/article/article-api/src/main/java/com/rag/article/article/api/form/GoFormValues.java}
  * （类声明 {@code :72} · {@code raw} {@code :83-88} · {@code first} {@code :133-144}
  * ＋ {@code bool} {@code :154-168} · {@code int32} {@code :177-193} · {@code text} {@code :201-204}）
- * ⇒ <b>1:1 照抄</b>（异常类型除外，见下）。
+ * ⇒ <b>方法体逐条照抄</b>（L2 业务语义层以 B 侧为基准整段抄 · D13 · D16）。
  *
  * <h2>L4 idiomatization（三段式 · AGENTS.md §3.2）</h2>
  * <ol>
  *   <li><b>比 B 侧多做了什么</b>：
  *       <ul>
- *         <li><b>落点</b>：B 侧在 {@code article-api/…/form/} 包 ⇒ 本仓落进域内 {@code com.rag.article.web}
- *             （D11 域内 {@code dto/<业务对象>/} 的同款归位思路）；</li>
+ *         <li><b>落点</b>：B 侧在 {@code article-api/…/form/} 包 ⇒ 本仓落进共享层
+ *             {@code com.rag.common.web}（D3 上收 · 决策锁 L-13「HTTP 层归位到 web/」）；</li>
+ *         <li><b>类名</b>：{@code GoFormValues} → {@code FormValues}
+ *             （C 侧去 {@code Go}/{@code GoStyle} 前缀的既有惯例，如
+ *             {@code GoStyleBadRequestException} → {@code BadRequestException}、
+ *             {@code GoStyleStringFields} → {@code StringFields}）；</li>
  *         <li><b>异常类型</b>：B 侧的 {@code GoStyleBadRequestException} ⇒ 共享层的
- *             {@link BadRequestException}（B 侧那个类的 C 侧落点，D3 上收）⇒
- *             <b>由 {@code ArticleApiExceptionHandler} 映成 400 + text/plain</b>，与 B 侧同形；</li>
- *         <li><b>类名</b>：{@code GoFormValues} → {@code ArticleQueryValues}
- *             （避免与共享层同名概念混淆，且标明归属域）。</li>
+ *             {@link BadRequestException}（<b>同一份类</b> —— B 侧那个类的 C 侧落点，
+ *             D3 上收；C 侧域内已在用）⇒ <b>由各域自己的 advice 映成 400 + text/plain</b>，
+ *             与 B 侧同形。</li>
  *       </ul></li>
  *   <li><b>语义还一样吗</b>：一样 ——
  *       <ul>
@@ -30,18 +31,13 @@ import com.rag.common.web.BadRequestException;
  *   <li><b>B 出处</b>：见上方文件路径 + 行号。</li>
  * </ol>
  *
- * <h2>🔴 域内副本 ⇒ <b>待收口</b>（global lane）</h2>
- * <p><b>共享层 {@code common/web/GetFormValuesFilter.java} <b>顶不上</b></b>：
- * 它只有<b>上限闸门</b>（{@code goParseViolation} / {@code writeGoStyleBadRequest}），
- * <b>没有</b> {@code first} / {@code bool} / {@code int32} / {@code text} 这套<b>取值真值表</b>
- * ⇒ ⇒ 本类是<b>域内副本</b>。
- * <p>⇒ <b>收口建议</b>（属 {@code common/} 写权 · global lane）：把本类提升到
- * {@code common/web/} 并公开 ⇒ 本域删副本改 import。
- * <p>⚠️ <b>本副本与共享层那份<b>不允许分叉</b></b>：一旦共享层改了文案而本域没改，
- * 同一个 {@code ?page=abc} 在不同域会产出不同的 body ⇒ L1 漂移。
- * <p>⚠️ <b>映射表缺陷（主会话统一修）</b>：{@code docs/Mapping_Table/article/article.md:69}
- * 把 B 侧<b>两个不同的类</b>（{@code article-api/…/form/GoFormValues} 与
- * {@code service/common/…/http/GoStyleFormValues}）合成了一个 ⇒ 那条映射是错的。
+ * <h2>⚠️ 与共享层 {@link GetFormValuesFilter} 的分工（两者<b>不是</b>同一个东西）</h2>
+ * <p>{@code GetFormValuesFilter} 是<b>上限闸门</b>：只管「form 体太大 ⇒ 拒掉」
+ * ⇒ <b>不提供任何取值方法</b>。
+ * <p>⚠️ <b>映射表缺陷（已修 · 2026-11-03）</b>：{@code docs/Mapping_Table/article/article.md:69}
+ * 曾把 B 侧<b>两个不同的类</b>（本类 {@code article-api/…/form/GoFormValues}
+ * 与 {@code service/common/…/http/GoStyleFormValues}）<b>并成一条映射</b> ⇒ 那条映射是错的
+ * ⇒ 已拆成两条（B 侧 {@code GoStyleFormValues} = 闸门/判据，与本类的<b>取值真值表</b>不是同一份职责）。
  *
  * <h2>为什么必须自己写（不能交给 Spring 的默认转换）</h2>
  * <p>Go 侧 {@code GET /v1/article/:id} 与 {@code GET /v1/articles} 的 {@code form:} 字段走的是
@@ -94,13 +90,29 @@ import com.rag.common.web.BadRequestException;
  *   <li>{@code Integer.decode("0x10")} = <b>16</b>，Go 直接<b>报错</b>（400）。</li>
  * </ul>
  *
- * <h2>⚠️ 本类<b>不</b>做「值域校验」</h2>
- * <p>{@code page=-1} / {@code page_size=99999} 在 Go 侧同样只是原样透传给下游 ⇒
- * 本层提前拦会与下游重复，且可能不一致。
+ * <h2>为什么这些规则值得逐条对齐</h2>
+ *
+ * <p>{@code incr_view} 是<b>有副作用</b>的：它决定 RPC 侧要不要给文章
+ * {@code +1} 阅读量（{@code GetArticleRequest.incr_view}）。
+ * 把 {@code ?incr_view=1} 从「true」变成「400」不是形状差异，
+ * 而是<b>一个原本成功的请求变成失败</b>。
+ *
+ * <p>⚠️ 反过来说，本类<b>不</b>做「值域校验」：
+ * {@code page=-1} / {@code page_size=99999} 在 Go 侧同样只是原样透传给 rpc，
+ * 由 article-rpc 判定（{@code list_articles_logic.go}）。
+ * api 层提前拦会与 rpc 重复，且可能不一致。
+ *
+ * <h2>✅ 收口留痕（D-10 · 2026-11-03）</h2>
+ * <p>本类此前只存在于 article 域内（{@code com.rag.article.web.ArticleQueryValues}）
+ * ⇒ 共享层<b>缺对应物</b> ⇒ 该域被迫留副本。
+ * ⇒ 本次上收到共享层 ＋ <b>域内副本已删</b> ⇒ <b>副本数 1 → 0</b>
+ * ⇒ article 域的 controller / DTO / service 改 import {@code com.rag.common.web.FormValues}。
+ * <p>⚠️ <b>与原副本不得分叉</b>：同一份 {@code ?page=abc} 在不同域必须产出相同的 body
+ * ⇒ 上收时以 B 侧 204 行原类为基准逐条校对（本次<b>方法体逐条照抄，零改写</b>）。
  */
-public final class ArticleQueryValues {
+public final class FormValues {
 
-    private ArticleQueryValues() {
+    private FormValues() {
     }
 
     /**

@@ -12,7 +12,7 @@ import com.rag.article.mapper.ArticleMapper;
 import com.rag.article.mapper.ArticlePublicationMapper;
 import com.rag.article.mapper.ArticleRevisionMapper;
 import com.rag.article.mapper.ArticleSyncOutboxMapper;
-import com.rag.article.mapper.JsonbTypeHandler;
+import com.rag.common.persistence.JsonbValueTypeHandler;
 import com.rag.proto.article.ArticleStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -625,7 +625,7 @@ public class ArticleAtomicService {
     void insertRevision(ArticleRevisionEntity revision) {
         String secondaryTagsJson = revision.getSecondaryTags() == null
                 ? "null"
-                : JsonbTypeHandler.writeJson(revision.getSecondaryTags());
+                : JsonbValueTypeHandler.writeJson(revision.getSecondaryTags());
         articleRevisionMapper.insert(
                 revision.getArticleId(),
                 revision.getRevision(),

@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.rag.article.mapper.JsonbTypeHandler;
+import com.rag.common.persistence.JsonbValueTypeHandler;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -188,7 +188,7 @@ public class ArticleEntity {
      * 本实现同样保持 null，这样 {@code update_article_logic.go:184} 的
      * {@code len(in.SecondaryTags) > 0} 与之保持同一语义。
      */
-    @TableField(typeHandler = JsonbTypeHandler.StringListTypeHandler.class)
+    @TableField(typeHandler = JsonbValueTypeHandler.StringListTypeHandler.class)
     private List<String> secondaryTags;
 
     /** 对应 B 侧 {@code AuthorID string `gorm:"type:varchar(32);index"`}（注意是 string 不是 int64）。 */
@@ -224,7 +224,7 @@ public class ArticleEntity {
      * 把这个字段声明成 {@code Map<String, Object>} 会让「比较
      * {@code ExtLastSyncVersion != strconv.FormatInt(...)}」这类判据失效。
      */
-    @TableField(typeHandler = JsonbTypeHandler.StringMapTypeHandler.class)
+    @TableField(typeHandler = JsonbValueTypeHandler.StringMapTypeHandler.class)
     private Map<String, String> extInfo;
 
     /**

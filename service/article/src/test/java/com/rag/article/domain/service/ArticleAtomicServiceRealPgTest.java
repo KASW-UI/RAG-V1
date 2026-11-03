@@ -6,8 +6,8 @@ import com.rag.article.domain.entity.ArticleEntity;
 import com.rag.article.mapper.ArticleMapper;
 import com.rag.article.mapper.ArticlePublicationMapper;
 import com.rag.article.mapper.ArticleSyncOutboxMapper;
-import com.rag.article.mapper.JsonbTypeHandler;
 import com.rag.article.support.ArticleRealPgTestBase;
+import com.rag.common.persistence.JsonbValueTypeHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -422,6 +422,6 @@ class ArticleAtomicServiceRealPgTest extends ArticleRealPgTestBase {
                 "# Approved");
         syncOutboxMapper.insert(eventId,
                 ArticleSyncEvent.articleSyncEventKey(articleId, ArticleSyncEvent.OP_UPSERT, eventId),
-                ArticleSyncEvent.ARTICLE_SYNC_SCOPE, articleId, JsonbTypeHandler.writeJson(frozen));
+                ArticleSyncEvent.ARTICLE_SYNC_SCOPE, articleId, JsonbValueTypeHandler.writeJson(frozen));
     }
 }

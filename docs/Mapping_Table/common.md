@@ -45,9 +45,9 @@
 
 | C 列归属 | 吸收自 RAG 的非 `service/common` 位置 | 数量 |
 |---|---|---|
-| `common/src/main/java/com/rag/common/web/` | `article-api`（4 http 异常 + 3 filter + 1 dto）、`users-common/http/`（2）、`like-api/dto/`（2）、`message-api/`（2）、`common/http/`（3） | 16 |
+| `common/src/main/java/com/rag/common/web/` | `article-api`（4 http 异常 + 3 filter + 2 dto）、`users-common/http/`（2）、`like-api/dto/`（2）、`message-api/`（2）、`common/http/`（3） | 17 |
 | `common/src/main/java/com/rag/common/security/` | `users-common/jwt/`（2）+ `users-common/cryptx/`（1） | 3 |
-| `common/src/main/java/com/rag/common/persistence/` | 5 个 rpc 模块各一份 `JsonbTypeHandler` + 2 个 rpc 模块各一份 `JsonTextTypeHandler` | 4（合 7 份） |
+| `common/src/main/java/com/rag/common/persistence/` | 5 个 rpc 模块各一份 `JsonbTypeHandler` + 2 个 rpc 模块各一份 `JsonTextTypeHandler` ＋ **D-11 补的 2 份**（`article-rpc` 的工具类版 `JsonbTypeHandler` → `JsonbValueTypeHandler` · `message-rpc` 的 `JsonbMapTypeHandler`） | **6**（合 9 份） |
 | `common/src/main/java/com/rag/common/autoconfigure/` | 9 个 rpc 模块各一份 `MybatisPlusOrderingBridgeAutoConfiguration` | 1（收编 9 份） |
 | `common/src/main/java/com/rag/common/web/GrpcStatusMapper.java` | `article-api/http/GoStyleGrpcStatusMapper` | 1 |
 
@@ -67,14 +67,14 @@
 
 | B (RAG, 真理之源) | C (RAG-V1, Spring 目标) | 映射类型 | 备注 |
 |---|---|---|
-| `service/common/`（**12 个包 / 88 个主代码类**，2026-11-01 实测） | `common/`（**仓库根**，**12 个包 / 104 个主代码类**，2026-11-02 实测） | 1:1 | 包**路径**变（`service/common` → `common`），职责集合变；⚠️ C 侧第 **12** 个包 `redis/` 是 **2026-11-01 新建** |
+| `service/common/`（**12 个包 / 88 个主代码类**，2026-11-01 实测） | `common/`（**仓库根**，**12 个包 / 112 个主代码类**，2026-11-03 实测） | 1:1 | 包**路径**变（`service/common` → `common`），职责集合变；⚠️ C 侧第 **12** 个包 `redis/` 是 **2026-11-01 新建** |
 | `service/common/communityfact/`（4 类） | `common/src/main/java/com/rag/common/communityfact/`（**13 类**） | 1:N | B 侧的「单文件多类型」被拆成 1 类型 1 文件（L1 wire 类型必须逐字段保真） |
 | `service/common/logger/`（6 类） | `common/src/main/java/com/rag/common/logger/`（**5 类**） | N:1 | B 的 `Logger` + `LoggerFactoryBean` 双轨 → C 单个 `GoStyleLogger implements slf4j.Logger` |
 | `service/common/observability/`（**19 类**）+ `spring/`（2 类） | `common/src/main/java/com/rag/common/observability/`（**19 类**，2026-11-02 实测） | N:1 | Micrometer Observation 承担（D-03 降级）；⚠️ 含 `ClientDisconnectProbe`（探针式断连暴露，§1.12）· `DeadlineState`（B 侧嵌套类提升，**L-16**） |
 | `service/common/response/`（1 类） | `common/src/main/java/com/rag/common/contract/`（1 类） | 1:1 | 类名 `Response` → `ApiResponse`，**信封形状 `{code,msg,data}` 是 L1**（K-06） |
 | `service/common/snowflake/`（1 类）+ `spring/`（2 类） | `common/src/main/java/com/rag/common/snowflake/`（1 类）+ `autoconfigure/`（1 类） | 1:N | epoch / 位段是业务契约（like 域游标依赖 `>>22`） |
 | `service/common/protection/`（**24 类**）+ `spring/`（9 类） | `common/src/main/java/com/rag/common/protection/`（**18 类**）+ `autoconfigure/`（**3 类**） | N:1 | B 侧手写复刻的熔断/降载/限连接/限体积 ⇒ 生态吸收（D-04）；**gRPC 保护链的挂载点也在 `autoconfigure/`**（共享层 1 份 ⇒ 覆盖 10 个域，见 §7.4 #6） |
-| `service/common/http/`（**13 类**）+ 各域 api/http、users-common/http | `common/src/main/java/com/rag/common/web/`（**21 类**） | N:1 | B 侧语义等价物**必须手写**（「何时读 body」「错误文案形状」都不是框架能力） |
+| `service/common/http/`（**13 类**）+ 各域 api/http、users-common/http | `common/src/main/java/com/rag/common/web/`（**22 类**） | N:1 | B 侧语义等价物**必须手写**（「何时读 body」「错误文案形状」都不是框架能力） |
 | `service/common/exception/`（2 类） | `common/src/main/java/com/rag/common/exception/`（2 类） | 1:1 | B 侧用 `BusinessException(code,msg)`（承自上游 `(resp, error)` 双返回形态）⇒ 异常是 idiomatization |
 | `service/<域>/<域>-rpc/src/main/java/com/rag/<域>/<域>/rpc/<Dom>RpcApplication.java` 上的 `@Import` 清单（**10 份**）＋ 9 份重复的 MP ordering bridge | `common/src/main/java/com/rag/common/autoconfigure/`（**12 类**）+ `AutoConfiguration.imports` | C 新增 | **D3 的载体**：消费方零 `@Import` 清单 |
 | `service/users/users-common/jwt/` + `cryptx/`（3 类） | `common/src/main/java/com/rag/common/security/`（3 类） | 1:1 | 从 users 域**提升为全局**（鉴权是安全边界，同一规则不该有第二份实现） |
@@ -96,7 +96,7 @@
 | `service/common/…/http/` | `common/src/main/java/com/rag/common/web/` | 压平 + **包改名 `http` → `web`**（`（无前缀）*` HTTP 兼容层归入 `web/`）|
 | `service/common/…/logger/`（6 类）| `common/src/main/java/com/rag/common/logger/`（5 类）| 直接压平 |
 | `service/common/…/observability/`（19 类）| `common/src/main/java/com/rag/common/observability/`（**19 类**）| 直接压平 |
-| `service/common/…/persistence/`（3 类）| `common/src/main/java/com/rag/common/persistence/`（4 类）| 直接压平 |
+| `service/common/…/persistence/`（3 类）| `common/src/main/java/com/rag/common/persistence/`（**11 类**）| 直接压平 ＋ **D-11 上收 2 类**（`JsonbValueTypeHandler` / `JsonbMapTypeHandler`，来自 article / message 两域的域内副本）|
 | `service/common/…/redis/`（5 类） | `common/src/main/java/com/rag/common/redis/`（**5 类**）| ★ **C 侧第 12 个包，2026-11-01 新建**：断连行为收口 + 请求预算传播；**类名去 `Redis` 前缀**（包名已含 `redis`）|
 | `service/common/…/protection/`（24 类） | `common/src/main/java/com/rag/common/protection/`（**18 类**）| ★ **D4 生态优先**：熔断 → resilience4j，降载/限体积各 1 个自研类；⚠️ 第 3/4 类 `RouteResolution` + `RouteTemplateSource` 是 **2026-11-01 补的路由模板解析载体** · 第 5 类 `ProtectionProperties` 是 **2026-11-02 独立配置载体**（**L-15**）· 第 6 类 `RouteTemplateResolver` 是 **2026-11-02 补的模板解析实现**（**V06 修法**）|
 | `service/common/…/response/`（`Response`） | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | 压平 + **改名**（信封是 L1）|
@@ -190,7 +190,7 @@
 | `observability/GoStyleRequestDeadline.java` | `common/src/main/java/com/rag/common/observability/GoStyleRequestDeadline.java` | 1:1 | ⚠️ **K-03 保留项**：Java 的 `Future.cancel(true)` 对阻塞 IO 无效 ⇒ 必须走服务端取消语义（`setQueryTimeout`） |
 | `observability/RpcInterceptor.java#DeadlineState`（**嵌套类**） | `common/src/main/java/com/rag/common/observability/DeadlineState.java` | 1:1 | ✅ **已落地（2026-11-02 · 批 1）**：从 RAG 的**嵌套类提升为顶层类**（决策锁 **L-16**）—— 188 行**零外部依赖**（纯 `ThreadLocal`）⇒ 可独立编译；`persistence/DeadlineQueryTimeoutInjector` **硬依赖**它（读当前 rpc 的 deadline 落进每条 SQL 的 `setQueryTimeout`）⇒ 不拆则批 1 不可编译 |
 
-### 1.7 `persistence/` —— 超时注入 + JSON TypeHandler（C: 4 类）
+### 1.7 `persistence/` —— 超时注入 + JSON TypeHandler（C: 6 类）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|
@@ -201,6 +201,8 @@
 | （B 侧**无对应类** —— B 的 gRPC 中间件不做异常包装） | `common/src/main/java/com/rag/common/persistence/StatusAwareSqlSession.java` ＋ `common/src/main/java/com/rag/common/persistence/StatusAwareSqlSessionFactory.java` ＋ `common/src/main/java/com/rag/common/persistence/StatusAwareSqlSessionFactoryPostProcessor.java` | **C 独有** | 🔴 **DRIFT-COMMON-V15 修法 ④**（2026-11-03）：**解掉 MyBatis 的 `PersistenceException` 包装** ⇒ ⇒ 持久层翻出的 `DEADLINE_EXCEEDED` 能以 `StatusRuntimeException` 的形态**直达域层**（否则落 `catch (Exception e)` ⇒ 被改写成 **5001**）；⚠️ 解包点选在 **`SqlSessionFactory`**（本仓两条 mapper 路径都经它）⇒ ⚠️ **只解包 `DEADLINE_EXCEEDED`** ⇒ 域层 46 处放行分支的既有行为**一个都不变** |
 | 5 份 `JsonbTypeHandler.java`（`like-rpc` / `comment-rpc` / `favorite-rpc` / `admin-rpc` / `article-rpc` 各一份） | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` | N:1 | **7 份副本合 1**；⚠️ **5 份并非同一份** —— comment/favorite/like **三份代码体逐字一致**（本类取 comment 版）⇒ **article 那份不是 TypeHandler**（是工具类 `final class` ＋ 静态方法 ＋ 内嵌 `StringListTypeHandler`/`StringMapTypeHandler`）⇒ **不并入**（其落点属 article 域）；✅ **批次 G 已用真 PostgreSQL 证过行为**（见 §7.10） |
 | 2 份 `JsonTextTypeHandler.java`（`user-rpc` / `admin-rpc` 各一份） | `common/src/main/java/com/rag/common/persistence/JsonTextTypeHandler.java` | N:1 | **副本合 1**（两份代码体逐字一致 ⇒ 取 admin 版）；⚠️ **它不是 `JsonbTypeHandler` 的重复**：**B 侧 `extra_info` 列是 text**（`serializer:json` ⇒ 按 String 建列）⇒ jsonb 的 unicode escape 校验会拒收 ` `（**22P05**）而 text 照单全收 ⇒ **两个 handler 必须分开**（活体对拍证据 RAG 侧 **DRIFT-ARPC-004①**）；✅ **批次 G 已用真 PostgreSQL 证过行为**（见 §7.10） |
+| `article-rpc/…/mapper/JsonbTypeHandler.java`（**article 那份** —— 工具类形态：`final class` ＋ 静态方法 ＋ 内嵌 `StringListTypeHandler`/`StringMapTypeHandler`） | `common/src/main/java/com/rag/common/persistence/JsonbValueTypeHandler.java` | 1:1 | ✅ **D-11 已收口（2026-11-03）** —— 原先落在**域内** `com.rag.article.mapper.JsonbTypeHandler` ⇒ 共享层无对应物 ⇒ article 域被迫留副本 ⇒ 现上收到共享层、**域内副本已删**；⚠️ **类名改了**：共享层已有 `JsonbTypeHandler`（= jsonb ↔ **文本**）⇒ 同名会撞车 ⇒ 本类改名 `JsonbValueTypeHandler`（**Value = jsonb 列的结构化值**）；⚠️ **三处带 `"article"` 前缀的异常文案逐字保留**（L1 以 B 侧为准 ⇒ 不因上收而改写） |
+| `message-rpc/…/mapper/JsonbMapTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbMapTypeHandler.java` | 1:1 | ✅ **D-11 已收口（2026-11-03）** —— 原先落在**域内** `com.rag.message.mapper.JsonbMapTypeHandler` ⇒ 共享层无对应物（`JsonbTypeHandler` 是 jsonb ↔ 文本、`JsonTextTypeHandler` 是 text ↔ Map ⇒ **列绑定与 Java 类型都不对**）⇒ 现上收到共享层、**域内副本已删**；⚠️ **类名保持不变** ⇒ message 域只需改 import；🔴 **与 `JsonbValueTypeHandler` 的 Map 版<b>不合并</b>**：写 null 路径（`setNull(Types.OTHER)` vs MyBatis 默认）、非 null 绑定（`Types.OTHER` vs `PGobject(jsonb)`）、读空白串（抛 `SQLException` vs 返回 `null`）三处**行为不同** ⇒ 合并即制造数据层漂移 |
 
 ### 1.8 `protection/` —— 请求保护链（C: 18 类）
 
@@ -238,9 +240,9 @@
 | `snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` | 1:1 | ⚠️ epoch / 位段是**业务契约**（like 域游标编码依赖 `>>22`） |
 | `spring/SnowflakeBean.java` + `spring/SnowflakeProperties.java` | `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` | N:1 | `SNOWFLAKE_NODE_ID` 优先，parse 失败**继续走 hash 不报错**；否则 `sha256("SERVICE_NAME-PID")` 取前 2 字节大端 ⇒ `%1024` |
 
-### 1.11 `web/` —— B 侧语义的 HTTP 层（C: 21 类）
+### 1.11 `web/` —— B 侧语义的 HTTP 层（C: 22 类）
 
-> ⚠️ **B 侧 `service/common/http/` 现在 13 类**（原 3 类 ＋ 2026-10-25 第十四轮起新增的 10 类），C 侧 `web/` **21 类** ⇒ **两侧不是一对一**：C 侧 21 类 = B 侧 `common/http/` 的 5 类 ＋ **各域 api 模块归位的 11 类** ＋ **2026-11-01 补的 5 类**（`LimitMode` / `ValueLimitInterceptor` / `LimitExceededException` / `JsonContentTypeAdvice` / `TraceparentFilter`，见 §1.12）。
+> ⚠️ **B 侧 `service/common/http/` 现在 13 类**（原 3 类 ＋ 2026-10-25 第十四轮起新增的 10 类），C 侧 `web/` **22 类** ⇒ **两侧不是一对一**：C 侧 22 类 = B 侧 `common/http/` 的 5 类 ＋ **各域 api 模块归位的 11 类** ＋ **2026-11-01 补的 5 类**（`LimitMode` / `ValueLimitInterceptor` / `LimitExceededException` / `JsonContentTypeAdvice` / `TraceparentFilter`，见 §1.12）＋ **2026-11-03 D-10 补的 1 类**（`FormValues`，取值真值表）。
 > 根因（设计文档 §5.5）：Jackson 的 `CoercionConfig` 是原生机制，但**「何时才读请求体」与「错误文案 / 状态码形状」不是框架能力** ⇒ 必须手写。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
@@ -253,6 +255,7 @@
 | `like-api/dto/GoStyleFloat64Deserializer.java` | `common/src/main/java/com/rag/common/web/Float64Deserializer.java` | 1:1 | 归位<br>✅ **已落地（2026-11-02 · 批 2）**：包名回改 + **补 `throws IOException`**（Jackson 2 的 `JsonDeserializer#deserialize` 声明 checked 异常，Jackson 3 是 unchecked） |
 | `like-api/dto/GoStyleRawStringListDeserializer.java` | `common/src/main/java/com/rag/common/web/RawStringListDeserializer.java` | 1:1 | 归位<br>✅ **已落地（2026-11-02 · 批 2）**：包名回改 + `throws IOException`；⚠️ **实测发现**：RAG 类注释写「整个字段 null ⇒ 空列表」，**实际** Jackson 走 `getNullValue` ⇒ 返回 **null** ⇒ **RAG 侧同样如此** ⇒ 照抄**行为**、订正注释 |
 | `message-api/config/GoStyleMapStringValueDeserializer.java` | `common/src/main/java/com/rag/common/web/MapStringValueDeserializer.java` | 1:1 | 归位<br>✅ **已落地（2026-11-02 · 批 2）**：基类 Jackson 3 `ValueDeserializer` → Jackson 2 **`JsonDeserializer`**（Jackson 2 **没有** `ValueDeserializer` 这个类）＋ `getNullValue` 补 `throws JsonMappingException` |
+| `article-api/…/form/GoFormValues.java`（**取值真值表**：`raw`/`first`/`bool`/`int32`/`text`） | `common/src/main/java/com/rag/common/web/FormValues.java` | 1:1 | ✅ **D-10 已收口（2026-11-03）** —— 原先只存在于**域内** `com.rag.article.web.ArticleQueryValues` ⇒ 共享层**缺对应物**（`GetFormValuesFilter` 只是**上限闸门**、不提供取值方法）⇒ article 域被迫留副本 ⇒ 现上收到共享层、**域内副本已删**；⚠️ **类名去掉 `Go` 前缀**（C 侧既有惯例：`GoStyleBadRequestException` → `BadRequestException`）；⚠️ **异常类型换共享层 `BadRequestException`**（B 侧 `GoStyleBadRequestException` 的 C 侧落点）⇒ **两条错误文案逐字未变**；⚠️ **与 `GetFormValuesFilter` 不是同一个东西**（闸门 vs 取值真值表） |
 | `article-api/dto/GoStyleStringFields.java` | `common/src/main/java/com/rag/common/web/StringFields.java` | 1:1 | 归位 |
 | `article-api/http/GoStyleBadRequestException.java` | `common/src/main/java/com/rag/common/web/BadRequestException.java` | 1:1 | 归位 |
 | `article-api/http/GoStyleHttpErrorException.java` | `common/src/main/java/com/rag/common/web/HttpErrorException.java` | 1:1 | 归位 |
@@ -609,7 +612,7 @@ Micrometer 的观察模型与它**不是一对一映射**（D-03）⇒ 用生态
 
 ## 7. 覆盖度自查
 
-### 7.1 C 列零遗漏（104/104 = 100%）
+### 7.1 C 列零遗漏（112/112 = 100%）
 
 自查命令：
 
@@ -626,15 +629,16 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 | `exception/` | 2 | 2 | 0 |
 | `logger/` | 5 | 5 | 0 |
 | `observability/` | 19 | 19 | 0 |
-| `persistence/` | 4 | 4 | 0 |
+| `persistence/` | 11 | 11 | 0 |
 | `protection/` | 18 | 18 | 0 |
 | `redis/` | 5 | 5 | 0 |
 | `security/` | 3 | 3 | 0 |
 | `snowflake/` | 1 | 1 | 0 |
-| `web/` | 21 | 21 | 0 |
-| **合计** | **104** | **104** | **0** |
+| `web/` | 22 | 22 | 0 |
+| **合计** | **112** | **112** | **0** |
 
 > ⚠️ **核对日期 2026-11-02（批次 F 后重算 · D16 删列后复核仍为 104/104）** —— 上一版自报 `72` 是**批 1 时的旧值**，批 2（+13）/ 批 3（+5）/ 批次 B（+5）/ 批次 D（+1）/ 批次 E（+8）/ **批次 F（+3）** 都没回写 ⇒ **自报数长期漂着**。⇒ ⇒ 与 P-08 同病：**没人复算的数**。现由 `tools/check-mapping-coverage.py` 从文件系统反向取实际清单对账。
+> ✅ **核对日期 2026-11-03（D-09 / D-10 / D-11 收口后重算）** —— 本表自报数此前**陈旧**：`persistence/` 写 4（**实为 9**）、`web/` 写 21（**实为 21**）⇒ 合计写 104（**实为 110**）⇒ 本次**从文件系统反向逐包复算**并回写 ⇒ **112/112**（D-10 +`FormValues` 1 · D-11 +`JsonbValueTypeHandler` 1 +`JsonbMapTypeHandler` 1）。
 
 > C 列逐条清单（按子包，C 侧**真实类名**）：
 > `autoconfigure/`：ClientProtectionAutoConfiguration · GoStyleOtelAutoConfiguration · GrpcExceptionMapperAutoConfiguration · JsonBodyConverterAutoConfiguration ·
@@ -648,7 +652,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 > `observability/`：ClientDisconnectProbe · DeadlineState · GoStyleOtelAgent · GoStyleOtelConfig · GoStyleRequestDeadline · HttpMiddleware · MqConsumer ·
 > ObservabilityCustomizer · ObservabilityLifecycle · ObservabilityProperties · ObservabilityResponseWriter · ObservabilityRuntime ·
 > RpcCallHandler · RpcHandleRunner · RpcPrometheusInterceptor · RpcRecoverInterceptor · RpcResult · RpcStatInterceptor · RpcStatMetrics
-> `persistence/`：DeadlineQueryTimeoutInjector · JsonTextTypeHandler · JsonbTypeHandler · SqlTimeoutStatusTranslator
+> `persistence/`：DeadlineBoundedConnectionTimeout · DeadlineQueryTimeoutInjector · DeadlineTranslatingDataSource · JsonTextTypeHandler · JsonbMapTypeHandler · JsonbTypeHandler · JsonbValueTypeHandler · SqlTimeoutStatusTranslator · StatusAwareSqlSession · StatusAwareSqlSessionFactory · StatusAwareSqlSessionFactoryPostProcessor
 > `protection/`：AdaptiveShedder · ClientCircuitGateInterceptor · CpuThresholdHealthIndicator · MaxBytesFilter · MaxConnsFilter ·
 > OutboundDeadlineInterceptor · ProtectionProperties · RouteResolution · RouteTemplateResolver · RouteTemplateSource ·
 > RpcCircuitGateInterceptor · RpcFailurePolicy · RpcLayer · RpcLayerChainNode · RpcProtectionChain · RpcSheddingInterceptor ·
@@ -656,7 +660,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/common" -name '*.java' \
 > `redis/`：ClientAutoConfiguration · Deadline · DeadlineAutoConfiguration · DeadlineConnection · DeadlineConnectionFactory
 > `security/`：BearerTokenExtractor · JwtUtil · PasswordUtil
 > `snowflake/`：Snowflake
-> `web/`：BadRequestException · Coercion · Float64Deserializer · GetFormValuesFilter · GrpcStatusMapper · HttpErrorException · JsonBodyConverter ·
+> `web/`：BadRequestException · Coercion · Float64Deserializer · FormValues · GetFormValuesFilter · GrpcStatusMapper · HttpErrorException · JsonBodyConverter ·
 > JsonBodyConverterConfig · JsonBodyLimitFilter · JsonContentTypeAdvice · LimitExceededException · LimitMode · MapStringValueDeserializer ·
 > PathNormalizingFilter · PlainTextErrors · RawStringListDeserializer · RouterErrorResponses · StringFields · StringInt64 · TraceparentFilter ·
 > ValueLimitInterceptor

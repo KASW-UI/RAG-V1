@@ -70,9 +70,10 @@
 
 | 项 | 现象 | 为什么现在不能收 | 收口建议 |
 |---|---|---|---|
-| **`JsonbMapTypeHandler`**（`jsonb ↔ Map`） | B 侧 `message-rpc/.../mapper/JsonbMapTypeHandler.java`（118 行）<br>C 侧落在**域内** `service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java`（154 行） | 共享层现有两份**类型都不兼容**：<br>① `common/persistence/JsonbTypeHandler` = `BaseTypeHandler<String>`（**jsonb ↔ String**）<br>② `common/persistence/JsonTextTypeHandler` = **text ↔ Map**<br>⇒ ⇒ **两者都无法顶替 jsonb ↔ Map** ⇒ ⇒ 且 `common/` 非本 lane 可写 | 收口任务新建 `common/persistence/JsonbMapTypeHandler`（或把 ① 泛化成 `jsonb ↔ Object`）⇒ 本域删副本改 import |
+| **`JsonbMapTypeHandler`**（`jsonb ↔ Map`） | B 侧 `message-rpc/.../mapper/JsonbMapTypeHandler.java`（118 行）<br>C 侧原先落在**域内** `service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java`（154 行） | 共享层现有两份**类型都不兼容**：<br>① `common/persistence/JsonbTypeHandler` = `BaseTypeHandler<String>`（**jsonb ↔ String**）<br>② `common/persistence/JsonTextTypeHandler` = **text ↔ Map**<br>⇒ ⇒ **两者都无法顶替 jsonb ↔ Map** ⇒ ⇒ 且 `common/` 非本 lane 可写 | ✅ **已收口（2026-11-03 · D-11 · `global` 收口域）** —— 共享层**新增** `common/persistence/JsonbMapTypeHandler.java`（**照抄 B 侧 118 行原类** ⇒ 代码体 **34 行逐行完全相同**；**类名保持不变** ⇒ 本域只需改 import）＋ **本域副本已删除** ⇒ **副本数 1 → 0**<br>⚠️ **不与共享层 `JsonbValueTypeHandler` 的 Map 版合并** —— 写 null 路径 / 非 null 绑定 / 读空白串三处**行为不同** ⇒ 合并即漂移 |
 
 > ⚠️ **本条不是「本域偷懒留副本」** —— 是**共享层缺一个对应物** ⇒ 已登记为签字偏离（配套报告 §六·6-5）。
+> ✅ **销账状态（2026-11-03 · `global` 收口域 · `DRIFT-COMMON-V19`）**：本条**已收口** ⇒ 共享层补上对应物、**本域副本已删** ⇒ 签字偏离的那条「域内副本」理由随之消解（**是否仍需保留偏离登记，须由 `docs/Intentional_Deviations/` 侧复核** ⇒ 本 lane 不碰该文件）。
 
 ---
 
@@ -113,7 +114,7 @@
 
 | # | 项 | 现象 | 证据 | 建议修法 | 严重度 |
 |---|---|---|---|---|---|
-| 5-1 | **`JsonbMapTypeHandler` 应上收到 `common/`** | 共享层只有 jsonb↔String 与 text↔Map 两份，**类型都不兼容** ⇒ 域内被迫留副本 | 本域 `mapper/JsonbMapTypeHandler.java`（154 行）· 共享层 `common/persistence/` | 新建 `common/persistence/JsonbMapTypeHandler`（或把 `JsonbTypeHandler` 泛化）⇒ 本域删副本改 import | 🟡 P2 |
+| 5-1 | **`JsonbMapTypeHandler` 应上收到 `common/`** | 共享层只有 jsonb↔String 与 text↔Map 两份，**类型都不兼容** ⇒ 域内被迫留副本 | 本域 `mapper/JsonbMapTypeHandler.java`（154 行）· 共享层 `common/persistence/` | ✅ **已完成（2026-11-03 · D-11 · `global` 收口域 · `DRIFT-COMMON-V19`）** —— 共享层新增 `common/persistence/JsonbMapTypeHandler.java`（照抄 B 侧）＋ **本域副本已删** ⇒ 本域主代码 **53 → 52** | ✅ 已闭合 |
 | 5-2 | **跨域注册名不一致** | 本域 gRPC client 寻址 `discovery:///admin-rpc`（B 侧逐字）⇒ 找 Nacos 服务名 **`admin-rpc`**；而已落地的 `service/users/admin` 注册名是 **`admin-service`** ⇒ **寻址落空** | 本域 `client/AdminRpcClient.java`（`@GrpcClient("admin-rpc")`）· `service/users/admin/.../wiring/NacosRegistration.java:115`（`serviceName = "admin-service"`） | **归 users/admin lane**：注册名与 B 侧对齐为 `admin-rpc`，或本域改寻址 `admin-service`（**须先定哪一边是契约** ⇒ B 侧是 `admin-rpc`） | 🔴 P1 |
 | 5-3 | **`docs/DRIFT/_INDEX.md` 未收录本域台账** | 本域台账已写好，但 `_INDEX.md` 本 lane **不碰** | 配套报告 §八·8.2 · U-5 | 由收口执行者统一更新 | 🟢 流程 |
 | 5-4 | **`docs/Intentional_Deviations/_INDEX.md` 未收录 8 条偏离** | 本域已写清 8 条（配套报告 §六） | 同上 | 由收口执行者统一更新 | 🟢 流程 |
@@ -140,6 +141,6 @@
 | **本文件**（跨层对账） | `docs/DRIFT/message/vs-common.md` | ✅ 已写 |
 | 共享层能力消费面 | 12 个 `com.rag.common.*` 类 · **零空壳** | ✅ 已核 |
 | 域内零副本核对 | `common/web/StringInt64` · `common/contract/ApiResponse` · `common/web/RouterErrorResponses` | ✅ 已核 |
-| 待收口登记 | `JsonbMapTypeHandler`（§二·2.1） | ✅ 已登记 |
+| 待收口登记 | `JsonbMapTypeHandler`（§二·2.1） | ✅ 已登记 ⇒ ✅ **已收口（2026-11-03 · D-11）** |
 | 守门读数 | A1–A13 **PASS 10 · FAIL 0 · N/A 2 · PENDING 1**（PENDING 属 like/comment/favorite）· **EXIT=0** | ✅ 2026-11-02 |
 | 回归读数 | 本域 **103 例 · 0/0/0**（含 **35 例 B 侧期望值移植**）；全仓 **451 例 · 0/0/0** · **BUILD SUCCESS** | ✅ 2026-11-02 |

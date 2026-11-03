@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       的注释明写「第一次实现漏了这条，5 条断言 400 text/plain 的用例全部失败」）；</li>
  *   <li><b>「{@code nosniff}」</b> ⇒ 由共享层 {@code PlainTextErrors#text} 写死
  *       ⇒ 只有真 Tomcat 才能观测到响应头；</li>
- *   <li><b>query 真值表</b> ⇒ 取决于 {@code ArticleQueryValues} 与
+ *   <li><b>query 真值表</b> ⇒ 取决于 {@code FormValues} 与
  *       {@code ListArticlesReq#of} 的组合（空值先丢、再取首、bool 真值表 1/0、int 走 base-10）；</li>
  *   <li><b>必填文案 / 类型不符文案</b> ⇒ 取决于 Jackson {@code @JsonCreator} 抛出的
  *       {@code BadRequestException} 被包成 {@code HttpMessageNotReadableException} 后
@@ -103,12 +103,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       ⇒ 本类<b>每一条</b> 400 用例都会红（状态码 + Content-Type 同时变）；</li>
  *   <li>删掉 {@code ArticleApiResponseAdvice} 的「放行 4（byte[]）」
  *       ⇒ 400 用例会变成 200 + Base64 乱码 ⇒ <b>立刻红</b>；</li>
- *   <li>把 {@code ArticleQueryValues#first} 改成「先取首再过滤空」
+ *   <li>把 {@code FormValues#first} 改成「先取首再过滤空」
  *       ⇒ {@code queryMultiValuePageTakesFirstNonEmptyValue} <b>立刻红</b>
  *       （{@code ?page=&page=2} 会退回默认 1）；</li>
- *   <li>把 {@code ArticleQueryValues#bool} 改成 Spring 的 {@code Boolean.valueOf} 语义
+ *   <li>把 {@code FormValues#bool} 改成 Spring 的 {@code Boolean.valueOf} 语义
  *       ⇒ {@code desc=1} 会变成 400 ⇒ <b>立刻红</b>；</li>
- *   <li>给 {@code ArticleQueryValues#text} 加 {@code .trim()}
+ *   <li>给 {@code FormValues#text} 加 {@code .trim()}
  *       ⇒ {@code queryStringValueIsNotTrimmed} <b>立刻红</b>（total 会从 0 变成 2）；</li>
  *   <li>把 multipart 字段名从 {@code image} 改成别的
  *       ⇒ {@code uploadFieldNameIsFixedToImage} <b>立刻红</b>。</li>

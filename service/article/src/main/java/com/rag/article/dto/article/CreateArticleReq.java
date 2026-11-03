@@ -2,8 +2,8 @@ package com.rag.article.dto.article;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.rag.article.web.ArticleStringFields;
 import com.rag.common.web.BadRequestException;
+import com.rag.common.web.StringFields;
 import jakarta.validation.constraints.NotNull;
 
 import java.util.List;
@@ -27,7 +27,7 @@ import java.util.List;
  *   <li><b>语义还一样吗</b>：<b>判定等价，body 文案有一处不同</b> ——
  *       <ul>
  *         <li><b>JSON key 名逐字相同</b>（见下方对照表）；</li>
- *         <li><b>类型不符</b>：走 {@link ArticleStringFields#parse}（B 侧
+ *         <li><b>类型不符</b>：走 {@link StringFields#parse}（B 侧
  *             {@code dto/GoStyleStringFields.java:62-78} 的逐行副本）⇒
  *             {@code type mismatch for field "title", expect "string", actual "number"}
  *             ⇒ <b>逐字节相同</b>，且被 Jackson 包成 {@code ValueInstantiationException}
@@ -71,9 +71,11 @@ import java.util.List;
  * ⇒ {@code {"title":""}} <b>会成功</b>并把空标题发给域服务；标题是否为空由下游判定，本层不重复校验
  * ⇒ 这也是用 {@link NotNull} 而<b>不是</b> {@code @NotBlank} 的原因。
  *
- * <p><b>⚠️ 本类依赖 {@code com.rag.article.web.ArticleStringFields}</b>（域内副本 ·
- * 对应 B 侧 {@code dto/GoStyleStringFields.java}）⇒ <b>待收口</b>：
- * 共享层 {@code common/web/StringFields} 是<b>包私有</b> ⇒ 域内 DTO 调不到。
+ * <p><b>✅ 本类依赖 {@code com.rag.common.web.StringFields}</b>（共享层 · 对应 B 侧
+ * {@code dto/GoStyleStringFields.java}）⇒ <b>D-09 已收口（2026-11-03）</b>：
+ * 共享层该类原先是<b>包私有</b> ⇒ 域内 DTO 调不到 ⇒ article 域被迫留域内副本
+ * {@code com.rag.article.web.ArticleStringFields} ⇒ 现已放开可见性 ＋ <b>副本已删</b>
+ * ⇒ 本域只剩<b>一份</b>实现 ⇒ 不存在分叉风险。
  */
 public record CreateArticleReq(
 
@@ -105,7 +107,7 @@ public record CreateArticleReq(
      *   <li>声明成 {@code String} ⇒ Jackson 自己强转（{@code {"title":123}} ⇒ {@code "123"}）
      *       ⇒ 要么被共享层 coercion 拒成 Jackson 措辞的 400，要么（coercion 未挂）被静默接受
      *       ⇒ <b>body 文案与 B 侧不一致</b>；</li>
-     *   <li>声明成 {@code Object} ⇒ 由 {@link ArticleStringFields#parse} 判定
+     *   <li>声明成 {@code Object} ⇒ 由 {@link StringFields#parse} 判定
      *       ⇒ <b>文案与 B 侧逐字节相同</b>。</li>
      * </ul>
      *
@@ -130,11 +132,11 @@ public record CreateArticleReq(
             @JsonProperty("cover_image_url") Object rawCoverImageUrl,
             @JsonProperty("manual_type_tag") Object rawManualTypeTag,
             @JsonProperty("secondary_tags") List<String> secondaryTags) {
-        this(ArticleStringFields.parse("title", rawTitle),
-                ArticleStringFields.parse("brief", rawBrief),
-                ArticleStringFields.parse("content", rawContent),
-                ArticleStringFields.parse("cover_image_url", rawCoverImageUrl),
-                ArticleStringFields.parse("manual_type_tag", rawManualTypeTag),
+        this(StringFields.parse("title", rawTitle),
+                StringFields.parse("brief", rawBrief),
+                StringFields.parse("content", rawContent),
+                StringFields.parse("cover_image_url", rawCoverImageUrl),
+                StringFields.parse("manual_type_tag", rawManualTypeTag),
                 secondaryTags);
     }
 

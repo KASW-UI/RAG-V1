@@ -2,6 +2,7 @@ package com.rag.article.mapper;
 
 import com.rag.article.domain.entity.ArticlePublicationEntity;
 import com.rag.article.domain.entity.ArticleRevisionEntity;
+import com.rag.common.persistence.JsonbValueTypeHandler;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -46,7 +47,7 @@ public interface ArticleRevisionMapper {
     @Select("SELECT * FROM article_revision WHERE article_id = #{articleId} AND revision_id = #{revisionId}")
     @Results(id = "articleRevisionEntityResultMap", value = {
             @Result(column = "secondary_tags", property = "secondaryTags",
-                    typeHandler = JsonbTypeHandler.StringListTypeHandler.class)
+                    typeHandler = JsonbValueTypeHandler.StringListTypeHandler.class)
     })
     ArticleRevisionEntity selectByRevisionId(@Param("articleId") String articleId,
                                              @Param("revisionId") String revisionId);

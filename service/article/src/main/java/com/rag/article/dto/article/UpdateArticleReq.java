@@ -2,7 +2,7 @@ package com.rag.article.dto.article;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.rag.article.web.ArticleStringFields;
+import com.rag.common.web.StringFields;
 
 import java.util.List;
 
@@ -30,7 +30,7 @@ import java.util.List;
  *   <li><b>语义还一样吗</b>：一样 ——
  *       <ul>
  *         <li><b>JSON key 名逐字相同</b>（见下方对照表）；</li>
- *         <li><b>类型不符</b>：走 {@link ArticleStringFields#parse} ⇒ 文案与 B 侧逐字节相同
+ *         <li><b>类型不符</b>：走 {@link StringFields#parse} ⇒ 文案与 B 侧逐字节相同
  *             ⇒ 400 + text/plain；</li>
  *         <li><b>{@code status}</b>：保持 {@link Integer}（<b>不是</b> {@code int}）⇒
  *             「缺席」与「显式 0」在 proto 侧要分开表达（{@code optional ArticleStatus status}）
@@ -98,7 +98,7 @@ public record UpdateArticleReq(
      * Jackson 的绑定入口 —— 五个字符串字段的形参刻意声明成 {@code Object}。
      *
      * <p>⚠️ <b>{@code status} 保持 {@link Integer}</b>：它<b>不</b>走
-     * {@link ArticleStringFields}（B 侧它就是 {@code Integer} 形参的普通 setter，
+     * {@link StringFields}（B 侧它就是 {@code Integer} 形参的普通 setter，
      * B {@code UpdateArticleReq.java:105-108}）⇒ 类型不符由 Jackson + 共享层 coercion 判
      * ⇒ {@code {"status":"2"}} 被拒成 400（状态码与 B 侧一致，body 文案为 Jackson 措辞）。
      *
@@ -114,11 +114,11 @@ public record UpdateArticleReq(
             @JsonProperty("manual_type_tag") Object rawManualTypeTag,
             @JsonProperty("secondary_tags") List<String> secondaryTags,
             @JsonProperty("status") Integer status) {
-        this(ArticleStringFields.parse("title", rawTitle),
-                ArticleStringFields.parse("brief", rawBrief),
-                ArticleStringFields.parse("content", rawContent),
-                ArticleStringFields.parse("cover_image_url", rawCoverImageUrl),
-                ArticleStringFields.parse("manual_type_tag", rawManualTypeTag),
+        this(StringFields.parse("title", rawTitle),
+                StringFields.parse("brief", rawBrief),
+                StringFields.parse("content", rawContent),
+                StringFields.parse("cover_image_url", rawCoverImageUrl),
+                StringFields.parse("manual_type_tag", rawManualTypeTag),
                 secondaryTags,
                 status);
     }

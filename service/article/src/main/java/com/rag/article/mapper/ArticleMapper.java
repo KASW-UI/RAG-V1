@@ -2,6 +2,7 @@ package com.rag.article.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.rag.article.domain.entity.ArticleEntity;
+import com.rag.common.persistence.JsonbValueTypeHandler;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Result;
@@ -27,8 +28,10 @@ import java.util.List;
  *       <ul>
  *         <li><b>包名</b>：{@code com.rag.article.article.rpc.mapper} → {@code com.rag.article.mapper}（D7 包压平）；</li>
  *         <li><b>jsonb TypeHandler 的落点</b>：B 侧的 {@code JsonbTypeHandler} 与本文件同包；
- *             C 侧同样落在 {@code com.rag.article.mapper}（<b>域内副本</b>，
- *             理由见 {@link JsonbTypeHandler} 的类级说明）。</li>
+ *             C 侧落在共享层 {@code com.rag.common.persistence.JsonbValueTypeHandler}
+ *             （<b>D-11 已收口 · 2026-11-03</b>；原先是域内副本
+ *             {@code com.rag.article.mapper.JsonbTypeHandler}，因共享层已有同名的
+ *             「jsonb ↔ 文本」版而改名，理由见该类注释）。</li>
  *       </ul></li>
  *   <li><b>语义还一样吗</b>：一样 —— SQL 文本、参数名、结果映射<b>逐字未改</b>
  *       ⇒ 查询条件与可见性语义完全一致。</li>
@@ -61,9 +64,9 @@ public interface ArticleMapper extends BaseMapper<ArticleEntity> {
     @Select("SELECT * FROM article WHERE id = #{id} AND deleted_at IS NULL")
     @Results(id = "articleEntityResultMap", value = {
             @Result(column = "secondary_tags", property = "secondaryTags",
-                    typeHandler = JsonbTypeHandler.StringListTypeHandler.class),
+                    typeHandler = JsonbValueTypeHandler.StringListTypeHandler.class),
             @Result(column = "ext_info", property = "extInfo",
-                    typeHandler = JsonbTypeHandler.StringMapTypeHandler.class)
+                    typeHandler = JsonbValueTypeHandler.StringMapTypeHandler.class)
     })
     ArticleEntity selectById(@Param("id") String id);
 

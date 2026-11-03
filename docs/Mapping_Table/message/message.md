@@ -170,7 +170,7 @@
 | `message-rpc/.../service/MessageDomainService.java` | `service/message/src/main/java/com/rag/message/domain/service/MessageDomainService.java` | N:1 | 9 用例合 1 个 DomainService；`sendChatMessage` 最复杂（会话状态机 + PENDING 单方连发拦截 + 首条 ≤ 50 rune 校验） |
 | `message-rpc/.../service/MessageRpcSupport.java` | `service/message/src/main/java/com/rag/message/service/MessageRpcSupport.java` | 1:1 | 20+ helper：`canonicalParticipants` / `canSend` / `peerOf` / `loadProfile` / `collectBroadcastRecipients` / `dedupeRecipients` / `trimPreview` / `notificationKindLabel` / `successBaseResp` … |
 | `message-rpc/.../mapper/ConversationMapper.java` + `mapper/ConversationMessageMapper.java` + `mapper/NotificationMapper.java` + `mapper/GoStylePagination.java` + `service/MessageAtomicService.java` | `service/message/src/main/java/com/rag/message/mapper/ConversationMapper.java` + `service/message/src/main/java/com/rag/message/mapper/ConversationMessageMapper.java` + `service/message/src/main/java/com/rag/message/mapper/NotificationMapper.java` + `service/message/src/main/java/com/rag/message/mapper/GoStylePagination.java` + `service/message/src/main/java/com/rag/message/domain/service/MessageAtomicService.java` | 1:N | 2 个 `conn.Transaction(...)` 闭包 + 3 个单条原子 UPDATE → `MessageAtomicService` 的 6 个 `@Transactional` 方法（**独立 Bean**，见 §2）；`GoStylePagination` 承接 B 侧的「offset / limit 各自有条件」分页口径 |
-| `message-rpc/.../domain/ConversationEntity.java` + `.../ConversationMessageEntity.java` + `.../NotificationEntity.java` | `service/message/src/main/java/com/rag/message/domain/entity/ConversationEntity.java` + `.../ConversationMessageEntity.java` + `.../NotificationEntity.java` | 1:N | 3 张表；⚠️ B 侧手写的 `JsonbMapTypeHandler` **无法**用共享层的 `common/.../JsonbTypeHandler.java` 顶替 —— 后者是 **jsonb 列 ↔ `String`**（`BaseTypeHandler<String>`），而 B 侧那份是 **jsonb 列 ↔ `Map<String,String>`** ⇒ **类型不兼容** ⇒ 本域保留域内副本 `mapper/JsonbMapTypeHandler.java`（见 §1.5 + §4） |
+| `message-rpc/.../domain/ConversationEntity.java` + `.../ConversationMessageEntity.java` + `.../NotificationEntity.java` | `service/message/src/main/java/com/rag/message/domain/entity/ConversationEntity.java` + `.../ConversationMessageEntity.java` + `.../NotificationEntity.java` | 1:N | 3 张表；⚠️ B 侧手写的 `JsonbMapTypeHandler` **无法**用共享层的 `common/.../JsonbTypeHandler.java` 顶替 —— 后者是 **jsonb 列 ↔ `String`**（`BaseTypeHandler<String>`），而 B 侧那份是 **jsonb 列 ↔ `Map<String,String>`** ⇒ **类型不兼容** ⇒ ✅ **D-11 已收口（2026-11-03）**：共享层新增 `common/persistence/JsonbMapTypeHandler.java`（照抄 B 侧 118 行原类）＋ **域内副本已删** ⇒ 副本数 1 → 0（见 §1.5 + §4） |
 | `message-rpc/.../mapper/ConversationMapper.java` + `mapper/ConversationMessageMapper.java` + `mapper/NotificationMapper.java` + `resources/db/migration/V1..V5*.sql` | `service/message/src/main/java/com/rag/message/mapper/ConversationMapper.java` + `service/message/src/main/java/com/rag/message/mapper/ConversationMessageMapper.java` + `service/message/src/main/java/com/rag/message/mapper/NotificationMapper.java` + `resources/db/migration/`（**当前仅 `.gitkeep`**） | 1:N | ⚠️ C 侧 DDL 目录**是空的**；设计文档 §5.2 要求的 `wiring/MessageSchemaInitializer.java`（幂等 DDL 重放）在 C 侧**不存在**（见 §7 缺口清单） |
 | `message-rpc/.../metrics/MessageMetrics.java` | `service/message/src/main/java/com/rag/message/metrics/MessageRpcMetrics.java` | 1:1 | 5 个指标 `message_rpc_*` |
 | — | `service/message/src/main/java/com/rag/message/metrics/MessageMetrics.java` | C 新增 | ✅ **已明确分工（2026-11-02）**：本类是**两个具体指标类的共享基座**（namespace 前缀常量 + `MeterRegistry` 注册公共方法 + 标签键常量）；`MessageApiMetrics` 承载 3 个 `message_api_*`、`MessageRpcMetrics` 承载 5 个 `message_rpc_*` ⇒ **职责重叠已消除，且不留空壳**（空壳在 A1–A13 断言里算 PENDING） |
@@ -227,7 +227,7 @@
 |---|---|---|
 | `message-api/.../config/GoStyleMapStringValueDeserializer.java` | `common/src/main/java/com/rag/common/web/MapStringValueDeserializer.java` | 1:1 | D3：下沉到根级 starter |
 | `message-api/.../config/MessageGoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/Coercion.java` + `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java` | 1:N | 同上；C 侧改成 **Jackson 2** 的 `CoercionConfig` 装配点（D14：全项目 = Jackson 2 + Boot 3.5）|
-| `message-rpc/.../mapper/JsonbMapTypeHandler.java` | `service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java` | 1:1 | ⚠️ **本表旧版写「→ `common/.../JsonbTypeHandler.java`（D3 上提）」= 不成立**：共享层那份是 **jsonb ↔ `String`**（`BaseTypeHandler<String>`），B 侧这份是 **jsonb ↔ `Map<String,String>`** ⇒ **类型不兼容**，顶替会编译不过。共享层是**收口域**写权（AGENTS.md §五.3 规则 3）⇒ 本 lane **不得改 `common/`** ⇒ 域内保留照抄副本，并登记为待收口项（核对日期 2026-11-02） |
+| `message-rpc/.../mapper/JsonbMapTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbMapTypeHandler.java` | 1:1 | ⚠️ **本表旧版写「→ `common/.../JsonbTypeHandler.java`（D3 上提）」= 不成立**：共享层那份是 **jsonb ↔ `String`**（`BaseTypeHandler<String>`），B 侧这份是 **jsonb ↔ `Map<String,String>`** ⇒ **类型不兼容**，顶替会编译不过。✅ **D-11 已收口（2026-11-03）**：共享层**新增** `common/persistence/JsonbMapTypeHandler.java`（照抄 B 侧 118 行原类，代码体逐行一致）＋ **域内副本已删** ⇒ 副本数 1 → 0；⚠️ **类名保持不变** ⇒ 本域只需改 import（`@TableField(typeHandler=…)` 与 `insertBatch` 里的全限定名同改）；🔴 **与共享层 `JsonbValueTypeHandler` 的 Map 版<b>不合并</b>**（写 null 路径 / 非 null 绑定 / 读空白串三处行为不同 ⇒ 合并即漂移） |
 | `message-rpc/.../config/MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | 1:1 | B 侧 9 份副本 → C 侧 1 份（D3 的直接账单） |
 | `service/common/.../response/Response.java` | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | 1:1 | 共享层整体下沉；**信封是 L1，不能换成 `ProblemDetail`** |
 | `service/common/.../observability/` | `common/src/main/java/com/rag/common/observability/`（3 类：Observation + `GoStyleRequestDeadline` + `ObservabilityCustomizer`） | 1:N | Micrometer `Observation` + OTel bridge 吸收 |
@@ -253,7 +253,7 @@
 |---|---|---|---|
 | ORM | MyBatis-Plus `BaseMapper<Entity>` + `LambdaQueryWrapper` | 同 B | D4「生态优先」 |
 | 实体注解 | `@TableName` + `@TableId(type=IdType.ASSIGN_ID)` + `@TableField` | 同 B | 表名/列名显式声明 |
-| JSONB 列 | `JsonbMapTypeHandler`（手写 `BaseTypeHandler`） | `service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java`（**域内照抄 B 侧**） | ⚠️ **不能用 MP 自带 `JacksonTypeHandler`**：它走 `ps.setString()` ⇒ PG 收到 VARCHAR ⇒ 写 `jsonb` 列被拒。⚠️ 也**不能**用共享层的 `common/.../JsonbTypeHandler.java`（jsonb ↔ `String`，类型不兼容）⇒ 域内保留 `Map<String,String>` 版 |
+| JSONB 列 | `JsonbMapTypeHandler`（手写 `BaseTypeHandler`） | `common/src/main/java/com/rag/common/persistence/JsonbMapTypeHandler.java`（**共享层照抄 B 侧**） | ⚠️ **不能用 MP 自带 `JacksonTypeHandler`**：它走 `ps.setString()` ⇒ PG 收到 VARCHAR ⇒ 写 `jsonb` 列被拒。⚠️ 也**不能**用共享层的 `common/.../JsonbTypeHandler.java`（jsonb ↔ `String`，类型不兼容）⇒ ✅ **D-11 已收口（2026-11-03）**：`Map<String,String>` 版已上收共享层、**域内副本已删** |
 | Schema 演进 | Flyway `V1..V5`（`table: flyway_schema_history_message` 独立账本，`baseline-version: 0`） | 幂等 DDL 重放（`resources/db/migration/`，**当前为空**） | ⚠️ **C 侧 DDL 脚本还没落地** |
 | 建表责任 | message-rpc 独占（Flyway） | 待定（设计文档 §5.2 指向 `MessageSchemaInitializer`，**文件不存在**） | 共享库共存问题见 `RAG/docs/DRIFT/_cross/` |
 | 雪花 ID | `SnowflakeBean` 注入（`common` starter） | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `SnowflakeAutoConfiguration` | epoch/位段是契约 |
@@ -282,7 +282,7 @@
 1. `domain/entity/*Entity.java` 换注解（`@TableName` + `@TableId`），字段名不变；
 2. `mapper/*Mapper.java` 继承 `BaseMapper<Entity>`，调用点用 `LambdaQueryWrapper`；
 3. `mapper/GoStylePagination.java` 承担分页子句口径；
-4. `service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java` 承担 jsonb 列（域内照抄 B 侧；共享层那份是 jsonb ↔ `String`，类型不兼容）；
+4. `common/src/main/java/com/rag/common/persistence/JsonbMapTypeHandler.java` 承担 jsonb 列（**共享层照抄 B 侧**；✅ **D-11 已收口 2026-11-03**，域内副本已删）；
 5. 建表来源 = **B 侧的 V1~V5 Flyway 脚本**（逐字节照抄）⇒ 不改。
 
 **为什么换**：MyBatis-Plus 的 `LambdaQueryWrapper` 比链式 Mapper 更直观，且显式 SQL 可被逐条审；但**写法换掉不等于语义换掉** —— 每条查询条件、排序键、计数口径都必须逐条回到 B 侧源码对照。
@@ -346,7 +346,7 @@
 | 观测（http/rpc/mq） | `common/observability/` | `common/src/main/java/com/rag/common/observability/`（3 类） | span 名称/属性需逐条对拍 |
 | 熔断 / CPU 降载 / MaxBytes | `common/protection/` | `common/src/main/java/com/rag/common/protection/`（2 类） | 生态缺口，策略差异属 L3 |
 |日志|`common/logger/`|`common/src/main/java/com/rag/common/logger/`（4 类，SLF4J）|`call_chain` 等是行为契约|
-| JSONB TypeHandler | `message-rpc/.../mapper/JsonbMapTypeHandler.java` | `service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java` | ⚠️ **无法上提到共享层** —— 共享层 `common/.../JsonbTypeHandler.java` 是 **jsonb ↔ `String`**（`BaseTypeHandler<String>`），与 B 侧这份 **jsonb ↔ `Map<String,String>`** **类型不兼容** ⇒ 域内保留照抄副本（待收口域处理） |
+| JSONB TypeHandler | `message-rpc/.../mapper/JsonbMapTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbMapTypeHandler.java` | ⚠️ **无法复用**共享层的 `common/.../JsonbTypeHandler.java` —— 那份是 **jsonb ↔ `String`**（`BaseTypeHandler<String>`），与 B 侧这份 **jsonb ↔ `Map<String,String>`** **类型不兼容** ⇒ ✅ **D-11 已收口（2026-11-03）**：**照抄一份到共享层**（`JsonbMapTypeHandler`，类名不变）＋ 域内副本已删 |
 | 整数字段解码（`,string`） | `message-api/.../dto/GoStyleStringInt64.java` | `common/src/main/java/com/rag/common/web/StringInt64.java` | 同上 |
 | Jackson 类型强转口径 | `message-api/.../config/{GoStyleMapStringValueDeserializer,MessageGoStyleCoercion}.java` | `common/src/main/java/com/rag/common/web/MapStringValueDeserializer.java` + `common/src/main/java/com/rag/common/web/Coercion.java` + `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java` | 同上 |
 | MyBatis-Plus 装配桥 | `message-rpc/.../config/MybatisPlusOrderingBridgeAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | B 侧 9 份副本 → C 侧 1 份 |
@@ -355,7 +355,7 @@
 **4 决策锁**
 
 **换「共享件从域内提到 starter」（D3，6 处同时改）**：
-1. `JsonbMapTypeHandler` → ⚠️ **留在域内** `service/message/.../mapper/JsonbMapTypeHandler.java`（照抄 B 侧）；**不能**上提到 `common/`（共享层那份是 jsonb ↔ `String`，类型不兼容，且 `common/` 是收口域写权）；
+1. `JsonbMapTypeHandler` → ✅ **已上收到共享层** `common/src/main/java/com/rag/common/persistence/JsonbMapTypeHandler.java`（照抄 B 侧 118 行原类）；⚠️ **不能复用**共享层那份 `JsonbTypeHandler`（jsonb ↔ `String`，类型不兼容）⇒ **另起一份**，且**不与 `JsonbValueTypeHandler` 的 Map 版合并**（行为不同 ⇒ 合并即漂移）；
 2. `GoStyleStringInt64` → `common/src/main/java/com/rag/common/web/StringInt64.java`；
 3. `GoStyleMapStringValueDeserializer` + `MessageGoStyleCoercion` → `common/src/main/java/com/rag/common/web/`；
 4. `MybatisPlusOrderingBridgeAutoConfiguration` → `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java`；
@@ -422,13 +422,14 @@
 ```bash
 find "/Users/pr/Documents/GitHub/RAG-V1/service/message" -name '*.java' \
   -not -path '*/src/test/*' -not -path '*/target/*' | xargs -n1 basename | sort -u | wc -l
-# ⇒ 53
+# ⇒ 52
 ```
 
 > 📌 **2026-11-02**：旧版自报 **52** ⇒ 本轮新增 `mapper/JsonbMapTypeHandler.java`（B 侧同名文件的**域内照抄副本**，见 §1.5 / §4）⇒ **53**。
+> ✅ **2026-11-03 · D-11 收口后重算为 52** —— 域内副本 `mapper/JsonbMapTypeHandler.java` **已上收共享层并删除** ⇒ C 侧文件数 53 → **52**。
 > ⚠️ 该文件**不**计入「proto 生成物」—— 它是手写源码。
 
-**逐条落位（53 / 53 = 100%）**
+**逐条落位（52 / 52 = 100%）**
 
 | # | C 列文件 | 落位小节 |
 |---|---|---|
@@ -484,7 +485,6 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/message" -name '*.java' \
 | 50 | `service/message/src/main/java/com/rag/message/domain/service/MessageDomainService.java` | §1.3 |
 | 51 | `service/message/src/main/java/com/rag/message/service/MessageRpcSupport.java` | §1.3 |
 | 52 | `service/message/src/main/java/com/rag/message/grpc/MessageGrpcService.java` | §1.3 |
-| 53 | `service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java` | §1.5 / §4（**2026-11-02 新增**：B 侧 `message-rpc/.../mapper/JsonbMapTypeHandler.java` 的**域内照抄副本**；共享层 `common/.../JsonbTypeHandler.java` 是 jsonb ↔ `String`，**类型不兼容** ⇒ 不可顶替） |
 
 > **不计入分母**：proto 生成物（根级 `proto/` 模块的 `target/generated-sources/**`）与 `target/classes/**` 下的 `.class` —— 它们不是手写源码。
 

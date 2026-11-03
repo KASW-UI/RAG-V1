@@ -1,7 +1,5 @@
 package com.rag.common.web;
 
-import com.rag.common.web.BadRequestException;
-
 /**
  * JSON 入参里 String 字段的<b>输入解释规则</b> —— 对应 B 侧
  * {@code service/article/article-api/src/main/java/com/rag/article/article/api/dto/GoStyleStringFields.java:6-7} 的 {@code processFieldPrimitive} 类型判定。
@@ -49,13 +47,34 @@ import com.rag.common.web.BadRequestException;
  */
 /**
  * <p><b>抄写基准</b>：RAG {@code service/article/article-api/src/main/java/com/rag/article/article/api/dto/GoStyleStringFields.java}
- * §1.11 第 245 行 · 1:1
  * （L2 业务语义层以 RAG 为基准整段抄 · D13）。
  * <p><b>⚠️ 落点差异</b>：RAG 侧在<b>各域 api 模块</b>（或 {@code service/common/http/}）⇒
  * RAG-V1 归位到全局 {@code common/web/}（决策锁 L-13「HTTP 层归位到 web/」）
  * ⇒ ⇒ **包名与类名都变了** ⇒ 调用点要同步改 import 与类名。
+ *
+ * <h2>L4 idiomatization（三段式 · AGENTS.md §3.2）</h2>
+ * <ol>
+ *   <li><b>比 B 侧多做了什么</b>：<b>只放开可见性</b> —— B 侧
+ *       {@code final class GoStyleStringFields} 是<b>包私有</b>（静态方法 {@code parse} 同为包私有）
+ *       ⇒ C 侧改为 {@code public final class} ＋ {@code public static String parse(...)}。<br>
+ *       ⚠️ <b>为什么必须放开</b>：本类在 C 侧落进 {@code common/web/}，而消费方
+ *       （article 域的 {@code dto/article/CreateArticleReq} / {@code UpdateArticleReq}）在<b>别的包</b>
+ *       ⇒ 包私有 ⇒ <b>域内调不到</b> ⇒ article 域被迫抄了一份域内副本
+ *       （{@code service/article/.../web/ArticleStringFields.java}）
+ *       ⇒ 两份实现必须逐字一致 ⇒ 放开可见性是消除副本的<b>唯一</b>手段。</li>
+ *   <li><b>语义还一样吗</b>：一样 —— 可见性属 L4 表达层，<b>方法体一字未改</b>
+ *       （判定条件 / 错误文案 / Go 类型名判定表全部逐条照抄 B 侧）⇒ 响应 body 逐字节相同。</li>
+ *   <li><b>B 出处</b>：
+ *       {@code service/article/article-api/src/main/java/com/rag/article/article/api/dto/GoStyleStringFields.java:50-94}。</li>
+ * </ol>
+ *
+ * <h2>✅ 收口留痕（D-09 · 2026-11-03）</h2>
+ * <p>本类此前是<b>包私有且全仓零消费</b>（实测 {@code grep -rn "StringFields" --include=*.java}
+ * 仅命中本文件自身）⇒ 本次放开可见性<b>不改变任何既有行为</b>。
+ * ⇒ article 域的域内副本 {@code web/ArticleStringFields.java} 已同步删除 ⇒ <b>副本数 1 → 0</b>
+ * ⇒ article 域的 2 个 DTO 改 import {@code com.rag.common.web.StringFields}。
  */
-final class StringFields {
+public final class StringFields {
 
     private StringFields() {
     }
@@ -67,7 +86,7 @@ final class StringFields {
      * @return {@code null} 或原样字符串
      * @throws BadRequestException 类型不符 —— 对齐 B 的 {@code newTypeMismatchError}
      */
-    static String parse(String fieldName, Object raw) {
+    public static String parse(String fieldName, Object raw) {
         if (raw == null) {
             return null;
         }

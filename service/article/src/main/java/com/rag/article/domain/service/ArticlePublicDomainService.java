@@ -7,7 +7,7 @@ import com.rag.article.domain.entity.ArticleRevisionEntity;
 import com.rag.article.exception.ArticleExceptions;
 import com.rag.article.mapper.ArticlePublicMapper;
 import com.rag.article.mapper.ArticleRevisionMapper;
-import com.rag.article.mapper.JsonbTypeHandler;
+import com.rag.common.persistence.JsonbValueTypeHandler;
 import com.rag.proto.article.Article;
 import com.rag.proto.article.ArticleStatus;
 import com.rag.proto.article.ListArticlesRequest;
@@ -230,7 +230,7 @@ public class ArticlePublicDomainService {
         //    + CAST(? AS jsonb)，既避开注入也避开转义分歧；两侧语义等价。
         String secondaryTagJson = (secondaryTag == null || secondaryTag.isEmpty())
                 ? null
-                : JsonbTypeHandler.writeJson(List.of(secondaryTag));
+                : JsonbValueTypeHandler.writeJson(List.of(secondaryTag));
 
         long total = publicMapper.countPublic(manualTypeTag, secondaryTagJson, authorId);
 

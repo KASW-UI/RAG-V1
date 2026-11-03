@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.rag.article.mapper.JsonbTypeHandler;
+import com.rag.common.persistence.JsonbValueTypeHandler;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -176,7 +176,7 @@ public class ArticleRevisionEntity {
     private String manualTypeTag;
 
     /** 对应 B 侧 {@code SecondaryTags StringArray `gorm:"type:jsonb"`}。 */
-    @TableField(typeHandler = JsonbTypeHandler.StringListTypeHandler.class)
+    @TableField(typeHandler = JsonbValueTypeHandler.StringListTypeHandler.class)
     private List<String> secondaryTags;
 
     /** 对应 B 侧 {@code Markdown string `gorm:"type:text;not null"`}：<b>读者实际读到的字节</b>。 */

@@ -12,8 +12,8 @@ import com.rag.article.dto.article.UpdateArticleResp;
 import com.rag.article.dto.upload.UploadImageResp;
 import com.rag.article.service.ArticleApiService;
 import com.rag.article.service.ArticleApiSupport;
-import com.rag.article.web.ArticleQueryValues;
 import com.rag.common.web.BadRequestException;
+import com.rag.common.web.FormValues;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -92,7 +92,7 @@ import org.springframework.web.multipart.MultipartFile;
  *
  * <h2>⚠️ query / form 参数刻意声明成 {@link String}</h2>
  * {@code incr_view} / {@code page} / {@code page_size} / {@code sort_by} / {@code desc}
- * 的真值表与默认值规则由 {@link ArticleQueryValues} 承担；
+ * 的真值表与默认值规则由 {@link FormValues} 承担；
  * 若让 Spring 直接转 boolean/int，{@code ?incr_view=1} 会从「true」变成 400。
  */
 @RestController
@@ -182,15 +182,15 @@ public class ArticleController {
      * Go {@code GetArticleHandler}（公开读详情）。
      *
      * @param incrView <b>原始</b> query 值（多值数组），交给
-     *                  {@link ArticleQueryValues#first(String[])} 按 Go 规则取首，
-     *                  再由 {@code ArticleQueryValues.bool} 按 Go 真值表解释
+     *                  {@link FormValues#first(String[])} 按 Go 规则取首，
+     *                  再由 {@code FormValues.bool} 按 Go 真值表解释
      *
      * <p><b>B 出处</b>：{@code …/controller/ArticleController.java:181-185}。
      */
     @GetMapping("/article/{id}")
     public GetArticleResp getArticle(@PathVariable("id") String id,
                                      @RequestParam(name = "incr_view", required = false) String[] incrView) {
-        return apiService.getArticle(id, ArticleQueryValues.first(incrView));
+        return apiService.getArticle(id, FormValues.first(incrView));
     }
 
     /**
@@ -204,8 +204,8 @@ public class ArticleController {
      * <h2>⚠️ 为什么声明成 {@code String[]} 而不是 {@code String}</h2>
      * <p>Go 侧同名 key 出现多次时<b>取第一个</b>（{@code unmarshaler.go:835-846}），
      * 而 Spring 的 {@code @RequestParam String} 会把多值<b>拼成一个字符串</b>
-     * （形如 {@code "1,2"}）⇒ 本域的 {@code ArticleQueryValues.int32} 解析失败 ⇒ <b>400</b>。
-     * <p>⇒ 声明成数组，再用 {@link ArticleQueryValues#first(String[])} 按 Go 规则取首。
+     * （形如 {@code "1,2"}）⇒ 本域的 {@code FormValues.int32} 解析失败 ⇒ <b>400</b>。
+     * <p>⇒ 声明成数组，再用 {@link FormValues#first(String[])} 按 Go 规则取首。
      *
      * <p><b>B 出处</b>：{@code …/controller/ArticleController.java:201-216}。
      */
@@ -220,10 +220,10 @@ public class ArticleController {
             @RequestParam(name = "sort_by", required = false) String[] sortBy,
             @RequestParam(name = "desc", required = false) String[] desc) {
         return apiService.listArticles(ListArticlesReq.of(
-                ArticleQueryValues.first(manualTypeTag), ArticleQueryValues.first(secondaryTag),
-                ArticleQueryValues.first(relatedGameId), ArticleQueryValues.first(authorId),
-                ArticleQueryValues.first(page), ArticleQueryValues.first(pageSize),
-                ArticleQueryValues.first(sortBy), ArticleQueryValues.first(desc)));
+                FormValues.first(manualTypeTag), FormValues.first(secondaryTag),
+                FormValues.first(relatedGameId), FormValues.first(authorId),
+                FormValues.first(page), FormValues.first(pageSize),
+                FormValues.first(sortBy), FormValues.first(desc)));
     }
 
     // ============== 第三段：公开 multipart ==============

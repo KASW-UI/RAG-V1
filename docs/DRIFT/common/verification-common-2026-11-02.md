@@ -632,6 +632,68 @@ S3b（PG 停）= `200 + 信封 1015` @ 2.05s · S4（持锁）= `200 + 信封 10
 
 ---
 
+### ✅ DRIFT-COMMON-V19｜article / message 两域的三份**域内副本**（共享层缺对应物 ⇒ 域内各留一份）—— **已收口（2026-11-03）**
+
+**状态**：**✅ 已收口**（2026-11-03 · `global` 收口域 · 一次提交同时改 `common/` 与两域代码 ⇒ 符合 AGENTS.md §五.3 规则 3）。
+⇒ ⇒ **副本数 4 → 0**（article 3 份 ＋ message 1 份）。
+⇒ ⇒ **不属于「行为漂移」** —— 是**「同一份实现有两处落点」的形态债**（两份实现一旦分叉就是漂移）⇒ 收口本身是**消除分叉风险**，不是修行为。
+
+**为什么记进 `common/` 台账**：这三条账的**根都在共享层**（缺对应物 / 可见性不够）⇒ 按 AGENTS.md §五.3 规则 3 属 `common/` 写权 ⇒ 由 `global` 收口域统一销账；article / message 两域的台账只登记「现象 + 证据 + 修法建议」，**销账状态由本条统一给出**。
+
+| 项 | 内容 |
+|---|---|
+| **三条账的来源** | article 域台账 `docs/DRIFT/article/vs-common.md` §2.1 的 **2.1-1 / 2.1-2 / 2.1-3** ＋ message 域台账 `docs/DRIFT/message/vs-common.md` §2.1 的 **`JsonbMapTypeHandler`** 行 ⇒ ⇒ **共 4 条**（D-09 / D-10 / D-11 ＋ message 同型账） |
+
+#### D-09｜`common/web/StringFields` 是**包私有** ⇒ 域内调不到 ⇒ article 抄了一份
+
+| 项 | 内容 |
+|---|---|
+| **现象（实测）** | `javap -p -cp common/target/classes com.rag.common.web.StringFields` ⇒ `final class com.rag.common.web.StringFields`（**无 `public`**）· `static java.lang.String parse(java.lang.String, java.lang.Object)`（**包私有静态**）⇒ ⇒ **域内任何包都调不到**<br>⇒ 且实测 `grep -rn "StringFields" --include=*.java`（收口前）**只命中共享层那一个文件自身** ⇒ ⇒ **共享层那份全仓零消费**，而 article 域被迫留了 `web/ArticleStringFields.java`（**逐行副本**）⇒ ⇒ **同一份实现两处落点** |
+| **B 侧基准（逐字读过）** | RAG `service/article/article-api/src/main/java/com/rag/article/article/api/dto/GoStyleStringFields.java:50-94` —— 类声明 `final class GoStyleStringFields`（**B 侧也是包私有**）+ `static String parse(...)` + `private static String goTypeName(...)` |
+| **修法（已实施）** | ① 共享层 `common/web/StringFields.java`：`final class` → **`public final class`**、`static String parse` → **`public static String parse`**（**方法体一字未改** ⇒ 错误文案 `type mismatch for field "title", expect "string", actual "number"` 逐字节不变）；② **删** `service/article/.../web/ArticleStringFields.java`；③ article 域 **2 个** DTO（`CreateArticleReq` / `UpdateArticleReq`）改 import `com.rag.common.web.StringFields` |
+| **验收判据** | ① **归一化 diff**：共享层那份 vs article 副本 vs B 侧原类 —— **代码体逐行相同**（唯一差异 = 可见性 ＋ 异常类名 ＋ `Locale` 的 import 写法）；② 编译：`mvn -o -pl common,service/article -am -DskipTests compile` ⇒ **EXIT=0**；③ article 域 **157 例**真触发测试（含真 Tomcat 的 400 文案断言）⇒ 见下「读数」 |
+
+#### D-10｜`common/web/GetFormValuesFilter` 只有**上限闸门**、无取值真值表 ⇒ article 抄了 5 条规则
+
+| 项 | 内容 |
+|---|---|
+| **现象（实测）** | 共享层 `GetFormValuesFilter` 的公开面只有 `goParseViolation(String)` ＋ `writeGoStyleBadRequest(resp,msg)` ⇒ **没有任何取值方法** ⇒ ⇒ B 侧 `raw`/`first`/`bool`/`int32`/`text` 五条真值表**无处安放** ⇒ ⇒ article 域被迫留 `web/ArticleQueryValues.java` |
+| **B 侧基准（逐字读过）** | RAG `service/article/article-api/src/main/java/com/rag/article/article/api/form/GoFormValues.java`（**204 行** · 类声明 `:72` · `raw` `:83-88` · `first` `:133-144` · `bool` `:154-168` · `int32` `:177-193` · `text` `:201-204`）<br>⚠️ **不是** RAG `service/common/src/main/java/com/rag/common/http/GoStyleFormValues.java`（**750 行**）—— 那是**闸门/判据**，与取值真值表**不是同一个类** ⇒ ⇒ 见下「🔴 连带修掉的映射表缺陷」 |
+| **修法（已实施）** | ① 共享层**新增** `common/web/FormValues.java`（**照抄 B 侧 204 行原类**；**类名去 `Go` 前缀** —— C 侧既有惯例 `GoStyleBadRequestException` → `BadRequestException`；**异常类型换共享层 `BadRequestException`** = B 侧 `GoStyleBadRequestException` 的 C 侧落点）；② **删** `service/article/.../web/ArticleQueryValues.java`；③ article 域 **6 个**文件改引用（`controller/ArticleController` · `dto/article/ListArticlesReq` · `dto/article/GetArticleReq` · `service/ArticleApiService` ＋ 2 处 javadoc） |
+| **验收判据** | ① **归一化 diff**：共享层 `FormValues` vs B 侧 `GoFormValues` ⇒ **方法体 32 行逐行相同**，**唯一差异 = 2 处异常类名**（`GoStyleBadRequestException` → `BadRequestException`）⇒ ⇒ **两条错误文案逐字未变**（`type mismatch for field "x"` / `strconv.ParseInt: parsing "…": invalid syntax (field "…")`）；② 编译 EXIT=0；③ article 域真 Tomcat 测试逐字节断言 400 body |
+
+#### D-11｜共享层缺「jsonb ↔ 结构化值」这一格 ⇒ article 与 message 各留一份 jsonb handler
+
+| 项 | 内容 |
+|---|---|
+| **现象（实测）** | 共享层既有两份 JSON handler **都不兼容**：① `common/persistence/JsonbTypeHandler` = `extends BaseTypeHandler<String>`（**jsonb ↔ 文本**）⇒ 顶不了 article 域要的 `List<String>`（`secondary_tags`）**与** `Map<String,String>`（`ext_info`）；② `common/persistence/JsonTextTypeHandler` = **text ↔ Map** ⇒ **列绑定不对**（`ps.setString` ⇒ pgjdbc 按 VARCHAR 发送 ⇒ PG 拒收 jsonb 列）<br>⇒ ⇒ article 与 message **各留一份域内副本** ⇒ ⇒ **两份副本的 null 语义还不一样**（见下「🔴 为什么不能合并」） |
+| **B 侧基准（逐字读过）** | ① RAG `service/article/article-rpc/src/main/java/com/rag/article/article/rpc/mapper/JsonbTypeHandler.java`（**195 行** · 工具类形态：`final class` + `PG_JSONB` + `MAPPER` + `toJsonb` + 内嵌 `StringListTypeHandler` / `StringMapTypeHandler` + `writeJson` / `readList` / `readMap`）；② RAG `service/message/message-rpc/src/main/java/com/rag/message/message/rpc/mapper/JsonbMapTypeHandler.java`（**118 行** · 单个 handler + `setParameter` 覆写 + 自带 `MAPPER` / `TypeReference<LinkedHashMap<String,String>>`） |
+| **修法（已实施）** | ① 共享层**新增** `common/persistence/JsonbValueTypeHandler.java`（照抄 B 侧 article 那份 ⇒ **类名改**：`JsonbTypeHandler` 已被共享层的「jsonb ↔ 文本」版占用 ⇒ 撞车 ⇒ 改名 **`JsonbValueTypeHandler`**（**Value = jsonb 列的结构化值**））；② 共享层**新增** `common/persistence/JsonbMapTypeHandler.java`（照抄 B 侧 message 那份 ⇒ **类名保持不变** ⇒ message 域只需改 import）；③ **删** article 的 `mapper/JsonbTypeHandler.java` ＋ message 的 `mapper/JsonbMapTypeHandler.java`；④ 两域 **14 处**引用改指（article **10 处** · message **4 处**，含 `insertBatch` 里 `#{item.extra,typeHandler=…}` 的**全限定名**） |
+| **⚠️ 三处带 `"article"` 前缀的异常文案逐字保留** | B 侧原文就是 `"article jsonb column value is not serializable"` / `"article jsonb array column is not a JSON string array: "` / `"article jsonb object column is not a JSON string map: "` ⇒ ⇒ **L1 文案以 B 侧为准（D16）** ⇒ **不因类上收到共享层而改写**（哪怕类名已不带 article） |
+| **🔴 为什么两个 Map 版不能合并** | 两者面向**同一对 Java 类型**（`Map<String,String>`）但**行为不同**：<br>· **写 null**：article 版**不覆写 `setParameter`** ⇒ 走 MyBatis 默认路径；message 版覆写 ⇒ `ps.setNull(i, Types.OTHER)`<br>· **写非 null**：article 版 `ps.setObject(i, PGobject(jsonb))`；message 版 `ps.setObject(i, jsonString, Types.OTHER)`<br>· **读空白串**：article 版返回 `null`；message 版 Jackson 抛 ⇒ `SQLException`<br>⇒ ⇒ **合并 = 凭空制造数据层漂移** ⇒ ⇒ **各自照抄 B 侧对应文件，不合并** |
+| **验收判据** | ① **归一化 diff**：article 版 **54 行**代码体**逐行完全相同**；message 版 **34 行**代码体**逐行完全相同**（两份均零差异）；② 编译 EXIT=0；③ article / message 域的**真 PG** 测试（`ArticleJsonbResultMapRealPgTest` / `MessageDomainServiceRealPgTest`）⇒ 读回列内容逐条比对 |
+
+#### 🔴 连带修掉的**映射表缺陷**（本条账的副产品）
+
+| 项 | 内容 |
+|---|---|
+| **缺陷** | `docs/Mapping_Table/article/article.md:69` 曾把 B 侧**两个不同的类** —— `article-api/…/form/GoFormValues.java`（**取值真值表**）与 `service/common/…/http/GoStyleFormValues.java`（**闸门/判据**，750 行）—— **并成一条映射行** ⇒ ⇒ **那条映射是错的**（把「取值」和「限长」当成同一个职责） |
+| **修法** | **拆成两条**：`article/api/form/`（`GoFormValues` · 取值真值表）→ 共享层 `common/web/FormValues.java`；`common/http/GoStyleFormValues`（上限闸门）→ 共享层 `common/web/GetFormValuesFilter.java` ⇒ ⇒ 并在两行都写明「**两者不是同一个类**」 |
+| **另一条错映射** | `article.md` §4 能力矩阵原写「`article-rpc/…/mapper/JsonbTypeHandler.java` → `common/persistence/JsonbTypeHandler.java`（共享层）」⇒ ⇒ **错**（那份是 jsonb ↔ **文本**，与 B 侧本类**类型不兼容**）⇒ 已订正为 `JsonbValueTypeHandler.java` |
+
+#### ⚠️ 顺带记一条**守门口径**的坑（**子串假绿**）
+
+`tools/check-mapping-coverage.py` 的 C 列覆盖判据是**子串计数**（`low.count(name.lower()) + low.count(stem.lower())`）⇒ ⇒ 共享层新类 `FormValues.java` 的 stem = `formvalues` ⇒ ⇒ **被已存在的 `GetFormValuesFilter` 里的子串 `FormValues` 顺带命中** ⇒ ⇒ **守门会报「已覆盖」而实际那一行根本没写** ⇒ ⇒ 本次**仍显式补了映射行** ⇒ ⇒ 判据本身在这类「短名 + 长名互为子串」的情形下**偏松**，登记在此（**不改判据** —— 改判据会影响全部 10 个域的读数口径 ⇒ 属另案）。
+
+#### ✅ 读数（2026-11-03）
+
+| 项 | 读数 |
+|---|---|
+| **编译** | `mvn -o -pl common,service/article,service/message -am -DskipTests compile` ⇒ **EXIT=0**；`… test-compile` ⇒ **EXIT=0** |
+| **映射覆盖守门** | `python3 tools/check-mapping-coverage.py` ⇒ **EXIT=0** · C 列 **641/641 = 100%** · B 列 **752/752 = 100%** · B 列全局未覆盖 **0** · 「B 列双向对账」精确 665 · 通配 3 · 目录 66 · 白名单命中 **0** 条 |
+| **C 列文件数变化** | `common/` **110 → 112**（+`FormValues` +`JsonbValueTypeHandler` +`JsonbMapTypeHandler`）· `article/` **63 → 60**（−3 份域内副本）· `message/` **53 → 52**（−1 份域内副本）⇒ ⇒ **全仓 C 列 638 → 641**（净 +3） |
+| **证据强度** | **E-2（源码级对照）** 为主 —— 「归一化 diff 逐行相同」是**静态**证据；⚠️ **不是 E-4 双侧活体对拍**（本条**未**起 B 侧进程对拍 ⇒ ⇒ 行为等价性由两侧**各自已有**的测试证据支撑，**不新增**对拍证据）⇒ ⇒ 依 E-2 读作「**在该静态层一致**」 |
+
 ## 11.6 完成度统计
 
 > **口径**：按**职责**统计，**不按文件数或行数**（§11.6 明令）。

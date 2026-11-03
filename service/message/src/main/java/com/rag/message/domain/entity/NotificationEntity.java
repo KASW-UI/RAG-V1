@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.rag.common.persistence.JsonbMapTypeHandler;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -24,8 +25,10 @@ import java.util.Map;
  *       {@code com.rag.message.domain.entity}，D7 包压平）＋ <b>Lombok 化</b>
  *       （{@code @Getter} ＋ {@code @Setter} 替掉 B 侧 {@code :115-138} 的 24 行手写 accessor，
  *       「不用 Lombok 时的完整代码」见下方展开块）＋
- *       {@code @TableField(typeHandler = …)} 的<b>被引用类</b>换成本域副本
- *       {@code com.rag.message.mapper.JsonbMapTypeHandler}（包名随 D7 压平）。</li>
+ *       {@code @TableField(typeHandler = …)} 的<b>被引用类</b>指向共享层
+ *       {@code com.rag.common.persistence.JsonbMapTypeHandler}
+ *       （<b>D-11 已收口 · 2026-11-03</b>：原先是本域副本
+ *       {@code com.rag.message.mapper.JsonbMapTypeHandler}，类名不变、只换落点）。</li>
  *   <li><b>语义还一样吗</b>：一样 —— 字段名 / 类型 / 初始值 / MP 注解<b>逐条一致</b>，
  *       含 {@code autoResultMap = true}、{@code @TableField("is_read")}、
  *       {@code extra} 的 {@code new HashMap<>()} 默认值（不为 null）。
@@ -162,11 +165,11 @@ public class NotificationEntity {
 
     /**
      * 对应 Go {@code Extra JSONMap gorm:"column:extra;type:jsonb"}。
-     * JSONB 类型：用 {@link com.rag.message.mapper.JsonbMapTypeHandler} 绑定
+     * JSONB 类型：用 {@link JsonbMapTypeHandler} 绑定
      * （**不是** MP 自带的 JacksonTypeHandler —— 它用 setString 绑定会被 jsonb 列拒绝，见该类注释）；
      * 入参默认空 map（不为 null），避免 wire 序列化丢字段。
      */
-    @TableField(typeHandler = com.rag.message.mapper.JsonbMapTypeHandler.class)
+    @TableField(typeHandler = JsonbMapTypeHandler.class)
     private Map<String, String> extra = new HashMap<>();
 
     /** 对应 Go {@code CreatedAt time.Time gorm:"column:created_at;autoCreateTime"}。 */

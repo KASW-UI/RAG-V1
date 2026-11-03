@@ -110,7 +110,6 @@
 │   │   │               │   ├── ConversationMapper.java    # {@code message_conversation} 表 Mapper 接口（MyBatis-Plus）。
 │   │   │               │   ├── ConversationMessageMapper.java    # {@code message_conversation_message} 表 Mapper 接口（MyBatis-Plus）。
 │   │   │               │   ├── GoStylePagination.java    # 🔴 分页子句的 Go 复刻 —— 对应 GORM 的
-│   │   │               │   ├── JsonbMapTypeHandler.java    # {@code jsonb} 列 ↔ {@code Map} 的 TypeHandler（域内副本）。
 │   │   │               │   └── NotificationMapper.java    # {@code message_notification} 表 Mapper 接口（MyBatis-Plus）。
 │   │   │               ├── metrics/
 │   │   │               │   ├── MessageApiMetrics.java    # message 域 HTTP 层指标 —— 承载 3 个 {@code message_api_*} 指标。

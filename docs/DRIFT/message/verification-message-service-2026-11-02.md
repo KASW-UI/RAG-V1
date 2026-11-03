@@ -406,13 +406,20 @@
 - **验证**：`check-mapping-coverage.py` ⇒ **C 53/53 · B 71/71 · EXIT=0**；
   `_INDEX.md` 用 `sync-mapping-index.py --apply` **重算**（机器生成物按纪律不手改）⇒ diff 精确到 **3 行**。
 
-### 5-⑧ 🟡 P2 · `JsonbMapTypeHandler` 在共享层**无对应物** ⇒ 域内副本
+### 5-⑧ ✅ 已收口（2026-11-03） · `JsonbMapTypeHandler` 在共享层**无对应物** ⇒ 域内副本
 
-- **位置**：`service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java`
-- **现象**：共享层 `common/persistence/JsonbTypeHandler` 是 `BaseTypeHandler<String>`（**jsonb ↔ String**），
+- **原位置（该文件已被删除 · 2026-11-03 · 由 `global` 收口域执行 **D-11** 收口）**：`service/message/src/main/java/com/rag/message/mapper/JsonbMapTypeHandler.java`
+- **现象（当时）**：共享层 `common/persistence/JsonbTypeHandler` 是 `BaseTypeHandler<String>`（**jsonb ↔ String**），
   `JsonTextTypeHandler` 是 **text ↔ Map** ⇒ ⇒ **两者都无法顶替 jsonb ↔ Map**。
-- **修法**：域内照抄 B 侧副本（`common/` 非本 lane 写权）⇒ 登记为**待收口**（§六·6-5）。
-- **验证**：真 PG 的 jsonb 往返 + **PG 键序规范化**用例（`MessageDomainServiceRealPgTest`）。
+- **修法（已实施 · 2026-11-03 · `global` 收口域 · `DRIFT-COMMON-V19`）**：共享层**新增**
+  `common/src/main/java/com/rag/common/persistence/JsonbMapTypeHandler.java`
+  （**照抄 B 侧 `message-rpc/…/mapper/JsonbMapTypeHandler.java` 118 行原类** ⇒ 代码体 **34 行逐行完全相同**；
+  **类名保持不变** ⇒ 本域只需改 import）＋ **域内副本已删除** ⇒ **副本数 1 → 0** ⇒ 本域主代码 **53 → 52**。
+- ⚠️ **不与共享层 `JsonbValueTypeHandler` 的 Map 版合并** —— 写 null 路径（`setNull(Types.OTHER)` vs MyBatis 默认）/
+  非 null 绑定（`Types.OTHER` vs `PGobject(jsonb)`）/ 读空白串（抛 `SQLException` vs 返回 `null`）三处**行为不同**
+  ⇒ ⇒ **合并 = 凭空制造数据层漂移**。
+- **验证**：真 PG 的 jsonb 往返 + **PG 键序规范化**用例（`MessageDomainServiceRealPgTest`）
+  ＋ **归一化 diff（代码体逐行完全相同）** ＋ 编译 EXIT=0。
 
 ### 5-⑨ 🟡 P2 · 入口类的 `@ConfigurationPropertiesScan` 缺失 ⇒ **两把密钥的守卫与 `message.*` 全失效**
 

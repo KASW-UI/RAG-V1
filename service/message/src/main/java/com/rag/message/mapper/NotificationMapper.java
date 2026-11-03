@@ -23,7 +23,9 @@ import java.util.List;
  *       {@code com.rag.message.mapper}，D7 包压平）＋ 实体 import 换成
  *       {@code com.rag.message.domain.entity.NotificationEntity} ＋
  *       {@code insertBatch} 里的 typeHandler 全限定名换成
- *       {@code com.rag.message.mapper.JsonbMapTypeHandler}（本域副本，见该类注释）。</li>
+ *       {@code com.rag.common.persistence.JsonbMapTypeHandler}
+ *       （<b>D-11 已收口 · 2026-11-03</b>：原先是本域副本
+ *       {@code com.rag.message.mapper.JsonbMapTypeHandler}，类名不变、只换落点）。</li>
  *   <li><b>语义还一样吗</b>：一样 —— <b>每一条 SQL、每一个参数绑定名、每一个 WHERE 条件、
  *       每一个 ORDER BY 键、每一个计数口径都逐字照抄</b>。
  *       ⚠️ 特别地：{@code #{item.read}}（不是 {@code #{item.isRead}}）保持原样
@@ -233,7 +235,7 @@ public interface NotificationMapper extends BaseMapper<NotificationEntity> {
             // ⚠️ 不能用 MP 的 JacksonTypeHandler：它 setString(...) ⇒ pgjdbc 按 VARCHAR 发送
             //    ⇒ Postgres 拒收（column extra is of type jsonb but expression is of type
             //    character varying）。见 JsonbMapTypeHandler 类注释（DRIFT-MSG-V-013）。
-            "   #{item.extra,typeHandler=com.rag.message.mapper.JsonbMapTypeHandler},",
+            "   #{item.extra,typeHandler=com.rag.common.persistence.JsonbMapTypeHandler},",
             "   #{item.createdAt}, #{item.updatedAt})",
             "</foreach>",
             "</script>"

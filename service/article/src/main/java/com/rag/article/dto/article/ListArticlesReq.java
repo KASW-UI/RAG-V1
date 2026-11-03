@@ -1,6 +1,6 @@
 package com.rag.article.dto.article;
 
-import com.rag.article.web.ArticleQueryValues;
+import com.rag.common.web.FormValues;
 
 /**
  * <p><b>职责</b>：文章列表的入参 —— <b>8 个 query 参数</b>（4 个筛选 + 4 个分页/排序）。
@@ -27,11 +27,12 @@ import com.rag.article.web.ArticleQueryValues;
  *   <li><b>B 出处</b>：见上方文件路径 + 行号。</li>
  * </ol>
  *
- * <h2>⚠️ 依赖 {@code com.rag.article.web.ArticleQueryValues}（域内副本 ⇒ <b>待收口</b>）</h2>
- * <p>共享层 {@code common/web/GetFormValuesFilter} 只有<b>上限闸门</b>（{@code goParseViolation} /
- * {@code writeGoStyleBadRequest}），<b>没有</b> {@code first} / {@code bool} / {@code int32} 这套
- * <b>取值真值表</b> ⇒ 本域自己落了一份（对应 B 侧 {@code article-api/…/form/GoFormValues.java}）⇒
- * <b>待收口</b>（global lane）。
+ * <h2>✅ 依赖 {@code com.rag.common.web.FormValues}（共享层 · D-10 已收口 2026-11-03）</h2>
+ * <p>取值真值表（{@code raw} / {@code first} / {@code bool} / {@code int32} / {@code text}）原先只存在于
+ * article 域内副本 {@code com.rag.article.web.ArticleQueryValues}（对应 B 侧
+ * {@code article-api/…/form/GoFormValues.java}）⇒ 现已上收到共享层 {@code common/web/FormValues}
+ * ＋ <b>域内副本已删</b> ⇒ 本域只剩<b>一份</b>实现 ⇒ 不存在分叉风险。
+ * <p>⚠️ 共享层的 {@code GetFormValuesFilter} 是<b>上限闸门</b>，<b>不</b>提供取值方法 ⇒ 两者分工不同。
  *
  * <h2>⚠️ 空值 ≠ 缺席：{@code ?page=} 在 Go 里走「缺席」分支</h2>
  * <p>因为 Go 的 {@code GetFormValues}（{@code httpx/util.go:44-45}）把空值整个丢掉。
@@ -77,7 +78,7 @@ public record ListArticlesReq(
      * {@code ListArticlesReq.java:77-93} 的逐条照抄。
      *
      * <p>⚠️ 全部形参都可能是 {@code null}（<b>缺席</b>）或 {@code ""}（<b>空值</b>），
-     * 两者在 Go 侧<b>等价</b>（空值被整个丢掉）⇒ 由 {@link ArticleQueryValues#raw} 统一处理。
+     * 两者在 Go 侧<b>等价</b>（空值被整个丢掉）⇒ 由 {@link FormValues#raw} 统一处理。
      *
      * <p>⚠️ <b>「默认值只在 key 缺席时填」</b>：key 存在（哪怕值是任意串）就按值解析，
      * 解析失败（如 {@code page=abc}）是 <b>400</b> 而<b>不是</b>回落默认值
@@ -102,13 +103,13 @@ public record ListArticlesReq(
                                      String rawSortBy,
                                      String rawDesc) {
         return new ListArticlesReq(
-                ArticleQueryValues.text(rawManualTypeTag, ""),
-                ArticleQueryValues.text(rawSecondaryTag, ""),
-                ArticleQueryValues.text(rawRelatedGameId, ""),
-                ArticleQueryValues.text(rawAuthorId, ""),
-                ArticleQueryValues.int32(rawPage, "page", DEFAULT_PAGE),
-                ArticleQueryValues.int32(rawPageSize, "page_size", DEFAULT_PAGE_SIZE),
-                ArticleQueryValues.text(rawSortBy, DEFAULT_SORT_BY),
-                ArticleQueryValues.bool(rawDesc, "desc", DEFAULT_DESC));
+                FormValues.text(rawManualTypeTag, ""),
+                FormValues.text(rawSecondaryTag, ""),
+                FormValues.text(rawRelatedGameId, ""),
+                FormValues.text(rawAuthorId, ""),
+                FormValues.int32(rawPage, "page", DEFAULT_PAGE),
+                FormValues.int32(rawPageSize, "page_size", DEFAULT_PAGE_SIZE),
+                FormValues.text(rawSortBy, DEFAULT_SORT_BY),
+                FormValues.bool(rawDesc, "desc", DEFAULT_DESC));
     }
 }

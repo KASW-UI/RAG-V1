@@ -112,8 +112,7 @@
 │   │   │               │   ├── ArticlePublicMapper.java    # 职责：公开读路径的数据访问 —— 对应 B 侧
 │   │   │               │   ├── ArticlePublicationMapper.java    # 职责：source 域指针表的数据访问 —— 对应 B 侧
 │   │   │               │   ├── ArticleRevisionMapper.java    # 职责：不可变 revision 表的数据访问 —— 对应 B 侧
-│   │   │               │   ├── ArticleSyncOutboxMapper.java    # 职责：文章同步事件发件箱的数据访问 —— 对应 B 侧
-│   │   │               │   └── JsonbTypeHandler.java    # 职责：article 域 jsonb 列的 TypeHandler —— {@code secondary_tags}（数组）
+│   │   │               │   └── ArticleSyncOutboxMapper.java    # 职责：文章同步事件发件箱的数据访问 —— 对应 B 侧
 │   │   │               ├── messaging/
 │   │   │               │   ├── ArticleReviewConsumer.java    # 职责：审核消费者 —— 消费「待审核文章」消息，判四元组、读正文、跑内容审核、
 │   │   │               │   ├── ArticleSyncOutboxRelay.java    # 职责：文章同步发件箱中继 —— 每秒扫一次 {@code article_sync_outbox}，
@@ -124,8 +123,6 @@
 │   │   │               │   ├── ArticleApiService.java    # article 域的 API 层业务入口 —— 合并 B 侧 7 个 {@code *Service}。
 │   │   │               │   └── ArticleApiSupport.java    # API 层的公共支撑 —— 身份解析、作者昵称补全、proto → DTO 投影、文案查表。
 │   │   │               ├── web/
-│   │   │               │   ├── ArticleQueryValues.java    # 职责：query string 的输入解释规则 —— Go {@code httpx.ParseForm} 的 Java 等价物。
-│   │   │               │   └── ArticleStringFields.java    # Go 风格的 JSON 字符串字段解析 —— 对应 B 侧
 │   │   │               ├── wiring/
 │   │   │               │   ├── ArticleSchemaGate.java    # 职责：启动期校验 article 域的五张表与不可变触发器确实存在 ——
 │   │   │               │   ├── MinioBucketBootstrap.java    # 职责：启动期幂等创建对象存储桶并设置公开读策略 —— 失败不阻止启动。

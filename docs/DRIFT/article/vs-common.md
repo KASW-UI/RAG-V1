@@ -58,29 +58,31 @@
 > `dto/article/CreateArticleReq` · `interceptor/ArticleJwtAuthFilter` · `interceptor/JwtAuthInterceptor` ·
 > `messaging/ArticleReviewConsumer` · `messaging/ArticleSyncResultConsumer` ·
 > `service/ArticleApiService` · `service/ArticleApiSupport` ·
-> `web/ArticleQueryValues` · `web/ArticleStringFields` · `wiring/SnowflakeBootstrap`。
+> `wiring/SnowflakeBootstrap`。
+> ✅ **2026-11-03**：`web/ArticleQueryValues` · `web/ArticleStringFields` 两份副本已删（D-09 / D-10）⇒ 本清单**减少 2 个文件**。
 
 > ⚠️ **共享层 `common/web/` 下还有 3 个类本域用不到**（`GetFormValuesFilter` · `JsonBodyLimitFilter` · `MapStringValueDeserializer`）⇒ **不是「本域漏接」**，是本域的落点不同（见 §2.1）。
 
 ---
 
-## 2. 本域**向共享层上收**的清单（**3 项 🔴 待收口**）
+## 2. 本域**向共享层上收**的清单（**3 项 · ✅ 已于 2026-11-03 全部收口**）
 
 > ⚠️ **这 3 项不是「本域偷懒留副本」** —— 是**共享层缺一个对应物**（或对应物不可见）⇒ 属**跨 lane 账单**，本域只登记。
+> ✅ **销账状态（2026-11-03 · `global` 收口域 · `DRIFT-COMMON-V19`）**：3 项**全部已收口** —— D-09 / D-10 / D-11 ⇒ **本域域内副本数 3 → 0** ⇒ 下面 §2.1 三行的「待收口」已作废（保留作历史）。
 
 | 上收项 | B 侧原位（域内私有副本） | C 侧落点 | 本域消费方 | 结论 |
 |---|---|---|---|---|
-| JSON 字段类型判定（`type mismatch for field "x"`） | `article-api/.../dto/GoStyleStringFields.java` | `service/article/src/main/java/com/rag/article/web/ArticleStringFields.java` | `dto/article/*`（`@JsonCreator` 次构造器）· `web/ArticleStringFields` | 🟠 **域内副本 · 待收口** |
-| query/form 取值真值表（`raw`/`first`/`bool`/`int32`/`text`） | `article-api/.../form/GoFormValues.java` | `service/article/src/main/java/com/rag/article/web/ArticleQueryValues.java` | `controller/ArticleController` · `dto/article/ListArticlesReq` | 🟠 **域内副本 · 待收口** |
-| jsonb TypeHandler（`List<String>` + `Map<String,String>`） | `article-rpc/.../mapper/JsonbTypeHandler.java` | `service/article/src/main/java/com/rag/article/mapper/JsonbTypeHandler.java` | `domain/entity/ArticleEntity`（`secondary_tags` / `ext_info`） | 🟠 **域内副本 · 待收口** |
+| JSON 字段类型判定（`type mismatch for field "x"`） | `article-api/.../dto/GoStyleStringFields.java` | ✅ **共享层** `common/src/main/java/com/rag/common/web/StringFields.java` | `dto/article/*`（`@JsonCreator` 次构造器） | ✅ **D-09 已收口（2026-11-03）** —— 域内副本 `web/ArticleStringFields.java` **已删** |
+| query/form 取值真值表（`raw`/`first`/`bool`/`int32`/`text`） | `article-api/.../form/GoFormValues.java` | ✅ **共享层** `common/src/main/java/com/rag/common/web/FormValues.java` | `controller/ArticleController` · `dto/article/ListArticlesReq` · `dto/article/GetArticleReq` · `service/ArticleApiService` | ✅ **D-10 已收口（2026-11-03）** —— 域内副本 `web/ArticleQueryValues.java` **已删** |
+| jsonb TypeHandler（`List<String>` + `Map<String,String>`） | `article-rpc/.../mapper/JsonbTypeHandler.java` | ✅ **共享层** `common/src/main/java/com/rag/common/persistence/JsonbValueTypeHandler.java` | `domain/entity/ArticleEntity`（`secondary_tags` / `ext_info`）· `domain/entity/ArticleRevisionEntity` · `mapper/ArticleMapper` · `mapper/ArticleRevisionMapper` · 3 个 domain service | ✅ **D-11 已收口（2026-11-03）** —— 域内副本 `mapper/JsonbTypeHandler.java` **已删** |
 
 ### 2.1 🔴 **待收口**（**属 `common/` 写权 · 不在本 lane**）
 
 | # | 项 | 现象（实测证据） | 为什么现在不能收 | 收口建议 | 严重度 |
 |---|---|---|---|---|---|
-| **2.1-1** | **`common/web/StringFields` 是**包私有** ⇒ 域内调不到** | `javap -p -cp common/target/classes com.rag.common.web.StringFields` ⇒ `final class com.rag.common.web.StringFields`（**无 `public`**）· `static java.lang.String parse(java.lang.String, java.lang.Object)`（**包私有静态**）⇒ ⇒ **域内任何包都调不到** | 共享层该类是**包私有** ⇒ 提升可见性属于 `common/` 写权 ⇒ 本 lane 不可写 | 把 `common/web/StringFields` 提升为 `public final class` + `public static String parse(...)` ⇒ 本域删 `web/ArticleStringFields` 改 import；⚠️ **两份不得分叉**（本域副本是 B 侧 `GoStyleStringFields.java` 的逐行副本 ⇒ 上收时以 B 侧为基准校对） | 🟡 P2 |
-| **2.1-2** | **`common/web/GetFormValuesFilter` 只有「上限闸门」、无取值真值表** | `javap`/源码：公开面只有 `goParseViolation(String)` + `writeGoStyleBadRequest(resp,msg)` ⇒ **没有任何取值方法** ⇒ B 侧 `GoFormValues` 的 `raw`/`first`/`bool`/`int32`/`text` 五条真值表**无处安放** | 共享层**缺对应物**（不是可见性问题，是**能力缺口**）⇒ 补能力属于 `common/` 写权 | 在 `common/web/` 增 `FormValues`（或把 `GetFormValuesFilter` 泛化出取值方法）⇒ 本域删 `web/ArticleQueryValues` 改 import；⚠️ **两份不得分叉** | 🟡 P2 |
-| **2.1-3** | **`common/persistence/JsonbTypeHandler` 的**类型不兼容** ⇒ 顶不了本域的 jsonb | 共享层那版 = `public class JsonbTypeHandler extends BaseTypeHandler<String>`（**jsonb ↔ 文本**）⇒ 而本域要 `List<String>`（`secondary_tags`）**与** `Map<String,String>`（`ext_info`）**两种**形态 ⇒ ⇒ **类型不兼容** ⇒ 共享层另有一份 `JsonTextTypeHandler` = **text ↔ Map**（也不是 jsonb） | 共享层**无对应物** ⇒ 同 2.1-2 | 新建 `common/persistence/JsonbListTypeHandler` + `JsonbMapTypeHandler`（或把 `JsonbTypeHandler` 泛化成 `jsonb ↔ Object`）⇒ 本域删 `mapper/JsonbTypeHandler` 改 import；⚠️ 本域副本的类结构（`final class` + 两个嵌套 handler + `readList`/`readMap`）与 **B 侧逐条同构** ⇒ 上收时以 B 侧为基准 | 🟡 P2 |
+| **2.1-1** | **`common/web/StringFields` 是**包私有** ⇒ 域内调不到** | `javap -p -cp common/target/classes com.rag.common.web.StringFields` ⇒ `final class com.rag.common.web.StringFields`（**无 `public`**）· `static java.lang.String parse(java.lang.String, java.lang.Object)`（**包私有静态**）⇒ ⇒ **域内任何包都调不到** | ~~共享层该类是**包私有** ⇒ 提升可见性属于 `common/` 写权 ⇒ 本 lane 不可写~~ ⇒ ⇒ **2026-11-03 由 `global` 收口域执行** | ✅ **已收口（2026-11-03 · D-09）** —— `common/web/StringFields` 已提升为 `public final class` + `public static String parse(...)`（**方法体一字未改** ⇒ 错误文案逐字节不变）⇒ **本域 `web/ArticleStringFields.java` 已删** ⇒ 2 个 DTO 改 import ⇒ **副本数 1 → 0** | ✅ 已闭合 |
+| **2.1-2** | **`common/web/GetFormValuesFilter` 只有「上限闸门」、无取值真值表** | `javap`/源码：公开面只有 `goParseViolation(String)` + `writeGoStyleBadRequest(resp,msg)` ⇒ **没有任何取值方法** ⇒ B 侧 `GoFormValues` 的 `raw`/`first`/`bool`/`int32`/`text` 五条真值表**无处安放** | ~~共享层**缺对应物** ⇒ 补能力属于 `common/` 写权~~ ⇒ ⇒ **2026-11-03 由 `global` 收口域执行** | ✅ **已收口（2026-11-03 · D-10）** —— 共享层**新增** `common/web/FormValues.java`（照抄 B 侧 `article-api/…/form/GoFormValues.java` **204 行**原类；**类名去 `Go` 前缀**；**异常类型换共享层 `BadRequestException`** ⇒ 两条错误文案**逐字未变**）⇒ **本域 `web/ArticleQueryValues.java` 已删** ⇒ 6 处改引用 ⇒ **副本数 1 → 0** | ✅ 已闭合 |
+| **2.1-3** | **`common/persistence/JsonbTypeHandler` 的**类型不兼容** ⇒ 顶不了本域的 jsonb | 共享层那版 = `public class JsonbTypeHandler extends BaseTypeHandler<String>`（**jsonb ↔ 文本**）⇒ 而本域要 `List<String>`（`secondary_tags`）**与** `Map<String,String>`（`ext_info`）**两种**形态 ⇒ ⇒ **类型不兼容** ⇒ 共享层另有一份 `JsonTextTypeHandler` = **text ↔ Map**（也不是 jsonb） | ~~共享层**无对应物** ⇒ 同 2.1-2~~ ⇒ ⇒ **2026-11-03 由 `global` 收口域执行** | ✅ **已收口（2026-11-03 · D-11）** —— 共享层**新增** `common/persistence/JsonbValueTypeHandler.java`（照抄 B 侧 `article-rpc/…/mapper/JsonbTypeHandler.java` **195 行**原类 ⇒ 代码体 **54 行逐行完全相同**）⚠️ **类名改**（共享层已有同名的「jsonb ↔ 文本」版 ⇒ 撞车 ⇒ 改名 `JsonbValueTypeHandler`）⚠️ **三处带 `"article"` 前缀的异常文案逐字保留**（L1 以 B 侧为准）⇒ **本域 `mapper/JsonbTypeHandler.java` 已删** ⇒ 10 处改引用 ⇒ **副本数 1 → 0** | ✅ 已闭合 |
 
 > 📌 **先例**：message 域的 `JsonbMapTypeHandler` 是**完全同型**的账单（共享层无对应物 ⇒ 域内副本 ⇒ 待收口）⇒ **两域的同一笔账** ⇒ 建议收口任务**一次处理两个域**。
 
@@ -138,7 +140,7 @@
 
 | # | 项 | 现象 | 证据 | 建议修法 | 严重度 |
 |---|---|---|---|---|---|
-| 5-1 | **3 份域内副本应收口到 `common/`**（§2.1 的 2.1-1 / 2.1-2 / 2.1-3） | ① `common/web/StringFields` 包私有 ⇒ 域内调不到 ② `GetFormValuesFilter` 无取值真值表 ③ `JsonbTypeHandler` 类型不兼容（jsonb↔String vs 本域要 List/Map） | `service/article/src/main/java/com/rag/article/{web/ArticleStringFields,web/ArticleQueryValues,mapper/JsonbTypeHandler}.java` | 见 §2.1 三行「收口建议」⇒ **建议与 message 域的 `JsonbMapTypeHandler` 同一次收口** | 🟡 P2 |
+| 5-1 | **3 份域内副本应收口到 `common/`**（§2.1 的 2.1-1 / 2.1-2 / 2.1-3） | ① `common/web/StringFields` 包私有 ⇒ 域内调不到 ② `GetFormValuesFilter` 无取值真值表 ③ `JsonbTypeHandler` 类型不兼容（jsonb↔String vs 本域要 List/Map） | `service/article/src/main/java/com/rag/article/{web/ArticleStringFields,web/ArticleQueryValues,mapper/JsonbTypeHandler}.java` | ✅ **已完成（2026-11-03 · `global` 收口域 · `DRIFT-COMMON-V19`）** —— 与 message 域的 `JsonbMapTypeHandler` **同一次收口**（D-09 / D-10 / D-11）⇒ **本域 3 份副本已被删除（3 份全部删除）** ⇒ 本域主代码 **63 → 60** | ✅ 已闭合 |
 | 5-2 | **`docs/DRIFT/_INDEX.md` 未收录本域台账** | 本域台账已写好，但 `_INDEX.md` 本 lane **不碰** | 配套报告 §11.6 | 由收口执行者统一更新 | 🟢 流程 |
 | 5-3 | **`docs/Intentional_Deviations/_INDEX.md` 未收录本域偏离** | 本域已写清（见配套报告 §11.5） | 同上 | 由收口执行者统一更新 | 🟢 流程 |
 

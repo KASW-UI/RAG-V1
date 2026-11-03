@@ -31,7 +31,7 @@ package com.rag.article.dto.article;
  * <p>它有<b>副作用</b>（域服务侧据此 {@code +1} 阅读量），且 Go 的真值表是
  * {@code 1/0} 而非 Spring 默认的 {@code true/false}
  * ⇒ {@code ?incr_view=1} 在 Go 是 {@code true}，在 Spring 默认绑定是 <b>400</b>
- * ⇒ 必须走 {@code com.rag.article.web.ArticleQueryValues#bool}（域内副本 · <b>待收口</b>）。
+ * ⇒ 必须走 {@code com.rag.common.web.FormValues#bool}（共享层 · D-10 已收口 2026-11-03）。
  */
 public record GetArticleReq(
 

@@ -7,8 +7,8 @@ import com.rag.article.contract.CommunityArticleEvent;
 import com.rag.article.domain.entity.ArticleEntity;
 import com.rag.article.exception.ArticleExceptions;
 import com.rag.article.mapper.ArticleMapper;
-import com.rag.article.mapper.JsonbTypeHandler;
 import com.rag.article.metrics.ArticleRpcMetrics;
+import com.rag.common.persistence.JsonbValueTypeHandler;
 import com.rag.common.snowflake.Snowflake;
 import com.rag.proto.article.Article;
 import com.rag.proto.article.ArticleStatus;
@@ -259,7 +259,7 @@ public class ArticleDomainService {
         ArticleSyncEvent.ArticleReviewMessage msg = new ArticleSyncEvent.ArticleReviewMessage(
                 articleId, in.getAuthorId(), objectName, articleId);
         try {
-            kafkaTemplate.send(reviewTopic(), articleId, JsonbTypeHandler.writeJson(msg)).get();
+            kafkaTemplate.send(reviewTopic(), articleId, JsonbValueTypeHandler.writeJson(msg)).get();
         } catch (Exception e) {
             metrics.kafkaPushError("article_review");
             // Go create_article_logic.go:125-130：推送失败 ⇒ span.RecordError(err) + Internal（**行不回滚**）
@@ -671,7 +671,7 @@ public class ArticleDomainService {
         ArticleSyncEvent.ArticleReviewMessage msg = new ArticleSyncEvent.ArticleReviewMessage(
                 article.getId(), article.getAuthorId(), article.getContent(), reviewNonce);
         try {
-            kafkaTemplate.send(reviewTopic(), article.getId(), JsonbTypeHandler.writeJson(msg)).get();
+            kafkaTemplate.send(reviewTopic(), article.getId(), JsonbValueTypeHandler.writeJson(msg)).get();
         } catch (Exception e) {
             metrics.kafkaPushError("article_review");
             throw ArticleExceptions.internal(e.getMessage(), e);
@@ -825,7 +825,7 @@ public class ArticleDomainService {
         }
         String secondaryTagJson = (secondaryTag == null || secondaryTag.isEmpty())
                 ? null
-                : JsonbTypeHandler.writeJson(List.of(secondaryTag));
+                : JsonbValueTypeHandler.writeJson(List.of(secondaryTag));
 
         // Go list_articles_logic.go:62：span.AddEvent("start db list")
         ArticleRpcMetrics.event(span, ArticleRpcMetrics.EV_START_DB_LIST);

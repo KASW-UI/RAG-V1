@@ -332,14 +332,14 @@ class ArticleDomainServiceRealPgTest extends ArticleRealPgTestBase {
         return rawViewCountOf(articleId);
     }
 
-    /** 读回 jsonb → Map（用域内的 JsonbTypeHandler，避免另写一份解析口径）。 */
+    /** 读回 jsonb → Map（用共享层的 JsonbValueTypeHandler，避免另写一份解析口径）。 */
     static final class JsonbTypeHandlerSupport {
         private JsonbTypeHandlerSupport() {
         }
 
         static java.util.Map<String, String> readMap(String json) {
             try {
-                return com.rag.article.mapper.JsonbTypeHandler.readMap(json);
+                return com.rag.common.persistence.JsonbValueTypeHandler.readMap(json);
             } catch (Exception e) {
                 throw new IllegalStateException(e);
             }
