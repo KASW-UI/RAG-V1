@@ -95,7 +95,7 @@ LOMBOK_EXPANSION_CODE = re.compile(r"<pre>\s*\{@code", re.S)
 |---|---|---|
 | `RpcSheddingInterceptor`：「用 `{@link ServerCall#getDeadline()}` 的 `{@link Deadline#isExpired()}` 区分『客户端 deadline 过期』与『服务端自己返回 DEADLINE_EXCEEDED』」 | 判据是 `isCtxDeadlineExpired(closeCode)` —— **只看 `close` 的 status 码**；而 **`io.grpc.ServerCall` 在 grpc-api 1.63.0 里根本没有 `getDeadline()`**（`javap` 实测：只有 `request`/`sendHeaders`/`sendMessage`/`close`/`isCancelled`/`getAttributes`/`getAuthority`/`getMethodDescriptor` 等） | 注释描述的机制**不可能存在** ⇒ 读注释的人以为「客户端 deadline 与服务端超时被区分开了」，实际靠的是**另一个判据** ＋ **一个实测前提**（没有 handler 显式造 `DEADLINE_EXCEEDED`）⇒ 前提一破就分岔 |
 | `ObservabilityAutoConfiguration`：「用 Spring 的 `{@link ContentCachingResponseWrapper}` 缓存一份」 | 实现刻意**不用**它（`ObservabilityResponseWriter` 的类注释：「**不能直接用** Spring 的 `ContentCachingResponseWrapper`」—— 它的 `flushBuffer()` 会透传 ⇒ 两个写者 ⇒ 状态码被抢 + `MimeHeaders` 被写坏 ⇒ NPE） | 注释会把人引向一个**已被本仓否决**的写法 |
-| `DeadlineState`（**普通块注释里**）：「实际生效路径 = `newUnaryServerInterceptor` 的 `onHalfClose`」 | 该方法**从无实现**；C 侧 gRPC 服务端 listener **只重写了 `onCancel()`** ⇒ ⇒ `DeadlineState` 在 gRPC 路径上**零绑定点** | ⇒ **在途写不被取消 ⇒ 客户端取消了、服务端照样提交**（= **PARITY-006** 的根因） |
+| `DeadlineState`（**普通块注释里**）：「实际生效路径 = `newUnaryServerInterceptor` 的 `onHalfClose`」 | 该方法**从无实现**；C 侧 gRPC 服务端 listener **只重写了 `onCancel()`** ⇒ ⇒ `DeadlineState` 在 gRPC 路径上**零绑定点** | ⇒ **在途写不被取消 ⇒ 客户端取消了、服务端照样提交**（= **PARITY-006** 的根因）⇒ ✅ **2026-11-03 已修**（`global` 收口域 · `ObservabilityAutoConfiguration` 的 listener 补 `onHalfClose()` ⇒ 绑入向载体；见 common 台账 **DRIFT-COMMON-V17**）⇒ ⇒ **本条已从「假机制断言」升级为「假机制断言的完整生命周期样本」**：它同时是「注释宣称 A、代码做 B」的**样本**，也是「照抄 B 侧时丢了归属 ⇒ 整块行为丢失」的**样本** ⇒ ⇒ 还带出**两个测例自身的坑**（`pg_sleep` 的单位是秒；`pg_sleep` 的 `void` 列映射会让行数判据**恒 0 ⇒ 假绿**）⇒ ⇒ 详见 common 台账 **DRIFT-COMMON-V17** |
 
 ### 判据（**注释里的机制断言必须能被证伪**）
 

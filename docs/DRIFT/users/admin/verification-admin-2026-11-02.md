@@ -639,8 +639,14 @@
    B 侧 `RpcInterceptor.newUnaryServerInterceptor` 的 `onHalfClose`（`RpcInterceptor.java:516-522`）
    里的双载体绑定，在 C 侧拆包时**整块丢失**（`newUnaryServerInterceptor` 在 C 侧从无实现）
    ⇒ ⇒ 「gRPC 服务端路径有绑定」是**假断言**。
-   ⇒ ⇒ 修前的准确表述 = 「**生产路径上零绑定点**」；修后 = HTTP 路径两处（`HttpMiddleware`）。
+   ⇒ ⇒ 修前的准确表述 = 「**生产路径上零绑定点**」；修后 = HTTP 路径两处（`HttpMiddleware`）
+   ＋ **gRPC 服务端路径**（`ObservabilityAutoConfiguration.GrpcObservationInterceptor` 的 `onHalfClose` ⇒ 绑**入向** `DeadlineState`）。
    ⇒ ⇒ 详见 common 域台账 **DRIFT-COMMON-V17**（gRPC 服务端绑定点缺失 · PARITY-006 根因）。
+   ⇒ ⇒ ✅ **2026-11-03（`global` 收口域）· 已销账**：共享层**已修** —— 在 `GrpcObservationInterceptor` 的 listener 补 `onHalfClose()`
+   ⇒ ⇒ 在**真正跑 handler 的线程**上绑入向 `DeadlineState`（绝对时刻 = 调用开始 ＋ `rpc-timeout`）⇒ ⇒ 在途 SQL 会被 CancelRequest 取消 ⇒ 事务回滚
+   ⇒ ⇒ **共享层验收**：真 PG 两场景（服务端预算到点 / **客户端主动取消**）⇒ 在途写 **0 行**；变异实测 ⇒ 两条都**红在核心判据**（`0L` vs `1L`）
+   ⇒ ⇒ ⚠️ **本域的 E-4-R2 跨域复测（客户端 1s 取消写路径 ⇒ `admin_admin` 0 行）待 admin 域 lane 落地时补跑**（本 lane 只写 `common/` · §五.2/§五.3）
+   ⇒ ⇒ ⚠️ **只绑了「入向」载体** ⇒ 出向 `GoStyleRequestDeadline` **另案**（爆炸半径更大）。
    ⇒ 按 AGENTS.md §五.3「跨域 + `common/**` 的搁置漂移全归 `global` 收口域」⇒
    **本 lane 未改 `common/`** ⇒ ⇒ 收口域已在共享层修完（4 件事，见 §9.10.3 顶部的销账块）
    ⇒ ⇒ **复测一致**：S3b `200+1015` @ 2.05s · S4 `200+1015` @ 2.04s ＋ **副作用 0 行**。

@@ -1,5 +1,6 @@
 package com.rag.common.autoconfigure;
 
+import com.rag.common.observability.DeadlineState;
 import com.rag.common.observability.HttpMiddleware;
 import com.rag.common.observability.ObservabilityCustomizer;
 import com.rag.common.observability.ObservabilityLifecycle;
@@ -223,9 +224,17 @@ public class ObservabilityAutoConfiguration {
                 ServerCall<ReqT, RespT> call,
                 Metadata headers,
                 ServerCallHandler<ReqT, RespT> next) {
+            // 🔴 **入向 deadline 的绝对时刻要在「早退之前」算**（B 出处 · `RpcInterceptor.java:516-522`）：
+            // B 侧把 deadline 绑在**入口处算好的同一个绝对时刻**上 ⇒ ⇒ 排队 / 前置耗时被计入
+            // ⇒ ⇒ 预算从「调用开始」起算，**不是**从「handler 开始跑」起算。
+            // ⚠️ **必须早于 registry 早退**：绑 deadline 与「装没装 Micrometer registry」**无关**
+            // ⇒ ⇒ 否则「没装观测的进程」就又没有 deadline ⇒ ⇒ 与 B 侧不符。
+            final long startNanos = System.nanoTime();
+            final long absoluteDeadlineNanos = rpcDeadlineNanos(startNanos);
+
             ObservationRegistry registry = registryProvider.getIfAvailable();
             if (registry == null) {
-                return next.startCall(call, headers);
+                return withDeadline(next.startCall(call, headers), absoluteDeadlineNanos);
             }
             String method = call.getMethodDescriptor().getFullMethodName();
             Duration timeout = properties == null ? null : properties.getRpcTimeout();
@@ -234,7 +243,6 @@ public class ObservabilityAutoConfiguration {
                     .contextualName(method)
                     .lowCardinalityKeyValue("rpc.system", "grpc")
                     .lowCardinalityKeyValue("rpc.method", method);
-            long startNanos = System.nanoTime();
             AtomicBoolean finalized = new AtomicBoolean(false);
             AtomicReference<Status> closedStatus = new AtomicReference<>();
             observation.start();
@@ -254,8 +262,9 @@ public class ObservabilityAutoConfiguration {
 
             ServerCall.Listener<ReqT> listener = next.startCall(wrapped, headers);
             // ⚠️ 用**匿名**的 SimpleForwardingServerCallListener（它本身是 final ⇒ 不能被继承）
-            return new io.grpc.ForwardingServerCallListener
-                    .SimpleForwardingServerCallListener<ReqT>(listener) {
+            ServerCall.Listener<ReqT> observed =
+                    new io.grpc.ForwardingServerCallListener
+                            .SimpleForwardingServerCallListener<ReqT>(listener) {
                 @Override
                 public void onCancel() {
                     super.onCancel();
@@ -264,6 +273,87 @@ public class ObservabilityAutoConfiguration {
                             Duration.ofNanos(System.nanoTime() - startNanos), finalized);
                 }
             };
+            // 🔴 **绑定层在观测层的【外面】** ⇒ ⇒ 它的 scope 包住整个 handler 执行期
+            //（含观测层的收尾）⇒ ⇒ 与 B 侧 `RpcInterceptor.java:516-522` 的嵌套次序同形。
+            return withDeadline(observed, absoluteDeadlineNanos);
+        }
+
+        /**
+         * 🔴 **把入向 deadline 绑到「真正跑 handler 的线程」上**（DRIFT-COMMON-V17 · PARITY-006 根因）。
+         *
+         * <p><b>比 B 侧多做了什么</b>：B 侧 {@code RpcInterceptor.newUnaryServerInterceptor} 把
+         * 「超时调度」＋「span」＋「两个 deadline 载体」都塞在一个拦截器里；C 侧因 D11 包压平被拆成
+         * {@code ObservabilityAutoConfiguration.GrpcObservationInterceptor}（观测 ＋ 超时调度）
+         * ＋ 本方法（<b>只补「入向载体」那一个缺口</b>）。
+         *
+         * <p><b>语义还一样吗</b>：<b>一样</b>，且这是<b>向 B 靠拢</b> —— B 侧
+         * {@code RpcInterceptor.java:516-522} 在 {@code onHalfClose} 里
+         * {@code try (DeadlineState.Scope ignoredScope = DeadlineState.bindAbsoluteNanos(absoluteDeadlineNanos); …) { super.onHalfClose(); }}
+         * ⇒ 本方法<b>逐字同形</b>（同一个绝对时刻、同样包住 {@code super.onHalfClose()}）。
+         * <br>⚠️ <b>刻意只补「入向」载体 {@code DeadlineState}</b>：B 侧同时绑的<b>出向</b>载体
+         * {@code GoStyleRequestDeadline}（跨域 gRPC 调用的出向预算）<b>不在本条范围</b>
+         * ⇒ ⇒ 绑它会改变 message / user 跨域 gRPC 调用的行为 ⇒ ⇒ 爆炸半径超出「修 PARITY-006」⇒ ⇒ 另案。
+         *
+         * <p><b>B 出处</b>：RAG {@code service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java:516-522}
+         * （{@code newUnaryServerInterceptor} 的 {@code onHalfClose}；L2 业务语义层以 RAG 为基准整段抄 · D13）。
+         *
+         * <p><b>为什么绑在 {@code onHalfClose} 而不是 {@code startCall}</b>：grpc-java 的执行模型是
+         * 「{@code startCall} 返回 listener、<b>handler 真正在 {@code Listener#onHalfClose()} 里执行</b>」
+         * ⇒ ⇒ 绑在 {@code startCall} 上 ⇒ handler 线程上看<b>不到</b> ThreadLocal。
+         *
+         * <p><b>可观察后果（这才是 PARITY-006 的修复点）</b>：handler 线程上有了预算 ⇒
+         * {@code DeadlineQueryTimeoutInjector} 给每条 SQL 设 {@code setQueryTimeout}
+         * ⇒ ⇒ 预算到点 PG 收到 <b>CancelRequest</b> ⇒ SQLState {@code 57014} ⇒ <b>事务回滚</b>
+         * ⇒ ⇒ <b>客户端取消 / 服务端超时后，那条写不再落库</b>（修前 = 落库 ⇒ 副作用已发生）。
+         *
+         * <p><b>诚实边界</b>：① <b>无预算不绑</b>（{@code rpc-timeout} 未配 ⇒ 恒 {@link Long#MAX_VALUE}
+         * ⇒ 保持原样 ⇒ 与 B 侧「无预算时不绑出向载体」同款）；② 作用域随 {@code onHalfClose} 返回而结束
+         * ⇒ ⇒ <b>异步 handler</b>（{@code onHalfClose} 返回后才继续跑）<b>不在作用域内</b>
+         * ⇒ ⇒ 与 B 侧同款（本仓 10 个域的 proto 全是 unary ⇒ handler 在 {@code onHalfClose} 内同步跑完）。
+         */
+        private static <ReqT> ServerCall.Listener<ReqT> withDeadline(
+                ServerCall.Listener<ReqT> delegate, long absoluteDeadlineNanos) {
+            if (absoluteDeadlineNanos == Long.MAX_VALUE) {
+                return delegate;
+            }
+            return new io.grpc.ForwardingServerCallListener
+                    .SimpleForwardingServerCallListener<ReqT>(delegate) {
+                @Override
+                public void onHalfClose() {
+                    try (DeadlineState.Scope scope =
+                                 DeadlineState.bindAbsoluteNanos(absoluteDeadlineNanos)) {
+                        super.onHalfClose();
+                    }
+                }
+            };
+        }
+
+        /**
+         * gRPC 服务端的<b>入向预算绝对时刻</b> = 「调用开始」＋ {@code rpc-timeout}。
+         *
+         * <p>⚠️ <b>为什么用 {@code rpc-timeout} 而不是 {@code resolveInnerBudget()}</b>：
+         * 后者是 <b>HTTP 路径</b>的口径（= {@code min(http-timeout, rpc-timeout)}，因为 D2 域内直连把
+         * DB 搬进了 HTTP 边界 ⇒ 内层预算必须<b>严格早于</b> HTTP 的 3s）；而<b>本方法在 gRPC 边界上</b>
+         * ⇒ ⇒ 该边界上**没有 HTTP 预算** ⇒ ⇒ 预算就是 gRPC 自己的 {@code rpc-timeout}
+         * （B 侧 {@code zrpc.RpcServerConf.Timeout = 2s}）⇒ ⇒ 与 {@code scheduleTimeout} 的超时**同一刻**。
+         *
+         * <p>⚠️ **算法与 {@code HttpMiddleware#innerDeadlineNanos} 同款**（饱和加法 ⇒ 溢出判为「无预算」）。
+         */
+        private long rpcDeadlineNanos(long startNanos) {
+            Duration budget = properties == null ? null : properties.getRpcTimeout();
+            if (budget == null || budget.isZero() || budget.isNegative()) {
+                return Long.MAX_VALUE;
+            }
+            long nanos;
+            try {
+                nanos = budget.toNanos();
+            } catch (ArithmeticException overflow) {
+                return Long.MAX_VALUE;
+            }
+            if (nanos <= 0L || nanos > Long.MAX_VALUE - startNanos) {
+                return Long.MAX_VALUE;
+            }
+            return startNanos + nanos;
         }
 
         private void finish(Observation observation, Status status, Duration duration, AtomicBoolean finalized) {

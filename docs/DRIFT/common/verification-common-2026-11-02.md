@@ -50,6 +50,12 @@
 > ⇒ ⇒ 现状 = **✅ 已修 9 · ✅ 已裁决 1（V11）· ⚪ 已登记 5（V10/V12/V13/V16/V17/V18 中除 V11 外）· 🔴 0**。
 > ✅ 顺带**关闭 V08**：映射表 §7.4 #6 的 B 列「RAG 侧只有 6 个声明 `GrpcServerConfigurer`」**已过时**（实测：**10 个 rpc 应用全部**声明了）⇒ 且该行 C 列「全树 0 个」也已被批次 B 推翻 ⇒ ⇒ 已就地订正。
 > ✅ **V11 定性**：B 侧本来就把它放在**共享层** ⇒ **C ≡ B ⇒ 行为侧无漂移** ⇒ 只登记治理张力（🏷 候选，建议签），**不升级为拍板**、**不阻塞**本次迁移。
+> ✅ **2026-11-03（`global` 收口域 · 本轮）· V17 已修（PARITY-006 根因）**：在 `ObservabilityAutoConfiguration.GrpcObservationInterceptor` 的 listener **补 `onHalfClose()`**
+> ⇒ ⇒ 在**真正跑 handler 的线程**上绑**入向** `DeadlineState`（绝对时刻 = 调用开始 ＋ `rpc-timeout`，与 B 侧 `RpcInterceptor.java:516-522` 同形）
+> ⇒ ⇒ **在途 SQL 拿得到 `setQueryTimeout`** ⇒ ⇒ 预算到点 PG 收到 CancelRequest ⇒ 事务回滚 ⇒ ⇒ **在途写不再落库**
+> ⇒ ⇒ **验收**：新 `GrpcDeadlineBindingTest`（3 例）＋ `GrpcInboundDeadlinePgTest`（**2 例 · 真 PG** · 服务端预算到点 / 客户端主动取消）⇒ **5 例全绿**；**变异实测** ⇒ 两条都**红在核心判据**（`expected: 0L but was: 1L`）⇒ ⇒ **判据精确、其余维仍绿** ⇒ 还原后同条件复跑回绿
+> ⇒ ⇒ 现状 = **✅ 已修 10 · ✅ 已裁决 1（V11）· ⚪ 已登记 4（V10/V12/V13/V16/V18）· 🔴 0**。
+> ⚠️ **诚实边界**：① **只绑入向载体** ⇒ 出向 `GoStyleRequestDeadline` **另案**；② 作用域随 `onHalfClose` 返回而结束 ⇒ **异步 handler 不在作用域内**（与 B 侧同款）；③ **跨域复测**（admin 域 E-4-R2 场景轮 ⇒ `admin_admin` 0 行）**待 admin 域 lane 落地**（本 lane 只写 `common/`）。
 
 ---
 
@@ -594,20 +600,22 @@ S3b（PG 停）= `200 + 信封 1015` @ 2.05s · S4（持锁）= `200 + 信封 10
 ⚠️ **连带订正（本轮）**：`ProtectionProperties` 的 `Stat` 类注释原先写「观测层的开关在 `GoStyleRpcProtectionChain#build` 内直接读本属性」
 ⇒ ⇒ **该说法在 C 侧不成立** ⇒ ⇒ 已改写为「C 侧**未接线**」＋ 指向本条。
 
-### 🔴 DRIFT-COMMON-V17｜gRPC 服务端路径**零绑定点** ⇒ `DeadlineState` 绑不到 handler 线程 ⇒ **PARITY-006 根因**
+### ✅ DRIFT-COMMON-V17｜gRPC 服务端路径**零绑定点** ⇒ `DeadlineState` 绑不到 handler 线程 ⇒ **PARITY-006 根因** —— **已修（2026-11-03）**
 
-**状态**：**🔴 已定位 · 修法明确 · 待实施**（2026-11-03 · `global` 收口域）⇒ 落点在 `common/`（§五.3）。
-⇒ ⇒ **关联**：admin 域台账 **PARITY-006**（现象侧 · `docs/DRIFT/users/admin/verification-admin-2026-11-02.md`）。
+**状态**：**✅ 已修 · 端到端判据已闭合**（2026-11-03 · `global` 收口域）⇒ 落点在 `common/`（§五.3）。
+⇒ ⇒ **关联**：admin 域台账 **PARITY-006**（现象侧 · `docs/DRIFT/users/admin/verification-admin-2026-11-02.md`）⇒ **已销账**。
 
 | 项 | 内容 |
 |---|---|
 | **现象** | 客户端在 **1s** 取消一个**写路径** gRPC 调用 ⇒ 两侧都回 `CANCELLED`（一致）⇒ 但 **B 侧 `admin_admin` 0 行 / C 侧 1 行** ⇒ 「取消」在 C 侧只取消了回包、**没取消已发生的写入**。判别性变体（取消推迟到 5s > 服务端 2s 预算）⇒ 结果不变 ⇒ ⇒ 差异与「客户端取消」无关，是**服务端预算到点后有没有把在途 SQL 取消掉** |
 | **B 侧做法（逐字读过消费点）** | B `service/common/.../observability/RpcInterceptor.java:516-522`（在 `newUnaryServerInterceptor` 的 **`onHalfClose`** 里）⇒ **同一个绝对时刻**同时绑两个载体：`DeadlineState.bindAbsoluteNanos(absoluteDeadlineNanos)` ＋ `GoStyleRequestDeadline.bindAbsoluteNanos(...)` ⇒ ⇒ 绑在**真正跑 handler 的线程**上 ⇒ ⇒ `DeadlineQueryTimeoutInjector` 读到剩余预算 ⇒ 每条 SQL 设 `setQueryTimeout` ⇒ ⇒ 2s 到点 PG 收到 CancelRequest ⇒ SQLState `57014` ⇒ 事务回滚 ⇒ **0 行** |
 | **C 侧现状（实测）** | ① `ObservabilityAutoConfiguration.GrpcObservationInterceptor`（`:206`）**只重写了 `onCancel()`**，**没有 `onHalfClose()`** ⇒ ⇒ handler 线程上 `DeadlineState` 恒空；② C 侧**从无** `newUnaryServerInterceptor` 这个方法（`git log --all -S` 全仓历史：它**只作为注释出现过**，从未有实现）⇒ ⇒ B 侧那两行绑定**整块丢失**；③ C 侧 `DeadlineState` 的**生产绑定点只有 HTTP 路径两处**（`HttpMiddleware.java:283` / `:324`，2026-11-03 · V15 新增）；④ `RpcHandleRunner.java:121` 那处绑定所在的类**在生产代码里零引用**（死代码）⇒ **不是**生产绑定点 |
+| **修后（2026-11-03 · 已实施）** | ① `ObservabilityAutoConfiguration.GrpcObservationInterceptor` 的 listener **补 `onHalfClose()`** ⇒ 在**真正跑 handler 的线程**上 `DeadlineState.bindAbsoluteNanos(绝对时刻)`；② 绝对时刻 = **调用开始** ＋ `rpc-timeout`（**在 `registry == null` 早退之前**算 ⇒ ⇒ 绑 deadline 与「装没装 Micrometer registry」**无关** ⇒ ⇒ 「没装观测的进程」也不会没有 deadline）；③ **绑定层包在观测层外面** ⇒ scope 包住整个 handler 执行期（含观测层收尾）⇒ ⇒ 与 B 侧 `RpcInterceptor.java:516-522` 的嵌套次序同形；④ 预算取 `rpc-timeout`（**不是** `resolveInnerBudget()`）—— gRPC 边界上**没有 HTTP 预算** ⇒ ⇒ 与 B 侧 `zrpc.RpcServerConf.Timeout = 2s` 一致，且与 `scheduleTimeout` 同一刻 |
 | **假断言订正（本轮）** | 台账原先（含 admin 台账 4 处 + common 台账 1 处）写「`DeadlineState` 的**生产绑定点只有 gRPC 服务端路径**（`RpcHandleRunner.java:121` `bindRemainingNanos` ＋ `newUnaryServerInterceptor`）」⇒ ⇒ **两半都是假的** ⇒ ⇒ 修前的准确表述 = 「**C 侧 `DeadlineState` 在生产路径上零绑定点**」⇒ ⇒ **5 处已逐一订正** |
 | **影响范围** | 凡走 **gRPC 入口**的写路径（10 个域的 rpc 侧）⇒ ⇒ 客户端取消 / 服务端预算到点 ⇒ **服务端仍提交** ⇒ ⇒ 属「**失败-成功不一致**」型风险（同 V15 的 HTTP 侧，但方向相反：V15 是 HTTP 路径**没绑**，本条是 gRPC 路径**也没绑**） |
-| **修法（明确，待实施）** | 在 `GrpcObservationInterceptor` 的 listener 里**补 `onHalfClose()`** ⇒ 在**真正跑 handler 的线程**上 `DeadlineState.bindAbsoluteNanos(绝对时刻)`（绝对时刻 = 调用开始 + `rpc-timeout`）⇒ ⇒ 在途 SQL 会被 CancelRequest ⇒ 写路径回滚（B=0 行 / C=0 行）。⚠️ **只绑入向载体 `DeadlineState`**（出向 `GoStyleRequestDeadline` 的绑定**不在本条范围**，爆炸半径更大 ⇒ 另案） |
-| **验收判据** | ① admin 域 E-4-R2 场景轮（客户端 1s 取消写路径）⇒ C 侧 `admin_admin` **0 行**（与 B 侧一致）；② **可判别**的回归测试（必须写明「到达调用方的是 `StatusRuntimeException` 且 code = `DEADLINE_EXCEEDED`」——只断言「抛了异常」在包装层还在时**照样绿** ⇒ 不可判别）；③ **变异验证**（拿掉 `onHalfClose` 的绑定 ⇒ 该维转红、其余维仍绿） |
+| **修法（**已实施**，2026-11-03）** | 在 `GrpcObservationInterceptor` 的 listener 里**补 `onHalfClose()`** ⇒ 在**真正跑 handler 的线程**上 `DeadlineState.bindAbsoluteNanos(绝对时刻)`（绝对时刻 = 调用开始 + `rpc-timeout`）⇒ ⇒ 在途 SQL 会被 CancelRequest ⇒ 写路径回滚（B=0 行 / C=0 行）。⚠️ **只绑入向载体 `DeadlineState`**（出向 `GoStyleRequestDeadline` 的绑定**不在本条范围**，爆炸半径更大 ⇒ 另案） |
+| **验收判据** | ① admin 域 E-4-R2 场景轮（客户端 1s 取消写路径）⇒ C 侧 `admin_admin` **0 行**（与 B 侧一致）—— **跨域复测待 admin 域 lane 落地时跑**（本 lane 只写 `common/` · §五.2/§五.3）；② **可判别**的回归测试（必须写明「到达调用方的是 `StatusRuntimeException` 且 code = `DEADLINE_EXCEEDED`」——只断言「抛了异常」在包装层还在时**照样绿** ⇒ 不可判别）；③ **变异验证**（拿掉 `onHalfClose` 的绑定 ⇒ 该维转红、其余维仍绿） |
+| **✅ 落地与验证（2026-11-03 · 本轮）** | **实现**：`common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java`（`GrpcObservationInterceptor.withDeadline` + `rpcDeadlineNanos`）<br>**测试**：① `common/src/test/java/com/rag/common/autoconfigure/GrpcDeadlineBindingTest.java`（**3 例** · 无 PG）——「handler 体内读 `DeadlineState.remainingMillis()` 必须是**有限值**」＋「无预算 ⇒ 不绑 ⇒ `Long.MAX_VALUE`」＋「**真 gRPC server**（`InProcessServerBuilder` ＋ `ServerCalls.asyncUnaryCall`）⇒ handler 线程 ≠ 调用方线程」；② `common/src/test/java/com/rag/common/autoconfigure/GrpcInboundDeadlinePgTest.java`（**2 例** · **真 PG** Testcontainers `postgres:16-alpine`）——「服务端预算到点」＋「**客户端主动取消**」两场景<br>**读数**：5 例全绿（`Tests run: 5, Failures: 0, Errors: 0, Skipped: 0`）⇒ **变异实测**：拿掉 `onHalfClose` 的绑定 ⇒ **两条都在核心判据上转红**（`expected: 0L but was: 1L`）⇒ ⇒ **红灯精确、其余维仍绿** ⇒ 还原后同条件复跑回绿<br>⚠️ **诚实边界**：① **只绑入向载体**，出向 `GoStyleRequestDeadline` **另案**；② 作用域随 `onHalfClose` 返回而结束 ⇒ ⇒ **异步 handler 不在作用域内**（与 B 侧同款 · 本仓 10 个域的 proto 全是 unary）；③ **无预算不绑**（`rpc-timeout` 未配 ⇒ 恒 `Long.MAX_VALUE`） |
 | **连带订正（本轮）** | ① `DeadlineState.java:103` 那段注释（**藏在 `/* */` 块注释里 ⇒ javadoc 工具扫不到 ⇒ 一直是断链**）原先写「实际生效路径：`{@link #newUnaryServerInterceptor}` 的 `onHalfClose`」⇒ ⇒ **该方法在 C 侧从未存在** ⇒ 是**照抄 B 侧时丢了归属**（B 侧那段 `#newUnaryServerInterceptor` 指的是**外层类** `RpcInterceptor` 的成员）⇒ ⇒ 已改写为缺口记录；② `Book/users/users/01-用户登录流程.md:427-430` 的同一断言**也已过时**（它还写「HTTP 侧不写 `DeadlineState`」—— V15 之后 HTTP 侧**已写**）⇒ ⇒ **归 Book 域，本轮未改**（该文件正被并发 lane 修改 ⇒ 避免冲突）⇒ 登记在此 |
 
 ### ⚪ DRIFT-COMMON-V18｜出向 deadline 的**运行期守门缺口**（装配层有网 · 运行期差分无网）
@@ -662,7 +670,7 @@ S3b（PG 停）= `200 + 信封 1015` @ 2.05s · S4（持锁）= `200 + 信封 10
 > | **V11** | ✅ **已裁决 · 非漂移**（用户定：行为侧 C ≡ B ⇒ 归属不动 ⇒ AGENTS.md §2.3 的 🔴 解除） |
 > | **V12** | ⚪ **裁决保留**（两个类都留 ⇒ 处置措辞改为「等 article / task 域落地时再判」＋ **口径订正**：原「同一异常映射出两个 code」当前**不成立**） |
 > | **V16** | ⚪ **新登记** · Stat / Prometheus 两个开关**未接线**（**接线缺口**，现行配置下行为等价 ⇒ 非漂移） |
-> | **V17** | 🔴 **新登记** · gRPC 服务端路径**零绑定点** ⇒ **PARITY-006 根因**（修法明确 ⇒ 待实施） |
+> | **V17** | ✅ **已修（本轮 · 2026-11-03）** · gRPC 服务端路径**零绑定点** ⇒ **PARITY-006 根因** —— 已在 `GrpcObservationInterceptor` 补 `onHalfClose()` ⇒ 在 handler 线程上绑**入向** `DeadlineState`（绝对时刻 = 调用开始 ＋ `rpc-timeout`）⇒ 真 PG 两场景（服务端预算到点 / 客户端主动取消）⇒ 在途写 **0 行**；变异实测 ⇒ 两条都**红在核心判据**（`0L` vs `1L`）⇒ ⇒ 跨域复测（admin 域 E-4-R2）**待 admin 域 lane 落地** |
 > | **V18** | ⚪ **新登记** · 出向 deadline 的**运行期守门缺口**（装配层有网 · 运行期差分无网） |
 >
 > ⚠️ **重数脚本（本轮实际运行，不是手填）**：
