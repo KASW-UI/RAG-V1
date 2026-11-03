@@ -1,19 +1,20 @@
 # hot 域迁移审核报告（RAG Boot 4 → RAG-V1 Boot 3.5）
 
 > **由 `align/hot` 工作树产出** · **基线 commit `0a35865`**（本地 `main`）· 分支 `align/hot`
-> **核对日期**：2026-11-03
+> **核对日期**：2026-11-03（**§九 为 2026-11-04 补做**）
 > **审核依据**：`.agents/verification.md`（八阶段 + §十四 12 项必答）
 > **写权**：本报告只写 `docs/DRIFT/hot/**`；`docs/DRIFT/_INDEX.md` · `docs/Intentional_Deviations/_INDEX.md` ·
 > `docs/Pitfalls/_INDEX.md` · `AGENTS.md` · `common/**` **一律不碰**（AGENTS.md §五.3 规则 3）
 >
 > 📌 **本轮范围**：**hot 域**（B 侧 `service/hot/` 四模块 → C 侧 `service/hot/` 单模块）·
-> **31 个主代码类**从空壳落地为实现 ＋ **13 个测试类 / 56 例**新写。
-> ⚠️ 本报告**不**对其它 9 个域做判断，也**不**代表 hot 域与 B 侧「双侧活体对拍」已闭合（见 §五·F-11）。
+> **31 个主代码类**从空壳落地为实现 ＋ **15 个测试类 / 70 例**新写。
+> ⚠️ 本报告**不**对其它 9 个域做判断。
 >
-> 📌 **本文件覆盖到的证据强度：E-3（真中间件 / 真容器）** —— §二 的承接表**逐条标注**了证据强度列
-> （分级定义见 [`docs/DRIFT/_INDEX.md`](../../DRIFT/_INDEX.md) 末节「证据强度分级（E-0~E-4）」）：
-> **E-4（双侧活体对拍）本域为 0 条** —— B 侧 hot 域**没有**对拍探针脚本 ⇒ ⇒ **本报告的 ✅ 一律读作「在该证据强度下一致」**
-> （**不是**已闭环）；**E-2** = 源码级对照（机器断言只证明「C 侧没跑偏」，**不**证明「B 侧就是这些值」）。
+> 📌 **本文件覆盖到的证据强度：E-4（双侧活体对拍）** —— 分级定义见
+> [`docs/DRIFT/_INDEX.md`](../../DRIFT/_INDEX.md) 末节「证据强度分级（E-0~E-4）」：
+> **E-4 = 31 条断言（B 侧 Boot 4 与 C 侧 Boot 3.5 同时活体、同请求、逐字节相等）**，见 **§九**；
+> **E-3** = 真中间件 / 真容器（§二 的承接表逐条标注）；**E-2** = 源码级对照（机器断言只证明「C 侧没跑偏」，**不**证明「B 侧就是这些值」）。
+> ⚠️ **E-4 的边界**：判定条件是 **C == B**，**没有 Go 锚**（本机无 Sea-etcd 容器 ⇒ Go 真源无法活体）⇒ ⇒ **不读作「三方一致」**（§九·9.1）。
 
 ---
 
@@ -293,14 +294,14 @@
 
 | 项 | 内容 |
 |---|---|
-| B 机制 | Tomcat 11（Go 侧实际是 `net/http`，不发 reason phrase 之外的行为另计） |
+| B 机制 | Tomcat **11.0.24**（B 侧是 **Java / Spring Boot 4**，**不是** Go —— 见 §一·1.1 的同源提醒） |
 | C 机制 | Tomcat **10.1.52** |
 | 变化 | ① **状态行不发 reason phrase** ⇒ `HTTP/1.1 404 `（码后有空格、无短语）② Servlet API 版本 6.0 → 5.0 |
 | 影响流程 | 404 / 405 这类**裸状态码**响应的**字节面** |
-| 是否影响业务行为 | **部分** —— ① 状态行**逐字节不同**（B 侧 Go `net/http` 会发 `HTTP/1.1 404 Not Found`）⇒ 属**框架限制**，不可在 C 侧修；② 业务路径（200 ＋ 信封）**不受影响** |
+| 是否影响业务行为 | **否** —— ⚠️ **原判定（2026-11-03）写的是「状态行逐字节不同（B 侧 Go `net/http` 会发 `HTTP/1.1 404 Not Found`）」⇒ 该归因经 2026-11-04 的双侧活体对拍**证伪**（见 §九·9.3）**：<br>**B 侧也是 Tomcat，同样不发 reason phrase** ⇒ **两侧状态行逐字节相同** ⇒ **对 B 侧无漂移**。<br>⚠️ 与 **Go 真源**相比确有差异（Go 的 `net/http` 会写标准 reason phrase）⇒ 但**基准是 B 侧**（D16）⇒ 那不是漂移。 |
 | 适配方式 | 按本仓既有口径断言（状态行 `"HTTP/1.1 404 "` ＋ 无信封） |
-| 验证证据 | `HotHttpRealTomcatTest`（真 Tomcat ＋ **裸 socket 逐字节读回**） |
-| **结论** | **FRAMEWORK_DIFFERENCE（框架限制）** ⇒ 记 §五·F-09；业务语义（无信封）**PASS** |
+| 验证证据 | `HotHttpRealTomcatTest`（真 Tomcat ＋ **裸 socket 逐字节读回**）＋ **§九·M1 的 18 条双侧逐字节对拍**（`unknown_path` / `method_not_allowed` 两条） |
+| **结论** | **PASS**（**不是** FRAMEWORK_DIFFERENCE）—— 原 F-09 条目已按 §九·9.3 更正为「原归因错误 ⇒ 实测两侧相同 ⇒ 非漂移」 |
 
 ### 4.4 `@ConfigurationPropertiesScan` + `@ConditionalOnMissingBean` 的装配差异
 
@@ -455,18 +456,21 @@
 | 修复建议 | 不修 |
 | 验证方法 | 全仓 grep `rag.side` ⇒ 仅 3 处 javadoc 提及；共享层条件注解已不存在 ⇒ **PASS** |
 
-### F-09 · Tomcat 10.1 状态行不发 reason phrase · 框架限制
+### F-09 · ~~Tomcat 10.1 状态行不发 reason phrase~~ · **原归因错误 ⇒ 实测两侧相同 ⇒ 非漂移**（2026-11-04 更正）
 
 | 项 | 内容 |
 |---|---|
 | 位置 | HTTP 404 / 405 的**字节面** |
-| B | Go `net/http` ⇒ `HTTP/1.1 404 Not Found` |
-| C | Tomcat **10.1.52** ⇒ `HTTP/1.1 404 `（码后有空格、**无短语**） |
-| 原因 | **Tomcat 11 → 10.1**（D14）—— 框架版本分叉，**不可在 C 侧修** |
-| 影响范围 | **仅状态行的 reason phrase 字节**；状态码、body（**裸状态码无信封**）**逐条相同** |
-| 严重程度 | 🟢 低（框架限制） |
-| 修复建议 | 不修（按本仓既有口径断言） |
-| 验证方法 | `HotHttpRealTomcatTest`（真 Tomcat ＋ 裸 socket 逐字节读回） |
+| **原判定（2026-11-03 · 已作废）** | ~~B = Go `net/http` ⇒ `HTTP/1.1 404 Not Found`；C = Tomcat 10.1.52 ⇒ `HTTP/1.1 404 ` ⇒ 状态行逐字节不同 ⇒ FRAMEWORK_DIFFERENCE（框架限制）~~ |
+| **更正后的判定（2026-11-04 · 双侧活体对拍实测）** | **B 侧 = Tomcat 11.0.24，同样不发 reason phrase** ⇒ **两侧状态行逐字节相同**：<br>· 404：`HTTP/1.1 404 ` ＋ `text/plain;charset=utf-8` ＋ body `404 page not found\n`<br>· 405：`HTTP/1.1 405 ` ＋ **空** `Content-Type` ＋ **空** body<br>⇒ ⇒ **对 B 侧（唯一 oracle · D16）不构成漂移** ⇒ 本条**降级为 PASS** |
+| **原判定错在哪** | ⚠️ **把 B 侧当成了 Go 真源** —— B 侧是 **Java / Spring Boot 4**（`spring-boot-starter-parent:4.0.8`），只是**类名带 `GoStyle*` 前缀**、`GoStyle` 的 javadoc 里引 Go 的 API 名 ⇒ **极易据此误判 oracle 侧的语言**。<br>⇒ 与 article 域 U-3 的教训**同源**（「先读 oracle 侧的 `pom.xml` 确认语言与框架版本」）。 |
+| **与 Go 真源的差异去哪了** | **仍然存在**（Go 的 `net/http` 会写标准 reason phrase）⇒ 但**基准是 B 侧**（D16）⇒ 那不是「C 侧漂移」，而是「**B 侧与 Go 真源之间**的既有差异」⇒ ⇒ 归**B 侧的继承差异**，不归 C 侧 |
+| 原因 | **不是** Tomcat 11 → 10.1 的框架分叉（两侧都是 Tomcat，且行为一致） |
+| 影响范围 | **无** |
+| 严重程度 | 🟢 无（**原判定已作废**） |
+| 修复建议 | **无需修复**（原「不可修」的结论前提不成立 —— 本来就没有差异） |
+| 验证方法 | ① `HotHttpRealTomcatTest`（真 Tomcat ＋ 裸 socket 逐字节读回）<br>② **§九·M1 的 `unknown_path` / `method_not_allowed` 两条双侧活体逐字节对拍**（真 B 侧 Boot 4 ＋ 真 C 侧 Boot 3.5 同时在跑） |
+| **结论** | **PASS（原 FRAMEWORK_DIFFERENCE 判定作废）** ⇒ §四·4.3 同步更正；§六 的分类计数同步更正 |
 
 ### F-10 · B 侧 `detachWithinWriteLock` 是**零调用点的死代码**（照抄保留）· 表达面
 
@@ -539,7 +543,7 @@
 
 | 分类 | 数量 | 明细 |
 |---|---|---|
-| **已实现且已验证（PASS）** | **45** | §二：**36**（C-01/02/03/05 共 4 · A-01~A-13+A-16 共 14 · R-01~R-09 共 9 · M-01~M-05 共 5 · X-01~X-04 共 4）<br>§五：**9**（F-04 · F-06 · F-07 · F-08 · F-09 · F-10 · F-11 · F-12 · F-14） |
+| **已实现且已验证（PASS）** | **45** | §二：**36**（C-01/02/03/05 共 4 · A-01~A-13+A-16 共 14 · R-01~R-09 共 9 · M-01~M-05 共 5 · X-01~X-04 共 4）<br>§五：**9**（F-04 · F-06 · F-07 · F-08 · **F-09**〔2026-11-04 更正：**原归因错误 ⇒ 实测两侧相同 ⇒ 非漂移**，见 §九·9.3 · 分类计数不变〕 · F-10 · F-11 · F-12 · F-14） |
 | **已实现但未验证（NOT_VERIFIED）** | **3** | C-04（`GrpcErrorMapper` · 零调用点）· F-05（同上，零调用点）· F-02 的「域内查询卡住」子路径（需人为注入慢 Redis，本轮**未验**） |
 | **尚未实现（NOT_IMPLEMENTED）** | **1** | F-13（无表域的持久层职责 ⇒ **无职责可承接**，非遗漏） |
 | **明确存在漂移（FAIL）** | **0** | ✅ **本域无 FAIL** |
@@ -568,11 +572,11 @@
 | 5 | 文件拆分是否造成调用链、数据传递或事务边界断裂？ | **否** —— §三·3.2：① 调用链闭合；② proto item（2 字段）→ DTO（13 分量）→ 响应 `items` 逐字段在；③ 异常传播不对称**保留**；④ **本域无事务**（无表）；⑤ 无重复/遗漏执行；⑥ 初始化时机（两条 tick ＋ 池 2 线程）**B 侧是两条独立 goroutine ⇒ C 侧也给 2 个调度线程** |
 | 6 | API + RPC 合并是否改变原有入口和执行行为？ | **入口数变了**（2 → 1，D1）；**入口行为没变** —— HTTP 端点仍只有 `GET /hot/v1/articles`，gRPC 仍 5 个方法，**两个口在同一进程里真跑过**（真 Tomcat ＋ 真 gRPC server）。⚠️ **两处可观察差异已登记**：**F-01**（HTTP 端口）**F-02**（域内 rpc 少一层 2s 上界，根因见 **F-14**）。⚠️ **一处真实缺陷本轮已修**：**F-06**（补全池抑制 `applicationTaskExecutor` ⇒ 上下文起不来） |
 | 7 | Common Starter 上收是否遗漏原有消费方？ | **否** —— §三·3.3 逐条列了 hot 域消费的 6 项共享能力（信封 / logger / observability+`MqConsumer` / RPC 拦截链 / form 闸门 / Jackson 补丁），**原消费方全部覆盖**。⚠️ 唯一缺口 = A-15：`GetFormValuesFilter` **没有** `int32` / `firstFormValue` ⇒ 域内自持（**F-03**） |
-| 8 | Spring Boot 4 → 3.5 是否引入业务可观察行为变化？ | **引入了 2 处**，都已在 §四/§五 定位到具体机制：① **§4.5 零重试**（Boot 默认重试 9 次 ⇄ B 侧永不重试）—— **已显式对齐 ＋ 变异验证**；② **§4.3 Tomcat 状态行无 reason phrase** —— **框架限制，不可修**。其余（Kafka 坐标 / Jackson 3→2 / `@ConfigurationPropertiesScan` / Redis 客户端）**均已证明不影响业务行为** |
-| 9 | Tomcat、Jackson、Spring Framework 等底层版本变化是否产生实际漂移？ | **Tomcat**：仅 reason phrase 一处（**F-09**）。**Jackson**：**零**（本域只用三处两版同义注解）。**Spring Framework**：**零业务漂移**（装配差异见 §4.4，其唯一真实后果 **F-06** 已修）。**Kafka 客户端**：**零**（零重试已显式对齐） |
+| 8 | Spring Boot 4 → 3.5 是否引入业务可观察行为变化？ | **引入了 1 处**（2026-11-03 原写 2 处，其中 §4.3 那条已由 §九·9.3 **证伪**）：**§4.5 零重试**（Boot 默认重试 9 次 ⇄ B 侧永不重试）—— **已显式对齐 ＋ 变异验证**。⚠️ **§4.3 Tomcat 状态行**：**实测两侧逐字节相同**（B 侧也是 Tomcat 11.0.24，同样不发 reason phrase）⇒ **不是行为变化** ⇒ 原「框架限制、不可修」的判定**前提不成立**。其余（Kafka 坐标 / Jackson 3→2 / `@ConfigurationPropertiesScan` / Redis 客户端）**均已证明不影响业务行为** |
+| 9 | Tomcat、Jackson、Spring Framework 等底层版本变化是否产生实际漂移？ | **Tomcat**：**零** —— 404 / 405 的状态行、`Content-Type`、body **两侧逐字节相同**（**F-09 原判定已作废**，见 §九·9.3）。**Jackson**：**零**（本域只用三处两版同义注解）。**Spring Framework**：**零业务漂移**（装配差异见 §4.4，其唯一真实后果 **F-06** 已修）。**Kafka 客户端**：**零**（零重试已显式对齐） |
 | 10 | 哪些差异已经通过证据证明安全？ | **10 项**：§4.1 Kafka 坐标 · §4.2 Jackson 3→2 · §4.3 Tomcat 业务语义部分 · §4.4 装配差异 · §4.5 零重试 · §4.6 Redis 客户端 / Nacos / 生命周期 · **F-08** `rag.side` 无消费点 · **F-13** 模板残留无业务行为 · **F-07** B 侧死锁已消解 · **F-14** 出向键位差异（article-rpc 方向有效值相同） |
 | 11 | 哪些差异仍然无法确认？ | **3 项**：**F-05 / C-04**（`GrpcErrorMapper` 零调用点 ⇒ 无法用行为证伪）· **F-02** 的「域内查询卡住」路径（需人为注入慢 Redis，本轮**未验**）· **F-11** 命名债（行为面已验，**命名面**待下一轮统一清理） |
-| 12 | 当前 C 是否具备可靠的行为对拍条件？ | **部分具备** —— ✅ 已具备：HTTP（真 Tomcat ＋ 裸 socket 逐字节）· gRPC（**本域 5 个方法**走真进程内 gRPC ＋ **跨域**走真进程内 `ArticleServiceGrpc`）· Kafka（真 broker ＋ 真实 topic/group/分区）· Redis（真容器跑 Lua ＋ TTL）· 错误契约（11 码 ＋ 11 英文文案 ＋ 未知码回退，**逐条机器断言** ＋ 变异转红）· HeavyKeeper（**BigInteger 独立重写的差分实现**（与生产实现不共用算式 ⇒ 抓「掩码/符号位」三类错法）＋ FNV-1a 32 **公开已知常量**（空串/a/foobar）＋ uint32 回绕与向零截断）。⚠️ **这一条是「算法自洽性」证据，不是 B↔C 对拍** —— 差分实现的两端都是 C 侧代码。⚠️ **尚不具备**：**双侧活体对拍**（B 侧 hot 域**没有**像 `tools/difftest/like/` 那样的对拍脚本）⇒ ⇒ **本报告的「PASS」= 在本仓证据强度下与 B 侧一致**，**不等于**「两侧活体逐字节对拍已闭合」 |
+| 12 | 当前 C 是否具备可靠的行为对拍条件？ | **已具备（E-4）** —— ✅ **2026-11-04 补做双侧活体对拍**：`tools/difftest/hot/`（**31 条断言 · C == B · 逐字节**）：HTTP（真 Tomcat ＋ **裸 socket** 读原始状态行 + body hex · 18 条）· gRPC（**手构 proto3 字节 + `byte[]` marshaller** · 9 条）· Redis（真容器 · 成员 + 分数）· Kafka（三面：发同款事件 → 两侧消费 → HeavyKeeper → 合并 → 比 `hot:articles` ＋ 合并后 HTTP）⇒ 详见 **§九**。<br>✅ 另具备：HTTP（真 Tomcat ＋ 裸 socket 逐字节）· gRPC（**本域 5 个方法**走真进程内 gRPC ＋ **跨域**走真进程内 `ArticleServiceGrpc`）· Kafka（真 broker ＋ 真实 topic/group/分区）· Redis（真容器跑 Lua ＋ TTL）· 错误契约（11 码 ＋ 11 英文文案 ＋ 未知码回退，**逐条机器断言** ＋ 变异转红）· HeavyKeeper（**BigInteger 独立重写的差分实现**（与生产实现不共用算式 ⇒ 抓「掩码/符号位」三类错法）＋ FNV-1a 32 **公开已知常量**（空串/a/foobar）＋ uint32 回绕与向零截断）。<br>⚠️ **仍不具备**：**Go 真源活体**（本机无 Sea-etcd 容器）⇒ ⇒ **本报告读作「与 B 侧逐字节一致（E-4）」，不读作「三方一致」** |
 
 ---
 
@@ -580,20 +584,179 @@
 
 | 项 | 结果 |
 |---|---|
-| 写入范围 | `service/hot/**`（31 个主类 ＋ `application.yml` ＋ 15 个测试类）· `docs/DRIFT/hot/**`（本文件）· `docs/File_Tree/hot.md`（**生成器产物**，按 §一·1.6 处理） |
-| **未碰** | `docs/DRIFT/_INDEX.md` · `docs/Intentional_Deviations/_INDEX.md` · `docs/Pitfalls/_INDEX.md` · `AGENTS.md` · `common/**` · `docs/Mapping_Table/**` · `tools/**`（ROOT 补丁**已还原**） |
-| 主仓状态 | **未脏** —— `git status` 只有两处**本轮之前就存在**的未跟踪目录（`Book/.obsidian/`、`脑图整理/.obsidian/`） |
-| 生成器副作用 | `gen-file-tree.py` 硬编码 ROOT ⇒ 首次运行改的是**主仓**（内容逐字节相同 ⇒ 无差异）⇒ 已按 §一·1.6 用 ROOT 补丁在**工作树**重跑 |
+| 写入范围 | `service/hot/**`（31 个主类 ＋ `application.yml` ＋ 15 个测试类）· `docs/DRIFT/hot/**`（本文件）· `docs/File_Tree/hot.md`（**生成器产物**，按 §一·1.6 处理）<br>⚠️ **2026-11-04 追加**：`service/hot/pom.xml`（**修一个真实缺陷**，见 §九·9.4）＋ `tools/difftest/hot/**`（**新增对拍探针**，见 §九） |
+| **未碰** | `docs/DRIFT/_INDEX.md` · `docs/Intentional_Deviations/_INDEX.md` · `docs/Pitfalls/_INDEX.md` · `AGENTS.md` · `common/**` · `docs/Mapping_Table/**` · `tools/**`（ROOT 补丁**已还原**；2026-11-04 **仅新增** `tools/difftest/hot/` 子目录，**未改**任何既有工具） |
+| 主仓状态 | **本轮未碰主仓的代码与文档** ⇒ `git status --porcelain -- proto docs service common tools` = **空**（零产物）<br>⚠️ 主仓工作区另有 `Book/**`（17+13 个 `.md` 改动）与 `Book/.obsidian/`、`脑图整理/.obsidian/` ⇒ **不是本轮产物**（mtime 01:48 / 01:57，落在本轮**变异验证**那段窗口，但本轮**没有任何命令写过 `Book/`**）⇒ 属**另一条 lane** 的作业 ⇒ **本轮不碰、不回滚** |
+| 生成器副作用 | `gen-file-tree.py` 硬编码 ROOT ⇒ 首次运行改的是**主仓**（内容逐字节相同 ⇒ 无差异）⇒ 已按 §一·1.6 用 ROOT 补丁在**工作树**重跑<br>⚠️ **2026-11-04（E-4 轮）再撞同一处，处置已升级**：本轮用 ROOT 补丁跑 `check-docs-vs-tree.py` ⇒ 它的 **②「File_Tree 幂等」判据第一次真正生效**（生成器把产物**写回工作树**再逐字节比对 ⇒ 不再是「比对同一份文件自己」的**空转判据**）⇒ ⇒ 随即报出 **`docs/File_Tree/proto.md` 漂移**（**只少了 `proto/src/test/java/`**）<br>⇒ **根因**：`proto/src/test/java/` 是**主仓工作区里的一个未跟踪空目录**（git 不跟踪空目录 ⇒ **从未进过仓**）⇒ 而提交 `118c255`（「重跑文件树生成器修正 proto.md 回归」）把**含 `src/test/java/` 的版本定为规范版**<br>⇒ **处置**：在工作树补出该空目录（`mkdir -p proto/src/test/java` ⇒ **git 不可见**、零足迹）⇒ 重跑 ⇒ **三道守门全绿** ＋ `docs/File_Tree/` **零改写**（⇒ 本轮的 `pom.xml` 改动与 `tools/difftest/hot/` 新增**都不影响文件树**：`pom_deps()` 只取 `groupId:artifactId`（**不含 scope**）· 且 `tools/` 不在生成器的扫描根内）<br>⚠️ **proto.md 本身已还原**（跨模块 · **不在本域写权内**）⇒ **不提交**它的任何改动 |
+| **三道守门读数（2026-11-04 · E-4 轮 · 在工作树跑）** | ① `tools/difftest/check-arch-invariants.py`（A1–A13）⇒ **`EXIT=0`**（A3/A4/A5/A6/A7/A9/A10/A11/A12/A13 全绿）<br>② `tools/difftest/check-docs-vs-tree.py` ⇒ **`EXIT=0`**（File_Tree 双向 · **幂等** · 路径 · 落点计数 · 包名）<br>③ `tools/check-mapping-coverage.py` ⇒ **`EXIT=0`** —— **hot 域 C 列 31/31（100%）· B 列 34/34（100%）**；全仓 C 642/642 · B 752/752 · B 列全局未覆盖 0<br>⚠️ ① 与 ② 的 ROOT 是**相对**的（`pathlib.Path(__file__).resolve().parents[2]`）⇒ **量的是工作树** ✅；③ 的 ROOT **硬编码主仓** ⇒ 本轮**同样临时打补丁**到工作树后跑（读完数即还原 ⇒ 已断言「与 HEAD 逐字节一致」） |
 | ⚠️ **「全仓 `mvn -o clean verify`」本轮未跑** | **不是遗漏**：AGENTS.md **P-18** 记载「域还是空壳 ⇒ `repackage` 失败 ⇒ 全仓 `mvn verify` 恒红」⇒ 其它 9 个域中仍有空壳 ⇒ **全仓红与 hot 域无关**。⇒ 本轮按**域级**口径跑 `mvn -o -pl service/hot -am package`（含 `repackage`，产物已验证是可执行 Boot jar）⇒ **hot 域自身**的编译 / 测试 / 打包全绿 |
 | ⚠️ **`docs/File_Tree/hot.md` §五「状态」段仍写「全部待填」** | 那是 **`gen-file-tree.py` 的固定文案**（`article.md` / `like.md` 同样如此 ⇒ **全仓一致**）⇒ **不是** hot 域仍是空壳的证据。⇒ 本轮**不改生成器**（`tools/` 不在本域写权内）⇒ 已在 §一·1.6 留痕 |
 
 ---
 
+## 九、双侧活体对拍（E-4 · 2026-11-04 补做）
+
+> 📌 **本节是本文件证据强度从 E-3 升到 E-4 的唯一依据**。
+> **探针脚本**：`tools/difftest/hot/`（`run.sh` ＋ `http_probe.py` ＋ `grpc-wire/HotWireProbe.java` ＋
+> `article-rpc-stub/ArticleRpcStub.java` ＋ `mutate-parity.sh` ＋ `README.md`）。
+> **读数**：`2026-11-04` 全量跑 ⇒ **`EXIT=0`** ⇒ **31 条对拍断言 + 3 条自检闸门全部通过**。
+
+### 9.1 判定口径与**边界**
+
+| 项 | 内容 |
+|---|---|
+| 被测两侧 | **B 侧** = `/Users/pr/Documents/java&golang/RAG/service/hot/{hot-api,hot-rpc}`（**Boot 4.0.8** · Tomcat 11.0.24）<br>**C 侧** = 本仓 `service/hot`（**Boot 3.5.11** · Tomcat 10.1.52） |
+| 判定条件 | **C == B**（两侧**同时起、同时活、同请求、逐字节相等**） |
+| 证据强度 | **E-4** |
+| ⚠️ **没有第三方锚** | 本机**没有 Go 真源可活体**（无 Sea-etcd 容器）⇒ ⇒ **本节读作「与 B 侧逐字节一致」，不读作「三方一致」**。<br>Go 侧的冻结字节锚在 B 仓 `tools/api-full-parity-probe/hot/` —— 本探针**刻意不引用**它：<br>**引用一个本机不可复现的锚 ⇒ 锚坏了也看不出来 ⇒ 那是「摆设锚」**。 |
+| B 侧只读 | 只在 B 仓跑 `mvn package`（产物落 `target/`，已被 `.gitignore` 排除）⇒ **不碰 B 侧任何源码 / 配置**（脚本第 0 步与第 2 步**各断言一次** `git status` 干净） |
+
+### 9.2 隔离拓扑（**每条隔离都是正确性要求，不是「省资源」的取舍**）
+
+| 隔离项 | 为什么必须 |
+|---|---|
+| **Nacos 专属命名空间** `hotprobe` | 与其它 lane（`public` / `probe-b-smoke` / `probe-c-smoke`）完全隔离 |
+| **Nacos 分组**：B 侧 `DEFAULT_GROUP` / C 侧 `E5C` | 两侧的服务名**都叫 `hot-rpc`** ⇒ 不分组 ⇒ 解析池里混进对面的实例 ⇒ **对拍对象静默地错了** |
+| ⚠️ **B 侧的组是「半隔离」** | B 侧 hot-rpc 的 `NacosRegistration` **硬编码 `DEFAULT_GROUP`**（`bootstrap/NacosRegistration.java:58,113`）⇒ 探针**不能改 B 侧任何文件** ⇒ 只能让 B 侧 hot-api 也用 `DEFAULT_GROUP`（它的 yml 是 `${NACOS_GROUP:DEFAULT_GROUP}` ⇒ 探针**不传** `NACOS_GROUP` 给 B 侧）⇒ 两者**天然对上** |
+| **2 个独立 Redis 容器** | `hot:articles` 是**写路径**（Kafka 合并会 `RENAME` 覆盖它）⇒ 共用一个 ⇒ B 侧合并完 C 侧再合并 ⇒ 读数**必然不同** ⇒ **假漂移** |
+| **2 个独立 Kafka broker** | 两侧的 `spring.kafka.consumer.group-id` 都是**字面量** `article-hot-group`、topic 都是**字面量** `article-hot-events`（**B 侧不可覆盖**）⇒ 共用一个 broker ⇒ 两侧互吃对方的消息 ⇒ **假漂移** |
+| **article-rpc 桩 = 同一个进程、两个组各注册一次** | 若两侧各连一个**不同的** article-rpc ⇒ 返回的 article 投影只要有任意差异（哪怕随机 `create_time`）⇒ 热榜卡片就不同 ⇒ **差异被归因到 hot 域头上** ⇒ 假漂移。<br>⇒ 同一进程 ⇒ 两侧拿到**逐字节相同**的投影 ⇒ 任何差异**只能**来自 hot 域自身 |
+
+### 9.3 读数（**2026-11-04 · 全量跑 · `EXIT=0`**）
+
+| 面 | 比什么 | 条数 | 读数 |
+|---|---|---|---|
+| **M1 · HTTP 字节面** | **原始状态行**（含 HTTP 版本与 reason phrase）＋ `Content-Type` ＋ body 的 hex | **18** | ✅ **18/18 逐字节一致** |
+| **M2 · gRPC wire 字节面** | **原始 proto3 字节**（手构请求 ＋ `byte[]` marshaller 原样取响应） | **9** ＋ 1 自检 | ✅ **9/9 逐字节一致** ＋ ✅ top_k 边界**可分辨** |
+| **M3 · Redis 状态面** | `hot:articles` 的 `TYPE` / `ZCARD` / 成员 / 分数 | **1** | ✅ 逐字节一致（33 个成员 · 含 `probe-a3` 的 `3000000000`） |
+| **M4 · Kafka 三面** | 发同款事件 → 两侧消费 → HeavyKeeper → 合并 → 比 `hot:articles` ＋ 合并后 HTTP | **3** | ✅ 逐字节一致（两侧都合并到 **600** 分） |
+| **合计** | | **31 条断言 ＋ 3 条自检闸门** | ✅ **真差异 0 · 已知现象 0** |
+
+**关键读数（逐字）**：
+
+| 断言 | 读数 |
+|---|---|
+| `unknown_path`（404） | 两侧**同为** `HTTP/1.1 404 ` ＋ `text/plain;charset=utf-8` ＋ body `404 page not found\n` ⇒ **逐字节相同** |
+| `method_not_allowed`（405） | 两侧**同为** `HTTP/1.1 405 ` ＋ **空** `Content-Type` ＋ **空** body |
+| `page_not_a_number` / `page_int32_overflow` / `malformed_json_body` / `json_body_not_object` | 两侧**同为** `HTTP/1.1 200` ＋ `{"code":5001,"msg":"internal server error","data":null}` |
+| `default` 的 `hot_score` | `probe-a3` 的 `hot_score` = **`3000000000`**（> 2^31）⇒ **uint32 的无符号还原在两侧都生效**（若有一侧写成负数 ⇒ 字节必不同 ⇒ 本条即证伪） |
+| `page2_size2` 的 `rank` | 第 2 页首条 `rank` = **3**（不是 1）⇒ **rank 跨页连续**在两侧都成立 |
+| `page20_out_of_range` | 两侧**同为** `items:[]` ＋ `total:29` |
+| `wire_topk_0` | 请求体 **0 字节**（proto3 默认值不上 wire）⇒ 两侧响应字节一致（716 字节行） |
+| `wire_topk_neg1` | 请求体 **10 字节**（int32 负值按 64 位符号扩展编码）⇒ 两侧响应字节一致（719 字节行） |
+| `wire_topk_20` vs `wire_topk_100` | 响应行长 **717 vs 1212** ⇒ **两条 clamp 边界可分辨**（20 条 vs 33 条）⇒ 「`k<=0 ⇒ 20`」与「`k>100 ⇒ 100`」**两条契约都被覆盖** |
+| `wire_like_article` / `wire_coin_article` / `wire_share_article` | 两侧**同为** `UNIMPLEMENTED` ＋ description 字节**逐字相同**（`LikeArticle not implemented yet` 等） |
+| `wire_comment_article` | 两侧**同为** `success=true`（B 侧那个**不对称**的桩，逐字保留） |
+| M4 合并终态 | 两侧**同为** `probe-kafka-1 600`（TTL B=3592 / C=3598 ⇒ **各自从本侧合并时刻起算 ⇒ 不相等是正常的**） |
+
+### 9.4 探针**抓到并修掉**的一个真实缺陷（**不是探针的问题，是 C 侧的问题**）
+
+| 项 | 内容 |
+|---|---|
+| 现象 | `java -jar service/hot/target/hot-service-1.0-SNAPSHOT.jar` **启动即失败**：<br>`BeanCreationException: Error creating bean with name 'shadedNettyGrpcChannelFactory'`<br>→ `Caused by: java.lang.NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder` |
+| 根因 | `service/hot/pom.xml` 把 `io.grpc:grpc-inprocess` 写成了 **`test` scope** ⇒ **直接声明压过传递声明** ⇒ 运行时 classpath 上整个 artifact 消失（fat jar 的 `BOOT-INF/lib` 里也没有）⇒ devh 的 `shadedNettyGrpcChannelFactory` 链接 `InProcessChannelFactory` 失败 ⇒ **`ArticleRpcClient` Bean 创建失败 ⇒ 整个服务起不来** |
+| 为什么测试没发现 | `mvn -o -pl service/hot -am test` = **70/70 全绿** —— 测试跑在 **test classpath** 上 ⇒ `grpc-inprocess` 本来就在 ⇒ **缺陷看不见** ⇒ AGENTS.md §3.3.3「**跑绿 ≠ 本来就绿**」的教科书形态 |
+| 修法 | `grpc-inprocess` 的 scope 改回 **compile（默认）**；注释逐条对齐 **like 域 2026-11-03 的同款修复**（B 出处 = B 侧 `service/like/like-rpc/pom.xml:313-344`） |
+| **发现者** | **本探针**（E-4）—— 因为它起的是**真 jar**（`java -jar`），而**不是**测试 classpath |
+
+### 9.5 探针**自己**的两个判据空洞（**都是被变异验证逼出来的**）
+
+> ⚠️ 这一节是本轮**最值钱**的部分：**「全绿」不等于「验到了东西」** —— 探针自己也会有洞。
+
+#### 9.5.1 数据面空洞 —— 第一轮 E-4 的 HTTP 面**全在比两个空壳**
+
+| 项 | 内容 |
+|---|---|
+| 现象 | 第一轮 E-4 跑出来 **「31 条全绿」** ⇒ 但**读数里 `items:[]`、`total:0`** ⇒ **两侧都在比「空热榜」** ⇒ 那是**假绿** |
+| 根因 | 探针的 `free_probe_ports`（会 `kill -9` 占用端口的进程）**在 article-rpc 桩启动之后**才被调用 ⇒ **把自己的桩踢掉** ⇒ 两侧的补全**整片 skip**（`article_rpc_error` 分支）⇒ 热榜恒空<br>⇒ ⚠️ **wire 面读的是 ZSet（仍有 33 条）⇒ wire 面的「有数据」掩盖了 HTTP 面的空洞** |
+| **怎么发现的** | 🚨 **变异验证的 V4**：「只给 B 侧多播一个成员」⇒ **预期** `default` 会红（两侧 items 不同）⇒ **实得绿** ⇒ ⇒ **暴露了 HTTP 面根本没在读数据** |
+| 修法 ① | `free_probe_ports` 移到**桩启动之前** |
+| 修法 ②（更关键） | 加**数据面闸门**：播种后断言「**C/B 两侧返回的 `total` ≥ 期望存活条数**（33 − 4 = 29）」⇒ 数据面没跑起来 ⇒ **直接 die（exit 2），不给结论** |
+| ⚠️ **闸门为什么用「≥」而不是「==」** | 判据只管「**数据面在不在**」，**不管「两侧一不一样」** ⇒ ⇒ 必须容许 V4 那种**刻意不对称**的播种（B 侧多播一个成员 ⇒ B 侧 `total`=30、C 侧 29）⇒ 若用 `==` ⇒ V4 会被闸门误判成「数据面没跑起来」⇒ ⇒ **误 die**（2026-11-04 第一轮 V4 即踩此坑）。<br>⇒ 「两侧一不一样」由 **M1/M2/M3 三面的逐字节比对**负责 ⇒ **两个职责不许混在一个判据里** |
+
+#### 9.5.2 `top_k` 边界空洞 —— 两条 clamp 契约**根本没验到**
+
+| 项 | 内容 |
+|---|---|
+| 现象 | 种子只有 8 条 ⇒ `top_k` 取 20 / 0 / -1 / 100 / 101 **返回的是同一批 8 条** ⇒ 响应字节**完全相同** ⇒ 「`k<=0 ⇒ 20`」与「`k>100 ⇒ 100`」**两条契约验不到** ⇒ 那是**判据空洞**（不是「跑绿」） |
+| 修法 ① | 种子补 **25 条填充成员**（分数 1..25，**低于**空成员的 40 ⇒ 不打乱前 4 名的 rank 连续性断言）⇒ 库里 33 条 ⇒ `top_k∈{20,0,-1}` 返回 **20** 条、`top_k∈{100,101}` 返回 **33** 条 ⇒ **两条边界各自显形** |
+| 修法 ② | 加**自检断言**：`top_k=20` 与 `top_k=100` 的响应字节**必须不同** ⇒ 否则直接报红 ⇒ **种子退化了不会默默「全绿」** |
+
+### 9.6 变异验证（**证明探针不是假绿**）
+
+`bash tools/difftest/hot/mutate-parity.sh` ⇒ **五条变异**，每条**先定判据、再看结果**（AGENTS.md §3.3.3「变异没变红 = 没覆盖到」）：
+
+| 变异 | 改动位置 | 期望变红 | 期望保持绿 | **实跑结果（2026-11-04）** |
+|---|---|---|---|---|
+| **V1** | `HotApiSupport.DEFAULT_PAGE_SIZE` 20 → 21 | HTTP `page_size_zero` | HTTP `default`（**缺省值写在 controller 里**，不是这个常量）· `page_size_over_max` · wire | ✅ `EXIT=1` · 红名单 = {`page_size_zero`} |
+| **V2** | `InteractionStubService.LIKE_UNIMPLEMENTED_MSG` 加 `!` | wire `wire_like_article` | HTTP · wire `wire_comment_article` | ✅ `EXIT=1` · 红名单 = {`wire:wire_like_article`} |
+| **V3** | `HotApiSupport.ROLLING_SCOPE` `"rolling"` → `"rolling_v2"` | HTTP `default`（`scope` 字段） | HTTP `page_not_a_number` · wire（message 里没有 scope） | ✅ `EXIT=1` · 红名单 = {`default`} |
+| **V4** | **探针自身**：只给 B 侧多播一个成员（`PROBE_SEED_ASYMMETRIC=1`） | HTTP `default` · wire `wire_topk_20` · **Redis `hot:articles`** | wire `wire_like_article` | ✅ `EXIT=1` · 红名单 = {`redis:hot:articles`, `default`, `wire:wire_topk_20`} |
+| **V5** | `HotRedisSnapshotStore.HOT_ARTICLES_KEY` 改键名 | **数据面闸门 die（exit 2）** —— **不许**报「全绿」 | —— | ✅ `EXIT=2` ＋ 输出含「数据面没跑起来」 |
+| **基线复跑** | 全部还原 | —— | —— | ✅ `EXIT=0` ＋ **红名单为空** |
+
+**实跑输出（逐字 · 2026-11-04 · 五条全部按预期表现）**：
+
+```
+== V1 · HotApiSupport.DEFAULT_PAGE_SIZE 20 → 21 ==
+   ✅ 退出码 = 1（V1 生效 ⇒ 探针必须报红）
+   ✅ page_size_zero ⇒ 红（page_size<=0 归一到默认值 ⇒ 跟着变）
+   ✅ default ⇒ 绿（缺省值写在 controller 里（字面量 20）⇒ 不受影响）
+   ✅ page_size_over_max ⇒ 绿（显式给的 page_size 走 MAX_PAGE_SIZE 上限 ⇒ 不受影响）
+   ✅ wire:wire_like_article ⇒ 绿（wire 面与分页无关）
+== V2 · InteractionStubService.LIKE_UNIMPLEMENTED_MSG 加 '!' ==
+   ✅ 退出码 = 1（V2 生效 ⇒ 探针必须报红）
+   ✅ wire:wire_like_article ⇒ 红（status description 的字节变了）
+   ✅ default ⇒ 绿（HTTP 面不调 likeArticle ⇒ 不受影响）
+   ✅ wire:wire_comment_article ⇒ 绿（只改了 like 的文案 ⇒ comment 不受影响）
+== V3 · HotApiSupport.ROLLING_SCOPE "rolling" → "rolling_v2" ==
+   ✅ 退出码 = 1（V3 生效 ⇒ 探针必须报红）
+   ✅ default ⇒ 红（响应里的 scope 字段变了）
+   ✅ page_not_a_number ⇒ 绿（5001 信封里没有 scope ⇒ 不受影响）
+   ✅ wire:wire_topk_20 ⇒ 绿（wire 的 message 里没有 scope ⇒ 不受影响）
+== V4 · 探针钩子 PROBE_SEED_ASYMMETRIC=1（只给 B 侧多播一个成员）==
+   ✅ 退出码 = 1（V4 生效 ⇒ 探针必须报红）
+   ✅ redis:hot:articles ⇒ 红（两侧种子不同 ⇒ Redis 状态面必须不等）
+   ✅ default ⇒ 红（两侧 items 不同 ⇒ HTTP 面必须不等）
+   ✅ wire:wire_topk_20 ⇒ 红（wire 面读的就是 hot:articles ⇒ 也必须不等）
+   ✅ wire:wire_like_article ⇒ 绿（wire 的互动桩不看种子 ⇒ 不受影响）
+== V5 · HotRedisSnapshotStore.HOT_ARTICLES_KEY 改键名（数据面闸门必须拦下）==
+   ✅ 退出码 = 2（V5 生效 ⇒ 数据面闸门必须 die（exit 2），**不许**报「全绿」）
+   ✅ 数据面闸门确实拦下了（输出含「数据面没跑起来」）
+== 基线复跑（全部还原 ⇒ 必须转绿）==
+   ✅ 退出码 = 0（还原后必须全绿）
+   ✅ 还原后红名单为空
+```
+
+⚠️ **V4 是「M3 判据不是摆设」的证据**：两侧种子相同时，若探针读错了容器 / 读错了 key，读数也会**相等** ⇒ 判据空转。
+⚠️ **V5 是「探针不会在数据面没跑起来时给结论」的证据**（正是 §九·9.5.1 那条洞的**回归守卫**）。
+⚠️ **V1 是「读代码 ≠ 读行为」的例子**：`DEFAULT_PAGE_SIZE` 在 HTTP 路径**几乎不可达**（controller 的缺省值是**字面量 20**）⇒ 只有 `?page_size=0` 那条能触发它 ⇒ ⇒ **「这个常量被谁用」不能靠读代码下结论**。
+⚠️ **「红」的集合要能区分「哪个机制在支撑哪条断言」** —— 上面每条变异的**红 + 绿**两侧都断言了 ⇒ ⇒ 否则「只红了一大片」无法归因（AGENTS.md §3.3.3 强制三条的 ①「每个事实带文件:行号」与 ②「两侧同时跑的探针」）。
+
+### 9.7 覆盖边界（**本探针不覆盖什么** —— 不许拿「全绿」当「全对」）
+
+| 不覆盖 | 为什么 |
+|---|---|
+| **Go 真源** | 本机无 Sea-etcd 容器 ⇒ Go 侧无法活体 ⇒ **不读作「三方一致」** |
+| **出向 2s 上界的时序形态** | B 侧是 **api → rpc 两跳**（客户端预算先到）；C 侧是 **D2 域内直连** ⇒ 故障注入下的**耗时与失败形态**天然不同 ⇒ 本探针**不做故障注入**（只测正常路径的字节） |
+| **多 key 的 HeavyKeeper 分数** | HeavyKeeper 是**有损概率 sketch**：桶冲突时按 `decay^count` **概率**让位（两侧**都是**随机 —— B 侧 `HeavyKeeper.java:138` 用 `ThreadLocalRandom`，其 javadoc:31 明写「随机分支不可断言精确值」）⇒ 多 key 场景下两侧分数**天生不可复现**<br>⇒ M4 用**单 key** ⇒ 每个分区里该 key 的 5 行计数都只走「指纹匹配累加」分支 ⇒ 分数 = 事件总条数（**确定性**）⇒ 字节可比 |
+| **Kafka 的分区分布** | 生产端的分区器决定事件落到哪个分区 ⇒ 两侧的**分片分数**必然不同 ⇒ M4 只比**合并后**的 `hot:articles`（= 各分片之和 ⇒ 与分布无关） |
+| **响应头全集** | `Date` / `Server` 等易变头 ⇒ 只比状态行 + `Content-Type` + body |
+| **压测 / 并发** | 单请求串行 |
+
+---
+
 > 📌 **一句话总览**：**B 侧 hot 域的 34 个主类已逐条落到 C 侧 31 个实现类**（零 FAIL），
 > **70 例真触发测试全绿**（真 Tomcat / 真 gRPC / 真 Kafka / 真 Redis），
+> **双侧活体对拍 31 条断言 + 3 条自检闸门全绿**（B 侧 Boot 4 ↔ C 侧 Boot 3.5 · **逐字节** · 见 §九），
 > **三道守门 EXIT=0**，**零重试判据经变异验证确认有牙齿**；
 > ⚠️ 残留 **14 条登记项**（**0 条业务正确性 FAIL**）：**F-06** 是本轮真修的启动期缺陷；
 > **F-02** 是 D2 的已批准连带后果（**INTENTIONALLY_CHANGED**）；**F-01/F-03** 是部署面/表达面的签字偏离；
-> **F-04/F-07/F-08/F-09/F-10/F-11/F-12/F-14** 行为面已判定（框架限制或单向增强，见 §四/§五）；
+> **F-04/F-07/F-08/F-10/F-11/F-12/F-14** 行为面已判定（框架限制或单向增强，见 §四/§五）；
+> ⚠️ **F-09 已按 §九·9.3 更正**：原判「Tomcat 10.1 状态行与 Go `net/http` 不同 ⇒ 框架限制」——
+> **B 侧不是 Go，而是 Tomcat 11.0.24** ⇒ **两侧状态行逐字节相同** ⇒ **原判定作废，改为 PASS**；
 > **F-05 / C-04** 与 **F-02 的「卡住」子路径** 是**无法用行为证伪**的 **NOT_VERIFIED**；**F-13** 是**无职责可承接**的 **NOT_IMPLEMENTED**。
-> ⚠️ **本域尚未做「双侧活体对拍」** ⇒ 本报告的 PASS 口径 = 「**在本仓证据强度下与 B 侧一致**」。
+> 📌 **本报告的 PASS 口径** = 「**与 B 侧逐字节一致（E-4）**」—— 但**不读作「三方一致」**（**无 Go 锚**，见 §九·9.1）。
+> ⚠️ **E-4 探针自己也踩过两个判据空洞**（§九·9.5：数据面空洞 ＋ `top_k` 边界空洞）⇒ ⇒ **「全绿」≠「验到了东西」**——
+> 本轮已补**数据面闸门** ＋ **`top_k` 边界自检**，并用**五条变异**守住（**V4 是纯探针自身的**（只给 B 侧多播一个成员）·
+> **V5 验的是探针的闸门**（C 侧改键名 ⇒ 闸门必须 `die(exit 2)`，不许报「全绿」））⇒ ⇒ 五条**实跑全部按预期** ＋ **还原后基线复跑 `EXIT=0`、红名单为空**（§九·9.6）。
