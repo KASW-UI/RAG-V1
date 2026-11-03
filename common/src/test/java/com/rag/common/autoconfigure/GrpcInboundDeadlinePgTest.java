@@ -254,6 +254,146 @@ class GrpcInboundDeadlinePgTest {
      */
     private ScenarioResult runScenario(long targetId, Duration clientCancelAfter, Duration rpcBudget)
             throws Exception {
+        return runScenario(targetId, clientCancelAfter, rpcBudget, null);
+    }
+
+    /**
+     * 🔴 <b>探针同款注入</b>：<b>PG 冻结</b>（{@code docker pause}）＋ 客户端在途取消。
+     *
+     * <p>⚠️ <b>为什么必须用「冻结 PG」而不是「{@code pg_sleep}」</b>：
+     * users-user 域的场景轮（§12.2.2 阶段D）用的注入是
+     * <b>{@code docker pause} 冻结 PG 容器</b> ⇒ ⇒ 那条 INSERT <b>已经发出去</b>、
+     * 但 PG <b>整个进程被冻住</b> ⇒ ⇒ 放行后才执行 ⇒ ⇒
+     * <b>「CancelRequest 送不到」</b>（容器冻住 ⇒ 网络栈不处理）⇒ ⇒
+     * <b>「靠 pgjdbc CancelRequest 回滚」这条路在这种注入下根本不成立</b>
+     * ⇒ ⇒ 本用例复刻同一套注入 ⇒ ⇒ 读数与探针<b>同口径</b>。
+     *
+     * <p>⚠️ <b>这个用例要回答的是</b>：「客户端主动取消」这条路上，
+     * 客户端的取消 ⇒ 服务端监听器的 {@code onCancel} ⇒ ⇒ 服务端自己的 2s {@code scheduleTimeout}
+     * <b>被撤掉</b>（{@code cancelQuietly(timeoutTask)}）⇒ ⇒ 服务端<b>不会</b>在 2s 关 call
+     * ⇒ ⇒ 此时那条在途 INSERT <b>只能</b>被「入向 deadline 落到 SQL 上」这件事清掉。
+     */
+    @Test
+    @DisplayName("🔴 探针同款注入（PG 冻结 ＋ 客户端在途取消）：这条在途 INSERT 到底落不落库")
+    void frozenPgWithClientCancel() throws Exception {
+        // 变体 1：cancel@1s（**早于**服务端 2s 预算）
+        ScenarioResult v1 = runScenario(44L, CLIENT_CANCEL_AFTER, RPC_BUDGET, PG.getContainerId());
+        long rows1 = countTargetRows(44L);
+        System.out.println("[PROBE-LIKE] 变体1（cancel@1s · 早于 2s 预算）⇒ 行数=" + rows1
+                + " · handlerError=" + describe(handlerError.get())
+                + " · 客户端=" + describe(v1.clientSide())
+                + " · 客户端耗时=" + v1.elapsedMillis() + "ms");
+
+        // 变体 2：cancel@5s（**晚于**服务端 2s 预算）
+        handlerError.set(null);
+        ScenarioResult v2 = runScenario(45L, Duration.ofSeconds(5), RPC_BUDGET, PG.getContainerId());
+        long rows2 = countTargetRows(45L);
+        System.out.println("[PROBE-LIKE] 变体2（cancel@5s · 晚于 2s 预算）⇒ 行数=" + rows2
+                + " · handlerError=" + describe(handlerError.get())
+                + " · 客户端=" + describe(v2.clientSide())
+                + " · 客户端耗时=" + v2.elapsedMillis() + "ms");
+    }
+
+    /**
+     * 🔴 <b>判定式实验（「行数到底由什么决定」）</b>：<b>固定客户端取消时刻，只改「PG 何时放行」</b>。
+     *
+     * <p><b>要回答的问题</b>：PARITY-006 的残留读数（探针里「B=0 行 · C=1 行」）到底是
+     * <b>「客户端先放弃 ⇒ 服务端要跟着放弃」这条行为差异</b>，
+     * 还是<b>「放行 PG 的那一刻，服务端还剩多少预算」</b>？
+     *
+     * <p><b>为什么这个实验能分开</b>：探针（{@code scenarios.py} 的阶段D）是
+     * <b>先发 B 的调用、再发 C 的调用、最后才放行两侧 PG</b> ⇒ ⇒
+     * <b>B 的调用比 C 早约 1 秒开始</b> ⇒ ⇒ <b>放行那一刻，两侧离各自预算到点的距离不同</b>
+     * ⇒ ⇒ 若读数由「放行时刻 vs 预算」决定 ⇒ ⇒ 两侧读数可以不同，<b>而两侧代码完全一样</b>
+     * ⇒ ⇒ 那就是<b>注入时序的假差</b>，不是行为漂移。
+     *
+     * <p><b>本用例怎么做</b>：handler 改成<b>两步</b>（<b>SELECT → INSERT</b>，与 users-user 域
+     * {@code register} 的真实形状同款：查重在前、INSERT 在最后）⇒
+     * <ul>
+     *   <li><b>变体 R1（放行早于预算到点）</b> ⇒ 第一条 SELECT 放行后返回 ⇒
+     *       第二条 INSERT <b>还有预算</b> ⇒ 执行 ⇒ 提交 ⇒ <b>1 行</b>；</li>
+     *   <li><b>变体 R2（放行晚于预算到点）</b> ⇒ 第一条 SELECT 放行后返回 ⇒
+     *       第二条 INSERT <b>预算已耗尽</b> ⇒ 被 {@code DeadlineQueryTimeoutInjector} 的
+     *       「已过期 ⇒ 57014 ⇒ <b>不发 SQL</b>」守卫挡掉 ⇒ <b>0 行</b>。</li>
+     * </ul>
+     * ⇒ ⇒ <b>两次的客户端取消时刻完全相同</b>（都是 1s）⇒ ⇒
+     * <b>唯一变量是「放行时刻」</b> ⇒ ⇒ 行数随它翻转 ⇒ ⇒
+     * <b>「客户端先放弃」本身并不决定行数</b>。
+     *
+     * <p>⚠️ <b>本用例不是「双侧对拍」</b>：它只在本仓跑 ⇒ ⇒ 证不了「B 侧是什么样」
+     * ⇒ ⇒ 跨侧那一半必须由探针（{@code tools/difftest/users-user/}）在<b>对称注入</b>下补上
+     * ⇒ ⇒ 两半合起来才是结论。
+     */
+    @Test
+    @DisplayName("🔴 判定式实验：固定客户端取消时刻 · 只改「放行 PG 的时刻」⇒ 行数随「剩余预算」翻转")
+    void rowCountFollowsRemainingBudgetNotCancelTiming() throws Exception {
+        // 变体 R1：客户端 1s 取消（**早于**服务端 2s 预算）＋ **1.2s 放行 PG**（预算还剩 ~0.8s）
+        handlerError.set(null);
+        ScenarioResult r1 = runScenario(46L, CLIENT_CANCEL_AFTER, RPC_BUDGET,
+                PG.getContainerId(), 1_200L);
+        long rowsR1 = countTargetRows(46L);
+        System.out.println("[RELEASE-TIMING] R1（cancel@1s · 放行@1.2s · 预算剩 ~0.8s）⇒ 行数=" + rowsR1
+                + " · handlerError=" + describe(handlerError.get())
+                + " · 客户端=" + describe(r1.clientSide())
+                + " · 客户端耗时=" + r1.elapsedMillis() + "ms");
+
+        // 变体 R2：客户端 1s 取消（**同样早于**预算）＋ **2.6s 放行 PG**（预算已耗尽）
+        handlerError.set(null);
+        ScenarioResult r2 = runScenario(47L, CLIENT_CANCEL_AFTER, RPC_BUDGET,
+                PG.getContainerId(), 2_600L);
+        long rowsR2 = countTargetRows(47L);
+        System.out.println("[RELEASE-TIMING] R2（cancel@1s · 放行@2.6s · 预算已耗尽）⇒ 行数=" + rowsR2
+                + " · handlerError=" + describe(handlerError.get())
+                + " · 客户端=" + describe(r2.clientSide())
+                + " · 客户端耗时=" + r2.elapsedMillis() + "ms");
+
+        assertThat(rowsR1)
+                .as("🔴 R1：放行时**预算还剩** ⇒ 第二条 INSERT 照常执行 ⇒ 写**落库** ⇒ 1 行"
+                        + "（⇒ 「客户端取消 ⇒ 服务端必须停手」在本仓**不成立**）")
+                .isEqualTo(1L);
+        assertThat(rowsR2)
+                .as("🔴 R2：放行时**预算已耗尽** ⇒ 第二条 INSERT 被「已过期 ⇒ 57014」守卫挡掉"
+                        + " ⇒ 写**不落库** ⇒ 0 行")
+                .isZero();
+    }
+
+    private static String describe(Throwable t) {
+        if (t == null) {
+            return "null";
+        }
+        if (t instanceof StatusRuntimeException sre) {
+            return sre.getClass().getSimpleName() + "(" + sre.getStatus().getCode() + ")";
+        }
+        return t.getClass().getSimpleName() + ": " + t.getMessage();
+    }
+
+    /** 跑一次场景；{@code freezeContainerId} 非空 ⇒ 发请求前先把该容器 {@code docker pause} 住。 */
+    private ScenarioResult runScenario(long targetId, Duration clientCancelAfter, Duration rpcBudget,
+            String freezeContainerId) throws Exception {
+        return runScenario(targetId, clientCancelAfter, rpcBudget, freezeContainerId, 0L, false);
+    }
+
+    /**
+     * 跑一次场景（可指定「放行 PG 的时刻」）。
+     *
+     * <p>⚠️ <b>默认走「SELECT → INSERT」两步形状</b>（真实 {@code register} 形状）⇒ ⇒
+     * 「放行时还剩多少预算」才能决定第二条语句的命运 ⇒ ⇒ 判定式实验的前提。
+     */
+    private ScenarioResult runScenario(long targetId, Duration clientCancelAfter, Duration rpcBudget,
+            String freezeContainerId, long releaseDelayMillis) throws Exception {
+        return runScenario(targetId, clientCancelAfter, rpcBudget, freezeContainerId, releaseDelayMillis, true);
+    }
+
+    /**
+     * 跑一次场景（可指定「放行 PG 的时刻」＋「handler 形状」）。
+     *
+     * @param releaseDelayMillis <b>放行 PG 的时刻 = 调用开始 + 这个毫秒数</b>；
+     *                            {@code 0} = 客户端一返回就放行（原行为）
+     * @param twoStep            {@code true} = handler 走<b>SELECT → INSERT</b> 两步
+     *                            （users-user 域 {@code register} 的真实形状：查重在前、INSERT 在最后）
+     */
+    private ScenarioResult runScenario(long targetId, Duration clientCancelAfter, Duration rpcBudget,
+            String freezeContainerId, long releaseDelayMillis, boolean twoStep) throws Exception {
         ObservabilityProperties properties = new ObservabilityProperties();
         properties.setRpcTimeout(rpcBudget);
 
@@ -278,13 +418,17 @@ class GrpcInboundDeadlinePgTest {
 
         String name = InProcessServerBuilder.generateName();
         Server server = InProcessServerBuilder.forName(name)
-                .addService(writeService(targetId))
+                .addService(writeService(targetId, freezeContainerId == null ? SLEEP_MILLIS : 0L, twoStep))
                 .intercept(interceptor)
                 .build()
                 .start();
         ManagedChannel channel = InProcessChannelBuilder.forName(name).build();
         ScheduledExecutorService canceller = Executors.newSingleThreadScheduledExecutor();
         try {
+            // 🔴 **探针同款注入**：先把 PG 冻住 ⇒ 那条 INSERT 发出去但没人处理
+            if (freezeContainerId != null) {
+                docker(freezeContainerId, "pause");
+            }
             // 🔴 **用「异步 + 显式 cancel」，不用「阻塞 + deadline 到期」**
             // ⇒ ① 显式 cancel 的客户端码是 **CANCELLED**（admin 域 E-4-R2 场景轮就是这一种）；
             //    而 deadline 到期在 grpc-java 里是 **DEADLINE_EXCEEDED** ⇒ ⇒ 两者**不可混用**。
@@ -322,6 +466,18 @@ class GrpcInboundDeadlinePgTest {
                     .as("客户端侧必须结束（预算到点 ⇒ 服务端关 call；或客户端主动取消）")
                     .isTrue();
             long elapsedMillis = (System.nanoTime() - t0) / 1_000_000L;
+
+            // 🔴 **放行 PG**（探针同款）⇒ ⇒ 那条已发出但被冻住的 INSERT 这时才有机会被执行
+            // ⚠️ **放行时刻 = 调用开始 + releaseDelayMillis**（不是「客户端返回后再等一会儿」）
+            // ⇒ ⇒ 否则「放行时刻」这个变量会与「客户端取消时刻」耦合在一起 ⇒ ⇒ 判据被污染。
+            if (freezeContainerId != null) {
+                long elapsedSinceStart = (System.nanoTime() - t0) / 1_000_000L;
+                long waitMore = releaseDelayMillis - elapsedSinceStart;
+                if (waitMore > 0) {
+                    Thread.sleep(waitMore);
+                }
+                docker(freezeContainerId, "unpause");
+            }
 
             // 🔴 **必须等 handler 真的跑完**才能去查行数
             // ⇒ 否则「客户端取消」场景下客户端 1s 就返回、而 handler 还在睡
@@ -365,10 +521,35 @@ class GrpcInboundDeadlinePgTest {
      * handler：<b>一个事务里</b>先 INSERT、再睡 ⇒ ⇒ 取消 ⇒ <b>整笔回滚</b> ⇒ ⇒ INSERT 不落库。
      */
     private ServerServiceDefinition writeService(long targetId) {
+        return writeService(targetId, SLEEP_MILLIS, false);
+    }
+
+    /**
+     * handler（可指定阻塞时长 ＋ 步骤形状）。
+     *
+     * <p>⚠️ <b>{@code sleepMillis == 0} 时不睡</b> ⇒ ⇒ INSERT 之后<b>直接提交</b>
+     * ⇒ ⇒ 这正是 users-user 域 {@code register} 的形状（<b>INSERT 是最后一个 DB 步骤</b>，
+     * 之后没有 {@code checkDeadline}）⇒ ⇒ 冻结 PG 的场景必须用这个形状，
+     * 否则会多出一个「睡完之后才判 deadline」的环节 ⇒ ⇒ 判据会被污染。
+     *
+     * <p>⚠️ <b>{@code twoStep == true} ⇒ SELECT → INSERT</b>：这是 users-user 域
+     * {@code register} 的<b>真实</b>形状（<b>先查重、再 INSERT</b>，B 侧
+     * {@code UserDomainService.register} 的 W1/W4 同款）⇒ ⇒
+     * 「放行时预算还剩多少」才能<b>决定第二条语句是否被守卫挡掉</b>
+     * ⇒ ⇒ 这才是能分开「谁先取消」与「放行时刻」的形状。
+     */
+    private ServerServiceDefinition writeService(long targetId, long sleepMillis, boolean twoStep) {
         ServerCalls.UnaryMethod<String, String> body = (request, responseObserver) -> {
             try (SqlSession session = factory.openSession()) {
+                if (twoStep) {
+                    // 🔴 **第一步：查重**（真实 register 的形状）⇒ ⇒ 这条 SELECT 是**第一条**发出去的语句
+                    // ⇒ ⇒ 冻结 PG 时它就是**卡住的那条** ⇒ ⇒ 放行后它才返回
+                    session.getMapper(ProbeMapper.class).countById(targetId);
+                }
                 session.getMapper(ProbeMapper.class).insert(targetId);
-                session.getMapper(ProbeMapper.class).sleepMillis(SLEEP_MILLIS);
+                if (sleepMillis > 0) {
+                    session.getMapper(ProbeMapper.class).sleepMillis(sleepMillis);
+                }
                 session.commit();
                 responseObserver.onNext("ok");
                 responseObserver.onCompleted();
@@ -384,10 +565,33 @@ class GrpcInboundDeadlinePgTest {
                 .build();
     }
 
+    /** {@code docker pause / unpause <containerId>}（探针同款注入）。 */
+    private static void docker(String containerId, String action) {
+        try {
+            Process process = new ProcessBuilder("docker", action, containerId)
+                    .redirectErrorStream(true)
+                    .start();
+            String output = new String(process.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertThat(process.waitFor())
+                    .as("docker " + action + " 必须成功：%s", output)
+                    .isZero();
+        } catch (Exception e) {
+            throw new IllegalStateException("docker " + action + " 失败", e);
+        }
+    }
+
     interface ProbeMapper {
 
         @Insert("INSERT INTO probe_row (id) VALUES (#{id})")
         int insert(@Param("id") long id);
+
+        /**
+         * 🔴 **查重 SELECT**（真实 {@code register} 的第一步）⇒ ⇒ 冻结 PG 时**这条**先卡住
+         * ⇒ ⇒ 放行后它返回 ⇒ ⇒ 第二条 INSERT 能不能发出去，取决于**此刻还剩多少预算**。
+         */
+        @Select("SELECT count(*) FROM probe_row WHERE id = #{id}")
+        int countById(@Param("id") long id);
 
         /**
          * 🔴 <b>{@code pg_sleep} 的参数单位是「秒」，不是「毫秒」</b>。
