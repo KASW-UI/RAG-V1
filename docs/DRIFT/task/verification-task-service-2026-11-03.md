@@ -71,7 +71,7 @@
 | Mapping_Table | [`docs/Mapping_Table/task/task.md`](../../Mapping_Table/task/task.md)（**397 行 · 56 行映射 · C 列 40/40 · B 列 39/39**） |
 | File_Tree | [`docs/File_Tree/task.md`](../../File_Tree/task.md)（**本轮重跑生成器刷新**） |
 | 决策记录 | [`docs/决策记录.md`](../../决策记录.md)（D1 / D2 / D3 / D5 / D7 / D11 / D13 / D14 / D16 / D17 / D18） |
-| 基础 commit | 基线 `0a35865`（本地 `main`）· 本域实现提交 **`ef4fb5d`**（分支 `align/task`）（`git show --stat ef4fb5d`：**61 个文件 · ＋9074 / −210 行**） |
+| 基础 commit | 基线 `0a35865`（本地 `main`）· 本域实现提交 **`ef4fb5d`**（分支 `align/task`）（`git show --stat ef4fb5d`：**61 个文件 · ＋9074 / −210 行**）<br>· **2026-11-04 补记提交 `c1086dc`**（U-1 消费面真跑 ＋ U-2 双侧活体对拍 ＋ fat jar 启动缺陷修复）：**17 个文件 · ＋1831 / −56 行** |
 | 架构断言 | [`docs/架构符合性断言.md`](../../架构符合性断言.md)（A1–A13） |
 
 ### 1.5 本轮的验证读数（**全部真跑**）
