@@ -1,5 +1,7 @@
 package com.rag.common.logger;
 
+import java.io.Serial;
+
 /**
  * H3 修复：致命错误的专用异常类型。
  *
@@ -40,6 +42,7 @@ package com.rag.common.logger;
 */
 public class FatalError extends RuntimeException {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     public FatalError(String message, Throwable cause) {

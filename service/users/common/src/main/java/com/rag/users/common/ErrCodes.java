@@ -172,8 +172,7 @@ public final class ErrCodes {
             ERROR_POINTS_INSUFFICIENT, ERROR_POINTS_RETRY_EXCEEDED, ERROR_POINTS_TIMEOUT
     )));
 
-    private ErrCodes() {
-    }
+    private ErrCodes() {}
 
     /**
      * 返回全部码值的只读视图。

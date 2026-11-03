@@ -92,8 +92,7 @@ public final class IdentityResolver {
     private static final String MSG_USER_INACTIVE = "authenticated user inactive";
     private static final String MSG_STATUS_UNAVAILABLE = "authenticated user status unavailable";
 
-    private IdentityResolver() {
-    }
+    private IdentityResolver() {}
 
     // ============== 查询端口 ==============
 
@@ -160,8 +159,7 @@ public final class IdentityResolver {
         private String tenantId;
         private String subjectId;
 
-        public SubjectRef() {
-        }
+        public SubjectRef() {}
 
         public SubjectRef(String authorityId, String tenantId, String subjectId) {
             this.authorityId = authorityId;
