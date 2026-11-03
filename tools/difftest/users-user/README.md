@@ -88,14 +88,15 @@
 | **gRPC deadline**（PG 仍冻结） | status | ✅ 两侧 `ERROR_DEADLINE_EXCEEDED`（B @ 2088ms · C @ 2096ms）⇒ **服务端 2s 预算两侧对称** |
 | 同上 | description | 🔶 文案形态不同：B `context deadline exceeded` ↔ C `rpc deadline exceeded` ⇒ 客户端可见（C 侧 `common/.../ObservabilityAutoConfiguration.java:299` 硬编码） |
 | **取消传播**（客户端 1s 取消） | status | ✅ 两侧 `ERROR_CANCELLED`（`cancel_issued=true`） |
-| 同上 | **副作用** | ❌ **B = 0 行** ↔ **C = 1 行** ⇒ DRIFT-USER-PARITY-006 |
-| **判别性变体**（取消推迟到 **5s**，必定晚于服务端 2s 预算） | 副作用 | ❌ **同样 B=0 · C=1** ⇒ ⇒ **差异与「客户端取消」无关** ⇒ 归因＝服务端预算到点后有没有把在途写回滚 |
+| 同上 | **副作用** | ❌ **B = 0 行** ↔ **C = 1 行** ⇒ DRIFT-USER-PARITY-006（⚠️ **共享层 `702b46b` 修复落地后仍复现**） |
+| **判别性变体**（取消推迟到 **5s**，必定晚于服务端 2s 预算） | 副作用 | ✅ **修后两侧同为 0 行**（修前 C=1）⇒ ⇒ 「服务端 2s 预算 ⇒ 取消在途写」那一路**已被共享层修好** ⇒ ⇒ 剩余差异**只在「客户端主动取消」那条路** |
 | **恢复**（PG 放行） | 恢复 + 响应 | ✅ 两侧**连续 3 轮**回 200 ⇒ 稳定态 |
 | **外部依赖失败**（PG 停 ⇒ 连接被拒） | HTTP 出口 | ✅ **两侧都是 `200 + 信封 1015`**（3/3 轮）⇒ 共享层修复在 users-user 域同样生效 |
 | **恢复**（PG 重新 start） | 恢复 + 响应 | ✅ 两侧**连续 3 轮**回 200 |
 | **并发**（两侧各 8 路并发 register 同一用户名） | 响应集合 + 行数 | ✅ 两侧响应集合**都是 `{200/200, 200/5001}`** · 各自**恰好 1 行** |
 
-⇒ **探针机器摘要**：`—— 场景轮摘要：❌ 真差异 3 ｜ ⚠️ 对称异常/已知现象 2 ——`
+⇒ **探针机器摘要（修复前 run6）**：`—— 场景轮摘要：❌ 真差异 3 ｜ ⚠️ 对称异常/已知现象 2 ——`
+⇒ ⇒ **修复后 run8**：`—— 场景轮摘要：❌ 真差异 2 ｜ ⚠️ 对称异常/已知现象 2 ——` ⇒ ⇒ **真差异 3 → 2 ⇒ 修复确实生效**
 ⇒ ⇒ **3 条真差异 = 2 个根因**（第 3 条是第 2 条的**判别性变体** ⇒ 用来分离成因，不是新缺陷）
 ⇒ ⇒ ⚠️ 2 条 = 恢复轮的 **JSON 键序**（PARITY-003，已登记）
 ⇒ ⇒ 两条根因均已归因：一条＝签字偏离 **DEV-USER-010** · 一条＝**共享层**跨域。
@@ -133,11 +134,13 @@
   不是 follow 域那种**三方**（C ↔ B ↔ Go 冻结字节）；
 - ⚠️ **「DB 完全不可响应」档的 HTTP 出口形态**（B `200+1015@2s` ↔ C `503@3s`）⇒ 已登记为签字偏离 **DEV-USER-010**；
 - ⚠️ **取消后在途写是否回滚**（B=0 行 ↔ C=1 行）⇒ **落点在共享层** ⇒ 本 lane 无写权面 ⇒ 归收口域；
-  ⇒ 📌 **根因已定位到一行**（代码级归因 · **待运行验证**）：**C 侧 gRPC 拦截器缺 `onHalfClose` 里的
-  `DeadlineState.bindAbsoluteNanos(...)`**（B 侧 `RpcInterceptor.java:516-517` 有；C 侧
-  `ObservabilityAutoConfiguration.java:253-262` 的 listener **只重写了 `onCancel()`**）
-  ⇒ ⇒ handler 线程上 `DeadlineState` 恒空 ⇒ ⇒ `DeadlineQueryTimeoutInjector` 不注入 `setQueryTimeout`
-  ⇒ ⇒ **不发 CancelRequest** ⇒ ⇒ 在途写不被取消 ⇒ 提交 ⇒ 1 行（B 侧有绑定 ⇒ CancelRequest ⇒ 回滚 ⇒ 0 行）。
+  ⇒ 📌 **根因只闭合了一半**（2026-11-03 run8 复测，共享层 `702b46b` 落地后）：
+  ① 「服务端 2s 预算 ⇒ 取消在途写」那一路**已修好**（`ObservabilityAutoConfiguration` 补 `onHalfClose` 里的
+  `DeadlineState.bindAbsoluteNanos`）⇒ 变体2（cancel-after=5s）**两侧同为 0 行**；
+  ② **「客户端主动取消」那一路仍未解释** ⇒ 变体1（cancel-after=1s）**仍 B=0 · C=1**；
+  ⇒ ⇒ ⚠️ **两侧 PG 日志都无 `cancel statement due to user request`** ⇒ ⇒ **两侧都不是靠 pgjdbc 的
+  CancelRequest 回滚** ⇒ ⇒ 原推断「B 侧靠 CancelRequest ⇒ 0 行」**不成立**；
+  ⇒ ⇒ ⚠️ **B 侧变体1 窗口只有 `slowcall ... duration 2006ms`，C 侧同窗口零日志** ⇒ ⇒ **B 的 0 行机制尚未定位**。
 - ⚠️ **gRPC deadline 的 description 文案形态**不同 ⇒ 客户端可见 ⇒ 落点＝共享层 gRPC 拦截器 ⇒ 归收口域。
 
 ## 六、跑法与排障

@@ -416,7 +416,7 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 | `docs/File_Tree/users/user.md` 的 §五 状态块陈旧 | **FAIL（跨域 · 工具层）** | DRIFT-USER-IMPL-008（根因在 `tools/gen-file-tree.py` 的写死占位） |
 | 🔴 **其余 7 个域的 fat jar 起不来**（`grpc-inprocess` 是 test scope） | **FAIL（跨域）** | DRIFT-USER-PARITY-002：`article`/`comment`/`favorite`/`hot`/`like`/`message`/`task` 七个域的 pom 把 `grpc-inprocess` 声明成 `<scope>test</scope>` ⇒ 生产 jar 缺类 ⇒ devh `GrpcClientAutoConfiguration:160` 抛 `NoClassDefFoundError` ⇒ **启动即挂**。⚠️ 当前被「Application 无 `main`」挡在前面（先挂 repackage）⇒ **各域补 `main` 的那一刻才会暴露** ⇒ 建议**先修这一条** |
 | 🔴 **「DB 完全不可响应」时的 HTTP 超时出口形态**（B `200+1015@2.01s` ↔ C `503@3.00s`） | **INTENTIONALLY_CHANGED**（签字偏离 · 待签） | DRIFT-USER-PARITY-005 ⇒ **DEV-USER-010**（与 DEV-USER-008 同族：D1/D2 进程合并 ⇒ B 侧 api 层那一跳的「超时出口」不可达）⇒ 共享层预算机制本身**两侧对称**（§12.2.2 阶段C：两侧服务端预算都 ~2.1s） |
-| 🔴 **客户端取消后，服务端在途写是否回滚**（B=0 行 ↔ C=1 行） | **FAIL（跨域 · 共享层）** | DRIFT-USER-PARITY-006：**两个判别性变体同结果**（cancel-after=1s 与 5s）⇒ 与「客户端取消」无关 ⇒ **根因已定位到一行**（代码级归因 · 待运行验证）：**C 侧 gRPC 拦截器缺 `onHalfClose` 里的 `DeadlineState.bindAbsoluteNanos(...)`**（B 侧 `RpcInterceptor.java:516-517` 有；C 侧 `ObservabilityAutoConfiguration.java:253-262` 只重写了 `onCancel()`）⇒ ⇒ **handler 线程上 `DeadlineState` 恒空** ⇒ ⇒ `DeadlineQueryTimeoutInjector` 不注入 `setQueryTimeout` ⇒ ⇒ **不发 CancelRequest** ⇒ 在途写不被取消 ⇒ 提交 ⇒ 1 行；B 侧有绑定 ⇒ CancelRequest ⇒ 回滚 ⇒ 0 行 ⇒ **本 lane 无写权面**（落点 `common/`） |
+| 🔴 **客户端取消后，服务端在途写是否回滚**（B=0 行 ↔ C=1 行） | **FAIL（跨域 · 共享层）** · **根因只闭合了一半** | DRIFT-USER-PARITY-006：**共享层 `702b46b`（补 `onHalfClose` 里的 `DeadlineState.bindAbsoluteNanos`）落地后，run8 复测**：判别性变体（cancel-after=5s）**两侧同为 0 行 ⇒ 该路已闭合**（探针摘要 真差异 3→2）；但 **cancel-after=1s 仍 B=0 · C=1** ⇒ ⇒ **剩余差异只在「客户端主动取消」这条路上** ⇒ ⇒ 新证据：① **两侧 PG 日志都无 `cancel statement due to user request`** ⇒ ⇒ **两侧都不是靠 pgjdbc 的 CancelRequest 回滚** ⇒ ⇒ 原「B 侧靠 CancelRequest ⇒ 0 行」的推断**不成立**；② **B 侧变体1 窗口只有 `slowcall ... duration 2006ms`，C 侧同窗口零日志** ⇒ ⇒ **B 的 0 行机制尚未定位** ⇒ ⇒ **本 lane 无写权面**（落点 `common/` 的 gRPC 取消路径） |
 | **场景轮**（超时 / deadline / 取消传播 / 恢复 / 外部依赖失败 / 恢复 / 并发） | **PASS**（探针摘要：❌ 真差异 3 · ⚠️ 已知现象 2 ⇒ **2 个根因，均已归因**） | §12.2.2：**8 阶段** ⇒ 机器摘要「❌ 真差异 **3** ｜ ⚠️ 对称异常/已知现象 **2**」⇒ **3 条真差异归为 2 个根因**（第 3 条 = 第 2 条的**判别性变体**）· **两侧对称判据全部通过**：gRPC deadline status · 取消 status · 恢复轮**连续 3 轮**回 200 ×2 · **PG 停两侧同为 `1015`**（独立交叉验证 admin lane）· 并发 register 响应集合同为 `{200/200, 200/5001}` + 恰好 1 行 |
 | 🔴 **JSON 响应键序**（Jackson 2 vs 3 的默认行为） | **FAIL（跨域 · 共享层）** | DRIFT-USER-PARITY-003：B（Boot 4 / Jackson 3）的 mapper 默认开 `SORT_PROPERTIES_ALPHABETICALLY` ⇒ 输出**字母序**；C（Boot 3.5 / Jackson 2.19.4）默认关 ⇒ 输出**声明序** ⇒ **10 个域全受影响** ⇒ 落点在共享层 `common/` 的 ObjectMapper 定制 ⇒ **本 lane 无写权面** |
 
@@ -446,7 +446,7 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 > **场景轮**〔并发 / 超时 / 外部依赖失败 / 恢复 ×2 / **gRPC deadline** / **取消传播**〕）
 > **已于 2026-11-03 全部闭合**（每项都带变异证据或**判别性变体**）。
 > ⇒ ⇒ **剩下的缺口全在「表外」**：**B 侧 Go 真源第三方锚不可得**（本机无 `Sea-etcd`）·
-> **场景轮暴露的 2 条已归因差异**（PARITY-005 ⇒ 签字偏离 **DEV-USER-010** · **PARITY-006** ⇒ 落点在**共享层** ⇒ 本 lane 无写权面；⚠️ **PARITY-006 的根因已定位到一行**：C 侧 gRPC 拦截器缺 `onHalfClose` 里的 `DeadlineState.bindAbsoluteNanos(...)`）
+> **场景轮暴露的 2 条已归因差异**（PARITY-005 ⇒ 签字偏离 **DEV-USER-010** · **PARITY-006** ⇒ 落点在**共享层** ⇒ 本 lane 无写权面；⚠️ **PARITY-006 的根因只闭合了一半**：共享层 `702b46b` 已修好「服务端预算到点 ⇒ 取消在途写」那一路，**「客户端主动取消」那一路机制仍未定位**）
 > · **gRPC deadline 的 description 文案形态**不同（客户端可见 ⇒ 落点共享层 gRPC 拦截器）（§12.5）。
 > ⇒ ⇒ **表内 `NOT_VERIFIED` 归零 ≠ 元命题闭合**（见 P-USER-14）。
 >
@@ -476,7 +476,7 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 > ⇒ **不再有「表内 NOT_VERIFIED 项」**（已全部闭合或移交）⇒
 > ⇒ 但**元命题**仍未闭合，原因是**表外**的三类：
 > ① **B 侧 Go 真源第三方锚不可得**（本机无 `Sea-etcd`）⇒ 探针只能**双侧**（C ↔ B）；
-> ② **场景轮暴露的 2 条已归因差异**（PARITY-005 签字偏离 · **PARITY-006 落点在共享层，根因已定位到一行**：C 侧 gRPC 拦截器缺 `onHalfClose` 里的 `DeadlineState.bindAbsoluteNanos(...)`）⇒ **本 lane 无写权面**；
+> ② **场景轮暴露的 2 条已归因差异**（PARITY-005 签字偏离 · **PARITY-006 落点在共享层；共享层 `702b46b` 已修其一半（判别性变体已闭合），但「客户端主动取消」那条路的机制仍未定位**）⇒ **本 lane 无写权面**；
 > ③ **gRPC deadline 的 description 文案形态**不同（客户端可见 ⇒ 共享层 gRPC 拦截器）（§12.5）。
 >
 > 🔴 **不要把「表内 0 个 NOT_VERIFIED」读成「命题已闭合」** —— 那正是把**表**当**命题**。
@@ -525,7 +525,7 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 **2026-11-03 已完成**双侧活体对拍（**HTTP 20 例 + gRPC wire 18 例 + DB 最终态**）：HTTP 结构级 16/20 一致（4 例差异全是**已登记**的 400 文案形态）、字节级 12/20、**gRPC wire 真差异 0/18**（9 个方法全覆盖；**只屏蔽易变值、不屏蔽 presence**）、DB 两张表最终态逐字段一致；**
 **⇒ 写路径形态（`updateById` vs `update(null, wrapper)`）已由 `NOT_VERIFIED` 升为 `PASS` —— 两侧领域服务的可执行语句集逐行 diff（唯一差异 = 一处日志调用的换行折叠），13 个写路径调用点逐条一一对应，且**两侧都不是 `updateById`**；**
 **⇒ 场景轮（并发 / 超时 / 外部依赖失败 / 恢复 ×2 / gRPC deadline / 取消传播）已做**（**8 阶段**；探针机器摘要「❌ 真差异 **3** ｜ ⚠️ 已知现象 **2**」⇒ **3 条真差异归为 2 个根因**）：**两侧对称判据全部通过** —— 并发 register 两侧响应集合同为 `{200/200, 200/5001}` 且各恰好 1 行 · **PG 停两侧同为 `1015`**（独立交叉验证 admin lane）· 恢复轮两侧**连续 3 轮**回 200 · gRPC deadline / 取消的 **status 两侧一致**（`DEADLINE_EXCEEDED` / `CANCELLED`，服务端预算对称 ~2.1s）；**2 个根因** = ① DB 完全不可响应档的 HTTP 出口形态 ⇒ 签字偏离 **DEV-USER-010**；② 取消后在途写是否回滚 ⇒ **落点在共享层** ⇒ 本 lane 无写权面；**
-**⇒ 但「行为与 B 侧完全等价」这一命题本身仍是 `NOT_VERIFIED`** —— 剩下的缺口都在**表外**：**B 侧 Go 真源第三方锚不可得**（本机无 `Sea-etcd`）· **场景轮暴露的 2 条已归因差异**（PARITY-005 ⇒ 签字偏离 **DEV-USER-010**；**PARITY-006** ⇒ 落点在**共享层** ⇒ 本 lane 无写权面；⚠️ **其根因已定位到一行**：C 侧 gRPC 拦截器缺 `onHalfClose` 里的 `DeadlineState.bindAbsoluteNanos(...)` ⇒ handler 线程无 deadline ⇒ **不发 CancelRequest** ⇒ 在途写不被取消）· **gRPC deadline 的 description 文案形态**不同（客户端可见 ⇒ 共享层 gRPC 拦截器）；**
+**⇒ 但「行为与 B 侧完全等价」这一命题本身仍是 `NOT_VERIFIED`** —— 剩下的缺口都在**表外**：**B 侧 Go 真源第三方锚不可得**（本机无 `Sea-etcd`）· **场景轮暴露的 2 条已归因差异**（PARITY-005 ⇒ 签字偏离 **DEV-USER-010**；**PARITY-006** ⇒ 落点在**共享层** ⇒ 本 lane 无写权面；⚠️ **其根因只闭合了一半**：共享层 `702b46b` 已修好「服务端预算到点 ⇒ 取消在途写」那一路（run8 实测变体2 两侧同为 0 行），但**「客户端主动取消」那一路的机制仍未定位**）· **gRPC deadline 的 description 文案形态**不同（客户端可见 ⇒ 共享层 gRPC 拦截器）；**
 **另有 7 条跨域 FAIL：DRIFT-USER-IMPL-004/005/006/008（收口域与 admin lane）＋ **DRIFT-USER-PARITY-002（其余 7 域 fat jar 起不来）＋ DRIFT-USER-PARITY-003（JSON 键序 · 共享层）＋ DRIFT-USER-PARITY-006（取消后在途写回滚 · 共享层）** —— 本 lane 不越权代改，已逐条登记。**
 
 ---
@@ -680,16 +680,30 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 | **C gRPC deadline**（PG 仍冻结 · 客户端 deadline 20s） | gRPC status | ✅ 两侧 `ERROR_DEADLINE_EXCEEDED`（B @ 2088ms · C @ 2096ms）⇒ **服务端 2s 预算两侧对称** |
 | **C gRPC deadline** | description | 🔶 文案形态不同：B `context deadline exceeded` ↔ C `rpc deadline exceeded` ⇒ 客户端可见 ⇒ 登记（**根因已在 follow 域台账取证**：C 侧 `common/.../ObservabilityAutoConfiguration.java:299` **硬编码** `.withDescription("rpc deadline exceeded")`；B 侧 `service/common/.../observability/RpcInterceptor.java` 的 `GO_DEADLINE_EXCEEDED_DESCRIPTION` ⇒ **同一机制、两种文案**） |
 | **D 取消传播**（客户端 1s 取消） | gRPC status | ✅ 两侧 `ERROR_CANCELLED`（cancel_issued=true） |
-| **D 取消传播** | **副作用** | ❌ **B = 0 行** ↔ **C = 1 行**（INSERT 提交了）⇒ **DRIFT-USER-PARITY-006** |
-| **D 判别性变体**（cancel-after=**5s**，必定晚于服务端 2s 预算） | 副作用 | ❌ **同样 B=0 · C=1** ⇒ ⇒ **两个变体同结果** ⇒ ⇒ **差异与「客户端取消」无关** ⇒ 归因落在**服务端预算到点后有没有把在途写回滚** |
+| **D 取消传播** | **副作用** | ❌ **B = 0 行** ↔ **C = 1 行**（INSERT 提交了）⇒ **DRIFT-USER-PARITY-006**（⚠️ **共享层 `702b46b` 修复落地后仍复现** ⇒ 只闭合了一半，见下） |
+| **D 判别性变体**（cancel-after=**5s**，必定晚于服务端 2s 预算） | 副作用 | ✅ **修后两侧同为 0 行**（修前 C=1）⇒ ⇒ **服务端 2s 预算那条路已被共享层 `702b46b` 修好** ⇒ ⇒ 剩下的差异**只在「客户端主动取消」这条路上** |
 | **E 恢复**（PG 放行） | 恢复 + 响应 | ✅ 两侧**连续 3 轮**回 200（2s）⇒ 稳定态 ⇒ 响应一致（🔶 仅键序） |
 | **F 外部依赖失败**（PG 停 ⇒ 连接被拒） | HTTP 出口 | ✅ **两侧都是 `200 + 信封 1015`**（3/3 轮）⇒ ⇒ **共享层 6a3acb4 的修复在 users-user 域也生效**（独立交叉验证 admin lane 的复测） |
 | **G 恢复**（PG 重新 start） | 恢复 + 响应 | ✅ 两侧**连续 3 轮**回 200（2s）⇒ 响应一致（🔶 仅键序） |
 | **H 并发**（两侧各 8 路并发 register 同一用户名） | 响应集合 + 行数 | ✅ 两侧响应集合**都是 `{200/200, 200/5001}`** · 各自**恰好 1 行** |
 
-> **探针机器摘要（run6 · 照抄）**：`—— 场景轮摘要：❌ 真差异 3 ｜ ⚠️ 对称异常/已知现象 2 ——`
+> **探针机器摘要（run6 · 修复前 · 照抄）**：`—— 场景轮摘要：❌ 真差异 3 ｜ ⚠️ 对称异常/已知现象 2 ——`
 > ⇒ ⚠️ 2 条 = `scn_recover_after_pause` / `scn_recover_after_restart` 的 **JSON 键序**（PARITY-003）
 > ⇒ ❌ 3 条 = 上表的 **超时出口** / **取消后副作用** / **取消后副作用·判别性变体** ⇒ **2 个根因**
+>
+> **探针机器摘要（run8 · 共享层 `702b46b` 修复落地后 · 照抄）**：`—— 场景轮摘要：❌ 真差异 2 ｜ ⚠️ 对称异常/已知现象 2 ——`
+> ⇒ ⇒ **真差异 3 → 2** ⇒ ⇒ **修复确实生效**（判别性变体那条绿了）⇒ ⇒ **但「客户端主动取消」那条仍红**
+
+### 🔴 run8 的两条新事实（**修复后复测 · 把根因再切细一层**）
+
+| # | 事实 | 证据 |
+|---|---|---|
+| ① | **两侧 PG 日志里都没有 `cancel statement due to user request`** | ⇒ ⇒ **两侧都不是靠 pgjdbc 的 CancelRequest 回滚的** ⇒ ⇒ **「`setQueryTimeout` ⇒ 发 CancelRequest」这条链在两侧都没走通** ⇒ ⇒ 我此前「B 侧靠 CancelRequest 回滚」的推断**不成立** |
+| ② | **B 侧变体1 窗口只有一条 `slowcall ... duration 2006ms`；C 侧同窗口一条日志都没有** | ⇒ ⇒ C 侧 INSERT **正常提交**（无异常）；B 侧 **既无异常日志也无 cancel** ⇒ ⇒ **B 的 0 行另有机制，且该机制不产生任何日志** ⇒ ⇒ **机制尚未定位** |
+
+⇒ ⇒ **结论修订**：上一轮写的「根因 = C 侧 gRPC 拦截器缺 `onHalfClose` 里的 `DeadlineState.bindAbsoluteNanos`」
+⇒ **只解释了「服务端预算到点」那一条路**（run8 已证实该路修好）；
+⇒ **「客户端主动取消」那条路的差异仍未解释** ⇒ ⇒ **根因只闭合了一半**。
 
 ### 🔴 两条真差异的归因（**3 条读数 · 2 个根因**）
 
@@ -716,16 +730,17 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 
 - **读数**：客户端在 1s 主动取消一个**写路径**（Register）调用 ⇒ 两侧 gRPC 都回 `CANCELLED`（✅ 一致）
   ⇒ ⇒ **放行 PG 后**查库：**B = 0 行**（INSERT 没提交）· **C = 1 行**（INSERT 提交了）。
-- **判别性变体**：把取消推迟到 **5s**（**必定晚于服务端 2s 预算**）⇒ ⇒ **结果完全相同**（B=0 · C=1）
-  ⇒ ⇒ ⇒ **差异与「客户端取消」无关** ⇒ 归因落在「**服务端 2s 预算到点后，有没有把在途 SQL/事务取消掉**」。
+- **判别性变体**：把取消推迟到 **5s**（**必定晚于服务端 2s 预算**）⇒ ⇒ **修前**结果完全相同（B=0 · C=1）⇒ ⇒ **修后**（共享层 `702b46b` 落地）**两侧同为 0 行** ✅
+  ⇒ ⇒ ⇒ **修前**：差异落在「**服务端 2s 预算到点后，有没有把在途 SQL/事务取消掉**」⇒ 该条**已被共享层修复闭合**；
+  ⇒ ⇒ ⇒ **修后剩下的差异只在「客户端主动取消」这条路上**（客户端 1s 取消 ⇒ 服务端预算还没到 ⇒ C 侧照常提交）。
 - **代码级取证（两侧共享层本就是两套实现，不是同一份 jar）**：
   | | B 仓 `service/common/` | RAG-V1 `common/` |
   |---|---|---|
   | gRPC 服务端预算 | `observability/RpcInterceptor.java`（**主动关 call** 的调度器 ＋ `DeadlineState` 内嵌其中） | `observability/DeadlineState.java`（**独立类** ＋ 领域层**检查点**式判定） |
   | SQL 超时翻译 | `persistence/SqlTimeoutStatusTranslator.java` | `persistence/SqlTimeoutStatusTranslator.java` ＋ `DeadlineBoundedConnectionTimeout` ＋ `DeadlineTranslatingDataSource` ＋ `StatusAwareSqlSession*`（6a3acb4 新增） |
   | HTTP 观测栈 | OpenTelemetry（`HttpMiddleware`） | Micrometer Observation（`HttpMiddleware`） |
-- **🔴 根因已定位到一行（代码级归因 · 静态证据 · **待运行验证**）**：
-  **C 侧的 gRPC 拦截器「主动关 call」做得到，但「把 deadline 绑给 SQL」这一半缺位。**
+- **🔴 根因（**已部分闭合 · 见下方 run8 修订**）**：C 侧的 gRPC 拦截器原先「主动关 call」做得到，但「把 deadline 绑给 SQL」这一半缺位
+  ⇒ ⇒ **该缺口已由共享层 `702b46b`（`ObservabilityAutoConfiguration` 补 `onHalfClose()`）修复** ⇒ ⇒ **run8 复测证实该路已闭合**。
   | 环节 | B 侧 | C 侧 |
   |---|---|---|
   | 2s 预算到点**主动关 call**（⇒ 客户端看到 `DEADLINE_EXCEEDED`） | `RpcInterceptor.java:361-362` | `ObservabilityAutoConfiguration.java:293-299`（`scheduleTimeout`）✔ **两侧对称** |
@@ -738,9 +753,15 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
   - ⇒ ⇒ **一句话**：**PARITY-005 与 PARITY-006 是同一根因的两面** ——
     **C 侧 gRPC 边界上的「主动关 call ＋ 把 deadline 绑给 SQL」这套组合，在 D1/D2 合并后于 HTTP 路径上整层缺位**：
     ① HTTP 路径缺整层 ⇒ 出口形态差（PARITY-005）；② gRPC 路径缺「绑给 SQL」这一半 ⇒ 在途写不被取消（PARITY-006）。
-  - **⚠️ 证据边界（§3.3.1）**：以上是**代码级归因**（静态取证 + 两侧行为读数吻合）⇒ **不是运行证据**。
-    ⇒ **坐实需要一次运行验证**（三选一）：① 在 C 侧 gRPC handler 线程读 `DeadlineState.remainingMillis()`（应为 `MAX_VALUE`）；
-    ② 在 C 侧 injector 上打「注入/未注入」日志；③ **直接在 C 侧补上 `onHalfClose` 绑定后复跑场景轮 ⇒ 看 C 是否从 1 行变成 0 行**（③ 同时是**变异测试**）。
+  - **✅ 运行验证已完成（2026-11-03 18:0x · run8）**：共享层 `702b46b` 落地后复跑场景轮 ⇒
+    **判别性变体（cancel-after=5s）两侧同为 0 行** ⇒ ⇒ **该路已被证实修好**（探针摘要：真差异 3 → 2）。
+  - 🔴 **但「客户端主动取消」那条路仍红**（B=0 · C=1）⇒ ⇒ **上面的根因只解释了「服务端预算到点」那一半**。
+    ⇒ ⇒ **两条新事实把剩下的差异重新切开了**：① **两侧 PG 日志都没有 `cancel statement due to user request`**
+    ⇒ ⇒ **两侧都不是靠 pgjdbc 的 CancelRequest 回滚的** ⇒ ⇒ 上表「B 侧靠 CancelRequest ⇒ 0 行」那一格**推断不成立**；
+    ② **B 侧变体1 窗口只有一条 `slowcall ... duration 2006ms`，C 侧同窗口一条日志都没有**
+    ⇒ ⇒ B 的 0 行**既无异常也无 cancel** ⇒ ⇒ **该机制尚未定位**。
+  - ⇒ ⇒ **⇒ 本条根因**只闭合了一半**；剩余部分（客户端主动取消 ⇒ 在途写是否回滚）**机制未定位**，
+    仍**归 `global` 收口域**（落点仍在共享层的 gRPC 取消路径）。
   - ⇒ ⇒ **处置不变**：**跨域 · 归 `global` 收口域** —— 落点在**共享层**（`common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java`），
     **本 lane 无写权面**（AGENTS.md §五.3）。
     ⚠️ **不擅自改**：C 侧 `service/users/user/` 一行未改（本条**不是**域内实现问题）。
@@ -834,7 +855,7 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 | **gRPC deadline 的 description 文案形态** | **🔶 已登记** | B `context deadline exceeded` ↔ C `rpc deadline exceeded` ⇒ **客户端可见** ⇒ 落点＝共享层的 gRPC 拦截器（C 侧 `common/.../ObservabilityAutoConfiguration.java:299` **硬编码**）⇒ 归收口域（随 DRIFT-USER-PARITY-006 一并处理） |
 | **gRPC 的 deadline / 取消传播** | ✅ **已做**（2026-11-03 第三轮 · §12.2.2） | ⇒ **两侧 status 一致**（`DEADLINE_EXCEEDED` @ ~2.1s · `CANCELLED`）⇒ ⇒ **服务端 2s 预算两侧对称**；⚠️ **description 文案形态不同**（B `context deadline exceeded` ↔ C `rpc deadline exceeded`）⇒ 客户端可见 ⇒ 落点＝共享层 gRPC 拦截器 |
 | **「DB 完全不可响应」档的 HTTP 出口形态** | **🔶 已登记为签字偏离** | DRIFT-USER-PARITY-005 ⇒ DEV-USER-010 ⇒ 落点＝D1 合并的连带后果（与 DEV-USER-008 同族）⇒ ⚠️ **与下一行同源**：C 侧 gRPC 边界那套「主动关 call ＋ 把 deadline 绑给 SQL」在 HTTP 路径上**整层缺位**（`ObservabilityProperties.java:124-126` 自述） |
-| **取消后在途写是否回滚**（B=0 行 ↔ C=1 行） | **🔶 已登记 · 根因已定位到一行** | DRIFT-USER-PARITY-006 ⇒ **C 侧 gRPC 拦截器缺 `onHalfClose` 里的 `DeadlineState.bindAbsoluteNanos(...)`**（B 侧 `RpcInterceptor.java:516-517` 有）⇒ ⇒ handler 线程无 deadline ⇒ injector 不注入 `setQueryTimeout` ⇒ **不发 CancelRequest** ⇒ 在途写提交 ⇒ 1 行 ⇒ 落点＝共享层 `ObservabilityAutoConfiguration.java` ⇒ 归收口域（⚠️ 代码级归因，**待运行验证**） |
+| **取消后在途写是否回滚**（B=0 行 ↔ C=1 行） | **🔶 已登记 · 根因只闭合了一半** | DRIFT-USER-PARITY-006 ⇒ **共享层 `702b46b` 落地后 run8 复测**：变体2（cancel-after=5s）**两侧同为 0 行 ⇒ 已闭合**；变体1（cancel-after=1s）**仍 B=0 · C=1** ⇒ ⇒ 剩余差异**只在「客户端主动取消」这条路上** ⇒ ⇒ ⚠️ **两侧 PG 日志都无 `cancel statement due to user request`** ⇒ ⇒ **两侧都不是靠 pgjdbc 的 CancelRequest 回滚** ⇒ ⇒ **该路机制尚未定位** ⇒ 落点＝共享层的 gRPC 取消路径 ⇒ 归收口域 |
 
 ## 12.6 可复跑
 
