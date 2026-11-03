@@ -100,7 +100,7 @@
 
 ## `difftest/follow/` 的约定（E-4 双侧活体对拍 · 2026-11-02）
 
-> 完整设计、HTTP 21 条 ＋ gRPC wire 13 条 ＋ 场景轮 6 类的用例清单、29 条踩坑 ⇒ [`difftest/follow/README.md`](difftest/follow/README.md)。
+> 完整设计、HTTP 21 条 ＋ gRPC wire 13 条 ＋ 场景轮 6 类（＋ 过渡窗口分层采样）的用例清单、35 条踩坑 ⇒ [`difftest/follow/README.md`](difftest/follow/README.md)。
 
 ### 目录名必须与派发器的约定一致
 
