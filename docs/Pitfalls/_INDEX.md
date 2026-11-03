@@ -8,7 +8,9 @@
 ```
 docs/Pitfalls/
 ├── _INDEX.md
-└── _cross/            # 跨模块踩坑
+├── _cross/            # 跨模块踩坑
+├── users/             # users 域专属（本域写权面）
+└── follow/            # follow 域专属（本域写权面）
 ```
 
 ## 已登记的坑（来自 RAG 形态的实测教训）
@@ -33,9 +35,12 @@ docs/Pitfalls/
 | P-16 | **Boot 3.4+ 嵌套 `@TestConfiguration` 默认不被发现** | 测试配置**静默不注册** ⇒ 测试"绿"但根本没加载配置 |
 | P-17 | **合并进程里的「Nacos 自动注册」会拿 web 端口注册** | 同名双实例 ⇒ gRPC 链路断 |
 | P-18 | **域还是空壳 ⇒ 没有 `main` ⇒ `repackage` 失败 ⇒ `mvn verify` 恒红** | 报错出现在**打包阶段**（看着像 pom 配错）⇒ 真因是**域未实现** ⇒ 红绿分布只反映「实现到哪一步」，**与代码质量无关** ⇒ ⇒ **红也要做同条件对照**（`git archive HEAD` 基线副本 + **`-fae`**）⇒ 域实现完成前，全仓验收信号用 `mvn -o clean test-compile` / `mvn -o clean test` |
+| P-19 | **JWT 是**确定性**的 ⇒ 同秒内同账号登录拿到的 token 逐字节相同 ⇒ 黑名单会「串味」到别的用例** | JWT 载荷 = `{uid, iat, exp}` ⇒ 同密钥 ＋ 同 uid ＋ 同一秒 ⇒ **签出同一个字符串** ⇒ ⇒ 本仓 HTTP 契约测试的登录夹具**每次都用同一个默认 admin 账号** ⇒ ⇒ A 用例把 token 加进黑名单 ⇒ B 用例**再拿同一个 token** ⇒ ⇒ 必然 401 ⇒ ⇒ 表现为**与执行顺序强相关的不稳定失败**（同一份代码上一轮 `clean verify` 16/16 全绿、下一轮红 1 例）⇒ ⇒ **测试夹具隔离缺陷**（不是产品缺陷）⇒ 修法 = 夹具侧让 token 可区分（注入 `iat` 偏移 / 逐用例唯一 uid / 登录后清黑名单）⇒ ⇒ **「红了先按基线自带处理，再按同条件对照复跑定位」**这条纪律在此再次生效 |
 | P-20 | **MyBatis 把 mapper 调用里的任何异常包成 `PersistenceException`** | `DefaultSqlSession` 对每个异常都 `catch (Exception e) → wrapException` ⇒ ⇒ 持久层翻好的 `StatusRuntimeException(DEADLINE_EXCEEDED)` **在离开持久层前就被吃掉一层** ⇒ ⇒ 域层的 `catch (StatusRuntimeException e) { throw e; }` **看不见它** ⇒ ⇒ 落 `catch (Exception e)` ⇒ ⇒ **被改写成 5001**（不是 B 侧的 1015）⇒ 解包点选在 `SqlSessionFactory`（两条 mapper 路径都经它） |
 | P-21 | **MyBatis 拦截器的 `@Intercepts` 漏签一个方法 ⇒ 那条路径整条绕过** | `Executor.queryCursor` 漏签 ⇒ MP 的 `BaseMapper.selectOne(Wrapper, boolean)`（**游标路径**）**完全不经过翻译器** ⇒ 57014 原样冒到域层 ⇒ 5001；⇒ **签错一个方法 ⇒ 启动期 `PluginException`**（3 参 `Executor.query` 在 MyBatis 3.5.19 里不存在）⇒ **漏签零报错、写错启动炸**，两者都是「零功能性报错」 |
 | P-22 | **javadoc 断链有三类，其中一类**工具永远扫不到**；且注释里写的机制**可能压根没实现** | ① 类名已改（`{@link RpcInterceptor}`）② 作用域写错（`{@link #compose(List)}` 指向别的类）③ 🔴 **藏在 `/* */` 里 ⇒ javadoc 工具永远扫不到**（本轮最要命那处：`{@link #newUnaryServerInterceptor}` —— **该方法从无实现**）⇒ ⇒ 工具报「0 错」≠「没有断链」；⇒ ⇒ **注释宣称 A、代码做 B**：注释说用 `ServerCall#getDeadline()` 区分两类超时，而 **grpc-api 1.63.0 的 `ServerCall` 没有这个方法**（`javap` 实测）⇒ ⇒ 注释里的「机制断言」必须能被证伪；⚠️ **改注释格式前先问「有没有机器守门认这个格式」** —— A13 的判据就是 `<pre>\s*\{@code`（Lombok 展开块）⇒ ⇒ 为了消 javadoc 的「未终止的内嵌标记」把 `{@code}` 换成纯 `<pre>` ⇒ ⇒ **A13 从 PASS 24/24 变成 FAIL 2/24**（靠基线对照才发现）⇒ ⇒ 正确解法 = **`{@code}` 块结尾多写一个 `}`**（闭合 inline tag，不属于代码、不渲染）|
+| **P-USER-01~12** | `users-user` 子域的 **12 条**域内踩坑 | 「只有注释的 YAML 键」解析成**空串**而不是 `null`（全仓启动雷）· in-process server 名字是 **JVM 全局注册**的 · `-pl <module>` 单模块跑测解析不到兄弟模块 · 「测试写错了」与「实现写错了」长得一模一样 · 守门脚本 `ROOT` 有三种形态只有一种对 · `@Transactional` 挂在 **MP mapper 接口的 `default` 方法**上（本仓最易静默失效的形态）· 默认 `mvn clean verify` 是 **fail-fast** ⇒ 失败面被截断 ⇒ 跨树对照会得出**错误结论** · **测试类路径 ≠ 生产 jar 类路径** ⇒ 「`mvn test` 全绿」证不了「fat jar 起得来」· Bean Validation 的**违规集合是 `HashSet`** ⇒ `findFirst()` **不确定** · Python 打 HTTP ⇒ **1xx 中间响应**被当成最终响应 · bash `( cd … && java … ) &` 的 `$!` 是**子 shell 的 PID** ⇒ cleanup 杀不到 java ⇒ 端口残留 · 拿**屏蔽后的规范化文本**去断言**原始值** ⇒ 断言恒 false ⇒ 两侧同时挂却不是行为差异 |
+| **P-FOLLOW-01~04** | `follow` 域的 **4 条**域内踩坑 | 下游被**外力 SIGKILL** ⇒ 探针照样绿灯 ⇒ **读数测的是另一个场景**（探针跑着跑着下游被杀掉 ⇒ 后面所有阶段跑在坏环境上 ⇒ 却给出「看起来很干净」的分布）· 等待「服务发现条目回来」的**嵌套重试** ⇒ 下游已死时**死等 7.5 分钟** · 生成器在 **worktree** 里跑 ⇒ 与 main 的差异是**假差异**（**git 不跟踪空目录**）· 变异脚本的备份是**启动时一次性取的** ⇒ 运行期间改靶点文件会被**还原冲掉** |
 
 > 📖 详情 → [`_cross/P-08-落地证据未经机器复算.md`](_cross/P-08-落地证据未经机器复算.md) ·
 [`_cross/P-20-MyBatis包装异常导致status到不了域层.md`](_cross/P-20-MyBatis包装异常导致status到不了域层.md) ·
@@ -46,6 +51,11 @@ docs/Pitfalls/
 > [`_cross/P-18-域还是空壳导致repackage找不到main方法.md`](_cross/P-18-域还是空壳导致repackage找不到main方法.md) ·
 > [`_cross/P-11-按类型判缺失的Bean被同类新增静默挤掉.md`](_cross/P-11-按类型判缺失的Bean被同类新增静默挤掉.md) ·
 > [`_cross/P-10-断言的自动消失不等于问题不存在.md`](_cross/P-10-断言的自动消失不等于问题不存在.md)
+> [`_cross/P-19-JWT确定性导致黑名单串味到别的用例.md`](_cross/P-19-JWT确定性导致黑名单串味到别的用例.md)
+>
+> 📌 **域内踩坑（各域写权面 ⇒ 由收口域统一登记索引）** ⇒
+> [`users/_user-domain-pitfalls.md`](users/_user-domain-pitfalls.md)（P-USER-01~12 · `users-user` 子域）·
+> [`follow/_follow-domain-pitfalls.md`](follow/_follow-domain-pitfalls.md)（P-FOLLOW-01~04 · `follow` 域）
 
 ## 纪律
 
