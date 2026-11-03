@@ -240,8 +240,12 @@ wait_ready "${C_HTTP_PORT}" "C user-service(HTTP)" || { tail -40 "${WORK}/c-serv
 track_listener "${C_HTTP_PORT}"
 
 step "HTTP 对拍矩阵（20 例）"
+if [ "${SKIP_MATRIX:-0}" = "1" ]; then
+  say "   … SKIP_MATRIX=1 ⇒ 跳过 HTTP/wire/DB 三轮矩阵（**只跑场景轮** ⇒ 迭代快）"
+else
 python3 "${HERE}/compare.py" "http://127.0.0.1:${B_API_PORT}" "http://127.0.0.1:${C_HTTP_PORT}" \
   "e4u$$" "1" || FAILED=1
+fi
 
 step "编译 gRPC wire 探针（同一份 class 打两侧 ⇒ 比的是纯粹的 wire 字节）"
 M2="${HOME}/.m2/repository"
@@ -261,11 +265,15 @@ for a in "io/grpc grpc-api" "io/grpc grpc-stub" "io/grpc grpc-core" \
 done
 PROBE_DIR="${WORK}/probe"
 mkdir -p "${PROBE_DIR}"
-javac -encoding UTF-8 -cp "${GRPC_CP}" -d "${PROBE_DIR}" "${HERE}/grpc-wire/UserWireProbe.java" \
+javac -encoding UTF-8 -cp "${GRPC_CP}" -d "${PROBE_DIR}" \
+  "${HERE}/grpc-wire/UserWireProbe.java" "${HERE}/grpc-wire/UserCancelParityProbe.java" \
   || die "gRPC wire 探针编译失败"
 say "   ✅ 探针编译完成（grpc-api $(basename "$(pick_jar io/grpc grpc-api)")）"
 
 step "gRPC wire 对拍矩阵（18 例 · 9 个方法全覆盖 + 错误路径 + 成功路径）"
+if [ "${SKIP_MATRIX:-0}" = "1" ]; then
+  say "   … SKIP_MATRIX=1 ⇒ 跳过 wire 矩阵"
+else
 # ⚠️ 用户名两侧必须**相同**（同输入），但**每轮唯一** ⇒ 避免上一轮崩在中途留下的残user 撞 ALREADY_EXISTS。
 WIRE_USER="e4ug$(date +%s)$$"
 java -cp "${GRPC_CP}:${PROBE_DIR}" com.rag.user.parity.UserWireProbe \
@@ -282,8 +290,12 @@ if [ "${B_WIRE_RC}" != "0" ] || [ "${C_WIRE_RC}" != "0" ]; then
 else
   python3 "${HERE}/wire_compare.py" "${WORK}/wire-b.txt" "${WORK}/wire-c.txt" || FAILED=1
 fi
+fi
 
 step "DB 最终态对拍（§6.4 状态和副作用）"
+if [ "${SKIP_MATRIX:-0}" = "1" ]; then
+  say "   … SKIP_MATRIX=1 ⇒ 跳过 DB 最终态对拍"
+else
 DB_ROWS_B="$(docker exec "${B_PG_CONTAINER}" psql -U "${PG_USER}" -d "${PG_DB_B}" -tAc \
   "SELECT username||'|'||status||'|'||coalesce(score::text,'-')||'|'||coalesce(extra_info,'-')||'|'||(password IS NOT NULL)::text||'|'||coalesce(email,'-') FROM users_user ORDER BY username")"
 DB_ROWS_C="$(docker exec "${C_PG_CONTAINER}" psql -U "${PG_USER}" -d "${PG_DB_C}" -tAc \
@@ -319,6 +331,7 @@ if [ "${TBL_B}" = "${TBL_C}" ]; then
 else
   FAILED=1
   say "   ❌ 表清单不一致：B=${TBL_B} · C=${TBL_C}"
+fi
 fi
 
 step "B 侧只读校验"
