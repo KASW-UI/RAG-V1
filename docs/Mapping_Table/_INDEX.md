@@ -69,7 +69,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 |---|---|---:|---|---|---:|
 | **users** | [`_shared.md`](users/_shared.md) · [users-common.md](users/users-common.md) · [user/user.md](users/user/user.md) · [admin/admin.md](users/admin/admin.md) | 1,158 | **111 / 111 = 100%** | **145 / 145 = 100%** | 134 |
 | **common** | [common.md](common.md) | 921 | **109 / 109 = 100%** | **88 / 88 = 100%** | 135 |
-| **article** | [article/article.md](article/article.md) | 474 | **58 / 58 = 100%** | **83 / 83 = 100%** | 72 |
+| **article** | [article/article.md](article/article.md) | 488 | **63 / 63 = 100%** | **83 / 83 = 100%** | 76 |
 | **comment** | [comment/comment.md](comment/comment.md) | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
 | **favorite** | [favorite/favorite.md](favorite/favorite.md) | 519 | **61 / 61 = 100%** | **75 / 75 = 100%** | 88 |
 | **follow** | [follow/follow.md](follow/follow.md) | 517 | **37 / 37 = 100%** | **51 / 51 = 100%** | 116 |
@@ -153,7 +153,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **comment** | `CommentController` javadoc 与 **B 侧** 端点清单不一致（2 处） | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
 | **comment** | `CommentKafkaMsg` 与 `service/comment/src/main/java/com/rag/comment/messaging/CommentAuditMessage.java` 的载荷字段归属未锁定 | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
 | **comment** | `wiring/` 下的**装配落点已齐**（2026-10-25 补齐 `CommentFactProcessLogging`）但类内容仍为空壳；`db/migration/` 目录内容仍为空 | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
-| **article** | C 列整体职责缺口（详见 §1.5） | 474 | **58 / 58 = 100%** | **83 / 83 = 100%** | 72 |
+| **article** | ✅ **2026-11-03 · C 侧 6 处职责缺口（G-1~G-6）已全部闭合 ＋ 补齐 1 处真实缺失（CORS · `ArticleCorsFilter`）** —— ① `messaging/` 3 类（审核消费者 / outbox relay / 同步结果消费者）② `client/ArticleObjectStorageClient`（MinIO put/get）③ `db/migration/` V8/V9/V10 **逐字节照抄** B 侧 ④ `contract/ArticleSyncEvent` 承载 `ArticleReviewMessage` / `ArticleSyncResult` ⑤ `interceptor/ArticleJwtAuthFilter` 承载 Servlet Filter 段验签（**`DRIFT-USERAPI-009②` 在本域闭环**）⑥ `web/ArticleStringFields` + `web/ArticleQueryValues` + `mapper/JsonbTypeHandler` 三份**域内副本**（待收口）| 488 | **63 / 63 = 100%** | **83 / 83 = 100%** | 76 |
 | **follow** | 原 `api/` vs `rpc/` 职责边界（D7 已压平，边界问题转为「单层包内的归属」）、`FollowApiSupport` 归属、`WebMvcConfig`/`FollowController` javadoc 与事实冲突 | 517 | **37 / 37 = 100%** | **51 / 51 = 100%** | 116 |
 
 > ✅ **2026-11-01 销账 2 条**（本轮补空壳 + 修 C 列）：① **users · B 侧的身份解析器在 C 侧无承载** ⇒ 已落 `service/users/common/src/main/java/com/rag/users/common/IdentityResolver.java`（**只 1 份**，上收到域级共享层）；② **task · Kafka 消费侧整体缺失** ⇒ 已落 `service/task/src/main/java/com/rag/task/messaging/`（10 类：2 个 sink + 3 个 consumer + router + store + 2 个事件 DTO + `TaskGoCompatibleJson`）。

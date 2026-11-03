@@ -12,6 +12,19 @@
     <name>article-service</name>
     <description>article 域 —— api + rpc 合并后的单一 Spring Boot 应用</description>
 
+    <properties>
+        <!--
+            ⚠️ **为什么用属性而不是把 `external-env` 直接写死在 `<excludedGroups>` 里**：
+            见 build 段那段说明 —— 写死之后，命令行**没有任何办法**把排除项清空
+            ⇒ 排除项必须能被 profile 改写 ⇒ 故走属性。
+            · 默认值 = `external-env` ⇒ 默认回归**排除**那 3 例；
+            · `external-env` profile 把它改成 `__none__`（**一个不存在的标签**）
+              ⇒ 等价于「不排除任何东西」⇒ 同时 profile 里把 `groups` 设为 `external-env`
+              ⇒ 恰好只跑那 3 例。
+        -->
+        <article.test.excludedGroups>external-env</article.test.excludedGroups>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId>
@@ -74,10 +87,37 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+            ⚠️ **grpc-inprocess 的 scope 必须是 compile（默认），不能是 test**
+            （2026-11-03 · B 出处 = B 侧 `service/article/article-rpc/pom.xml:231-260`；
+              同款修法已在本仓 `service/follow/pom.xml:68-98` 落地并实测）
+
+            【根因：Maven 的「最近者优先」】
+              1) net.devh:grpc-client-spring-boot-starter:3.1.0.RELEASE **自身就传递依赖**
+                 io.grpc:grpc-inprocess（compile scope）⇒ 它带 net.devh:grpc-client
+                 → `InProcessChannelFactory`，而那个类的常量池里**硬引用**
+                 `io.grpc.inprocess.InProcessChannelBuilder`；
+              2) 本模块**又**显式声明了 grpc-inprocess ⇒ **直接声明永远压过传递声明**
+                 ⇒ scope 一旦写成 test ⇒ **运行时 classpath 上 grpc-inprocess 整个消失**；
+              3) devh 的 `shadedNettyGrpcChannelFactory` 创建 channel 时要链接
+                 `InProcessChannelFactory` ⇒ 运行期抛
+                 `NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`
+                 ⇒ `MessageRpcClient` Bean 创建失败 ⇒ **整个服务起不来**（硬失败，不是静默失效）。
+
+            【本域的实测证据（follow 域 E-4 对拍 · 2026-11-02）】
+              现象 = `java -jar service/follow/target/follow-service-1.0-SNAPSHOT.jar` 启动即失败：
+                    `BeanCreationException: Error creating bean with name 'grpcClientBeanPostProcessor'`
+                    → `Caused by: java.lang.NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`
+              ⇒ **修前**：`mvn -o clean test -pl service/follow -am` = **71/71 全绿**
+                （测试跑在 test classpath 上 ⇒ grpc-inprocess 本来就在 ⇒ 缺陷看不见）
+                ⇒ 这是 AGENTS.md §3.3.3「跑绿 ≠ 本来就绿」的教科书形态。
+
+            【版本不写】由根 pom 的 `<dependencyManagement>`（`pom.xml:213-215`）统一管
+              （`${grpc.version}`）⇒ 与 grpc-stub / -core / -netty-shaded 同源。
+        -->
         <dependency>
             <groupId>io.grpc</groupId>
             <artifactId>grpc-inprocess</artifactId>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
@@ -123,8 +163,16 @@
         <dependency>
             <groupId>com.baomidou</groupId><artifactId>mybatis-plus-spring-boot3-starter</artifactId>
         </dependency>
+        <!--
+            ⚠️ **scope 不能是 `runtime`**（照抄 B 侧 `article-rpc/pom.xml` 的同款注释）：
+            本域的 `mapper/JsonbTypeHandler` **直接引用** `org.postgresql.util.PGobject`
+            （把 jsonb 列按 PG 类型绑定，缺它 jsonb 写入报类型不匹配）⇒ 那是**编译期**依赖。
+            message 域 / like 域之所以能用 `runtime`，是因为它们的 TypeHandler 不 import PG 类。
+            ⇒ 本域必须**去掉 `<scope>runtime</scope>`**。
+        -->
         <dependency>
-            <groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
         </dependency>
         <dependency>
             <groupId>com.rag</groupId><artifactId>proto</artifactId><version>${project.version}</version>
@@ -185,6 +233,82 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+
+            <!--
+                ══════════════════════════════════════════════════════════════════════
+                surefire —— **按类别排除「依赖宿主外部容器」的测试**（2026-11-03 · U-2）
+                ══════════════════════════════════════════════════════════════════════
+                ⚠️ **为什么需要这一段**：
+                本域的 `grpc/ArticleToMessageRpcCrossDomainTest` ＋
+                `grpc/MessageRpcAbsentPeerCrossDomainTest`（U-2 跨域 gRPC 链路）
+                **不是自包含**的 —— 它们要连**宿主上已经在跑的**外部设施：
+                  · 真 Nacos        ⇒ 容器 `Sea-nacos`      · `127.0.0.1:49848`
+                  · 真对端 message-rpc ⇒ 容器 `Sea-message-rpc` · `127.0.0.1:8086`
+                  · 真对端 PG      ⇒ 容器 `Sea-postgres`   · `127.0.0.1:49432`
+                （镜像 `sea/message-rpc:latest` 是 B 侧**整套部署镜像** —— 它的 env 指向
+                  `postgres/redis/kafka/minio` 一整套容器 ⇒ **无法用 Testcontainers 自包含**。）
+
+                ⇒ 三个后果：
+                  ① **没有这套容器的机器上，这两个类必然红**（不是「跳过」）
+                     ⇒ AGENTS.md §五.8 规则 ③ **禁止** `@EnabledIfDockerAvailable` 把它们变绿
+                     ⇒ ⇒ 只能按规则 ④「排除项用**前缀/类别匹配**」把它们从**默认回归**里排除；
+                  ② 它们会**写真实数据**（对端 `sea_user.message_notification` 每次多 3 行）
+                     ⇒ 不该由**别人的**回归顺手触发；
+                  ③ 它们要**独占 Nacos 注册表**（隔离组 `U2_ARTICLE_LINK`）
+                     ⇒ 与其它域的并行回归会互相干扰 ⇒ **污染别人的读数**。
+
+                ⇒ 故：类级打 `@Tag("external-env")` ＋ 此处 `<excludedGroups>` 按**类别**排除。
+                ⚠️ **不引入 `@EnabledIfDockerAvailable` / `@DisabledIf*`** ——
+                  那会把「环境缺失」伪装成「测试通过」⇒ 正是 §3.3.3 说的静默失效。
+
+                【默认回归口径（台账必须照抄，勿当已验）】
+                  · `mvn -o -pl service/article -am clean verify` ⇒ 汇总行**不含**这 3 例；
+                  · 想跑这 3 例 ⇒ **`-Pexternal-env`**（profile）：
+                        mvn -o -pl service/article -am test -Pexternal-env
+                  · 2026-11-03 实测读数（两遍连跑均绿）：
+                        `Tests run: 3, Failures: 0, Errors: 0, Skipped: 0`
+
+                ⚠️ **为什么不用 `-Dgroups=external-env` 这条更直观的命令**（实测踩过）：
+                  surefire 的 `groups`（= JUnit5 的 includeTags）与 `excludedGroups`（= excludeTags）
+                  是**两个独立过滤器** ⇒ 命中条件是 **include ∩ exclude**
+                  ⇒ 在 pom 里把 `excludedGroups` 写死成 `external-env` 之后，
+                  **再传 `-Dgroups=external-env` 也跑不出那 3 例**（include∩exclude = ∅），
+                  实测 `Tests run: 0`（2026-11-03）；
+                  ⇒ 且 **CLI 的 `-DexcludedGroups=`（空值）覆盖不了 pom 里写死的值**
+                  （同样实测 `Tests run: 0`）⇒ ⇒ 排除项必须做成**属性 + profile**（见文件末尾）。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludedGroups>${article.test.excludedGroups}</excludedGroups>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!--
+            显式跑「依赖宿主外部容器」的那 3 个 U-2 用例：
+                mvn -o -pl service/article -am test -Pexternal-env
+            ⇒ 只跑 `external-env` 标签下的用例（= 恰好那 3 例）。
+        -->
+        <profile>
+            <id>external-env</id>
+            <properties>
+                <article.test.excludedGroups>__none__</article.test.excludedGroups>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <groups>external-env</groups>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

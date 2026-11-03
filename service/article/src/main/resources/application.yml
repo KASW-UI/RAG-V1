@@ -1,48 +1,430 @@
 # =============================================================================
-# Article 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程）
+# Article 域 —— B 侧「两份」application.yml 的合并体（api + rpc，D1 单进程）
 # =============================================================================
+# 合并来源（B 出处）：
+#   ① service/article/article-rpc/src/main/resources/application.yml（rpc 侧）
+#   ② service/article/article-api/src/main/resources/application.yml（api 侧）
+# ⚠️ **两份合并为一份**（映射表 article.md §0「N:1」· D1）⇒ 同一进程里
+#    Tomcat 与 gRPC server 同起 ⇒ **两套超时预算、两套路由前缀同时存在**。
+# =============================================================================
+
 spring:
   application:
+    # ⚠️ 应用标识，**不是**对外注册名。
+    #    对外注册名恒为 `article-rpc`（见 wiring/NacosRegistration）——
+    #    那是跨域寻址契约（comment / favorite / hot 三个域通过 discovery:///article-rpc 调用本域）。
     name: article-service
+
+  # ============== Postgres ==============
+  # 对应 Go Postgres.*：Host / Port / User / Password / DBName
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:first_db}
     username: ${POSTGRES_USER:admin}
-    password: ${POSTGRES_PASSWORD:password}
+    # 🔴 **口令占位符必须是「裸」写法**（与 B 侧 **逐字同形**）
+    #   【Go 出处】service/article/rpc/etc/article.yaml:13
+    #   【Go 的展开语义】go-zero 的加载 = `core/conf/config.go:63`
+    #       `loader([]byte(os.ExpandEnv(string(content))), v)` ⇒ ⇒ **`os.ExpandEnv` 不认
+    #       `${VAR:default}` 语法** ⇒ 缺变量时它把**整串当变量名**去查 ⇒ ⇒ **空串**
+    #       ⇒ ⇒ Go 侧缺 `POSTGRES_PASSWORD` = **空口令** ⇒ 连库失败 = fail-fast
+    #   【为什么不能给默认值】`${POSTGRES_PASSWORD:password}` 走 **Spring 的 `:default` 语义**
+    #       ⇒ **缺变量时会用那个默认值连上去** ⇒ ⇒ **RAG 比 Go 松**（Go 必然失败、RAG 照样起）
+    #       ⇒ ⇒ 属**真漂移**，**不是**「更严的有意偏离」⇒ ⇒ 不需要为「保留兜底」签字。
+    #   ⚠️ **残余差异（失败时刻不同）**：Go = **启动成功、连库时**失败；
+    #      RAG = **启动即失败**（Spring 解析不到占位符 ⇒ DataSource bean 创建失败）
+    #      ⇒ ⇒ 属「**RAG 更严**的一侧」⇒ ⇒ 归**签字偏离**（由主会话登记）。
+    password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      # 对应 Go sqlDB.SetMaxOpenConns(20) / SetMaxIdleConns(5)
+      # Go 注释写明「保守是为了让 outbox poller 不打爆共享 PG 实例」
+      maximum-pool-size: 20
+      minimum-idle: 5
+      # 对应 Go sqlDB.SetConnMaxIdleTime(5 * time.Minute)
+      idle-timeout: 300000
+      # 对应 Go sqlDB.SetConnMaxLifetime(30 * time.Minute)
+      max-lifetime: 1800000
+
+  # ============== Redis ==============
+  # ⚠️ 当前 article/pom.xml **没有** spring-boot-starter-data-redis ⇒ 这段**没有消费点**
+  #    （保留是因为仓内既有 yml 已有这一段，且 JWT 黑名单那条腿可能需要它；
+  #      依赖是否补齐 ⇒ 归 pom owner）。
   data:
     redis:
       host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}
+
+  # ============== MyBatis-Plus ==============
+  mybatis-plus:
+    configuration:
+      map-underscore-to-camel-case: true
+      default-fetch-size: 100
+    global-config:
+      db-config:
+        # 主键策略在 Entity @TableId 上显式钉死（article / outbox 都是业务侧生成的字符串 ID）
+        id-type: INPUT
+      banner: false
+
+  # ============== Flyway ==============
+  # 🔴 **独立账本表名**（AGENTS.md §六「Flyway 账本撞号」· 照抄 message 域 / follow 域已落地的形态）
+  #    `flyway_schema_history` 是 **schema 级**账本，一个 schema 只能有一本账。
+  #    article-service 与 message-service / like-service / follow-service 连同一个 first_db、
+  #    同一个 public schema ⇒ 共用默认账本时后启动者会把自己的迁移判为「已应用」而静默跳过
+  #    ⇒ 改账本表名即可消除病根，**迁移文件名一个字都不用动**。
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    # 🔴⚠️ **baseline-version 必须显式钉 0**（与 comment/like/task/follow/message 同款）
+    #    非空 schema + 默认 baseline-version=1 ⇒ baseline 打在 V1 ⇒ **V1 的 SQL 从未执行**
+    #    ⇒ 后续依赖它的迁移报 `relation "…" does not exist` ⇒ **服务起不来**。
+    #    baseline-version=0 ⇒ baseline 标记打在 version 0 ⇒ **V1 之后全部迁移照常执行**
+    #    ⇒ 既能在共享库里安全启动，又不丢任何迁移。
+    #    ⚠️ baseline-on-migrate=false 更糟（非空 schema 且无账本 ⇒ Flyway **直接抛异常退出**）。
+    baseline-version: 0
+    locations: classpath:db/migration
+    schemas: public
+    # ⚠️ **独立账本表名**（见上）
+    table: flyway_schema_history_article
+    # ⚠️ **迁移脚本版本号保持 V8 / V9 / V10 不重编号**（与 B 侧逐字节一致 · 硬要求）：
+    #    B 出处 = service/article/article-rpc/src/main/resources/db/migration/
+    #      V8__create_article.sql · V9__create_article_sync_outbox.sql · V10__create_article_community_revision.sql
+    #    ⚠️ **不要**改写成 V1/V2/V3 —— 其它域的账本号段是独立的（message V1-V3 / users V1-V4），
+    #    但**本域**的号段是 B 侧既定的；重编号会让「与 B 侧逐字节一致」这条硬要求失效。
+
+  # ============== multipart 上限（Go 侧由 MaxBytes + ParseMultipartForm 承担）==============
+  # ⚠️ 必须与下面 rag.protection.max-bytes **同为 10485760**。
+  #    两条是不同的闸门，缺一不可：
+  #      · rag.protection.max-bytes → 看 **Content-Length 头**，超了裸 413
+  #      · 这里的 max-file-size → **没有 Content-Length**（chunked）时由容器兜底
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+  # ============== Kafka ==============
+  # 对应 Go 的 4 个 kq 配置（2 pusher + 2 consumer）。
+  # ⚠️ Go 是「每条通道一个 consumer group」，Java 侧同一 topic 的多个用途必须用不同
+  #    group-id；Spring Kafka 的 group-id 是 listener 级别的，不能全局唯一，
+  #    因此各 listener 在 @KafkaListener 上显式声明 groupId。
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:kafka:9092}
+    consumer:
+      # 对应 Go KqConsumerConf.Offset: first（审核消费者与同步结果消费者都是 first）
+      auto-offset-reset: earliest
+      # Go `Consumers: 1` —— 单消费者；并发度由 Processors（默认 8）决定，
+      # 那一条落在 ArticleServiceApplication#articleKafkaListenerContainerFactory
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # ⚠️ Go 的 kq.Pusher 是**同步** PushWithKey：返回 error 时 logic 直接返回错误。
+      #    Spring Kafka 的 send() 是异步的，"成功"只代表交给客户端。
+      #    这个差异在 ArticleSyncOutboxRelay 的类级注释里有显式留痕，不是悄悄改掉。
+      acks: all
+
+  # ============== Nacos Discovery ==============
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:nacos:8848}
+        # ⚠️ **必须是 `host` 与 `port` 分开两个变量**（R1-ENV-001 · 2026-11-01 收口轮）
+        #    `${NACOS_ADDR:nacos:8848}` 把端口**硬编码进默认值** ⇒ `NACOS_PORT` 被完全忽略
+        server-addr: ${NACOS_ADDR:nacos}:${NACOS_PORT:8848}
+        namespace: ${NACOS_NAMESPACE:sea-rtw}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        # 🔴 **必须显式关掉自动注册**（照抄 B 侧 article-rpc 的同名行）。
+        #    `NacosAutoServiceRegistration` 继承 `AbstractAutoServiceRegistration`
+        #    ⇒ 监听 `WebServerInitializedEvent` ⇒ **注册的是 web 容器端口**（8893）。
+        #    而本域的手写 `wiring/NacosRegistration` 注册的是 **gRPC 端口**（9001）。
+        #    ⇒ 自动注册一旦生效 ⇒ 同一个服务名下出现**两个端口的实例**
+        #    ⇒ 调用方按 Nacos 给出的地址连过来 ⇒ 连到一个只提供 HTTP 路由的端口
+        #    ⇒ **gRPC 链路直接断**（业务码塌成 1015）。
+        #    ⇒ 与 B 侧语义一致：只保留显式的 gRPC 端口注册。
+        register-enabled: false
 
+  # ============== Jackson 时区 ==============
+  # 对应 Go DSN 里的 TimeZone=Asia/Shanghai。
+  # ⚠️ PostgreSQL 的 timestamptz 按 UTC 存储，但**读写时按会话时区转换**；
+  #    若 JVM 时区不同，`created_at`/`updated_at`/`published_at` 的 Instant 换算会差一个时区。
+  jackson:
+    time-zone: Asia/Shanghai
+
+# =============================================================================
+# HTTP server（Tomcat）
+# =============================================================================
+# B 侧 article-api 的 Host=0.0.0.0 / Port=8889
+# ⚠️ **端口是 D1 合并带来的 L1 差异**：B 侧 api = 8889 ⇒ 本仓 = 8893
+#    （与本仓 message 域 8883 / users 域的既有取值同款；归 DRIFT 台账登记）。
+# ⚠️ B 侧 rpc 的 **9092 是「观测端口」**（Prometheus /metrics 的独立载体，
+#    go-zero 的 `prometheus.StartAgent`）⇒ 本仓合并为单 Tomcat 后，
+#    Actuator 与业务端点<b>共用同一个端口</b>（抓取路径 Go `/metrics` → RAG `/actuator/prometheus`）。
 server:
   port: ${ARTICLE_HTTP_PORT:8893}
+  address: 0.0.0.0
+  servlet:
+    context-path: /
+  # ⚠️ 容器三旋钮：与 Go 对齐
+  #    ① relaxed-query-chars：Go 的 net/http 不校验 query 里的 [ ]，且 go-zero httpx.GetFormValues
+  #       明确支持方括号数组记法；Tomcat 默认拒绝 ⇒ 400 + HTML 错误页（不是业务信封）
+  #    ② max-parameter-count：Go = go-zero httpx/util.go:15 maxFormParamCount=2048（应用层判）
+  #    ③ max-http-request-header-size：Go 的**真实**上限 = DefaultMaxHeaderBytes(1<<20)
+  #       + 4096 ⇒ **1028KB**；Boot 默认 8KB
+  tomcat:
+    relaxed-query-chars: ["[", "]"]
+    max-parameter-count: 2048
+  max-http-request-header-size: 1028KB
 
+# =============================================================================
+# gRPC server（devh）
+# =============================================================================
 grpc:
   server:
+    # 对应 Go ListenOn: 0.0.0.0:9001
     port: ${ARTICLE_GRPC_PORT:9001}
     address: 0.0.0.0
     reflection-service-enabled: false
+    # ⚠️ Go 的 Timeout: 70000 **不在这里**。
+    #    Go 的 RpcServerConf.Timeout 由 go-zero 的 UnaryServerInterceptor 强制执行，
+    #    Java 侧的等价物是 observability.rpc-timeout（见本文件末尾）。
+
+  # ============== gRPC client ==============
+  # 对应 Go MessageRpc.Etcd.Key: message.rpc
+  # ⚠️ **下面这个地址必须是三斜杠 `discovery:///message-rpc`**：
+  #    devh 的 `DiscoveryClientResolverFactory#newNameResolver` 取 `uri.getPath()`，
+  #    要求**非空、长度 > 1、且以 "/" 开头** ⇒ `discovery://message-rpc` 直接抛
+  #    `IllegalArgumentException: Incorrectly formatted target uri`
+  #    ⇒ ⇒ 该检查发生在**任何网络调用之前** ⇒ 与 Nacos 在不在线无关。
   client:
-    # ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而上游 zrpc 是明文 gRPC。
-    #    不写会静默变 TLS —— 见《完全spring化的文件树》§9.1 断言 A4。
+    message-rpc:
+      address: discovery:///message-rpc
+      # ⚠️ **negotiation-type 必须显式写 plaintext**：devh 的默认值是 TLS，
+      #    不写会静默发 TLS ClientHello，而 message-rpc 是明文 gRPC
+      #    （Go 侧 zrpc.MustNewServer 全仓无 TLS 配置）。
+      negotiation-type: plaintext
+      enable-keep-alive: true
+      keep-alive-time: 30s
+    # ⚠️⚠️ **刻意不配 `grpc.client.security-rpc`**：
+    #    RAG-V1 **不迁移 `security` 域**（AGENTS.md §1.0「范围外」）⇒ 无对端
+    #    ⇒ 不建 `SecurityRpcClient` / `ImageSecurityRpcClient`
+    #    ⇒ ⇒ 配一条指向不存在服务的 channel 只会凭空多一个「必须能解析」的启动前置条件。
+    #    （`article-rpc.security.*` 段保留，见下 —— 那是**配置面**的一一对应，不是通道。）
 
-mybatis-plus:
-  configuration:
-    map-underscore-to-camel-case: true
+# =============================================================================
+# article-rpc 业务配置 —— 对应 Go etc/article.yaml 的非基础设施段
+# =============================================================================
+article-rpc:
+  postgres:
+    host: ${POSTGRES_HOST:postgres}
+    port: ${POSTGRES_PORT:5432}
+    user: ${POSTGRES_USER:admin}
+    # 🔴 **口令占位符必须是「裸」写法**（与 B 侧 **逐字同形**）—— 理由见上方 datasource 段
+    password: ${POSTGRES_PASSWORD}
+    dbname: ${POSTGRES_DB:first_db}
 
+  # Go KqPusherConf：审核事件 push（create / update 入队审核）
+  kq-pusher-conf:
+    name: article-mq-pusher
+    group: article-creation-group
+    brokers: "${KAFKA_BROKERS:kafka:9092}"
+    topic: article-creation-topic
+
+  # Go KqConsumerConf：审核消费者
+  kq-consumer-conf:
+    name: dataclean-consumer
+    brokers: "${KAFKA_BROKERS:kafka:9092}"
+    group: dataclean
+    topic: article-creation-topic
+    offset: first
+
+  # Go ArticleSyncPusherConf
+  article-sync-pusher-conf:
+    name: article-sync-pusher
+    group: article-sync-pusher
+    brokers: "${KAFKA_BROKERS:kafka:9092}"
+    topic: article-sync-events
+
+  # Go ArticleSyncResultConsumerConf
+  article-sync-result-consumer-conf:
+    name: article-sync-result-consumer
+    brokers: "${KAFKA_BROKERS:kafka:9092}"
+    group: article-sync-result
+    topic: article-sync-results
+    offset: first
+
+  security:
+    key: security.rpc
+    # ⚠️ **本字段当前没有消费点** —— 保留它只为让配置面与 Go 一一对应
+    #    （Go: `article.yaml:85-90` 的 `SecurityConf.Timeout: 10000`）
+    #    ⇒ RAG-V1 不迁移 security 域 ⇒ 无对端 ⇒ 真正生效的上界由共享层统一施加。
+    timeout: 10000
+  message-rpc:
+    key: message.rpc
+    # 对应 Go 的未配超时 ⇒ zrpc 默认 2000ms
+    timeout: 2000
+
+  article-sync-outbox:
+    poll-interval-ms: 1000
+    batch-size: 100
+    max-retry: 10
+
+  minio:
+    endpoint: ${MINIO_ENDPOINT:minio:9000}
+    # 部署环境建议填写对外可访问的静态资源基址；留空时回退到 Endpoint（Go upload_file_logic.go:94-101）
+    public-base-url: ${MINIO_PUBLIC_BASE_URL:http://localhost:39000}
+    access-key-id: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-access-key: ${MINIO_SECRET_KEY:minioadmin}
+    bucket-name: articles
+    use-ssl: false
+    # ⚠️ 两个 path 都**带尾斜杠**，Go 是纯字符串拼接，不做规范化
+    image-path: "articles/images/"
+    article-path: "articles/content/"
+
+# =============================================================================
+# article-api.* —— JWT 验签密钥与有效期（L1 配置键名 · 逐字照抄 B 侧）
+# =============================================================================
+# B 出处：service/article/article-api/src/main/resources/application.yml:99-128
+#   ⚠️ **两组 secret 都没有默认值**（`${USER_JWT_SECRET}` 是裸占位符）
+#      ⇒ 缺变量 ⇒ `ArticleApiProperties#verifyAccessSecret()` 的 fail-closed 守卫**启动即失败**
+#      ⇒ 这是**刻意**的：空密钥 = 任何人都能伪造 user token。
+#      ⚠️ 部署侧：根级 compose 需注入 USER_JWT_SECRET（共享面 ⇒ 归「合并收口执行者」）。
+#   ⚠️ `access-secret` 必须与**签发方**（user-api）一致：
+#      article 域只验签、不签发 —— 本服务没有 login / register 端点。
+#      验签失败表现为 **HTTP 401 + 空 body**（不是业务码）。
+#   ⚠️ `access-expire` 在本模块**不被读取**：Go 侧同样如此（签发在 user-api）。
+#
+# 🔴 2026-10-29 · G3 阶段 1（A-1 双侧活体实测）：**`auth:` 这一层不能少** ——
+#    `ArticleApiProperties` 的字段是**嵌套的 `Auth auth`**（`@NestedConfigurationProperty`）
+#    ⇒ 绑定路径必须是 `article-api.auth.access-secret`
+#    ⇒ ⚠️ 少了 `auth:` 这一行 ⇒ yaml 变成 `article-api.access-secret` ⇒ ⇒ **绑定落空**
+#    ⇒ ⇒ `auth.accessSecret` 恒为 null ⇒ ⇒ 守卫**无论环境变量设没设都会抛**
+#    ⇒ ⇒ **article 域永远起不来**。
+#    ⇒ ⇒ 「yaml 不给默认值」**只挡得住一半** ⇒ 另一半（空串 / 未解析占位符原文）
+#    ⇒ ⇒ 由 `ArticleApiProperties#verifyAccessSecret()` 显式拒 ⇒ ⇒ **三条路都 fail-closed**。
+article-api:
+  auth:
+    access-secret: ${USER_JWT_SECRET}
+    access-expire: ${USER_JWT_EXPIRE:31536000}
+
+# =============================================================================
+# rag.protection —— Go「请求保护层」四道中间件
+# =============================================================================
+# ⚠️⚠️ 下面四项在 Go 的 etc/article-api.yaml 里**只出现了 MaxBytes**，
+#    另外三项一个字都没写，但它们**是开启的**。照 yaml 逐字段对，永远看不见。
+#
+# 证据（go-zero v1.10.2）：
+#   rest/config.go:52      MaxConns     int   `json:",default=10000"`
+#   rest/config.go:53      MaxBytes     int64 `json:",default=1048576"`
+#   rest/config.go:56      CpuThreshold int64 `json:",default=900,range=[0:1000)"`
+#   rest/config.go:12-22   MiddlewaresConf 九个开关**全部** `json:",default=true"`
+#
+# ⚠️ **max-bytes 必须显式写成 10485760（10 MiB）**：
+#   Go 侧 article-api.yaml 显式写了 `MaxBytes: 10485760`，
+#   且 routes.go 第三段又用 `rest.WithMaxBytes(10 * 1024 * 1024)` 声明了一次。
+#   ⇒ **全部 7 个端点的 body 上限都是 10 MiB**，不只是 /upload。
+#   若这里漏配成 1 MiB，所有写接口会突然开始返回裸 413 —— 一个只在传大正文时才显形的漂移。
+#
+# ⚠️ 四层的拒绝响应都是**裸状态码 + 空 body + 无 Content-Type**，不走信封
+#    （Go 侧是裸 w.WriteHeader）。这与本域「业务错误恒 200 + 信封」的约定**刻意不同**。
+rag:
+  http:
+    # 🔴 Go 风格 form 值上限闸门
+    #   mode = 本域的 form 超限时应该输出什么形状 —— 依据是「Go 侧该 api 有没有注册
+    #   httpx.SetErrorHandler」（逐域取证）：
+    #     raw      ⇒ Go 未注册 SetErrorHandler ⇒ http.Error(w, err.Error(), 400)
+    #                ⇒ **400 + text/plain; charset=utf-8 + nosniff + Go 原文**
+    #     envelope ⇒ Go 注册了 SetErrorHandler ⇒ 走业务信封
+    #   ⚠️ Go 侧 article/api **没有** httpx.SetErrorHandler ⇒ httpx.Parse 失败走
+    #      http.Error(w, err.Error(), 400) ⇒ ⇒ **400 + text/plain + nosniff + Go 原文**
+    #      ⇒ mode: raw
+    go-form-limit:
+      mode: raw
+  protection:
+    max-conns: 10000
+    max-bytes: 10485760
+    cpu-shedding:
+      enabled: true
+      # Go rest/config.go:56（千分比，900 = 90% CPU）
+      cpu-threshold: 900
+      cpu-source: SYSTEM
+    breaker:
+      enabled: true
+    # 🔴 **客户端硬上界（Go 侧 zrpc client 的 `Timeout`）**
+    #   Go 出处（消费点，不是声明点）：
+    #     go-zero@v1.10.2/zrpc/config.go:31          `Timeout int64 `json:",default=2000"``
+    #     go-zero@v1.10.2/zrpc/internal/client.go:113-117（**无条件**装 TimeoutInterceptor）
+    #     go-zero@v1.10.2/zrpc/client.go:70-71        `if c.Timeout > 0 { WithTimeout(...) }`
+    #   ⚠️ **`Timeout` 挂在 `zrpc.RpcClientConf` 上 ⇒ 每个 client 一份 ⇒ 按 client 生效**
+    #   ⚠️ 本域 yaml 的两个出向客户端超时**不同**：
+    #     MessageRpc: { … }                ← **没写 Timeout** ⇒ 走 default **2000**
+    #     SecurityConf: { …, Timeout: 10000 } ← 显式 10000
+    #   ⇒ ⇒ **取 2000**（本域唯一活着的出向出口 = message 方向 ⇒ 与 Go **精确同形**）
+    #   ⇒ ⇒ ⚠️ 共享层的 `cap-millis` 是**模块级一个数** ⇒ 表达不了 Go 的 per-client 语义
+    #   ⇒ ⇒ 归 **G4 写权** ⇒ ⇒ 本域**不擅自**用调用点自带 cap 绕开。
+    outbound-deadline:
+      cap-millis: 2000
+
+# =============================================================================
+# observability —— **两个**超时预算（D1 合并 ⇒ 两个键都要写）
+# =============================================================================
+# ⚠️⚠️ **这两个键缺失 = 机制静默不生效**（AGENTS.md §3.3.1 ·「配置里没写」≠「没开」）：
+#    `ObservabilityProperties` 的两个 timeout **没有 env 兜底**，缺省即 `Duration.ZERO`（不限时）
+#    ⇒ ⇒ **不写这两个键 ⇒ 70s HTTP 预算与 70s gRPC 超时都不存在**
+#    ⇒ ⇒ 慢请求**不会**返回 503 / `Request Timeout`，gRPC 调用也**不会**被服务端超时打断。
+#
+# 取值依据（两侧各一段）：
+#   service/article/article-api/src/main/resources/application.yml:283-284
+#     observability.http-timeout: 70s
+#     （Go article-api.yaml 显式写了 `Timeout: 70000`）
+#   service/article/article-rpc/src/main/resources/application.yml:437-438
+#     observability.rpc-timeout: 70s
+#     （Go article.yaml 顶层 `Timeout: 70000`，对应 zrpc.RpcServerConf.Timeout）
+observability:
+  http-timeout: 70s
+  rpc-timeout: 70s
+
+# =============================================================================
+# Metrics / Actuator
+# =============================================================================
 management:
   endpoints:
     web:
       exposure:
         include: health,info,prometheus
+    enabled-by-default: false
   endpoint:
     health:
-      show-details: always
+      enabled: true
+      show-details: when_authorized
+    info:
+      enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    enable:
+      prometheus: true
+    tags:
+      # ℹ️ 这是一条**公共标签**（common tag）=「这份指标属于哪个服务」，**不是**指标名前缀。
+      #    Go 侧的**指标名前缀**是 Namespace: "article_service"
+      #    （service/article/rpc/metrics/metrics.go:6）
+      #    ⇒ 对应 RAG 侧 ArticleRpcMetrics.NAMESPACE ⇒ 两侧的指标名一致（`article_service_*`）。
+      application: article-service
+
+# =============================================================================
+# OpenTelemetry OTLP exporter（对齐 Go 端 Telemetry.*）
+# =============================================================================
+otel:
+  exporter:
+    otlp:
+      endpoint: http://${OTEL_ADDR:jaeger}:${OTLP_PORT:4317}
+      protocol: grpc
+  resource:
+    attributes:
+      service.name: article-service
+  traces:
+    sampler: always_on
 
 logging:
   level:
+    root: INFO
     com.rag: INFO
+    io.grpc: WARN
