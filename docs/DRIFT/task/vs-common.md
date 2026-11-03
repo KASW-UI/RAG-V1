@@ -96,7 +96,8 @@
 
 > **轴的定义**沿用 B 侧 `docs/DRIFT/message/vs-common.md` 的口径（超时 / deadline · gRPC 拦截器链 · HTTP 保护链 ·
 > 错误码 / envelope · 端口治理 · errmsg 契约 · proto 契约 · DDL 时间列 / 类型 · trace / otel）。
-> ⚠️ **「✅ 一致」的含义 = 在该证据强度下一致**，**不是**已做双侧活体对拍（本域**尚未建** `tools/difftest/task/` ⇒ 见 §6·6-2）。
+> ⚠️ **「✅ 一致」的含义 = 在该证据强度下一致**，**不是**已做双侧活体对拍。
+> 📌 **2026-11-04 补记**：本域**已建** `tools/difftest/task/`（双侧活体对拍，**E-4 强度**）⇒ 见 §6·6-2。
 
 | 轴 | 机制 | 本域侧的落点 / 调用 | 结论 | 证据强度 | 核对日期 |
 |---|---|---|---|---|---|
@@ -124,6 +125,7 @@
 | 4-6 | **`WebMvcConfig` 的 javadoc 写「注册 JwtAuthInterceptor」** | ✅ **已改写为否定式声明**（零拦截器 ＋ 零 CORS）⇒ 真 Tomcat **GET → 405**（若装了拦截器则是 401） | 配套报告 §五·5.2 #6 |
 | 4-7 | **`TaskTraceAttributes` 的可见性**（B 侧包级私有 ⇒ C 侧需跨类调用） | ✅ **提为独立 `public final class`**（**可见性放宽、行为零变化**） | 配套报告 §五·5.2 #7 |
 | 4-8 | 🔴 **一条「假覆盖」用例** —— 「计数器 INCR 跨 key 隔离」自己手拼 key（`ragv1:count:…`），**没调用** `TaskCountStore` ⇒ 变异 M-4 第一轮**仍绿** | ✅ **已修**：判据迁到 `messaging/TaskCountStoreRealRedisTest`（3 例，**直接用生产 bean** ＋ `TaskCountStore#keyOf` 钉住字面形态）⇒ M-4 复跑**精确转红** | 配套报告 §八·8.2 #11 |
+| 4-9 | 🔴 **`service/task/pom.xml` 把 `io.grpc:grpc-inprocess` 声明成 `test` scope** ⇒ 🔴 **C 侧 fat jar 启动即挂**（`NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder` —— devh 的 `GrpcClientAutoConfiguration#shadedNettyGrpcChannelFactory` **运行期**就要这个类）⇒ 而 **52 例测试全绿**（测试类路径带这个类）⇒ **「mvn test 全绿」证不了「fat jar 起得来」** | ✅ **已修**（2026-11-04 · **双侧活体对拍实跑时暴露**）：改为 **compile（默认）scope** ＋ 补完整成因注释<br>⚠️ **本域测试一条都没用到 `io.grpc.inprocess`**（`grep` 零命中）⇒ 原声明**无消费点**<br>⇒ **B 出处**：B 侧两个 fat jar **都含** `BOOT-INF/lib/grpc-inprocess-1.63.0.jar` ⇒ B 的**运行时**类路径带这个类 ⇒ C 必须同口径<br>⇒ **与本仓既有修法同款**：`service/users/user/pom.xml`（2026-11-03 同型踩坑）· `service/article/pom.xml` · `service/follow/pom.xml` · `service/like/pom.xml` | 配套报告 §五·5.2 #9 |
 
 ---
 
@@ -132,7 +134,7 @@
 | # | 项 | 现象 | 证据 | 建议修法 | 严重度 |
 |---|---|---|---|---|---|
 | 5-1 | **`docs/DRIFT/_INDEX.md` 未收录本域台账** | 本域台账已写好（2 份），但 `_INDEX.md` 的 `task` 行仍是「⬜ 未建立」 | 配套报告 §七·7.2 **G-2** | 🔴 **本 lane 不碰**（`docs/Worktree.md` §三·1）⇒ 由收口执行者统一更新 | 🟢 流程 |
-| 5-2 | **`docs/Intentional_Deviations/` 未登记 task 域的 2 条主动变更** | DRIFT-TASK-002（端口 18886/9005 → 8890/9006）· DRIFT-TASK-003（ack mode BATCH → RECORD） | 配套报告 §五 | 🔴 **`docs/Intentional_Deviations/_INDEX.md` 禁写** ⇒ 本域**只登记** ⇒ 由收口执行者建 `docs/Intentional_Deviations/task/*.md` | 🟢 流程 |
+| 5-2 | **`docs/Intentional_Deviations/` 未登记 task 域的 3 条主动变更** | DRIFT-TASK-002（端口 18886/9005 → 8890/9006）· DRIFT-TASK-003（ack mode BATCH → RECORD）· **DRIFT-TASK-016**（缺 body 报文内嵌的**类全限定名** ⇒ **D7/D11 包压平导致** · 2026-11-04 双侧对拍新登记） | 配套报告 §五 | 🔴 **`docs/Intentional_Deviations/_INDEX.md` 禁写** ⇒ 本域**只登记** ⇒ 由收口执行者建 `docs/Intentional_Deviations/task/*.md` | 🟢 流程 |
 | 5-3 | 🔴 **共享层 `JsonBodyConverterAutoConfiguration` 的 bean 名是「隐式契约」** | 该 auto-config 用 `@ConditionalOnMissingBean(name="seaJsonBodyConverterConfigurer")` ⇒ **task 域靠「同名 bean」让它退让**（`config/TaskApiJsonBodyConfig.java` 的 `@Configuration("seaJsonBodyConverterConfigurer")`）⇒ 🔴 **共享层若改 bean 名 ⇒ task 域静默失效**（请求体变 400）<br>　　⇒ 🔴 **M-1 变异已实测坐实**：改掉域内的 bean 名 ⇒ `TaskApiWireContractRealTomcatTest#nonJsonContentTypeIsStillParsed` **立刻转红**（400）⇒ 对照用例仍绿 ⇒ 还原后回绿 | `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java:91-92` ＋ `common/src/main/java/com/rag/common/web/JsonBodyConverter.java` | 共享层把该 bean 名**提为常量**并写进 javadoc（或改成「域内可显式排除」的接口）⇒ 本域的 `TaskApiWireContractRealTomcatTest` 就是这条耦合的**唯一防线**（已写进测试类 javadoc）＋ **变异 M-1** 已证明该用例对这条耦合**敏感** | 🟡 **P2**（**静默失效面**） |
 | 5-4 | **`docs/Mapping_Table/_INDEX.md` 的「映射类型」图例表形状坏** | 表头 4 列（`类型/条数/占比/含义`），**4 个数据行只有 3 列** ⇒ GFM 渲染缺第 4 列；`git show HEAD:docs/Mapping_Table/_INDEX.md` 证明是**基线既有**（非本轮引入） | 配套报告 §七·7.2 **G-1** | 补齐 4 个数据行的「含义」列 | 🟢 低（文档面） |
 | 5-5 | **`docs/File_Tree/proto.md` 比实际文件树多画了一个已不存在的空目录**（`proto/src/test/java/`） | 生成器重跑时该目录已不存在 ⇒ 该文件**陈旧一代** | 配套报告 §七·7-1 **U-5** | 🔴 **`docs/File_Tree/proto.md` 不是本域文件** ⇒ 本域**只登记** ⇒ 主会话跑一次 `python3 tools/gen-file-tree.py` 即可刷新 | 🟢 低（文档面） |
@@ -143,12 +145,12 @@
 
 | # | 项 | 为什么未验 | 什么时候能验 |
 |---|---|---|---|
-| 6-1 | 🔴 **Kafka 消费面 6 个 listener 的「消费面真跑」零覆盖** | 本工作树**无 Kafka broker** ⇒ 「消息真被消费 → 真落 Redis → 真 flush → 真落 PG」这条链**从未触发**（**装配层已证**：6 个 listener 真进 `KafkaListenerEndpointRegistry`）<br>⚠️ **不去连别的 lane 的 broker** —— 那会让本域回归**跨 lane 耦合**（红灯含义失真） | 起**本域自带**的 `apache/kafka:3.7.2` 容器（Testcontainers）＋ 真 `@KafkaListener` ＋ 真 `@Scheduled` flush ⇒ 补 `TaskKafkaConsumeRealTest` ＋ **变异验证**（listener 一停 ⇒ 断言转红 ⇒ 证明不是假绿）⇒ 配套报告 §七·7-1 **U-1** |
-| 6-2 | 🔴 **双侧活体对拍未做**（无 `tools/difftest/task/`） | 「B ↔ C 逐字节一致」目前**没有双侧证据** ⇒ 配套报告 §二 的 13 条 wire 断言是**单侧的** | 建 `tools/difftest/task/run.sh`：起 B 侧 `task-api`（`18886`）与 C 侧 `task-service`（`8890`）⇒ 逐字节比对状态码 / Content-Type / body ⇒ 再配 `mutate-parity.sh` ⇒ 配套报告 §七·7-1 **U-2** |
-| 6-3 | ⚠️ **gRPC wire 层零覆盖**（无真 netty server 收发用例） | 传输层 / HTTP2 帧 / trailer 线上序列化全零覆盖；**proto 一致 ≠ 消费方式已验**（AGENTS §3.4 效力边界） | 补一条「真 netty server ＋ 真 stub 调用 `GetTask`」的用例（参考 like 域 `LikeGrpcNettyServerRealTest`）⇒ 配套报告 §七·7-1 **U-3** |
-| 6-4 | ⚠️ **Redis flush 管线只覆盖「闸门 ＋ 命名空间隔离」** | 「flush 一批到 PG」这条链未真跑（依赖 6-1 的真 Kafka 投递） | 随 6-1 一并补 ⇒ 配套报告 §七·7-1 **U-4** |
+| 6-1 | ✅ **Kafka 消费面 6 个 listener 的「消费面真跑」** | — | ✅ **2026-11-04 已闭合**：新增 `messaging/TaskKafkaConsumeRealTest`（**3 例** · 类级 `@Tag("external-env")`）⇒ **真 broker**（`apache/kafka:3.7.2` · Testcontainers）⇒ 真 `@KafkaListener` ⇒ 真 `@Scheduled` flush ⇒ **真 Redis + 真 PG 落库** ⇒ 且 **6 个 listener 位点都真提交**（含「什么都不做」的诊断消费者）<br>⇒ 读数：`mvn -o -pl service/task -am test -Pexternal-env` ⇒ **Tests run: 3, Failures: 0, Errors: 0, Skipped: 0**（22.39 s）<br>⇒ **变异 M-5**（停掉用户路 sink 的 listener）⇒ **目标红 ＋ 对照绿 ＋ 还原绿** ⇒ 配套报告 §七·7-1 **U-1** / §八·8.1<br>⚠️ **隔离**：5 个 topic **本次运行唯一名** ⇒ 零历史 / 零跨域污染 / 零重放；生产 topic **字面值**由 `TaskKafkaListenerAssemblyTest` 负责<br>⚠️ **默认回归不含这 3 例** ⇒ 用**属性 + profile**（`task.test.excludedGroups`）⇒ **不用** `@EnabledIfDockerAvailable` |
+| 6-2 | ✅ **双侧活体对拍** | — | ✅ **2026-11-04 已闭合**：新增 `tools/difftest/task/`（`run.sh` ＋ `http_probe.py` ＋ `cases.txt` ＋ `expected.txt` ＋ `known-cases.txt` ＋ `known-readings.txt` ＋ `judge_report.py` ＋ `mutate-parity.sh` ＋ `README.md`）<br>⇒ 被测两侧：**B 侧 `task-api`(:18241) ＋ `task-rpc`(:18242)** 与 **C 侧 `task-service`(:18247)** ⇒ 两侧**各自独立**的 Redis / Postgres 容器（🔴 **必须物理隔离** ⇒ 否则后跑一侧命中前跑一侧的回填 ⇒ **PG 回源路径被吃掉 ⇒ 假绿**）<br>⇒ 四个面：**M1 HTTP 字节面**（状态行 / Content-Type / nosniff / Allow / body · **裸 socket** —— curl 不给状态行 reason phrase）＋ **M2 Redis 状态面** ＋ **M3 PG 状态面** ＋ **M4 冻结锚面**（`expected.txt` = **B 侧读数** ⇒ **oracle 是 B 侧**）<br>⇒ 读数：**21 条用例 · B↔C 逐字节一致 20 条 · 已登记的表达层差异 1 条 · 真差异 0 条** ⇒ **EXIT=0**；**非冻结复跑同样 EXIT=0**（⇒ 冻结锚稳定）<br>⇒ 判定强度 **E-4（双侧活体对拍）** ⇒ **不冒充「三方一致」**（本机无 Go 真源可活体）<br>⇒ ⚠️ **唯一一条字节差 = DRIFT-TASK-016**（Spring 缺 body 报文内嵌**类全限定名** ⇒ **D7/D11 包压平导致**）⇒ **不修** ⇒ 但**用白名单钉住形状**（差异形状变了 ⇒ 判失败；**B 侧漂移 ⇒ 判失败**）<br>⇒ 🔴 **探针第一次跑就抓到一条真缺陷**：C 侧 fat jar **启动即挂**（`NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`）⇒ **52 例测试全绿但生产 jar 起不来** ⇒ **已修**（`grpc-inprocess` 改 compile scope）⇒ 配套报告 §五·5.2 #9 / §七·7-1 **U-2** |
+| 6-3 | ⚠️ **gRPC wire 层零覆盖**（无真 netty server 收发用例） | 传输层 / HTTP2 帧 / trailer 线上序列化全零覆盖；**proto 一致 ≠ 消费方式已验**（AGENTS §3.4 效力边界） | 补一条「真 netty server ＋ 真 stub 调用 `GetTask`」的用例（参考 like 域 `LikeGrpcServiceContractTest`）⇒ 配套报告 §七·7-1 **U-3** |
+| 6-4 | ✅ **Redis flush 管线** | — | ✅ **2026-11-04 已闭合（随 6-1）**：真 Kafka 投递 ⇒ 真消费 ⇒ 真 flush ⇒ **真落 PG**（`TaskKafkaConsumeRealTest` 的两条端到端用例）⇒ 配套报告 §七·7-1 **U-4** |
 | 6-5 | ✅ **共享层 gRPC 错误映射的「共享层版本」已核** | — | ✅ **本轮已闭合**：§1.4 的**机器比对**（`httpStatusOf` 17/17 ＋ `goCodeName` 17/17 **逐条一致**） |
-| 6-6 | ✅ **变异证据（判据有牙齿）** | — | ✅ **本轮已闭合**：**M-1 ~ M-4** 四组，每组都要求「目标断言转红 ＋ 对照断言仍绿」＋ 还原后回绿 ⇒ **实测 EXIT=0**（脚本 `tools/difftest/task/mutate-task.py`）⇒ 配套报告 §八·8.1<br>⚠️ **M-4 第一轮曾「仍绿」** ⇒ 暴露出一条**假覆盖**用例（自己手拼 key、没调用被测类）⇒ **已修**（判据迁到 `messaging/TaskCountStoreRealRedisTest`）⇒ 复跑转红 ⇒ 配套报告 §八·8.2 #11 |
+| 6-6 | ✅ **变异证据（判据有牙齿）** | — | ✅ **已闭合**：**M-1 ~ M-5** 五组（单元测试层）+ **M-P1 ~ M-P3** 三组（**对拍探针层**）⇒ 每组都要求「目标断言转红 ＋ 对照断言仍绿」＋ 还原后回绿 ⇒ **实测 EXIT=0**<br>⇒ 脚本：`tools/difftest/task/mutate-task.py`（M-1~M-5）· `tools/difftest/task/mutate-parity.sh`（M-P1~M-P3）⇒ 配套报告 §八·8.1 / §八·8.1-b<br>⚠️ **M-4 第一轮曾「仍绿」** ⇒ 暴露出一条**假覆盖**用例（自己手拼 key、没调用被测类）⇒ **已修**（判据迁到 `messaging/TaskCountStoreRealRedisTest`）⇒ 复跑转红 ⇒ 配套报告 §八·8.2 #11 |
 
 ---
 
@@ -159,11 +161,12 @@
 | 7-1 | `service/task/src/main/java/com/rag/task/**`（**40 个主类 · 零空壳**） | B 侧 39 个主类 **＋** 1 条 C 新增（`TaskRewardProperties`） |
 | 7-2 | `service/task/src/main/resources/application.yml`（1 份 · 25 KB） | B 侧两份 yml 合成 |
 | 7-3 | `service/task/src/main/resources/db/migration/V1__create_task_progress.sql` ＋ `V2__create_user_like_count.sql` | **逐字复制**（`diff -r` 零差异） |
-| 7-4 | `service/task/src/test/java/com/rag/task/**`（**7 个测试类 ＋ 4 个 support · 52 例**） | 真 PG ＋ 真 Redis ＋ 真 Tomcat ＋ Kafka 装配层 ＋ **变异验证脚本**（`tools/difftest/task/mutate-task.py`） |
+| 7-4 | `service/task/src/test/java/com/rag/task/**`（**8 个测试类 ＋ 4 个 support · 55 例**＝默认 52 ＋ 外部依赖面 3） | 真 PG ＋ 真 Redis ＋ 真 Tomcat ＋ **真 Kafka**（U-1）＋ Kafka 装配层 ＋ **变异验证脚本**（`tools/difftest/task/mutate-task.py` · M-1~M-5） |
 | 7-5 | `docs/DRIFT/task/verification-task-service-2026-11-03.md` | 本域八阶段迁移审核报告 |
 | 7-6 | `docs/DRIFT/task/vs-common.md`（**本文件**） | 跨层对账 |
 | 7-7 | `docs/Mapping_Table/task/task.md`（**397 行**） ＋ `docs/Mapping_Table/_INDEX.md` 的 **task 行** ＋ `docs/File_Tree/task.md` | 本域域文档（**只改 task 相关**） |
-| 7-8 | `common/**` | 🔴 **零改动** |
+| 7-8 | 🔴 **`tools/difftest/task/`**（**9 个文件**） | **双侧活体对拍探针**（**E-4 强度**）：`run.sh`（编排）· `http_probe.py`（裸 socket 字节探针）· `cases.txt`（21 条用例）· `expected.txt`（**冻结锚 = B 侧读数**）· `known-cases.txt` ＋ `known-readings.txt`（**已登记的表达层差异** ＋ 其形状）· `judge_report.py`（变异判定器）· `mutate-parity.sh`（**探针层变异** M-P1~M-P3）· `README.md`（口径与用法） |
+| 7-9 | `common/**` | 🔴 **零改动** |
 
 > 📌 **本 lane 对共享面的改动合计 = 0** ⇒ 共享层的任何问题都**不是**本域引入的；
 > §5 的 5 条转派项**全部是「现象 + 证据 + 建议修法」**，**本域一行都不改**。

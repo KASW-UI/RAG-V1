@@ -12,6 +12,36 @@
     <name>task-service</name>
     <description>task 域 —— api + rpc 合并后的单一 Spring Boot 应用</description>
 
+    <properties>
+        <!--
+            ⚠️ **为什么用属性而不是把 `external-env` 直接写死在 `<excludedGroups>` 里**（抄 article 域
+            `service/article/pom.xml` 的同款做法 · 实测踩过）：
+            surefire 的 `groups`（= JUnit5 `includeTags`）与 `excludedGroups`（= `excludeTags`）
+            是**两个独立过滤器** ⇒ 命中条件 = **include ∩ exclude**
+            ⇒ 在 pom 里把 `excludedGroups` 写死成 `external-env` 之后，
+            **再传 `-Dgroups=external-env` 也跑不出那些用例**（include∩exclude = ∅，实测 `Tests run: 0`），
+            且 **CLI 的 `-DexcludedGroups=`（空值）覆盖不了 pom 里写死的值**（同样实测 `Tests run: 0`）
+            ⇒ ⇒ 排除项必须能被 **profile** 改写 ⇒ 故走属性。
+            · 默认值 = `external-env` ⇒ 默认回归**排除**那 3 例；
+            · `external-env` profile 把它改成 `__none__`（**一个不存在的标签**）
+              ⇒ 等价于「不排除任何东西」⇒ 同时 profile 里把 `groups` 设为 `external-env`
+              ⇒ 恰好只跑那 3 例。
+
+            【本域 `external-env` 的 3 例】（`messaging/TaskKafkaConsumeRealTest`）
+              · 需要**宿主真 Kafka**（容器 `Sea-kafka` · EXTERNAL 发布口 `127.0.0.1:49992`）
+              · ⇒ 没有 broker 的机器上**必然红**（不是「跳过」）
+                ⇒ AGENTS.md §五.8 规则 ③ **禁止** `@EnabledIfDockerAvailable` 把它们变绿
+                ⇒ ⇒ 只能按规则 ④「排除项用**前缀/类别匹配**」把它们从**默认回归**里排除；
+              · ⇒ 它们会**写真实数据**（Kafka 消息 ＋ Redis key）⇒ 不该由**别人的**回归顺手触发。
+
+            【默认回归口径（台账必须照抄，勿当已验）】
+              · `mvn -o -pl service/task -am test` ⇒ 汇总行**不含**这 3 例；
+              · 想跑这 3 例 ⇒ **`-Pexternal-env`**（profile）：
+                    mvn -o -pl service/task -am test -Pexternal-env
+        -->
+        <task.test.excludedGroups>external-env</task.test.excludedGroups>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId>
@@ -65,10 +95,49 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+            🔴🔴 grpc-inprocess **必须是运行时依赖（不能是 test scope）** —— 2026-11-04 双侧活体对拍实测
+
+            现象：C 侧 fat jar **启动即挂**（`java -jar task-service-1.0-SNAPSHOT.jar`）：
+              java.lang.NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder
+                at net.devh.boot.grpc.client.autoconfigure.GrpcClientAutoConfiguration
+                     .shadedNettyGrpcChannelFactory(GrpcClientAutoConfiguration.java:160)
+              at net.devh.boot.grpc.client.autoconfigure.GrpcClientAutoConfiguration
+                     .shadedNettyGrpcChannelFactory(GrpcClientAutoConfiguration.java:160)
+              ⇒ 上下文 refresh 失败 ⇒ **整个进程起不来**（健康检查 / 容器启动全部失败）。
+
+            根因：devh 的 `grpc-client-spring-boot-starter` 3.1.0.RELEASE 的
+            `GrpcClientAutoConfiguration#shadedNettyGrpcChannelFactory` 在**运行期**就要
+            `io.grpc.inprocess.InProcessChannelBuilder` ⇒ **只要这个 starter 在 classpath 上**
+            （本模块 D1 把 api+rpc 合成单进程 ⇒ client starter 也在 ⇒ 该 auto-config 会装配）
+            ⇒ **缺类即炸**。
+            ⇒ 而本模块原先把 grpc-inprocess 声明成 **test scope** ⇒ **只在测试类路径上有**
+            ⇒ ⇒ **52 例测试全绿（测试类路径带这个类），但生产 jar 起不来**。
+
+            ⚠️ **本模块的测试一条都没用到 `io.grpc.inprocess`**（`grep` 零命中）
+            ⇒ 原先那个 test scope 声明**没有任何消费点** ⇒ 纯属误写。
+
+            B 出处（类路径口径以 B 侧为准）：B 侧两个 fat jar **都含**该 jar
+              service/task/task-api/target/task-api-0.0.1-SNAPSHOT.jar
+                  → BOOT-INF/lib/grpc-inprocess-1.63.0.jar
+              service/task/task-rpc/target/task-rpc-0.0.1-SNAPSHOT.jar
+                  → BOOT-INF/lib/grpc-inprocess-1.63.0.jar
+            ⇒ B 的**运行时**类路径带这个类 ⇒ B 能起 ⇒ ⇒ C 必须同口径。
+
+            ⇒ **与本仓既有修法同款**：`service/users/user/pom.xml`（2026-11-03 对拍时同型踩坑）
+            · `service/article/pom.xml` · `service/follow/pom.xml` · `service/like/pom.xml`
+            —— 四域均已改为 **compile（默认）scope**。
+            ⚠️ **另一条可行路径**（`service/users/admin/pom.xml` 用的是它）：本域 D2 域内直调 ⇒
+            **零 `@GrpcClient`** ⇒ 索性删掉 `grpc-client-spring-boot-starter` ⇒ auto-config 不装配
+            ⇒ 连这个类都不需要。**本轮选 compile scope** ⇒ 与四域保持一致、改动面最小、
+            且不动 `common/`（共享层只读）。
+
+            教训（⇒ docs/Pitfalls/task/）：**测试类路径 ≠ 生产 jar 类路径** ⇒
+            「mvn test 全绿」证不了「fat jar 起得来」⇒ ⇒ 必须真跑一次 fat jar。
+        -->
         <dependency>
             <groupId>io.grpc</groupId>
             <artifactId>grpc-inprocess</artifactId>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
@@ -185,6 +254,45 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <!--
+                ⚠️ **按「类别」排除依赖宿主外部容器的用例**（AGENTS.md §五.8 规则 ④：
+                排除项用**前缀/类别匹配**）⇒ 排除项做成属性 `${task.test.excludedGroups}`
+                ⇒ 默认值 = `external-env` ⇒ 默认回归不含那 3 例。
+                ⚠️ **不引入 `@EnabledIfDockerAvailable` / `@DisabledIf*`** ——
+                那会把「环境缺失」伪装成「测试通过」⇒ 正是 §3.3.3 说的静默失效。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludedGroups>${task.test.excludedGroups}</excludedGroups>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!--
+            显式跑「依赖宿主外部容器」的那 3 个 U-1 用例：
+                mvn -o -pl service/task -am test -Pexternal-env
+            ⇒ 只跑 `external-env` 标签下的用例（= 恰好那 3 例）。
+        -->
+        <profile>
+            <id>external-env</id>
+            <properties>
+                <task.test.excludedGroups>__none__</task.test.excludedGroups>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <groups>external-env</groups>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

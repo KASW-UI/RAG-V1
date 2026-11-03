@@ -46,6 +46,15 @@ MUTATIONS = [
         "control": "TaskProgressMapperRealPgTest#doneStatusIsNeverReverted",
     },
     {
+        "id": "M-5",
+        "desc": "停掉用户路 sink 的 listener（autoStartup=false）⇒ 消费面必须断",
+        "file": CP / "messaging/TaskUserLikeProgressSink.java",
+        "old": '    @KafkaListener(id = "task-user-progress-sink",\n',
+        "new": '    @KafkaListener(id = "task-user-progress-sink", autoStartup = "false",\n',
+        "target": "TaskKafkaConsumeRealTest#userPathIsConsumedAndPersisted",
+        "control": "TaskKafkaConsumeRealTest#articlePathIsConsumedAndPersisted",
+    },
+    {
         "id": "M-4",
         "desc": "去掉 TaskCountStore 的 group 命名空间（用户路与文章路共用 key）",
         "file": CP / "messaging/TaskCountStore.java",
@@ -66,6 +75,9 @@ def run(test_filter):
     cmd = ["mvn", "-o", "-pl", "service/task", "-am", "test",
            f"-Dtest={test_filter}", "-DfailIfNoTests=false",
            "-Dsurefire.failIfNoSpecifiedTests=false"]
+    if test_filter.startswith("TaskKafkaConsumeRealTest"):
+        # ⚠️ 该类是 @Tag("external-env") ⇒ 默认回归被排除 ⇒ 必须显式开 profile
+        cmd.append("-Pexternal-env")
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=1800)
     log = r.stdout + r.stderr
     failed = [ln.split(" in ")[0].strip() for ln in log.splitlines()

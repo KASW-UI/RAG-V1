@@ -122,6 +122,7 @@
 │                       │   └── TaskProgressMapperRealPgTest.java    # 三条 upsert 的 DB 级不变量（真 PostgreSQL）。
 │                       ├── messaging/
 │                       │   ├── TaskCountStoreRealRedisTest.java    # {@code TaskCountStore} 的 key 命名空间（真 Redis） —— 钉住 Go 侧
+│                       │   ├── TaskKafkaConsumeRealTest.java    # 🔴 task 域 Kafka 消费面「端到端真跑」（真 broker ＋ 真 PG ＋ 真 Redis） ——
 │                       │   └── TaskKafkaListenerAssemblyTest.java    # Kafka 消费面的装配层断言 —— 真 Spring 上下文，真
 │                       ├── service/
 │                       │   └── TaskRedisPipelineRealRedisTest.java    # Redis pipeline 的结果形状（真 Redis） —— 钉住
