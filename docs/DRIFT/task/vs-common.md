@@ -22,7 +22,7 @@
 | 共享层 | `common/`（C 侧包名 `com.rag.common`） |
 | 工作树 | `/Users/pr/Documents/GitHub/RAG-V1.worktrees/task` |
 | 分支 / 基点 | `align/task` / `0a35865`（本地 `main`） |
-| 本轮改动 | **全部在工作树内、未提交**（`git status`：**40 改 ＋ 13 新增**） |
+| 本轮改动 | **已提交 `ef4fb5d`**（分支 `align/task` · 基线 `0a35865`）—— 61 个文件 · ＋9074 / −210 行 |
 | 本轮核对日期 | **2026-11-03** |
 | 本轮对 `common/**` 的改动 | **零**（只读） |
 
