@@ -67,6 +67,17 @@ MUTATIONS = [
         "target": "TaskCountStoreRealRedisTest#differentGroupsAreIsolated",
         "control": "TaskCountStoreRealRedisTest#sameGroupAndKeyCountsUp",
     },
+    {
+        "id": "M-6",
+        "desc": "把 gRPC 错误出口的 StatusRuntimeException 透传抹成 UNKNOWN（错误码活不过线路）",
+        "file": CP / "grpc/TaskGrpcService.java",
+        "old": "            observer.onError(e);",
+        "new": ("            observer.onError(io.grpc.Status.UNKNOWN\n"
+                "                    .withDescription(e.getStatus().getDescription())\n"
+                "                    .asRuntimeException()); // MUTATED"),
+        "target": "TaskGrpcNettyServerRealTest#invalidUserIdSurvivesTheWireAsInvalidArgument",
+        "control": "TaskGrpcNettyServerRealTest#getTaskOverRealNettyReturnsTheTwoTaskDefinitions",
+    },
 ]
 
 

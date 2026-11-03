@@ -116,6 +116,8 @@
 │                   └── task/
 │                       ├── dto/
 │                       │   └── GetTaskReqNormalizationTest.java    # {@code GetTaskReq} 的两段归一化（真 Jackson 2 mapper，无 Spring 上下文）。
+│                       ├── grpc/
+│                       │   └── TaskGrpcNettyServerRealTest.java    # task 域 gRPC 的「真 netty 传输层」收发用例
 │                       ├── http/
 │                       │   └── TaskApiWireContractRealTomcatTest.java    # task-api 的 wire 契约（真 Tomcat） —— 真 Spring 上下文 ＋ 真 Tomcat ＋ 真 HTTP 请求。
 │                       ├── mapper/
@@ -127,6 +129,7 @@
 │                       ├── service/
 │                       │   └── TaskRedisPipelineRealRedisTest.java    # Redis pipeline 的结果形状（真 Redis） —— 钉住
 │                       ├── support/
+│                       │   ├── GrpcServerPortCapture.java    # 捕获 devh 真 netty gRPC server 的「实际绑定端口」与「实际 server 实现类」。
 │                       │   ├── NacosStubConfiguration.java    # Nacos 桩 —— 让 task 域的测试能起真实 Spring 上下文，而不连 Nacos。
 │                       │   ├── TaskRealInfraTestBase.java    # task 域真上下文的共享底座 —— 真 Spring 上下文 + 真 PG + 真 Redis + 真 Tomcat
 │                       │   ├── TestPostgres.java    # 测试用真 PostgreSQL（进程内单例容器）。
