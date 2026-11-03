@@ -76,6 +76,32 @@ import org.springframework.stereotype.Service;
  *       ＋ E-4 实测（{@code docs/DRIFT/follow/verification-follow-2026-11-02.md} §八·六）。</li>
  * </ol>
  *
+ * <h3>🔴 2026-11-03 补充：分支② <b>不是</b>「照抄 B 的领域层」，而是<b>在复现 B 的「抢先」形态</b></h3>
+ * <p>上文的「B 出处」里有一处必须读准，否则会把这个分支当成「B 侧领域层本来就这样」：
+ * <ul>
+ *   <li><b>B 侧领域层是二分支</b>（{@code NOT_FOUND → 5101}；<b>其余一律</b> {@code INTERNAL + 5001}）
+ *       ⇒ <b>B 侧领域层对超时也是给 5001 的</b>；</li>
+ *   <li><b>B 侧 HTTP 层能观测到 1015，不是领域语义</b>，而是<b>拓扑产物</b>：
+ *       B 侧多一跳 {@code api→rpc}，那一跳的 <b>2s 客户端预算比内层预算早一个网络跳到期</b>
+ *       ⇒ api 先放弃 ⇒ 拿到的是 {@code DEADLINE_EXCEEDED}（description 非业务文案）
+ *       ⇒ 落 {@code mapStatusCodeToBizCode} 的 default ⇒ <b>1015</b>；</li>
+ *   <li>⇒ ⇒ <b>C 侧这个多出来的分支，作用是「复现 B 的抢先形态」</b> ——
+ *       若照抄 B 的二分支，C 侧在<b>挂住</b>形态下会给 5001，而 B 侧同形态给 1015 ⇒ <b>分叉</b>。</li>
+ * </ul>
+ * <p>⚠️ <b>两侧的错误映射层本身是逐条同型的</b>（B 侧 {@code FollowGrpcError.bizCodeFromError}
+ * ⇔ C 侧 {@code contract/GrpcErrorMapper.bizCodeFromError}：<b>description 文案反查优先</b>
+ * → <b>6 码白名单</b> → default 1015）⇒ ⇒ <b>码值由「下游失败形态」决定，不由错误码映射决定</b>：
+ * <ul>
+ *   <li><b>形态①挂住到预算到期</b> ⇒ 两侧都是 <b>1015</b>（E-4：阶段1 <b>3/3 逐字节一致</b>
+ *       ＋ gRPC 层 <b>3/3 状态码一致</b> = {@code DEADLINE_EXCEEDED}）；</li>
+ *   <li><b>形态②快速失败</b>（连接被拒 / Nacos 条目为空 ⇒ 解析不到实例）⇒ 领域层当场折叠
+ *       ⇒ 两侧都是 <b>5001</b>（E-4：kill -9 场景两侧 5001 ＋ 过渡窗口 <b>4 轮同步 5001</b>，
+ *       耗时仅 10~38ms ⇒ 快速失败而非超时）。</li>
+ * </ul>
+ * ⇒ ⇒ <b>⇒ 分支③（折叠其余下游故障）在这两种形态下都与 B 侧一致；分支②只负责「挂住」形态。</b>
+ * <p>📌 **完整读数与定位实验** ⇒ {@code docs/DRIFT/follow/verification-follow-2026-11-02.md}
+ * §8.6.7 / §8.6.7.1（含「阶段 2b 过渡窗口分层采样」）。
+ *
  * <h2>⚠️ L4 表达层差异</h2>
  * <ul>
  *   <li><b>包名</b>：B 侧 {@code ...follow.rpc.service} ⇒ C 侧 {@code com.rag.follow.service}（D7 压平）。</li>

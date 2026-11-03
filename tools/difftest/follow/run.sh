@@ -50,6 +50,17 @@ C_PG_PORT="${C_PG_PORT:-18207}"            # C 侧 Postgres（follow-service 的
 B_RPC_MGMT_PORT="${B_RPC_MGMT_PORT:-18208}"      # B 侧 follow-rpc 的 Actuator 载体（默认 16065 ⇒ 必须覆盖）
 USER_RPC_MGMT_PORT="${USER_RPC_MGMT_PORT:-18209}" # B 侧 user-rpc 的 Actuator 载体（默认 9094 ⇒ **与 Sea-user-rpc 冲突**）
 
+# ⚠️ **JVM 堆必须封顶（2026-11-03 加）**：本机 24GB 物理内存 ⇒ **默认堆上界 = 6GB/JVM**
+#    ⇒ 探针要起 **4 个服务端 JVM**（B user-rpc / B follow-rpc / B follow-api / C follow-service）
+#      **＋ 5 次 wire 探针 JVM** ⇒ 默认配置会把内存吃穿
+#    ⇒ ⇒ macOS 的内存压力杀进程（jetsam）**挑最大的杀**
+#    ⇒ ⇒ 2026-11-03 实测：探针跑着跑着，**下游 user-rpc 被 SIGKILL** ⇒ 后面所有阶段全跑在坏环境上
+#    ⇒ ⇒ 而探针**照样跑完**并给出「3 轮分布 [1015 5001 5001]」这种**看起来很干净**的读数
+#    ⇒ ⇒ 双重修法：① **堆封顶**（降低峰值 · 本段）② **下游存活断言**（读数有效性 · `downstream_alive`）
+#    ⚠️ 这几个都是**小体量 Spring Boot 服务** ⇒ 512m 绰绰有余 ⇒ **不改变任何业务行为**。
+PROBE_JVM_HEAP="${PROBE_JVM_HEAP:--Xmx512m}"
+PROBE_JVM_HEAP_WIRE="${PROBE_JVM_HEAP_WIRE:--Xmx256m}"
+
 # ── Nacos 分组隔离（🔴 关键，见 README「为什么必须分组」）──────────────────────
 B_GROUP="${B_GROUP:-E4B}"   # B 侧三进程（follow-api / follow-rpc / user-rpc）
 C_GROUP="${C_GROUP:-E4C}"   # C 侧 follow-service
@@ -159,6 +170,13 @@ free_probe_ports() {
   sleep 1
 }
 
+# ⚠️ **场景有效性断言（2026-11-03 加）**：下游 user-rpc 被**外力**杀掉
+#    （宿主内存压力 / 别的 lane 的清理）时，探针**照样跑完**并给出
+#    「3 轮分布 [1015 5001 5001]」这种**看起来很干净**的读数
+#    ⇒ ⚠️ **但那测的是「连接被拒」而不是「挂起超时」** ⇒ **读数必须作废**。
+#    ⇒ ⇒ 这条断言**独立于被测物**：只看**下游进程是否还在**。
+downstream_alive() { kill -0 "${USER_RPC_PID}" 2>/dev/null; }
+
 stop_stacks() {   # 真正把两侧服务停掉（**幂等** ⇒ 可被 cleanup 与收尾复核各调一次）
   local p
   [ -n "${KEEPALIVE_PID:-}" ] && kill "${KEEPALIVE_PID}" 2>/dev/null
@@ -251,6 +269,14 @@ say "   ✓ 两侧 Postgres 就绪（B :${B_PG_PORT} · C :${C_PG_PORT}，**宿�
 
 # ══════════════════════════ 2. 构建两侧 ═══════════════════════════════════════
 step "2/9 构建两侧（离线）"
+# ⚠️ **构建 JVM 必须封顶内存（2026-11-03 加）**：本机 swap 已用满（16G 里 15.6G）
+#    ⇒ 默认堆（物理内存的 1/4）会让**构建 JVM 成为最大进程**
+#    ⇒ ⇒ macOS 的内存压力杀进程（jetsam）会**挑最大的杀**
+#    ⇒ ⇒ 2026-11-03 实测：探针跑着跑着，**下游 user-rpc 被 SIGKILL**
+#    ⇒ ⇒ 而探针**照样跑完**并给出「3 轮分布 [1015 5001 5001]」这种**看起来很干净**的读数
+#    ⇒ ⇒ 双重修法：① **构建堆封顶**（减少峰值）② **下游存活断言**（读数有效性）
+MAVEN_OPTS="${MAVEN_OPTS:--Xmx768m -XX:MaxMetaspaceSize=384m}"
+export MAVEN_OPTS
 ( cd "${B_REPO}" && mvn -o -q -pl service/follow/follow-api,service/follow/follow-rpc,service/users/user/user-rpc -am package -DskipTests ) \
   || die "B 侧构建失败"
 B_API_JAR="${B_REPO}/service/follow/follow-api/target/follow-api-0.0.1-SNAPSHOT.jar"
@@ -295,7 +321,7 @@ start_user_rpc() {
     USER_RPC_PORT="${USER_RPC_PORT}" USER_RPC_MANAGEMENT_PORT="${USER_RPC_MGMT_PORT}" \
     USER_JWT_SECRET="${JWT_SECRET}" USER_JWT_EXPIRE=31536000 SNOWFLAKE_NODE_ID=0 \
     OTEL_ADDR=127.0.0.1 OTLP_PORT="${JAEGER_PORT}" \
-    java -jar "${USER_RPC_JAR}" >>"${WORK}/b-user-rpc.log" 2>&1 ) &
+    java "${PROBE_JVM_HEAP}" -jar "${USER_RPC_JAR}" >>"${WORK}/b-user-rpc.log" 2>&1 ) &
   USER_RPC_PID=$!
   PIDS+=("${USER_RPC_PID}")
   for _ in $(seq 1 60); do host_port_open "${USER_RPC_PORT}" && break; sleep 1; done
@@ -324,7 +350,7 @@ step "5/9 起 B 侧 follow-rpc（gRPC :${B_RPC_PORT}）与 follow-api（HTTP :${
   NACOS_ADDR=127.0.0.1 NACOS_PORT="${NACOS_PORT}" NACOS_NAMESPACE=public NACOS_GROUP="${B_GROUP}" \
   FOLLOW_RPC_PORT="${B_RPC_PORT}" FOLLOW_RPC_MANAGEMENT_PORT="${B_RPC_MGMT_PORT}" \
   OTEL_ADDR=127.0.0.1 OTLP_PORT="${JAEGER_PORT}" \
-  java -jar "${B_RPC_JAR}" >"${WORK}/b-rpc.log" 2>&1 ) &
+  java "${PROBE_JVM_HEAP}" -jar "${B_RPC_JAR}" >"${WORK}/b-rpc.log" 2>&1 ) &
 PIDS+=($!)
 for _ in $(seq 1 60); do host_port_open "${B_RPC_PORT}" && break; sleep 1; done
 host_port_open "${B_RPC_PORT}" || die "B 侧 follow-rpc 没监听 :${B_RPC_PORT}（见 ${WORK}/b-rpc.log）"
@@ -342,7 +368,7 @@ for attempt in 1 2 3; do
     NACOS_ADDR=127.0.0.1 NACOS_PORT="${NACOS_PORT}" NACOS_NAMESPACE=public NACOS_GROUP="${B_GROUP}" \
     FOLLOW_API_PORT="${B_API_PORT}" USER_JWT_SECRET="${JWT_SECRET}" USER_JWT_EXPIRE=31536000 \
     OTEL_ADDR=127.0.0.1 OTLP_PORT="${JAEGER_PORT}" \
-    java -jar "${B_API_JAR}" \
+    java "${PROBE_JVM_HEAP}" -jar "${B_API_JAR}" \
       --grpc.client.follow-rpc.immediate-connect-timeout=60s \
       >"${WORK}/b-api.log" 2>&1 ) &
   api_pid=$!
@@ -375,7 +401,7 @@ for attempt in 1 2 3; do
     FOLLOW_HTTP_PORT="${C_HTTP_PORT}" FOLLOW_GRPC_PORT="${C_GRPC_PORT}" \
     USER_JWT_SECRET="${JWT_SECRET}" USER_JWT_EXPIRE=31536000 \
     OTEL_ADDR=127.0.0.1 OTLP_PORT="${JAEGER_PORT}" \
-    java -jar "${C_JAR}" >"${WORK}/c-service.log" 2>&1 ) &
+    java "${PROBE_JVM_HEAP}" -jar "${C_JAR}" >"${WORK}/c-service.log" 2>&1 ) &
   c_pid=$!
   C_API_PID="${c_pid}"
   PIDS+=($!)
@@ -469,6 +495,29 @@ request_body() {   # $1=端口 $2=method $3=path $4=body $5=authmode ⇒ 打印 
              --data-binary "${body}" 2>/dev/null)
   else
     code=$(curl -s -o "${out}" -w '%{http_code}' -m 30 -X "${method}" \
+             "http://127.0.0.1:${port}${path}" \
+             -H 'Content-Type: application/json' \
+             --data-binary "${body}" 2>/dev/null)
+  fi
+  printf '%s|%s' "${code}" "$(xxd -p "${out}" | tr -d '\n')"
+}
+
+# ⚠️ **阶段2b 专用**：与 `request_body` **逐字同源**，只多返回一段**耗时**（curl 的 `%{time_total}`）。
+#    ⚠️ **绝不改 `request_body` 本身** —— 它是既有判据（两侧逐字节比对）的读数口径
+#       ⇒ 动它会让历史读数不可比 ⇒ ⇒ 另起一个函数。
+#    输出：`<http_code>|<耗时秒>|<hex>`
+request_body_timed() {  # $1=端口 $2=method $3=path $4=body $5=authmode
+  local port="$1" method="$2" path="$3" body="$4" auth="$5"
+  local out code
+  out="$(mktemp "${WORK}/body.XXXXXX")" || return 1
+  if [ "${auth}" = "valid" ]; then
+    code=$(curl -s -o "${out}" -w '%{http_code}|%{time_total}' -m 30 -X "${method}" \
+             "http://127.0.0.1:${port}${path}" \
+             -H "Authorization: Bearer ${JWT_TOKEN}" \
+             -H 'Content-Type: application/json' \
+             --data-binary "${body}" 2>/dev/null)
+  else
+    code=$(curl -s -o "${out}" -w '%{http_code}|%{time_total}' -m 30 -X "${method}" \
              "http://127.0.0.1:${port}${path}" \
              -H 'Content-Type: application/json' \
              --data-binary "${body}" 2>/dev/null)
@@ -639,9 +688,9 @@ WIRE_OUT="$(mktemp -d "${WORK}/wire.XXXXXX")" || die "建 wire 临时目录失�
 javac -nowarn -cp "$(cat "${WORK}/follow-cp.txt")" -d "${WIRE_OUT}" "${WIRE_SRC}" \
   || die "wire 探针编译失败"
 WIRE_CP="${WIRE_OUT}:$(cat "${WORK}/follow-cp.txt")"
-java -cp "${WIRE_CP}" com.rag.follow.parity.FollowWireProbe 127.0.0.1 "${B_RPC_PORT}" "${WIRE_OUT}/b.txt" \
+java "${PROBE_JVM_HEAP_WIRE}" -cp "${WIRE_CP}" com.rag.follow.parity.FollowWireProbe 127.0.0.1 "${B_RPC_PORT}" "${WIRE_OUT}/b.txt" \
   || die "B 侧 wire 探针执行失败"
-java -cp "${WIRE_CP}" com.rag.follow.parity.FollowWireProbe 127.0.0.1 "${C_GRPC_PORT}" "${WIRE_OUT}/c.txt" \
+java "${PROBE_JVM_HEAP_WIRE}" -cp "${WIRE_CP}" com.rag.follow.parity.FollowWireProbe 127.0.0.1 "${C_GRPC_PORT}" "${WIRE_OUT}/c.txt" \
   || die "C 侧 wire 探针执行失败"
 WIRE_COUNT=0
 WIRE_MISMATCH=0
@@ -786,10 +835,19 @@ say "   ✓ users_user 已有 1008/1009（count=${n}）⇒ 场景轮打在**真�
 say "   · 阶段1：把下游 user-rpc 挂起（SIGSTOP）⇒ 触发 rpc 超时（3 轮看分布）"
 kill -STOP "${USER_RPC_PID}" 2>/dev/null
 sleep 1
+# ⚠️ **读数有效性断言（2026-11-03 加）**：本轮实测抓到过「下游 user-rpc 被**外力** SIGKILL」
+#    （宿主内存压力 / 别的 lane 清理）⇒ 探针**照样跑完**并给出
+#    「3 轮分布 C=[1015 5001 5001] · B=[1015 5001 5001]」这种**看起来很干净**的读数
+#    ⇒ ⚠️ **但那测的是「连接被拒」而不是「挂起超时」** ⇒ **该读数必须作废**。
+#    ⇒ ⇒ 每个采样点**前后**都断言下游进程还活着（`kill -0`）⇒ 一旦死了 ⇒ **die**（exit 2 = 环境问题）。
+#    ⇒ **教训**：**读数的「分布好看」不等于「测的是那个场景」** —— 必须有一条独立于被测物的
+#      **场景有效性断言**（此处 = 下游进程仍在）。
+downstream_alive || die "下游 user-rpc（pid=${USER_RPC_PID}）已被外力杀掉 ⇒ 本轮读数无效（测到的是「连接被拒」而非「挂起超时」）⇒ 请重跑"
 TMO_C_CODES=""; TMO_B_CODES=""
 for round in 1 2 3; do
   c_raw="$(request_body "${C_HTTP_PORT}" POST "/follow/v1/follow/list" '{"user_id":"1001"}' valid)"
   b_raw="$(request_body "${B_API_PORT}"  POST "/follow/v1/follow/list" '{"user_id":"1001"}' valid)"
+  downstream_alive || die "下游 user-rpc 在第 ${round} 轮采样途中被外力杀掉 ⇒ 本轮读数无效 ⇒ 请重跑"
   c_code="$(biz_code_of "${c_raw}")"; b_code="$(biz_code_of "${b_raw}")"
   TMO_C_CODES="${TMO_C_CODES}${c_code:-?} "; TMO_B_CODES="${TMO_B_CODES}${b_code:-?} "
   say "      第 ${round} 轮：C 业务码=${c_code:-?} · B 业务码=${b_code:-?}"
@@ -800,6 +858,7 @@ for round in 1 2 3; do
     say "      ❌ 第 ${round} 轮：两侧**不一致** ⇒ C=${c_code} vs B=${b_code}"
   fi
 done
+downstream_alive || die "下游 user-rpc 在阶段1 结束后被外力杀掉 ⇒ 本轮读数无效 ⇒ 请重跑"
 say "      3 轮分布：C = [${TMO_C_CODES}] · B = [${TMO_B_CODES}]"
 
 # ── 阶段 1b：gRPC 层（同一挂起场景）各自的对外出口（**观察项 · 不参与判定**）─────
@@ -815,9 +874,9 @@ say "   · 阶段1b：gRPC 层分层探测（同一挂起场景 · **观察项**
 WIRE_TMO_DIR="$(mktemp -d "${WORK}/wire-tmo.XXXXXX")" || die "建 wire 临时目录失败"
 TMO1B_B=""; TMO1B_C=""; TMO1B_B_DESC=""; TMO1B_C_DESC=""
 for round in 1 2 3; do
-  java -cp "${WIRE_CP}" com.rag.follow.parity.FollowWireProbe 127.0.0.1 "${B_RPC_PORT}" \
+  java "${PROBE_JVM_HEAP_WIRE}" -cp "${WIRE_CP}" com.rag.follow.parity.FollowWireProbe 127.0.0.1 "${B_RPC_PORT}" \
        "${WIRE_TMO_DIR}/b.txt" wire_follow_list || die "B 侧 wire 超时探针执行失败"
-  java -cp "${WIRE_CP}" com.rag.follow.parity.FollowWireProbe 127.0.0.1 "${C_GRPC_PORT}" \
+  java "${PROBE_JVM_HEAP_WIRE}" -cp "${WIRE_CP}" com.rag.follow.parity.FollowWireProbe 127.0.0.1 "${C_GRPC_PORT}" \
        "${WIRE_TMO_DIR}/c.txt" wire_follow_list || die "C 侧 wire 超时探针执行失败"
   b_line="$(grep '^CASE|wire_follow_list|' "${WIRE_TMO_DIR}/b.txt" | head -1)"
   c_line="$(grep '^CASE|wire_follow_list|' "${WIRE_TMO_DIR}/c.txt" | head -1)"
@@ -842,17 +901,144 @@ else
 fi
 # ⚠️ **必须放行**：后面的阶段还要用这个下游
 kill -CONT "${USER_RPC_PID}" 2>/dev/null
+
+# ── 阶段 2b：过渡窗口**分层同时采样**（SIGCONT 之后 · Nacos 条目回来之前）───────
+# ⚠️ **为什么加这一段**：§8.6.7 的观察项「恢复窗口过渡态实测一次 C=5001 / B=1015」
+#    **未定位**。本段就是**定位它**的实验 ⇒ 过渡窗口里**同时**采两侧的
+#      ① HTTP 层（业务码 + **耗时**）
+#      ② gRPC 层（**直打各自的 follow-rpc**，`caseFilter` 模式自带 15s deadline
+#         ⇒ **绕开 B 侧 api→rpc 那一跳的 2s 客户端预算**）
+#
+# ⚠️ **判别逻辑（先由源码推出推论，再拿读数验证）**：
+#    · **推论 A**：B 侧 follow-rpc 的 gRPC 出口**只可能**是 {OK · NOT_FOUND+5101 ·
+#      INTERNAL+5001}（`FollowServiceGrpcImpl.invoke` 的两层 catch：StatusRuntimeException
+#      原样上 wire，其余 RuntimeException 兜底 INTERNAL+5001）⇒ 这三种经 api 层的
+#      「description 文案反查」分别落 **200 / 5101 / 5001** ⇒ **没有一种能落 1015**
+#      ⇒ ⇒ **B 的 HTTP 层给 1015 ⇒ 只能是 api→rpc 那一跳自己的 2s 客户端预算到期**
+#      （它抛的 DEADLINE_EXCEEDED 的 description 不是业务文案 ⇒ 落 mapStatusCodeToBizCode
+#        的 default ⇒ 1015）。
+#    · **推论 B**：B 侧的**领域语义**是「一切非 NOT_FOUND ⇒ INTERNAL+5001」；
+#      **B 的 HTTP 层之所以给 1015，不是领域语义，是拓扑产物**
+#      （多一跳 ⇒ 外层预算比内层预算早一个网络跳到期 ⇒ api 先放弃 ⇒ 看不到领域层折叠的 5001）。
+#    ⇒ **于是本段要测的**：过渡窗口里两侧的「下游调用形态」到底是
+#      **快速失败**（⇒ 领域层当场折叠 ⇒ 5001）还是**挂住到预算到期**（⇒ 1015）。
+#
+# ⚠️ **只观察、不判失败**（同阶段 1b 的纪律）：本段回答的是「**机制**」，不是「契约」
+#    ⇒ 契约判据仍取 HTTP 层的**稳定态**（阶段 2）。
+say "   · 阶段2b：过渡窗口分层采样（SIGCONT 之后 · Nacos 条目回来之前 · **观察项**：定位 §8.6.7 的未定位观察）"
+TRANS_HTTP_LOG="${WORK}/trans-http.txt"
+TRANS_GRPC_LOG="${WORK}/trans-grpc.txt"
+: > "${TRANS_HTTP_LOG}"; : > "${TRANS_GRPC_LOG}"
+# ⚠️ **HTTP 采样循环**：两侧**交替**打 ⇒ 同一时刻两侧面对**同一份**下游状态。
+#    ⚠️ **带墙钟上限**：过渡窗口最长 ~15s（Nacos 条目回来）⇒ 采样不能拖过它。
+(
+  i=0; t_start="$(python3 -c 'import time;print(int(time.time()*1000))')"
+  while [ "${i}" -lt 10 ]; do
+    # ⚠️ **采样前先断言下游还在**（场景有效性）⇒ 被外力杀掉 ⇒ 停采样并记进日志
+    if ! downstream_alive; then
+      printf 'ALIVE|%02d|user-rpc DEAD（被外力杀掉）⇒ 本段读数作废\n' "${i}" >> "${TRANS_HTTP_LOG}"
+      break
+    fi
+    b="$(request_body_timed "${B_API_PORT}" POST "/follow/v1/follow/list" '{"user_id":"1001"}' valid)"
+    c="$(request_body_timed "${C_HTTP_PORT}" POST "/follow/v1/follow/list" '{"user_id":"1001"}' valid)"
+    # ⚠️ **同时记下 Nacos 条目在不在** ⇒ 过渡态的「下游不可解析」有了直接证据
+    nn="$(nacos_list_instances user-rpc "${B_GROUP}" | wc -l | tr -d ' ')"
+    printf 'HTTP|%02d|B|%s\n' "${i}" "${b}" >> "${TRANS_HTTP_LOG}"
+    printf 'HTTP|%02d|C|%s\n' "${i}" "${c}" >> "${TRANS_HTTP_LOG}"
+    printf 'NACOS|%02d|user-rpc@%s|instances=%s\n' "${i}" "${B_GROUP}" "${nn}" >> "${TRANS_HTTP_LOG}"
+    i=$((i+1))
+    t_now="$(python3 -c 'import time;print(int(time.time()*1000))')"
+    [ $(( t_now - t_start )) -lt 20000 ] || break
+    sleep 0.2
+  done
+) &
+TRANS_HTTP_PID=$!
+# ⚠️ **gRPC 直连采样**：**B 侧先打**（B 才是本次要定位的那一侧）⇒ 第一次调用必须
+#    在过渡窗口的**最前面**，不能被 C 侧挤掉。
+#    ⚠️ **已知混淆项（如实记录，不当结论）**：直连探针每次**新建 channel**
+#    ⇒ 走的是**新鲜的服务发现解析**；而 api/follow-rpc 用的是**长连接**
+#    ⇒ 两者在「实例条目刚过期/刚回来」时**可能走出不同的分支**。
+#    ⇒ 故本段的直连读数**只作旁证**，主证据是「HTTP 层的耗时 + 业务码」。
+(
+  i=0; t_start="$(python3 -c 'import time;print(int(time.time()*1000))')"
+  while [ "${i}" -lt 3 ]; do
+    for side in B C; do
+      if [ "${side}" = "B" ]; then port="${B_RPC_PORT}"; else port="${C_GRPC_PORT}"; fi
+      t0="$(python3 -c 'import time;print(int(time.time()*1000))')"
+      java "${PROBE_JVM_HEAP_WIRE}" -cp "${WIRE_CP}" com.rag.follow.parity.FollowWireProbe 127.0.0.1 "${port}" \
+           "${WORK}/trans-${side}-${i}.txt" wire_follow_list >/dev/null 2>&1
+      t1="$(python3 -c 'import time;print(int(time.time()*1000))')"
+      st="?"; desc=""
+      if [ -f "${WORK}/trans-${side}-${i}.txt" ]; then
+        line="$(grep '^CASE|wire_follow_list|' "${WORK}/trans-${side}-${i}.txt" | head -1)"
+        st="$(printf '%s' "${line}" | awk -F'|' '{print $3}')"
+        desc="$(printf '%s' "${line}" | awk -F'|' '{print $4}' | xxd -r -p 2>/dev/null)"
+      fi
+      printf 'GRPC|%02d|%s|%s|ms=%s|desc=%s\n' "${i}" "${side}" "${st}" "$(( t1 - t0 ))" "${desc}" >> "${TRANS_GRPC_LOG}"
+    done
+    i=$((i+1))
+    t_now="$(python3 -c 'import time;print(int(time.time()*1000))')"
+    [ $(( t_now - t_start )) -lt 30000 ] || break
+    sleep 0.2
+  done
+) &
+TRANS_GRPC_PID=$!
 # ⚠️ **服务发现条目在挂起期间会过期**：user-rpc 是 Nacos 的**临时实例**（TTL 数秒）
 #    ⇒ 被 SIGSTOP 的那十几秒里它**没法续期** ⇒ 条目过期 ⇒ 两侧的客户端都拿不到实例
 #    ⇒ ⇒ 「恢复」失败是**服务发现层**的现象，不是 follow 域的行为。
 #    ⇒ ⇒ 放行后要**等它自己续回来**（SIGCONT ⇒ 续期线程恢复 ⇒ 重新注册）。
-for _ in $(seq 1 15); do
-  nacos_assert_instance user-rpc "${B_GROUP}" "${USER_RPC_PORT}" && break
-  sleep 1
-done
+# ⚠️ **等条目的上限（2026-11-03 修）**：原来外层 `seq 1 15` × 内层 `nacos_assert_instance`
+#    （自身 30 × 1s）⇒ **最坏 450s** ⇒ 下游**已死**时**死等 7.5 分钟**
+#    （2026-11-03 实测踩到：下游被外力杀掉 ⇒ 探针卡在这里，后续阶段全跑在坏环境上）。
+#    ⇒ 改成**单次**调用（内层已含 30s 上限）⇒ 最坏 30s；
+#    ⇒ 且**先断言下游还活着**：下游已死 ⇒ 条目永远不会回来 ⇒ 直接 die（不做无谓等待）。
+downstream_alive || die "下游 user-rpc（pid=${USER_RPC_PID}）已被外力杀掉 ⇒ Nacos 条目永远不会回来 ⇒ 不再死等 ⇒ 请重跑"
 nacos_assert_instance user-rpc "${B_GROUP}" "${USER_RPC_PORT}" \
   || say "   ⚠️ B 侧 user-rpc 的 Nacos[${B_GROUP}] 条目还没回来（恢复轮可能因此不恢复）"
 say "   ✓ 下游已放行（SIGCONT）· 服务发现条目已确认"
+
+# ── 阶段 2b 收尾：等两个采样循环结束 ⇒ 打印过渡窗口的分层读数 ─────────────────
+wait "${TRANS_HTTP_PID}" 2>/dev/null
+wait "${TRANS_GRPC_PID}" 2>/dev/null
+say "      ── 过渡窗口 HTTP 层（业务码 + 耗时秒）──"
+TRANS_CAUGHT=""; TRANS_B_CODE=""; TRANS_B_EL=""; TRANS_C_CODE=""; TRANS_C_EL=""
+# ⚠️ **场景有效性**：采样期间下游被外力杀掉 ⇒ 本段读数**整体作废** ⇒ 必须显式说出来
+if ! downstream_alive; then
+  say "      🔴 **下游 user-rpc 在过渡窗口采样期间被外力杀掉** ⇒ 本段读数**作废**"
+  say "         （测到的是「连接被拒」，不是「下游恢复过渡态」）⇒ 重跑"
+  SCEN_WARN="${SCEN_WARN}「过渡窗口采样期间下游被外力杀掉 ⇒ 该段读数作废 · "
+fi
+while IFS='|' read -r kind idx side rest; do
+  [ "${kind}" = "HTTP" ] || continue
+  # rest = "<http_code>|<耗时秒>|<hex>" ⇒ 拆出来
+  hc="${rest%%|*}"; rest2="${rest#*|}"; el="${rest2%%|*}"; hex="${rest2#*|}"
+  code="$(biz_code_of "x|${hex}")"
+  printf '      %s 轮 · %s 侧：业务码=%s · 耗时=%ss\n' "${idx}" "${side}" "${code:-?}" "${el}"
+  # ⚠️ **判「过渡态被采到」**：同一轮里 B=1015 且 C=5001 ⇒ **就是台账记的那个分叉**
+  if [ "${side}" = "B" ]; then TRANS_B_CODE="${code:-?}"; TRANS_B_EL="${el}"
+  else TRANS_C_CODE="${code:-?}"; TRANS_C_EL="${el}"; fi
+  # ⚠️ **两轮凑一对才判**（采样是交替的 ⇒ B 与 C 紧邻 ⇒ 逐行配对即可）
+  if [ "${side}" = "C" ]; then
+    if [ "${TRANS_B_CODE}" = "1015" ] && [ "${TRANS_C_CODE}" = "5001" ]; then
+      TRANS_CAUGHT="yes"
+      say "         ⇒ 🔴 本轮**复现了过渡态分叉**：B=1015（耗时 ${TRANS_B_EL}s）· C=5001（耗时 ${TRANS_C_EL}s）"
+    fi
+  fi
+done < "${TRANS_HTTP_LOG}"
+say "      ── 过渡窗口 Nacos 条目（下游是否可解析）──"
+grep '^NACOS|' "${TRANS_HTTP_LOG}" | sed 's/^/      /' | head -12
+say "      ── 过渡窗口 gRPC 直连（**绕开 B 侧 api 的 2s 预算**）──"
+if [ -s "${TRANS_GRPC_LOG}" ]; then
+  sed 's/^/      /' "${TRANS_GRPC_LOG}"
+else
+  say "      （本轮没有直连读数）"
+fi
+if [ "${TRANS_CAUGHT}" = "yes" ]; then
+  say "      ⚠️ **过渡态分叉在本轮被复现** ⇒ 读数已足够定位 ⇒ 见台账 §8.6.7"
+  SCEN_WARN="${SCEN_WARN}「过渡态分叉已被阶段2b 复现（B=1015 / C=5001）· "
+else
+  say "      ℹ️ 本轮**未复现**过渡态分叉（窗口太短 / 采样没赶上）⇒ 结论仍以历史读数为准"
+fi
 
 # ── 阶段 2：恢复（SIGCONT 后应回到 200）───────────────────────────────────────
 say "   · 阶段2：下游恢复（SIGCONT）⇒ 应回到业务码 200"
