@@ -113,7 +113,7 @@ public final class LimitMode {
      * ⇒ ⇒ 本类<b>同时接受这两种</b>（见 {@link #parse}）⇒ ⇒ 域侧<b>按文档写也能用</b>。
      *
      * <p>⚠️ <b>为什么不是「把 {@code off} 从合法值里删掉」</b>：{@code off} 是本类的
-     * <b>文档化合法取值</b>（{@link #OFF} 的语义）⇒ 删掉它等于「文档与实现不符」⇒
+     * <b>文档化合法取值</b>（{@link Mode#OFF} 的语义）⇒ 删掉它等于「文档与实现不符」⇒
      * ⇒ 正确方向是<b>让实现接受文档里那个值的实际编码形式</b>，而不是改文档迁就实现。
      */
     public static final String PROPERTY = "rag.http.go-form-limit.mode";
@@ -127,8 +127,9 @@ public final class LimitMode {
          * <ul>
          *   <li><b>轴 ①（拒绝形状）</b>⇒ 由本枚举管 ⇒ {@code OFF} = <b>共享层不装</b>闸门；</li>
          *   <li><b>轴 ②（判定权归谁）</b>⇒ <b>与本枚举无关</b> ⇒ 容器上限
-         *       <b>一律</b>由 {@link GoStyleTomcatParameterLimitCustomizer} 抬到 10001
-         *       （= B 侧 {@code net/url} 段数上限 10000 + 1）。</li>
+         *       <b>一律</b>由 B 侧 {@code GoStyleTomcatParameterLimitCustomizer} 抬到 10001
+         *       （= B 侧 {@code net/url} 段数上限 10000 + 1）；
+         *       C 侧对应 = {@link com.rag.common.autoconfigure.WebAutoConfiguration#TOMCAT_MAX_PARAMETER_COUNT}。</li>
          * </ul>
          * ⇒ ⇒ <b>旧版「{@code OFF} ⇒ 不改容器上限」是错的</b>：它把两件独立的事耦合在了同一个
          * {@code mode} 上 ⇒ ⇒ 造成「OFF 域停在 yaml 的 2048、其余域 10001」的<b>运行期分叉</b>

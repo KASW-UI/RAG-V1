@@ -45,8 +45,17 @@
 > common 测试 **218 → 224 例**（新增 `CpuSheddingFilterTest` 4 例 ＋ `HttpCircuitBreakerConfigPinTest` 2 例），**变异实测 4 次每次都变红**（含「退回只看 CPU」这条**漂移形态**）。
 >
 > ✅ **批次 I（2026-11-02 · 同日）· 台账「状态自报 ≠ 现状」清理**：§11.5 的 14 条漂移条目**原先只在标题上挂严重度标记**，而 V01–V08 / V14 **早已修完**却仍顶着 🔴/🟠 ⇒ ⇒ 读者扫标题会以为还有 7 红 2 橙 ⇒ ⇒ **本轮给每条补「状态」行 + 把标题标记改成当前状态** ⇒ ⇒ 现状 = **✅ 已修 9 · ⚪ 已登记 4 · ⚪/🟠 治理待裁决 1（V11 域归属）· 🔴 0**。
+> ✅ **2026-11-03（`global` 收口域）· V11 已裁决**：用户定「**行为侧 C ≡ B**（实测 favorite 两侧都走共享层）⇒ **不改代码归属**」
+> ⇒ ⇒ **V11 从「治理待裁决」降为「✅ 已裁决 · 非漂移」** ⇒ ⇒ **AGENTS.md §2.3 挂着的 🔴 已解除**
+> ⇒ ⇒ 现状 = **✅ 已修 9 · ✅ 已裁决 1（V11）· ⚪ 已登记 5（V10/V12/V13/V16/V17/V18 中除 V11 外）· 🔴 0**。
 > ✅ 顺带**关闭 V08**：映射表 §7.4 #6 的 B 列「RAG 侧只有 6 个声明 `GrpcServerConfigurer`」**已过时**（实测：**10 个 rpc 应用全部**声明了）⇒ 且该行 C 列「全树 0 个」也已被批次 B 推翻 ⇒ ⇒ 已就地订正。
 > ✅ **V11 定性**：B 侧本来就把它放在**共享层** ⇒ **C ≡ B ⇒ 行为侧无漂移** ⇒ 只登记治理张力（🏷 候选，建议签），**不升级为拍板**、**不阻塞**本次迁移。
+> ✅ **2026-11-03（`global` 收口域 · 本轮）· V17 已修（PARITY-006 根因）**：在 `ObservabilityAutoConfiguration.GrpcObservationInterceptor` 的 listener **补 `onHalfClose()`**
+> ⇒ ⇒ 在**真正跑 handler 的线程**上绑**入向** `DeadlineState`（绝对时刻 = 调用开始 ＋ `rpc-timeout`，与 B 侧 `RpcInterceptor.java:516-522` 同形）
+> ⇒ ⇒ **在途 SQL 拿得到 `setQueryTimeout`** ⇒ ⇒ 预算到点 PG 收到 CancelRequest ⇒ 事务回滚 ⇒ ⇒ **在途写不再落库**
+> ⇒ ⇒ **验收**：新 `GrpcDeadlineBindingTest`（3 例）＋ `GrpcInboundDeadlinePgTest`（**2 例 · 真 PG** · 服务端预算到点 / 客户端主动取消）⇒ **5 例全绿**；**变异实测** ⇒ 两条都**红在核心判据**（`expected: 0L but was: 1L`）⇒ ⇒ **判据精确、其余维仍绿** ⇒ 还原后同条件复跑回绿
+> ⇒ ⇒ 现状 = **✅ 已修 10 · ✅ 已裁决 1（V11）· ⚪ 已登记 4（V10/V12/V13/V16/V18）· 🔴 0**。
+> ⚠️ **诚实边界**：① **只绑入向载体** ⇒ 出向 `GoStyleRequestDeadline` **另案**；② 作用域随 `onHalfClose` 返回而结束 ⇒ **异步 handler 不在作用域内**（与 B 侧同款）；③ **跨域复测**（admin 域 E-4-R2 场景轮 ⇒ `admin_admin` 0 行）**待 admin 域 lane 落地**（本 lane 只写 `common/`）。
 
 ---
 
@@ -165,7 +174,7 @@
 | `GoStyleOtelConfig.java`（上游 `Telemetry` 配置投影） | 配置载体 | `observability/GoStyleOtelConfig.java` | 1:1 | **PASS** | ✅ **批次 F 已改**：原先落在 `ObservabilityProperties`（`observability.*` 命名空间）但**只承载、不驱动装配** ⇒ 本轮**移出**、归位到与 B 同名的 `GoStyleOtelConfig`（**B ↔ C 真正 1:1**）⇒ ⇒ **键名回到 B 侧的 `otel.service.name` / `otel.resource.attributes.service.name` / `otel.exporter.otlp.endpoint` / `otel.exporter.otlp.protocol` / `otel.traces.sampler[.arg]`** ⇒ **L1 配置契约与 B 侧逐字节同构**；对拍：`GoStyleOtelConfigTest`（**13 例**）—— 服务名三套拼法的优先级 / 裸 `host:port` 补 `http://`（= B 侧的 `WithInsecure()`）/ 协议缺默 `grpc` / 采样器名→比例映射 / **非法采样器名 ⇒ 炸** / 非法协议 ⇒ 装不上 / **端点为空 ⇒ 不校验协议** |
 | `GoStyleOtelAgent.java`（SDK + OTLP exporter + 传播器 + shutdown hook） | 全局 tracer provider | `observability/GoStyleOtelAgent.java` | 1:1 | **PASS** | ✅ **批次 F 已修**（**最后 1 条 NOT_IMPLEMENTED**）：抄 RAG 整段（L2 · D13）⇒ 幂等（`AtomicBoolean` + `LOCK`，= B 侧的 `sync.Once`）/ `buildProvider` 逐行对齐 B 侧的 `startAgent`（`parentBased(traceIdRatioBased(ratio))` ＋ `Resource(service.name)` ＋ **「endpoint 为空 ⇒ 不装 exporter」** 的短路）/ 全局 `set()` 失败**只记 ERROR 不抛**（= B 侧的 `logx.Error` 后继续启动）/ shutdown hook flush。对拍：`GoStyleOtelAgentTest`（**7 例**）—— ① **真 Spring 上下文**里全局 provider 装上了（span 有效 ＋ 全局 propagator 能 inject `traceparent`）② **真 gRPC 假 OTLP 接收端**收到 ≥1 个非空 Export 请求（证「字节真出了机器」）③ **关停会 flush**（3s 窗口 < 5s 批量周期 ⇒ 只能是 flush 带来的）④ 装不上**不阻断启动**（返回 null ＋ 全局仍 no-op）⑤ 幂等（第二次 install 不重装）⑥ `Sampler=0.0` ⇒ 一个 span 都不导出 ⑦ **ParentBased**：入向 parent 已采样 ⇒ 即使比例 0 子 span 仍被采样并导出 |
 | `MqConsumer.java`（MQ 消费端 trace 包装） | 上游 `TraceConsumer` | `observability/MqConsumer.java` | 1:1 | **PASS** | ✅ **批次 E 已修**：抄 RAG 整段（L2 · D13）＋ **写入载体改为「Micrometer Observation + OTel 双载体」**（L4 · D4 / D-03）；对拍：`MqConsumerTest`（8 例）覆盖 成功/系统错/超时/panic 外抛/attrs 跳过 null/默认名/`mq.kind`/null registry；⚠️ Micrometer **无 span kind 概念** ⇒ 用 `mq.kind=consumer` 低基数键值承载（**本仓新增的键** ⇒ 登记 D-03 同族）；⚠️ **刻意不 catch `Throwable`**（照抄 B 侧的裸调用语义 ⇒ panic 继续向上传播） |
-| `RpcInterceptor.java`（gRPC 最内层业务观测 + rpc-timeout + slow） | gRPC 业务观测 | `autoconfigure/ObservabilityAutoConfiguration.java` 的嵌套 `GrpcObservationInterceptor` ＋ `observability/RpcHandleRunner.java` ＋ `RpcResult.java` ＋ `RpcCallHandler.java` ＋ `ObservabilityRuntime.java` ＋ `ObservabilityLifecycle.java` | 1:N | **PASS** | 源码级：7 业务码集合 / `DEADLINE_EXCEEDED` 优先 / `rpc-timeout` 调度器 关 `DEADLINE_EXCEEDED`；✅ **批次 E 已补齐** B 的 `handle(...)` 非 gRPC 路径（独立线程 ＋ 到点 `cancel(true)` 打断 ＋ 观测分类）＋ 两个池的**生命周期关闭钩子**；对拍：`RpcHandleRunnerTest`（11 例）＋ `ObservabilityRuntimeTest`（4 例）；⚠️ **只有非 gRPC 路径能真正打断业务线程**（grpc-java 的 `ServerCall#close()` 无法取消已在跑的 handler）⇒ gRPC 路径靠 `DeadlineState.isExpired()` 主动自查 |
+| `RpcInterceptor.java`（gRPC 最内层业务观测 + rpc-timeout + slow） | gRPC 业务观测 | `autoconfigure/ObservabilityAutoConfiguration.java` 的嵌套 `GrpcObservationInterceptor` ＋ `observability/RpcHandleRunner.java` ＋ `RpcResult.java` ＋ `RpcCallHandler.java` ＋ `ObservabilityRuntime.java` ＋ `ObservabilityLifecycle.java` | 1:N | **PASS** | 源码级：7 业务码集合 / `DEADLINE_EXCEEDED` 优先 / `rpc-timeout` 调度器 关 `DEADLINE_EXCEEDED`；✅ **批次 E 已补齐** B 的 `handle(...)` 非 gRPC 路径（独立线程 ＋ 到点 `cancel(true)` 打断 ＋ 观测分类）＋ 两个池的**生命周期关闭钩子**；对拍：`RpcHandleRunnerTest`（11 例）＋ `ObservabilityRuntimeTest`（4 例）；⚠️ **只有非 gRPC 路径能真正打断业务线程**（grpc-java 的 `ServerCall#close()` 无法取消已在跑的 handler）⇒ ⚠️ **gRPC 路径的 `DeadlineState` 从无绑定**（见 **DRIFT-COMMON-V17**）⇒ ⇒ **`isExpired()` 恒 false ⇒ 主动自查这条路在 gRPC 侧也不通** |
 
 ### (6) `persistence/`（B 3 → C 4）
 
@@ -485,27 +494,52 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | **修复建议** | 登记进 `docs/L3-降级清单.md`（**新条目**，不要挂 D-04 —— D-04 是判据缺口，本条是统计面缺口）；实现时**逐字**对齐日志格式串与线程名（`go-style-shedding-stat` / `go-style-stat-metrics`）；⚠️ **那 3 个聚合怪癖是刻意的上游对齐，不是 bug** ⇒ 「顺手改成直觉语义」= 漂移 |
 | **验证方法** | 日志捕获测试：断言行格式逐字 + `drop` 从 0 变 1 后 tag 切换 + 报告后计数归零 |
 
-### ⚪ DRIFT-COMMON-V11｜`common/` 内 `communityfact/` 的**域归属**未裁决（AGENTS.md §2.3 已挂 🔴）
+### ✅ DRIFT-COMMON-V11｜`common/` 内 `communityfact/` 的**域归属已裁决**（2026-11-03 · 用户定）⇒ **非漂移**
 
-**状态**：**⚪ 已登记**（行为对拍侧：**C ≡ B ⇒ 无漂移**）⇒ 🏷 **候选，建议签**。
+**状态**：**✅ 已裁决 · 非漂移**（2026-11-03 · 用户定）⇒ **行为侧 C ≡ B**（实测 favorite 两侧都走共享层）
+⇒ ⇒ **不改代码归属**：`common/communityfact/` **维持现状**（7 个协议 DTO ＋ 6 个行为类）
+⇒ ⇒ ⇒ **AGENTS.md §2.3 挂着的 🔴「填实现前必须裁决 communityfact 域归属」已解除**
+（治理原则「`common/` 只放无域归属能力」**继续保留**，本条只裁决**归属不动**）⇒ ⇒ **不阻塞**任何后续工作。
 ⚠️ **为什么行为侧可以直接判「无漂移」**：B 侧（RAG）本来就把它放在**共享层** `service/common/communityfact/`（7 个协议 DTO ＋ 行为类，comment / favorite / like 三域共用）⇒ ⇒ C 侧放 `common/communityfact/` **与 B 同构** ⇒ ⇒ 符合 §1.0c「L2 以 RAG 为基准」⇒ ⇒ **不是 C 引入的漂移**。
 ⚠️ **剩下的是「治理口径」问题，不是行为问题**：AGENTS.md §2.3 的原则是「`common/` 只放无域归属能力」，而这 6 个**行为类**（`Dispatcher` / `EventDispatcher` / `EventSender` / `AuthorityHandler` / `ProcessLogger` / `Wire`）**携带 comment·favorite·like 三域归属** ⇒ ⇒ 与该原则**有张力**（⇒ 10 个 app 全依赖 `common/` ⇒ 改一行锁住 10 域）。
-⚠️ **按「登记类事项不升级为拍板」的纪律** ⇒ 本仓**只登记、不追拍板** ⇒ ⇒ 该张力**不阻塞**本次迁移（行为层已与 B 对齐）⇒ ⇒ 交由后续治理决策（域归属上收到 `service/<域>/common/` 还是维持共享层）。
-⇒ `common/communityfact/` 的 **7 个协议 DTO**（无域归属）＋ **6 个行为类**（`Dispatcher` / `EventDispatcher` / `EventSender` / `AuthorityHandler` / `ProcessLogger` / `Wire` · 携带 comment·favorite·like 三域归属）与 AGENTS.md §2.3「`common/` 只放无域归属能力」**有张力** ⇒ ⇒ 10 个 app 全依赖 `common/` ⇒ 改一行锁住 10 域 ⇒ ⇒ **填实现前必须裁决**（AGENTS.md §2.3 已挂 🔴）。⚠️ **本条不计入 §11.2 的 91 承接行**（它是**归属裁决**，不是某个 B 源类的承接状态）。
+⚠️ **按「登记类事项不升级为拍板」的纪律** ⇒ 本仓**只登记、不追拍板** ⇒ ⇒ 该张力**不阻塞**本次迁移（行为层已与 B 对齐）⇒ ⇒ **2026-11-03 裁决 ⇒ 该张力**只作为**治理口径备注**保留**，不再作为待裁决项挂起**（行为层已与 B 对齐 ⇒ 迁移不受影响）。
+⇒ `common/communityfact/` 的 **7 个协议 DTO**（无域归属）＋ **6 个行为类**（`Dispatcher` / `EventDispatcher` / `EventSender` / `AuthorityHandler` / `ProcessLogger` / `Wire` · 携带 comment·favorite·like 三域归属）与 AGENTS.md §2.3「`common/` 只放无域归属能力」**有张力** ⇒ ⇒ 10 个 app 全依赖 `common/` ⇒ 改一行锁住 10 域 ⇒ ⇒ ✅ **已裁决：归属不动**（AGENTS.md §2.3 的 🔴 已解除）。⚠️ **本条不计入 §11.2 的 91 承接行**（它是**归属裁决**，不是某个 B 源类的承接状态）。
 
 | 项 | 内容 |
 |---|---|
 | **位置** | C：`common/src/main/java/com/rag/common/communityfact/`（13 类，其中 6 个**带域归属**的行为类：`Dispatcher`/`EventDispatcher`/`EventSender`/`ProcessLogger`/`ProcessMetadata`/`AuthorityHandler`） |
 | **B 源** | 同名 4 类在 `service/common/communityfact/`，**但消费方只有 like + comment 两域**（favorite 在 B 侧是**平行实现**、不 import 共享层） |
 | **差异原因** | C 侧按「三域共享」设计 ⇒ 会改变 favorite 的 wire 行为（B 侧的 favorite 走自己的 sender）⇒ **属 L1/L2 变更，不是形态调整** |
-| **严重程度** | **⚪ 已登记**（映射表 §7.4 #1 + `AGENTS.md` §2.3「🔴 待裁决」⇒ **本次不重复提请**） |
-| **修复建议** | 等映射表 owner 拍板；favorite 的 `fact_delivery` 行为在拍板前**不要**接共享层 |
-| **验证方法** | 拍板后逐条对照 B 侧的 favorite sender |
+| **严重程度** | **✅ 已裁决 · 非漂移**（2026-11-03 · 用户定）⇒ 原「⚪ 已登记 ＋ `AGENTS.md` §2.3 🔴 待裁决」**已销账** |
+| **修复建议** | **无需修复**（行为侧 C ≡ B ⇒ 非漂移）⇒ ⇒ 若将来要动归属，走映射表 §7.4 #1 的**治理流程**（**不是漂移修复**，不触发 §五.3 收口） |
+| **验证方法** | ✅ **已验证**（2026-11-03）：实测 favorite 域两侧都走共享层 ⇒ **行为侧 C ≡ B** ⇒ ⇒ 裁决成立；⇒ 映射表 §7.4 #1 的处置措辞已同步改写 |
 
-### ⚪ DRIFT-COMMON-V12｜`GrpcStatusMapper` 与 `GrpcExceptionMapperAutoConfiguration` 职责重叠（映射表 §7.4 #2）
+### ⚪ DRIFT-COMMON-V12｜`GrpcStatusMapper` 与 `GrpcExceptionMapperAutoConfiguration` 职责重叠（映射表 §7.4 #2）—— ✅ **裁决：两个都保留，等 article / task 域落地时再判**（2026-11-03 · 用户定）
 
-C 侧同时存在 `web/GrpcStatusMapper.java` 与 `autoconfigure/GrpcExceptionMapperAutoConfiguration.java` ⇒ 两处都做「gRPC code → 业务码」⇒ 装配顺序不同 ⇒ 同一异常可能映射出**两个不同 code**。
-**状态**：**⚪ 已登记**（映射表 §7.4 #2「建议删 `web/GrpcStatusMapper.java`」）⇒ 本次只落不删（AGENTS.md 明令「不擅自删类」）。
+C 侧同时存在 `web/GrpcStatusMapper.java` 与 `autoconfigure/GrpcExceptionMapperAutoConfiguration.java` ⇒ 两者都落在「gRPC code → 业务码」这条主题上 ⇒ ⇒ **能力重复**。
+**状态**：**⚪ 已登记 · 裁决保留**（2026-11-03 · 用户定）⇒ **保留两个类**；映射表 §7.4 #2 的处置措辞由
+「**建议删 `web/GrpcStatusMapper.java`**」改为「**等 article / task 域落地时再判**」
+⇒ ⇒ 映射表已同步改写（`docs/Mapping_Table/common.md` §7.4 #2）。
+
+⚠️ **口径订正（2026-11-03 · 本轮复核）**：本条原先写「两处都做『gRPC code → 业务码』⇒ 装配顺序不同 ⇒ **同一异常可能映射出两个不同 code**」
+⇒ ⇒ **该描述与当前代码对不上**（实测：全仓 grep + 逐类查引用面）：
+
+| 类 | 生产引用面（2026-11-03 实测） |
+|---|---|
+| `web/GrpcStatusMapper` | **零生产引用**（唯一命中是 `HttpErrorException` 的 javadoc `{@link}`）⇒ **它现在不参与任何请求路径** ⇒ 产不出 code |
+| `GrpcExceptionMapperAutoConfiguration.toBusinessException` | **零生产调用**（只有 `GrpcExceptionMapperAutoConfigurationTest` 用它）⇒ 它是「从异常还原业务异常」的**辅助函数**，不是映射器 |
+| `GrpcExceptionMapperAutoConfiguration` **本体** | ✅ **活的** —— 它注册 devh 的 `GrpcExceptionMapper`（走 trailer `sea-biz-code`）⇒ ⇒ **当前只有一条映射路径** |
+
+⇒ ⇒ **「同一异常映射出两个 code」当前不成立**（那是**理论风险**：若将来有人开始调 `GrpcStatusMapper`），
+⇒ ⇒ 且真正跑着的那条路径（devh mapper）**不受影响** ⇒ ⇒ 本条**不是当前漂移**，是**遗留的重复能力**。
+
+⚠️ **为什么「等 article / task 域落地时再判」与事实自洽**：`HttpErrorException`（裸 HTTP 状态码路径）同样**零生产引用**
+⇒ 因为它的消费方 **article 域还是空壳**（`service/article/` 未实现）⇒ ⇒ article 域落地时，
+「裸 HTTP 状态码」那条路径会**真正跑起来** ⇒ ⇒ **那时才需要决定 `GrpcStatusMapper` 要不要接上去**
+⇒ ⇒ **恰恰在那时不能删** ⇒ ⇒ 裁决与事实自洽。
+
+⚠️ **连带订正（本轮）**：`web/GrpcStatusMapper.java` 的类注释原先逐字复述了「同一异常可能映射出两个不同 code」
+⇒ ⇒ **已按上表改写**（避免注释继续教错）。
 
 ### ✅ DRIFT-COMMON-V14｜C 侧 `common/` 缺 `grpc-core` ⇒ devh gRPC server auto-config 一出现就崩
 
@@ -535,7 +569,7 @@ S3b（PG 停）= `200 + 信封 1015` @ 2.05s · S4（持锁）= `200 + 信封 10
 | **位置（C）** | ① `common/observability/HttpMiddleware.java`（**HTTP 路径的唯一绑点**）· ② `common/observability/ObservabilityProperties.java#resolveInnerBudget()`（**全仓唯一内层预算口径**）· ③ `common/persistence/DeadlineBoundedConnectionTimeout.java`（**新**）· ④ `common/persistence/DeadlineTranslatingDataSource.java`（**新**）· ⑤ `common/persistence/StatusAwareSqlSession.java` ＋ `StatusAwareSqlSessionFactory.java` ＋ `StatusAwareSqlSessionFactoryPostProcessor.java`（**新**）· ⑥ `common/persistence/SqlTimeoutStatusTranslator.java`（**补 `@Intercepts` 漏签**）· ⑦ `common/autoconfigure/PersistenceAutoConfiguration.java`（**注册 2 个 BPP**）|
 | **B 源** | `service/common/.../persistence/SqlTimeoutStatusTranslator.java`（类头：「ctx 到期 ⇒ 落 api logic 的 `default` ⇒ **1015**」）· `zrpc.RpcServerConf.Timeout = 2s`（= 本仓 `observability.rpc-timeout`）· `rest.RestConf.Timeout = 3s`（= `observability.http-timeout`）|
 | **B 行为** | `admin-api`（HTTP，3s）→ **gRPC `admin-rpc`（2s rpc deadline）** → SQL。**gRPC 中间件那一层**既提供 2s 的内层预算，又在 ctx 到期时把 `context.DeadlineExceeded` **原样**交给 api 层（**中间件不做异常包装**）⇒ api logic 的 `default` 分支 ⇒ **1015 信封**；同时 SQL 被 ctx 取消 ⇒ 事务回滚 ⇒ **无副作用** |
-| **C 行为（修前）** | D2「域内直连」把 DB 调用搬进 HTTP 边界 ⇒ **内层那一层缺位**：① `DeadlineState` 的**唯一生产绑定点**在 gRPC 服务端路径（`RpcHandleRunner.java:121`）⇒ HTTP 路径**没绑** ⇒ `DeadlineQueryTimeoutInjector` 读到「无预算」⇒ **SQL 根本不设 query timeout** ⇒ 阻塞 SQL **永不被取消** ⇒ 事务照常提交（**副作用已落库**）；② HTTP 的 3s 预算先到 ⇒ 中间件超时面接管 ⇒ **`503 + 裸文本 "Request Timeout\n"`**（无信封）；③ **额外一层**：MyBatis 的 `DefaultSqlSession` 把 mapper 调用里的**任何**异常包成 `PersistenceException` ⇒ 共享层翻出的 `DEADLINE_EXCEEDED` **在离开持久层前就被吃掉一层** ⇒ 域层的 `catch (StatusRuntimeException e) { throw e; }` **看不见它** ⇒ 落 `catch (Exception e)` ⇒ 被改写成 `INTERNAL`（**5001**）|
+| **C 行为（修前）** | D2「域内直连」把 DB 调用搬进 HTTP 边界 ⇒ **内层那一层缺位**：① `DeadlineState` 在 C 侧**生产路径上零绑定点** ⇒ HTTP 路径**没绑**（⚠️ **口径订正 2026-11-03**：原写「**唯一生产绑定点**在 gRPC 服务端路径（`RpcHandleRunner.java:121`）」⇒ 经全仓源码 ＋ git 历史核对为**假** ⇒ ⇒ `RpcHandleRunner` 生产零引用、gRPC 服务端绑定点从未存在 ⇒ 见 **DRIFT-COMMON-V17**） ⇒ `DeadlineQueryTimeoutInjector` 读到「无预算」⇒ **SQL 根本不设 query timeout** ⇒ 阻塞 SQL **永不被取消** ⇒ 事务照常提交（**副作用已落库**）；② HTTP 的 3s 预算先到 ⇒ 中间件超时面接管 ⇒ **`503 + 裸文本 "Request Timeout\n"`**（无信封）；③ **额外一层**：MyBatis 的 `DefaultSqlSession` 把 mapper 调用里的**任何**异常包成 `PersistenceException` ⇒ 共享层翻出的 `DEADLINE_EXCEEDED` **在离开持久层前就被吃掉一层** ⇒ 域层的 `catch (StatusRuntimeException e) { throw e; }` **看不见它** ⇒ 落 `catch (Exception e)` ⇒ 被改写成 `INTERNAL`（**5001**）|
 | **差异原因** | **架构差异**（D2 域内直连 ⇒ 少了一层 gRPC 中间件）**＋ 两处「静默失效」**（`DeadlineState` 绑点只有一处 · `@Intercepts` 漏签 `queryCursor`）|
 | **影响范围** | **凡 D2 域内直连的域**（= 全部 10 个域）⇒ ① DB 超时 ⇒ 客户端拿到 503 裸文本而非 1015 信封；② **更严重**：客户端拿到失败而**服务端已提交** ⇒ **重试撞唯一约束 / 邀请码已用** ⇒ 属「**失败-成功不一致**」型风险 |
 | **严重程度** | **🔴 严重**（原判定）⇒ **✅ 已修复** |
@@ -548,6 +582,51 @@ S3b（PG 停）= `200 + 信封 1015` @ 2.05s · S4（持锁）= `200 + 信封 10
 
 上游 = **status code 本身就是业务码** + description 业务文案；grpc-java 的 `Status.fromCodeValue(int)` 对未知码回落 `UNKNOWN` ⇒ **承载不了任意数值业务码** ⇒ C 侧走 **trailer `sea-biz-code`**。
 **状态**：**⚪ 已登记**（`docs/L3-降级清单.md` **D-05**）⇒ 本次实测确认该判断成立（`GrpcExceptionMapperAutoConfigurationTest` 5 例覆盖 trailer 业务码与 description 逐字）。
+
+### ⚪ DRIFT-COMMON-V16｜`ProtectionProperties` 的 **Stat / Prometheus 两个开关未接线**（层恒装）
+
+**状态**：**⚪ 已登记**（**接线缺口**，**非行为漂移**）⇒ 落点在 `common/` ⇒ 归 `global` 收口域（AGENTS.md §五.3）。
+⚠️ **定性**：B 侧 `GoStyleRpcProtectionChain.build` 用 `props.getStat().isEnabled()`（`:235`）与
+`props.getPrometheus().isEnabled()`（`:228`）**决定这两层装不装**；C 侧的装配点
+`ProtectionAutoConfiguration#rpcStatInterceptor` **不读本开关** ⇒ ⇒ **Stat 层恒装**。
+（`Prometheus.enabled` 同形：**全仓零消费点** ⇒ ⇒ Prometheus 层也恒装。）
+⇒ ⇒ 但 **B 侧默认值同为 `true`**（`zrpc/internal/config.go:23-24`）且 **真源各域 yaml 未覆盖**
+（实测：B 侧 `service/**/src/main/resources/*.yml` 里**没有** `Stat:` / `Prometheus:` 顶层键 ——
+唯一命中的 `tools/difftest/conf/go/hot-rpc.yaml` 是 **zrpc 的 `Prometheus.Host/Port/Path` 配置**，同名不同物）
+⇒ ⇒ ⇒ **现行配置下两侧行为一致** ⇒ ⇒ **不判行为漂移**，只记「**接线缺口**」。
+⇒ ⇒ **触发条件**：一旦某个域把 `stat.enabled` / `prometheus.enabled` 置 `false`
+⇒ B 侧不装该层、C 侧仍装 ⇒ **那一刻起才是漂移**。
+⇒ ⇒ **同类已接线的对照**：`breaker.enabled` **有**消费点（`ProtectionAutoConfiguration:321` / `:468` · `ClientProtectionAutoConfiguration:61`）⇒ ⇒ 说明「开关未接线」是**逐个开关**的状态，不是整体缺口。
+⚠️ **连带订正（本轮）**：`ProtectionProperties` 的 `Stat` 类注释原先写「观测层的开关在 `GoStyleRpcProtectionChain#build` 内直接读本属性」
+⇒ ⇒ **该说法在 C 侧不成立** ⇒ ⇒ 已改写为「C 侧**未接线**」＋ 指向本条。
+
+### ✅ DRIFT-COMMON-V17｜gRPC 服务端路径**零绑定点** ⇒ `DeadlineState` 绑不到 handler 线程 ⇒ **PARITY-006 根因** —— **已修（2026-11-03）**
+
+**状态**：**✅ 已修 · 端到端判据已闭合**（2026-11-03 · `global` 收口域）⇒ 落点在 `common/`（§五.3）。
+⇒ ⇒ **关联**：admin 域台账 **PARITY-006**（现象侧 · `docs/DRIFT/users/admin/verification-admin-2026-11-02.md`）⇒ **已销账**。
+
+| 项 | 内容 |
+|---|---|
+| **现象** | 客户端在 **1s** 取消一个**写路径** gRPC 调用 ⇒ 两侧都回 `CANCELLED`（一致）⇒ 但 **B 侧 `admin_admin` 0 行 / C 侧 1 行** ⇒ 「取消」在 C 侧只取消了回包、**没取消已发生的写入**。判别性变体（取消推迟到 5s > 服务端 2s 预算）⇒ 结果不变 ⇒ ⇒ 差异与「客户端取消」无关，是**服务端预算到点后有没有把在途 SQL 取消掉** |
+| **B 侧做法（逐字读过消费点）** | B `service/common/.../observability/RpcInterceptor.java:516-522`（在 `newUnaryServerInterceptor` 的 **`onHalfClose`** 里）⇒ **同一个绝对时刻**同时绑两个载体：`DeadlineState.bindAbsoluteNanos(absoluteDeadlineNanos)` ＋ `GoStyleRequestDeadline.bindAbsoluteNanos(...)` ⇒ ⇒ 绑在**真正跑 handler 的线程**上 ⇒ ⇒ `DeadlineQueryTimeoutInjector` 读到剩余预算 ⇒ 每条 SQL 设 `setQueryTimeout` ⇒ ⇒ 2s 到点 PG 收到 CancelRequest ⇒ SQLState `57014` ⇒ 事务回滚 ⇒ **0 行** |
+| **C 侧现状（实测）** | ① `ObservabilityAutoConfiguration.GrpcObservationInterceptor`（`:206`）**只重写了 `onCancel()`**，**没有 `onHalfClose()`** ⇒ ⇒ handler 线程上 `DeadlineState` 恒空；② C 侧**从无** `newUnaryServerInterceptor` 这个方法（`git log --all -S` 全仓历史：它**只作为注释出现过**，从未有实现）⇒ ⇒ B 侧那两行绑定**整块丢失**；③ C 侧 `DeadlineState` 的**生产绑定点只有 HTTP 路径两处**（`HttpMiddleware.java:283` / `:324`，2026-11-03 · V15 新增）；④ `RpcHandleRunner.java:121` 那处绑定所在的类**在生产代码里零引用**（死代码）⇒ **不是**生产绑定点 |
+| **修后（2026-11-03 · 已实施）** | ① `ObservabilityAutoConfiguration.GrpcObservationInterceptor` 的 listener **补 `onHalfClose()`** ⇒ 在**真正跑 handler 的线程**上 `DeadlineState.bindAbsoluteNanos(绝对时刻)`；② 绝对时刻 = **调用开始** ＋ `rpc-timeout`（**在 `registry == null` 早退之前**算 ⇒ ⇒ 绑 deadline 与「装没装 Micrometer registry」**无关** ⇒ ⇒ 「没装观测的进程」也不会没有 deadline）；③ **绑定层包在观测层外面** ⇒ scope 包住整个 handler 执行期（含观测层收尾）⇒ ⇒ 与 B 侧 `RpcInterceptor.java:516-522` 的嵌套次序同形；④ 预算取 `rpc-timeout`（**不是** `resolveInnerBudget()`）—— gRPC 边界上**没有 HTTP 预算** ⇒ ⇒ 与 B 侧 `zrpc.RpcServerConf.Timeout = 2s` 一致，且与 `scheduleTimeout` 同一刻 |
+| **假断言订正（本轮）** | 台账原先（含 admin 台账 4 处 + common 台账 1 处）写「`DeadlineState` 的**生产绑定点只有 gRPC 服务端路径**（`RpcHandleRunner.java:121` `bindRemainingNanos` ＋ `newUnaryServerInterceptor`）」⇒ ⇒ **两半都是假的** ⇒ ⇒ 修前的准确表述 = 「**C 侧 `DeadlineState` 在生产路径上零绑定点**」⇒ ⇒ **5 处已逐一订正** |
+| **影响范围** | 凡走 **gRPC 入口**的写路径（10 个域的 rpc 侧）⇒ ⇒ 客户端取消 / 服务端预算到点 ⇒ **服务端仍提交** ⇒ ⇒ 属「**失败-成功不一致**」型风险（同 V15 的 HTTP 侧，但方向相反：V15 是 HTTP 路径**没绑**，本条是 gRPC 路径**也没绑**） |
+| **修法（**已实施**，2026-11-03）** | 在 `GrpcObservationInterceptor` 的 listener 里**补 `onHalfClose()`** ⇒ 在**真正跑 handler 的线程**上 `DeadlineState.bindAbsoluteNanos(绝对时刻)`（绝对时刻 = 调用开始 + `rpc-timeout`）⇒ ⇒ 在途 SQL 会被 CancelRequest ⇒ 写路径回滚（B=0 行 / C=0 行）。⚠️ **只绑入向载体 `DeadlineState`**（出向 `GoStyleRequestDeadline` 的绑定**不在本条范围**，爆炸半径更大 ⇒ 另案） |
+| **验收判据** | ① admin 域 E-4-R2 场景轮（客户端 1s 取消写路径）⇒ C 侧 `admin_admin` **0 行**（与 B 侧一致）—— **跨域复测待 admin 域 lane 落地时跑**（本 lane 只写 `common/` · §五.2/§五.3）；② **可判别**的回归测试（必须写明「到达调用方的是 `StatusRuntimeException` 且 code = `DEADLINE_EXCEEDED`」——只断言「抛了异常」在包装层还在时**照样绿** ⇒ 不可判别）；③ **变异验证**（拿掉 `onHalfClose` 的绑定 ⇒ 该维转红、其余维仍绿） |
+| **✅ 落地与验证（2026-11-03 · 本轮）** | **实现**：`common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java`（`GrpcObservationInterceptor.withDeadline` + `rpcDeadlineNanos`）<br>**测试**：① `common/src/test/java/com/rag/common/autoconfigure/GrpcDeadlineBindingTest.java`（**3 例** · 无 PG）——「handler 体内读 `DeadlineState.remainingMillis()` 必须是**有限值**」＋「无预算 ⇒ 不绑 ⇒ `Long.MAX_VALUE`」＋「**真 gRPC server**（`InProcessServerBuilder` ＋ `ServerCalls.asyncUnaryCall`）⇒ handler 线程 ≠ 调用方线程」；② `common/src/test/java/com/rag/common/autoconfigure/GrpcInboundDeadlinePgTest.java`（**2 例** · **真 PG** Testcontainers `postgres:16-alpine`）——「服务端预算到点」＋「**客户端主动取消**」两场景<br>**读数**：5 例全绿（`Tests run: 5, Failures: 0, Errors: 0, Skipped: 0`）⇒ **变异实测**：拿掉 `onHalfClose` 的绑定 ⇒ **两条都在核心判据上转红**（`expected: 0L but was: 1L`）⇒ ⇒ **红灯精确、其余维仍绿** ⇒ 还原后同条件复跑回绿<br>⚠️ **诚实边界**：① **只绑入向载体**，出向 `GoStyleRequestDeadline` **另案**；② 作用域随 `onHalfClose` 返回而结束 ⇒ ⇒ **异步 handler 不在作用域内**（与 B 侧同款 · 本仓 10 个域的 proto 全是 unary）；③ **无预算不绑**（`rpc-timeout` 未配 ⇒ 恒 `Long.MAX_VALUE`） |
+| **连带订正（本轮）** | ① `DeadlineState.java:103` 那段注释（**藏在 `/* */` 块注释里 ⇒ javadoc 工具扫不到 ⇒ 一直是断链**）原先写「实际生效路径：`{@link #newUnaryServerInterceptor}` 的 `onHalfClose`」⇒ ⇒ **该方法在 C 侧从未存在** ⇒ 是**照抄 B 侧时丢了归属**（B 侧那段 `#newUnaryServerInterceptor` 指的是**外层类** `RpcInterceptor` 的成员）⇒ ⇒ 已改写为缺口记录；② `Book/users/users/01-用户登录流程.md:427-430` 的同一断言**也已过时**（它还写「HTTP 侧不写 `DeadlineState`」—— V15 之后 HTTP 侧**已写**）⇒ ⇒ **归 Book 域，本轮未改**（该文件正被并发 lane 修改 ⇒ 避免冲突）⇒ 登记在此 |
+
+### ⚪ DRIFT-COMMON-V18｜出向 deadline 的**运行期守门缺口**（装配层有网 · 运行期差分无网）
+
+**状态**：**⚪ 已登记**（守门缺口，**非行为漂移**）⇒ 落点在 `common/` ⇒ 归 `global` 收口域。
+⚠️ **缺口本身**：`OutboundDeadlineInterceptor` 的类注释原先点名三个「运行期锁定用例」
+（`GoStyleOutboundDeadlineRpcAssemblyTest` / `GoStyleDevhOutboundDeadlineAssemblyGateTest` /
+`GoStyleRpcInterceptorOutboundDeadlineChainGateTest`）⇒ ⇒ **实测：这 3 个测试名在 C 侧全仓只出现在那段注释里，一个都不存在** ⇒ ⇒ 注释宣称「已锁定」的**运行期行为差分**，C 侧**无网**。
+⇒ ⇒ **C 侧现有的是**：① **装配层**守门（`ClientProtectionAutoConfigurationTest#devhCollectorReallyPicksUpBothInterceptors` —— 断言它真进了 devh 的收集器 registry）；② **单元级**守门（`RpcProtectionLayerTest` 的出向 deadline 3 例：三项都没预算 ⇒ 原样返回 `CallOptions` / 客户端硬上界生效 / per-service 上界是「覆盖」）。
+⇒ ⇒ **仍无网的两条**：③ **devh 真实链路上的运行期差分**；④ 「**`>= 0L` 这道守卫**」（已过期 ⇒ 预算压成 0 ⇒ 命中「立即失败」分支）—— **这行离「语义正确」只差一个字符**（改成 `> 0L` ⇒ 过期值被跳过 ⇒ 出向调用**静默退回「挂满」**）⇒ ⇒ 高危。
+⇒ ⇒ **连带订正（本轮）**：该类注释里的三个失效测试名已改为「**应该**补」＋ 标明 C 侧现状（**不再宣称已锁定**）。
 
 ---
 
@@ -582,6 +661,17 @@ S3b（PG 停）= `200 + 信封 1015` @ 2.05s · S4（持锁）= `200 + 信封 10
 > # 复合状态（**PASS**…/ **FAIL**…）两边都计
 > ```
 > **本轮实测输出（2026-11-02 · 批次 H 后）**：`承接行 = 91 · 标记数 = 91 · 复合状态行 = 0 · PASS **89** / NOT_IMPLEMENTED **0** / INTENTIONALLY_CHANGED 2 / FAIL **0** / FRAMEWORK_DIFFERENCE **0** / NOT_VERIFIED **0** / BLOCKED 0`
+>
+> ⚠️ **口径边界（2026-11-03 · `global` 收口域补）**：本表**只统计 §11.2 的 91 个承接行**
+> ⇒ ⇒ **漂移条目（V01–V18）不在表内** ⇒ ⇒ 「**状态表清零 ≠ 漂移清零**」。
+> ⇒ ⇒ **本轮（2026-11-03）改判/新登记 5 条**，均**不在**上表计数内：
+> | 条目 | 本轮状态 |
+> |---|---|
+> | **V11** | ✅ **已裁决 · 非漂移**（用户定：行为侧 C ≡ B ⇒ 归属不动 ⇒ AGENTS.md §2.3 的 🔴 解除） |
+> | **V12** | ⚪ **裁决保留**（两个类都留 ⇒ 处置措辞改为「等 article / task 域落地时再判」＋ **口径订正**：原「同一异常映射出两个 code」当前**不成立**） |
+> | **V16** | ⚪ **新登记** · Stat / Prometheus 两个开关**未接线**（**接线缺口**，现行配置下行为等价 ⇒ 非漂移） |
+> | **V17** | ✅ **已修（本轮 · 2026-11-03）** · gRPC 服务端路径**零绑定点** ⇒ **PARITY-006 根因** —— 已在 `GrpcObservationInterceptor` 补 `onHalfClose()` ⇒ 在 handler 线程上绑**入向** `DeadlineState`（绝对时刻 = 调用开始 ＋ `rpc-timeout`）⇒ 真 PG 两场景（服务端预算到点 / 客户端主动取消）⇒ 在途写 **0 行**；变异实测 ⇒ 两条都**红在核心判据**（`0L` vs `1L`）⇒ ⇒ 跨域复测（admin 域 E-4-R2）**待 admin 域 lane 落地** |
+> | **V18** | ⚪ **新登记** · 出向 deadline 的**运行期守门缺口**（装配层有网 · 运行期差分无网） |
 >
 > ⚠️ **重数脚本（本轮实际运行，不是手填）**：
 > ```python
@@ -649,7 +739,7 @@ S3b（PG 停）= `200 + 信封 1015` @ 2.05s · S4（持锁）= `200 + 信封 10
 | 4 | **多文件合并是否造成职责、分支或异常路径遗漏？** | ⚠️ **是（已从 3 处降到 1 处）**。① ~~gRPC 链合并 ⇒ 5 层全缺~~ ⇒ ✅ **V03 已修**（5 层齐备 ＋ 链序可断言 ＋ 客户端侧两件套）；② HTTP 保护链合并 ⇒ ~~MaxConns 层缺~~ ⇒ ✅ **批次 E 已修**（**不用 Tomcat 参数** ⇒ Java 侧闸门 ⇒ **不改 yml**）；~~HTTP 超时/断连/worker 池缺~~ ⇒ ✅ **批次 C 已修**（**V04**）⇒ ⇒ **合并遗漏已清零**；③ ~~模板解析三态压成两态且回落语义相反~~ ⇒ ✅ **V05 已修**；④ ~~窄接口被绕过~~ ⇒ ✅ **V06 已修**；⑤ ~~JWT/口令 3 类上收成空壳~~ ⇒ ✅ **V07 已修**（批次 D）。✅ 社区事实 1→13 拆分**无断裂**（调用链/数据/异常/事务/重复/遗漏/时机七项全过） |
 | 5 | **文件拆分是否造成调用链、数据传递或事务边界断裂？** | ✅ **否**（就已拆分的部分）。`Wire`→13 类、`Logger`→5 类、`Snowflake`→3 类、`GoStyleOtelConfig`→`ObservabilityProperties` 均链路完整。✅ ~~`GoStyleOtelConfig` 的 `protocol`/`sampler`/`endpoint` **3 项丢失**~~ ⇒ **批次 E 已补齐**（`endpoint` / `protocol` / `samplerRatio`）⇒ ⚠️ 但这三项**只承载配置、尚未驱动装配**（全局 OTel 装配走 **D-03**） |
 | 6 | **API + RPC 合并是否改变原有入口和执行行为？** | ⚠️ **本次范围外**（只审 `common/`）。但已取得一条相关证据：**gRPC 拦截链挂载点上收到共享层 1 份后，10 个域全覆盖**，而 B 侧是 10 处分散（且历史上曾有 3 域漏挂）⇒ **合并方向是改善，不是破坏**。✅ **gRPC 链已补齐 6 层**（recover/stat/prometheus/breaker/shedding/business）⇒ 保护能力**不再弱于 B**（V03 已修） |
-| 7 | **Common Starter 上收是否遗漏原有消费方？** | ⚠️ **部分是**。① 11 个 Jackson/HTTP 工具类上收后**域内零副本** ⇒ ✅ 无覆盖遗漏；② ✅ **JWT/口令 3 类上收到 `common/security/` 的空壳已填实**（V07 · 批次 D）⇒ 消费方有载体了；③ ✅ **`redis/` 2 个 auto-config 已修**（V01：登记进 imports ⇒ 上收不再是「搁浅」）；④ **SQL 超时链的注册义务已从「B 侧域内 5 份 `@Bean`」上收到共享层 1 份**（V02）；⑤ ✅ **路由模板解析的上收已闭环**（V06：窄接口 + 实现 + 独立 auto-config 三件套 ⇒ 消费方**真的经窄接口**取模板，不再绕过）；⑥ ✅ **gRPC 客户端侧的上收已闭环**（V03：出向熔断 ＋ 出向 deadline ⇒ `ClientProtectionAutoConfiguration` 1 份 ⇒ 10 域一次全挂）；⑦ `commonfact` 的 **favorite 域**上收会改变其 wire 行为 ⇒ **待裁决**（V11，映射表 §7.4 #1） |
+| 7 | **Common Starter 上收是否遗漏原有消费方？** | ⚠️ **部分是**。① 11 个 Jackson/HTTP 工具类上收后**域内零副本** ⇒ ✅ 无覆盖遗漏；② ✅ **JWT/口令 3 类上收到 `common/security/` 的空壳已填实**（V07 · 批次 D）⇒ 消费方有载体了；③ ✅ **`redis/` 2 个 auto-config 已修**（V01：登记进 imports ⇒ 上收不再是「搁浅」）；④ **SQL 超时链的注册义务已从「B 侧域内 5 份 `@Bean`」上收到共享层 1 份**（V02）；⑤ ✅ **路由模板解析的上收已闭环**（V06：窄接口 + 实现 + 独立 auto-config 三件套 ⇒ 消费方**真的经窄接口**取模板，不再绕过）；⑥ ✅ **gRPC 客户端侧的上收已闭环**（V03：出向熔断 ＋ 出向 deadline ⇒ `ClientProtectionAutoConfiguration` 1 份 ⇒ 10 域一次全挂）；⑦ ✅ `communityfact` **归属已裁决（2026-11-03 · 用户定）**：行为侧 C ≡ B ⇒ **非漂移**、归属不动 ⇒ AGENTS.md §2.3 的 🔴 已解除（V11，映射表 §7.4 #1） |
 | 8 | **Spring Boot 4 → 3.5 是否引入业务可观察行为变化？** | ⚠️ **是，且有 1 项曾未被察觉 —— 现已修复**。已适配 11 项（F-1~F-5、F-7~F-15）；**曾未被察觉的 1 项 = F-6**：imports 登记面从 8 行变 7 行 ⇒ **2 个已实现的能力静默失效**（V01）⇒ ✅ **2026-11-02 已修**（登记回 10 行）**且守门已扩**：新判据「每个 `@AutoConfiguration` 类都必须有激活路径」⇒ 覆盖**别的包**下的 auto-config ⇒ 同类缺口当场变红。其余：**Jackson 3→2** 经 52 例对拍覆盖；**Spring 7→6.2** 的 converter 覆写点漂移编译期即红（不会静默） |
 | 9 | **Tomcat / Jackson / Spring Framework 的底层版本变化是否产生实际漂移？** | ✅ **Jackson / Spring 已回改且有对拍**（F-1~F-3）。⚠️ **Tomcat 11→10.1 的实际漂移尚未验证** —— B 的 `GoStyleClientDisconnectProbe` 反射链取证全部基于 Tomcat 11 ⇒ C 侧实现该能力时**必须重测**（F-7，当前因未实现而不适用） |
 | 10 | **哪些差异已经通过证据证明安全？** | ① communityfact 的 23 个 L1 JSON tag + `omitempty` 语义 + `DeliveryStatus` 取值；② JCS 同库 ⇒ 幂等指纹不漂；③ 响应信封 `{code,msg,data}` 与 `data:null` 保留；④ 404/405/400/413/503 的状态码 + 头 + body 字节；⑤ 雪花位段与时钟回拨免疫；⑥ `rag.protection` 12 项默认值；⑦ Filter 槽位；⑧ 观测 7 个 span key + 3 个 kind + 500ms + 严格 `>` + 判定顺序 + `http.route` 语义；⑨ HTTP 熔断隔离 key 与成败判据；⑩ 三处 Boot 4→3.5 包名回改；⑪ A3 的 gRPC 挂载点（有真触发测试）；⑫ A5/A6/A12 三条守门；⑬ ✅ **熔断回落语义**（`UNKNOWN` ⇒ 回落 raw URI、`NOT_MATCHED` ⇒ 不进 breaker）＋ **三态模板解析**（`RouteTemplateResolverTest` 5 例）；⑭ ✅ **V01/V02 的装配面**（Boot 真实 `AutoConfigurationImportSelector` 从 classpath 清单选出）；⑮ ✅ **V03 的链序**（真的搭出链 ⇒ 逐层断言 `[recover, stat, prometheus, breaker, shedding, business]`）；⑯ ✅ **V03 的 wire 契约**（`"panic: "` / `UNAVAILABLE + "circuit breaker is open"` / `RESOURCE_EXHAUSTED + "service overloaded"` / 6 码失败白名单）；⑰ ✅ **V03 的客户端装配面**（devh **真实收集器** `AnnotationGlobalClientInterceptorConfigurer` 收到了两个拦截器）；⑱ ✅ **V07 的 JWT 短密钥验签**（手写 HMAC 验签 ⇒ 证明「B 侧的 15 字节短密钥能验过 C 签的 token」的 RFC 2104 零填充等价性）；⑲ ✅ **批次 E 的并发闸门**（把 `tryAcquire` 改成恒成功 ⇒ **2 例红**）；⑳ ✅ **批次 E 的超时语义**（把 `DEADLINE_EXCEEDED` 改成 `INTERNAL` ⇒ **1 例红**）；㉑ ✅ **批次 E 的池重建**（关掉重建 ⇒ **1 红 1 错**） |

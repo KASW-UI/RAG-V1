@@ -65,7 +65,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <h3>与 Prometheus 那套<b>完全解耦</b>（B 侧 就是解耦的）</h3>
  * <p>B 的 {@code core/stat} <b>不依赖</b> prometheus；{@code core/metric} 也<b>不依赖</b> stat。
- * ⇒ ⇒ 本类<b>不</b>把聚合结果刷进 Prometheus，{@link RpcPrometheusMetrics} 也<b>不</b>读本类的数据。
+ * ⇒ ⇒ 本类<b>不</b>把聚合结果刷进 Prometheus，{@link RpcPrometheusInterceptor} 也<b>不</b>读本类的数据。
  */
 public final class RpcStatMetrics {
 
@@ -111,7 +111,7 @@ public final class RpcStatMetrics {
     /**
      * B 侧 {@code Metrics.Add(Task{Duration})} —— 记一个<b>耗时样本</b>。
      *
-     * @param durationNanos 耗时（纳秒）；B 的 {@code stat.Task.Duration} 同为 {@code time.Duration}。
+     * @param sampleNanos 耗时（纳秒）；B 的 {@code stat.Task.Duration} 同为 {@code time.Duration}。
      */
     public void add(long sampleNanos) {
         synchronized (lock) {
@@ -396,7 +396,8 @@ public final class RpcStatMetrics {
     /**
      * 启动每分钟的上报任务（B 侧 {@code core/executors/periodicalexecutor.go:118-148}）。
      *
-     * <p>⚠️ <b>幂等</b>：重复调用不会起第二个线程（与 {@link SheddingStat#startReporter()} 同款写法）。
+     * <p>⚠️ <b>幂等</b>：重复调用不会起第二个线程（与
+     * {@link com.rag.common.protection.SheddingStat#startReporter()} 同款写法）。
      * <p>⚠️ <b>守护线程</b>：不阻止 JVM 退出（B 侧 那边是 goroutine，进程退出即消失）。
      */
     public synchronized void startReporter() {

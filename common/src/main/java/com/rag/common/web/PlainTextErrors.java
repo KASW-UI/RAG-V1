@@ -93,7 +93,7 @@ public final class PlainTextErrors {
      *
      * <p>本模块<b>所有</b>需要 envelope 的错误都走
      * {@code BusinessException} → {@code GlobalExceptionHandler}，
-     * 那里已经能产出 {@link com.rag.common.response.Response}。
+     * 那里已经能产出 {@link com.rag.common.contract.ApiResponse}。
      * 在这里再提供一个「text/plain 或 envelope」的入口，等于把
      * 「什么时候用哪种形状」这个决定从<b>唯一一处</b>
      * （没有 error handler ⇒ 一律 text/plain）散成两处，

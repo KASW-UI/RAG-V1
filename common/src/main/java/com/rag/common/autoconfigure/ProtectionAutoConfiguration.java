@@ -61,7 +61,7 @@ import java.util.concurrent.TimeUnit;
  * （实测：{@code ServerImplBuilder.interceptors} 是 append 到 List ⇒ {@code ServerImpl} 逐个
  * {@code interceptCallHandlerCreate} 包裹 ⇒ <b>越晚 add 的越外层</b>）。
  * <br>⇒ ⇒ 本类<b>只调一次</b> {@code server.intercept(...)}，链的嵌套由
- * {@link #compose(List)} <b>显式</b>构造 ⇒ ⇒ 链序不依赖「谁更外层」这种容易记反的 API 细节。
+ * {@link RpcProtectionChain#compose(List)} <b>显式</b>构造 ⇒ ⇒ 链序不依赖「谁更外层」这种容易记反的 API 细节。
  *
  * ══════════════════════════════════════════════════════════════════════
  * <p><b>⚠️ L3 降级（D-02 / D-04）：两处生态缺口，本类只做到「能对拍」的那一半</b>
@@ -170,7 +170,7 @@ public class ProtectionAutoConfiguration {
      *
      * <p>⚠️ <b>2026-11-02 批次 H：本 bean 此前只把 {@code CpuThresholdHealthIndicator} 灌进 filter
      * ⇒ filter 只判 CPU 一个条件 ⇒ 那是相对 B 侧的<b>真实漂移</b>（本仓比 B 更早丢请求）
-     * ⇒ 现改为<b>自建一个 {@link AdaptiveShedder}</b> ⇒ 双条件判据回到 B 侧形态。
+     * ⇒ 现改为<b>自建一个 {@link AdaptiveShedder}</b> ⇒ 双条件判据回到 B 侧形态。</b>
      *
      * <p>⚠️ <b>刻意自建独立实例</b>（不与 gRPC 侧那个共用）：
      * B 侧每个 filter <b>自建</b> {@code GoStyleAdaptiveShedder}；B 侧 api / rpc 是<b>两个进程</b>

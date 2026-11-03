@@ -126,7 +126,8 @@ public final class GoStyleRequestDeadline {
      *       ⇒ 嵌套安全 ⇒ 且「忘了 clear」不再可能（编译器保证配对）。</li>
      * </ul>
      *
-     * <p>⚠️ <b>与 {@link RpcInterceptor.DeadlineState} 的关系</b>：那是<b>另一个载体</b>
+     * <p>⚠️ <b>与 {@link DeadlineState} 的关系</b>（B 侧 = {@code RpcInterceptor.DeadlineState}）：
+     * 那是<b>另一个载体</b>
      * （服务端 SQL 超时用），本类是<b>出向 gRPC</b> 用 ⇒ 两者必须绑<b>同一个绝对时刻</b>
      * ⇒ 故本方法收<b>绝对</b>纳秒时刻（调用方算好一次、两个载体共用）。
      *

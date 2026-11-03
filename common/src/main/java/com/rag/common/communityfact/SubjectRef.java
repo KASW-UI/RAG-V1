@@ -20,7 +20,7 @@ import lombok.NoArgsConstructor;
  * <p><b>抄写基准</b>：RAG {@code service/common/src/main/java/com/rag/common/communityfact/Wire.java}
  * 的嵌套类 {@code SubjectRef}（1:N 拆分 · 映射表 §1.2 第 138 行 / 决策锁 L-7）。
  *
- * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：
+ * <p><b>Lombok 展开（不用 Lombok 时的完整代码 · D18）</b>：</p>
  * <pre>{@code
  * public final class SubjectRef {
  *     @JsonProperty("issuer") public String issuer;
@@ -31,6 +31,7 @@ import lombok.NoArgsConstructor;
  *         this.issuer = issuer;
  *         this.subjectId = subjectId;
  *     }
+ * }
  * }</pre>
  */
 @NoArgsConstructor

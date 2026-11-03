@@ -100,8 +100,24 @@ public final class DeadlineState {
      * {@code docs/DRIFT/global/cycle-deps.md}）。
      * ⇒ <b>两步走完（同一提交内）</b>：① 改正 users 侧假断言 → ② 删除本方法。
      *
-     * <p>实际生效路径：{@link #newUnaryServerInterceptor} 的 {@code onHalfClose}
-     * 在<b>真正跑 handler 的线程</b>上 {@link #bindToCurrent(long)}（M7 修复）。
+     * <p>✅ <b>2026-11-03 已修（DRIFT-COMMON-V17 · PARITY-006 根因 · {@code global} 收口域）</b>：
+     * B 侧 {@code RpcInterceptor.newUnaryServerInterceptor} 的 {@code onHalfClose}
+     * 在<b>真正跑 handler 的线程</b>上把<b>同一个绝对时刻</b>绑给<b>两个载体</b>
+     * （B 侧 {@code RpcInterceptor.java:516-522}：{@code DeadlineState.bindAbsoluteNanos}
+     * ＋ {@code GoStyleRequestDeadline.bindAbsoluteNanos}，M7 修复）
+     * ⇒ C 侧 {@code newUnaryServerInterceptor} 这个方法<b>从未存在</b>
+     * （D11 拆包时整块丢失 ⇒ 全仓 git 历史里它只出现在<b>注释</b>里，从未有过实现）
+     * ⇒ ⇒ 本段注释原先是<b>照抄 B 侧时丢了归属</b>：B 侧那段 {@code #newUnaryServerInterceptor}
+     * 指的是<b>外层类</b> {@code RpcInterceptor} 的成员，<b>不是</b> {@code DeadlineState} 的
+     * ⇒ ⇒ <b>修前</b> = 「C 侧 gRPC 服务端路径上 {@code DeadlineState} <b>零绑定点</b>」
+     * （生产绑定点只有 HTTP 路径那两处：{@code HttpMiddleware} 的 worker 线程）
+     * ⇒ ⇒ <b>修后</b> = {@code ObservabilityAutoConfiguration.GrpcObservationInterceptor}
+     * 的 listener 补了 {@code onHalfClose()} ⇒ 在<b>真正跑 handler 的线程</b>上绑<b>入向</b>载体
+     * （绝对时刻 = 调用开始 ＋ {@code rpc-timeout}，与 B 侧同形）
+     * ⇒ ⇒ 在途 SQL 拿得到 {@code setQueryTimeout} ⇒ ⇒ 预算到点 PG 收到 CancelRequest
+     * ⇒ ⇒ 事务回滚 ⇒ ⇒ <b>在途写不再落库</b>（客户端取消 / 服务端预算到点，都是 0 行）。
+     * <br>⚠️ <b>只补了「入向」载体</b>：出向载体 {@code GoStyleRequestDeadline}
+     * （跨域 gRPC 调用的出向预算）<b>仍未绑</b> ⇒ ⇒ 爆炸半径更大 ⇒ ⇒ 另案。
      *
      * <p>对应 B 侧版 ctx 触发 cancel 后，handler ctx 立即 Done() 的语义。
      */

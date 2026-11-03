@@ -38,7 +38,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <h3>为什么必须包到 {@code Listener} 上，而不只是 {@code startCall}</h3>
  * <p>grpc-java 的执行模型：<b>handler 方法不是在 {@code interceptCall} 里执行的，
  * 而是在 {@code Listener#onHalfClose()} 里执行的</b>
- * （本仓 {@link RpcInterceptor} 的注释已记录过这一点，它正是因此去包 {@code onHalfClose}）。
+ * （B 侧 {@code RpcInterceptor} 的注释已记录过这一点，它正是因此去包 {@code onHalfClose}；
+ *  C 侧 {@code RpcInterceptor} 已按 D11 拆成多个类，gRPC 服务端拦截器 =
+ *  {@link com.rag.common.autoconfigure.ObservabilityAutoConfiguration} 里的
+ *  {@code GrpcObservationInterceptor}）。
  * ⇒ 只包 {@code next.startCall(...)} 的话，<b>用户 handler 里的 panic 一条都兜不住</b>，
  * 而这恰好是 recover 要处理的唯一场景。
  * <br>⇒ 本类三处都包：{@code startCall} / {@code onMessage} / {@code onHalfClose} / {@code onReady}。

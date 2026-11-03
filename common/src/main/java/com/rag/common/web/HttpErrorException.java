@@ -36,7 +36,7 @@ import org.springframework.http.HttpStatus;
  *     http.Error(w, err.Error(), errcode.CodeFromGrpcError(err))
  * }
  * </pre>
- * 映射表见 {@link GoStyleGrpcStatusMapper}。
+ * 映射表见 {@link GrpcStatusMapper}（B 侧同名类 = {@code GoStyleGrpcStatusMapper}）。
  */
 /**
  * <p><b>抄写基准</b>：RAG {@code service/article/article-api/src/main/java/com/rag/article/article/api/http/GoStyleHttpErrorException.java}

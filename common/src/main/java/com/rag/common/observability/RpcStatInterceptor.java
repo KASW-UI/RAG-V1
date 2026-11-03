@@ -46,7 +46,9 @@ import io.grpc.ServerInterceptor;
  *
  * <h3>⚠️ 本层<b>刻意只做「喂样本」这一件事</b></h3>
  * <p>B 的 Stat 拦截器还兼做 {@code logDuration}（每个请求打全量 body 的 <b>Info</b> 分支 ＋ 慢调用分支）。
- * 本仓的慢调用日志<b>已经</b>在 {@link RpcInterceptor} 里（最内层），而
+ * 本仓的慢调用日志<b>已经</b>在 gRPC 服务端拦截器里（最内层；B 侧对应 {@code RpcInterceptor}，
+ * C 侧 = {@link com.rag.common.autoconfigure.ObservabilityAutoConfiguration} 里的
+ * {@code GrpcObservationInterceptor}），而
  * <b>Info 分支（每请求打全量 body）本仓刻意不落</b>（全局台账 {@code G4-15c} 的第一项，仍未闭合）
  * ⇒ ⇒ 本层<b>不重复实现</b>日志分支，只负责把耗时喂给聚合器。
  *

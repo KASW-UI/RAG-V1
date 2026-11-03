@@ -12,7 +12,7 @@ import java.lang.management.OperatingSystemMXBean;
  *
  * <h3>B 出处</h3>
  * <pre>
- *   core/stat/usage.go:51          func CpuUsage() int64 { return atomic.LoadInt64(&cpuUsage) }
+ *   core/stat/usage.go:51          func CpuUsage() int64 { return atomic.LoadInt64(&amp;cpuUsage) }
  *   core/load/sheddingstat.go:59   c := stat.CpuUsage()          // 降载统计日志里的 cpu
  *   core/load/adaptiveshedder.go:41-43
  *       systemOverloadChecker = func(cpuThreshold int64) bool {
