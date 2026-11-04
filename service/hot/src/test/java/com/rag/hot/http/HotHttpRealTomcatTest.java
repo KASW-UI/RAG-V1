@@ -216,6 +216,184 @@ class HotHttpRealTomcatTest extends HotRealStackTestBase {
     }
 
     // ==================================================================
+    // ②-bis form 值个数上限（共享层闸门）
+    // ==================================================================
+
+    /**
+     * 🔴 <b>form 值个数上限 2048 的端到端守门</b>。
+     *
+     * <h2>为什么必须有这条</h2>
+     * <p>本域的 2048 闸门<b>不在域内</b>（B 侧域内自持 ⇒ C 侧上收到共享层
+     * {@code common/web/ValueLimitInterceptor}）⇒ ⇒ 域内<b>没有任何测试</b>守着它
+     * ⇒ ⇒ 共享层若改了判据口径（阈值 / 计数方式 / 拒绝形状），
+     * hot 域<b>一个测试都不会红</b>。</p>
+     *
+     * <h2>本用例钉住的可观察事实</h2>
+     * <ol>
+     *   <li><b>2048 个非空值 ⇒ 放行</b>（正常 200 + 业务信封）；</li>
+     *   <li><b>2049 个非空值 ⇒ 拒绝</b>，且形状是 <b>HTTP 200</b> +
+     *       {@code {"code":5001,"msg":"internal server error","data":null}}
+     *       （<b>不是</b> 400、<b>不是</b> 裸响应）⇒ 与 B 侧逐条一致
+     *       （B 侧域内 {@code requireFormValueCountWithinLimit} 抛
+     *       {@code BusinessException(5001, "internal server error")}）。</li>
+     * </ol>
+     *
+     * <h2>⚠️ 为什么用裸 socket 而不是 TestRestTemplate</h2>
+     * <p>请求行约 20 KB ⇒ 必须确认它<b>没被 Tomcat 的请求头上限先拒</b>
+     * （本域已把 {@code server.max-http-request-header-size} 抬到 1028KB，
+     * 对齐 B 侧 Go 的 {@code DefaultMaxHeaderBytes(1&lt;&lt;20)}）
+     * ⇒ ⇒ 若那条配置被回退，本用例会变成「拿到 Tomcat 的拒绝」⇒ <b>正好起到守门作用</b>。</p>
+     *
+     * <h2>B 出处</h2>
+     * <p>B 侧 {@code service/hot/hot-api/.../api/form/GoFormValues.java:224-245}
+     * （{@code MAX_FORM_PARAM_COUNT = 2048} + {@code requireFormValueCountWithinLimit}），
+     * 调用点 {@code .../api/controller/HotArticleController.java:88}。</p>
+     */
+    @Test
+    @DisplayName("GET 带 2049 个非空 query 值 ⇒ 200 + {code:5001,…}（form 值上限闸门）")
+    void tooManyFormValuesYieldsBusinessEnvelope() throws Exception {
+        String raw = rawHttp("GET /hot/v1/articles?" + queryWithNonEmptyValues(2049)
+                + " HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+
+        assertTrue(statusLineOf(raw).startsWith("HTTP/1.1 200"),
+                "超限也必须是 HTTP 200（B 侧 go-zero 的 SetErrorHandler 同款）；实际状态行："
+                        + statusLineOf(raw));
+        JsonNode body = MAPPER.readTree(decodedBodyOf(raw));
+        assertEquals(5001, body.get("code").asInt(), "超限必须是 5001 业务码");
+        assertEquals("internal server error", body.get("msg").asText());
+        assertTrue(body.get("data").isNull(), "失败信封的 data 必须是 null");
+    }
+
+    @Test
+    @DisplayName("GET 带 2048 个非空 query 值 ⇒ **放行**（阈值是「超过 2048」才拒）")
+    void exactly2048FormValuesIsAccepted() throws Exception {
+        String raw = rawHttp("GET /hot/v1/articles?" + queryWithNonEmptyValues(2048)
+                + " HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+
+        assertTrue(statusLineOf(raw).startsWith("HTTP/1.1 200"),
+                "2048 个值必须放行；实际状态行：" + statusLineOf(raw));
+        JsonNode body = MAPPER.readTree(decodedBodyOf(raw));
+        assertEquals(200, body.get("code").asInt(),
+                "放行时必须是正常业务信封（code=200），实际：" + decodedBodyOf(raw));
+    }
+
+    /**
+     * 取<b>最终响应</b>的 body（跳过所有 1xx ＋ 解 chunked）。
+     *
+     * <p>⚠️ <b>为什么需要这两个动作</b>：</p>
+     * <ul>
+     *   <li><b>跳过 1xx</b>：共享层在慢请求时可能先发 {@code 103 Early Hints}
+     *       ⇒ 直接按第一个空行切分会把读数整份错位（与 {@code tools/difftest/hot/http_probe.py}
+     *       的 {@code _split_final_response} 同款问题）。</li>
+     *   <li><b>解 chunked</b>：失败响应走共享层的响应捕获器 ⇒ 响应<b>提前提交</b> ⇒
+     *       Tomcat 来不及按缓冲内容算长度 ⇒ 退化为 {@code Transfer-Encoding: chunked}
+     *       ⇒ body 前面会带块长（{@code 37}）与结束块（{@code 0}）。</li>
+     * </ul>
+     *
+     * <p>⚠️ <b>本用例刻意不钉传输编码</b>：B 侧的 {@code HttpMiddleware#flushCaptured}
+     * 与 C 侧<b>逐条相同</b>（同一份实现的抄写）⇒ ⇒ <b>两侧失败响应都是 chunked</b>
+     * ⇒ 那是<b>相对 Go 真源</b>（Go 的 {@code net/http} 会算 {@code Content-Length}）的既有差异，
+     * <b>不是 C 侧引入的</b>（D16：B 侧已有差异一律继承）⇒ ⇒ 断言只钉可观察的<b>行为</b>
+     * （状态码 + 信封内容），不钉传输编码。</p>
+     *
+     * @param rawResponse 原始响应报文
+     * @return 解码后的 body 文本
+     */
+    private static String decodedBodyOf(String rawResponse) {
+        int pos = 0;
+        while (true) {
+            int headerEnd = rawResponse.indexOf("\r\n\r\n", pos);
+            if (headerEnd < 0) {
+                return "";
+            }
+            int code = statusCodeOf(rawResponse.substring(pos, rawResponse.indexOf('\r', pos)));
+            if (code >= 100 && code < 200) {
+                // 1xx（informational）⇒ 跳过，继续找最终响应
+                pos = headerEnd + 4;
+                continue;
+            }
+            String rawBody = rawResponse.substring(headerEnd + 4);
+            boolean chunked = rawResponse.substring(pos, headerEnd)
+                    .toLowerCase(java.util.Locale.ROOT)
+                    .contains("transfer-encoding: chunked");
+            return chunked ? decodeChunked(rawBody) : rawBody;
+        }
+    }
+
+    /**
+     * 解 chunked 传输编码的 body。
+     *
+     * @param raw 含块长的 body 文本
+     * @return 解块后的文本
+     */
+    private static String decodeChunked(String raw) {
+        StringBuilder out = new StringBuilder();
+        int pos = 0;
+        while (pos < raw.length()) {
+            int eol = raw.indexOf("\r\n", pos);
+            if (eol < 0) {
+                break;
+            }
+            String sizeHex = raw.substring(pos, eol).trim();
+            int semi = sizeHex.indexOf(';');
+            if (semi >= 0) {
+                sizeHex = sizeHex.substring(0, semi);
+            }
+            int size;
+            try {
+                size = Integer.parseInt(sizeHex, 16);
+            } catch (NumberFormatException e) {
+                break;
+            }
+            pos = eol + 2;
+            if (size == 0) {
+                break;
+            }
+            out.append(raw, pos, Math.min(pos + size, raw.length()));
+            pos += size + 2;
+        }
+        return out.toString();
+    }
+
+    /**
+     * 从状态行里取状态码。
+     *
+     * @param statusLine 状态行（如 {@code HTTP/1.1 200 }）
+     * @return 状态码（解析不出时返回 -1）
+     */
+    private static int statusCodeOf(String statusLine) {
+        String[] parts = statusLine.trim().split("\\s+");
+        if (parts.length < 2) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(parts[1]);
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /**
+     * 造 n 个<b>非空</b>的 query 值（{@code a0=v0&a1=v1&…}）。
+     *
+     * <p>⚠️ 必须**非空**：共享层的判据数的是<b>非空值</b>（B 侧 {@code net/url} 的
+     * 「空值丢弃」规则）⇒ 空值不计数。</p>
+     *
+     * @param n 值个数
+     * @return query string（不带前导 '?'）
+     */
+    private static String queryWithNonEmptyValues(int n) {
+        StringBuilder sb = new StringBuilder(n * 10);
+        for (int i = 0; i < n; i++) {
+            if (i > 0) {
+                sb.append('&');
+            }
+            sb.append('a').append(i).append("=v").append(i);
+        }
+        return sb.toString();
+    }
+
+    // ==================================================================
     // ③ 裸状态码（404 / 405）—— 无信封
     // ==================================================================
 

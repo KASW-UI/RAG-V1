@@ -77,11 +77,25 @@ import java.util.concurrent.TimeUnit;
  *         <li>4 条 skip 分支 + 各自的 metric 逐条未动；</li>
  *         <li>并发窗口 = 8（每请求一个 {@link Semaphore}）+ <b>先 acquire 再 submit</b> 逐条未动。</li>
  *       </ul>
- *       ⚠️ <b>一处传输层差异（已登记 · 见 DRIFT 台账）</b>：B 侧的 hot-rpc 走 gRPC ⇒ 失败是
+ *       ⚠️ <b>一处传输层差异（已登记 · DRIFT 台账 F-02）</b>：B 侧的 hot-rpc 走 gRPC ⇒ 失败是
  *       {@code StatusRuntimeException}、且带 <b>2s 客户端上界</b>；本仓走直连 ⇒ 失败是
  *       {@code DataAccessException} 等 {@link RuntimeException}（<b>已把 catch 放宽到
  *       {@code RuntimeException}</b> ⇒ fatal 语义不变），但<b>少了一层 2s per-call 上界</b>
- *       ⇒ 只剩 HTTP 层的请求预算兜底（D2 域内直连的必然结果）。</li>
+ *       ⇒ ⇒ <b>这次 Redis 调用没有任何出向上界</b>（D2 域内直连的必然结果）。
+ *       <br>⚠️ <b>HTTP 层的请求预算并不约束它</b>：请求预算约束的是「整个 HTTP 响应何时返回」，
+ *       <b>不是</b>「这一次 Redis 调用何时返回」⇒ ⇒ Redis 卡住时两侧的<b>失败形状不同</b>
+ *       （双侧活体对拍实测 · DRIFT 台账 §九·M5）：
+ *       <ul>
+ *         <li>B 侧：{@code HTTP/1.1 200} ＋ {@code {"code":5001,…}}（<b>业务信封</b>）@2011ms
+ *             —— 2s 的 gRPC 出向封顶先到期 ⇒ 走 fatal 分支；</li>
+ *         <li>C 侧：{@code HTTP/1.1 503} ＋ {@code text/plain} 的 {@code "Request Timeout\n"}
+ *             @3014ms，<b>且形状非确定</b>（三候选，含 {@code 200 + application/json}
+ *             但 body 是纯文本的「混血」形态 ⇒ 共享层缺陷 F-15）
+ *             —— <b>不是</b>业务信封 ⇒ 客户端按信封解会解析失败。</li>
+ *       </ul>
+ *       ⇒ ⇒ <b>不要</b>把这条读成「还有 HTTP 预算兜底」：<b>没有兜底，只有更晚 ＋ 形状不同</b>。
+ *       （F-02 是 D2 的已批准连带后果 ⇒ 不修；恢复域内方向 2s 上界是唯一能<b>同时</b>
+ *       消掉时延差与混血形状的修法。）</li>
  *   <li><b>B 出处</b>：见上方逐条行号。</li>
  * </ol>
  *

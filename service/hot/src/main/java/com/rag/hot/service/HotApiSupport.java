@@ -63,11 +63,25 @@ import java.util.List;
  * </ol>
  *
  * <p><b>⚠️ 上限闸门（2048）为什么不在本类</b>：
- * B 侧的 {@code requireFormValueCountWithinLimit} 数的是 {@code request.getParameterMap()} 里的
- * <b>非空值</b>；本仓的共享层 {@code ValueLimitInterceptor} 数的是<b>原始 query string</b> 里的
- * 非空值，并额外覆盖 B 侧 {@code net/url} 的三条解析错误 ⇒ 二者判据**不完全相同**，
- * 但<b>拒绝形状完全一致</b>（hot 域配 {@code rag.http.go-form-limit.mode: envelope}
- * ⇒ 200 + {code:5001, msg:"internal server error", data:null}）
+ * <b>判据口径与 B 侧一致</b>，只是<b>覆盖面收窄</b>，且对 hot <b>不可达</b> ⇒ ⇒ 本类<b>不重复实现</b>：
+ * <ul>
+ *   <li><b>阈值与计数口径一致</b>：共享层 {@code common/web/ValueLimitInterceptor} 数的是
+ *       <b>原始 query string 里的非空值</b>，阈值 <b>2048</b>（{@code MAX_FORM_PARAM_COUNT}）
+ *       ⇒ 与 B 侧 {@code requireFormValueCountWithinLimit} 的阈值与「空值不计数」规则<b>逐条一致</b>
+ *       ⇒ 且额外覆盖 B 侧 {@code net/url} 的三条解析错误 + {@code 10000} 段数上限
+ *       ⇒ ⇒ <b>文案也逐字取自 B 侧</b>。</li>
+ *   <li><b>覆盖面收窄（有界 · 对 hot 不可达）</b>：B 侧那道<b>域内</b>闸门数的是
+ *       {@code request.getParameterMap()}（<b>含 body</b> 的 urlencoded / multipart 字段），
+ *       而共享层只数 <b>query</b> ⇒ ⇒ body 侧的字段不再计入。
+ *       ⚠️ <b>但本域唯一端点 {@code GET /hot/v1/articles} 只有 query</b>，
+ *       全仓亦无端点收 {@code application/x-www-form-urlencoded} body
+ *       ⇒ ⇒ 该差异<b>在 hot 域不可达</b>。</li>
+ *   <li><b>拒绝形状完全一致</b>（hot 域配 {@code rag.http.go-form-limit.mode: envelope}
+ *       ⇒ 200 + {code:5001, msg:"internal server error", data:null}）
+ *       ⇒ ⇒ 已用<b>真 Tomcat 端到端</b>钉住（见
+ *       {@code com.rag.hot.http.HotHttpRealTomcatTest} 的两条用例：
+ *       2048 个值 ⇒ 放行；2049 个值 ⇒ 200 + 5001 信封）。</li>
+ * </ul>
  * ⇒ ⇒ 为避免「同一请求被两个口径各拒一次」，本类<b>不重复实现</b>，闸门归共享层
  * （共享层的写权面在 {@code common/**}，本域只读 —— AGENTS.md §五.3 规则 3）。
  *

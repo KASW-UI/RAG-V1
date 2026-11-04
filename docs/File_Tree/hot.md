@@ -112,8 +112,10 @@
 │                       ├── http/
 │                       │   └── HotHttpRealTomcatTest.java    # hot 域 HTTP 面的「真 Tomcat」测试 —— 真 Spring 上下文 + 真 Tomcat
 │                       ├── messaging/
+│                       │   ├── HotEventConsumerContractTest.java    # 消费入口的「指标计数次序」与「drop 契约」 —— 纯单测（不连 Kafka / Redis）。
 │                       │   ├── HotEventConsumerRealKafkaTest.java    # 真 Kafka 消费链路测试 —— hot 域 MQ 面的真触发点。
 │                       │   ├── HotMergeSchedulerRealRedisTest.java    # 合并调度器（分布式锁 + 跨分片求和 + 3 段 Lua）的真 Redis 测试。
+│                       │   ├── HotPartitionSketchRegistryLockTest.java    # 分区生命周期 + 「Redis 落盘发生在写锁之外」的守门测试。
 │                       │   └── HotRedisSnapshotStoreRealRedisTest.java    # 分片快照 + Lua 脚本的真 Redis 测试。
 │                       ├── service/
 │                       │   └── HotApiSupportContractTest.java    # hot 域的输入解释与分页数值契约测试。

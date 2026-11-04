@@ -844,5 +844,93 @@
 > 本轮已补**数据面闸门** ＋ **`top_k` 边界自检** ＋ **解析器自检**（`http_probe_selftest.py` · 挂在起服务之前），
 > 并用**五条变异**守住（**V4 是纯探针自身的**（只给 B 侧多播一个成员）·
 > **V5 验的是探针的闸门**（C 侧改键名 ⇒ 闸门必须 `die(exit 2)`，不许报「全绿」））⇒ ⇒ 五条**实跑全部按预期** ＋ **还原后基线复跑 `EXIT=0`、红名单为空**（§九·9.6）。
+> 📌 **2026-11-05 追加 §十（M6 轮 · 守护网补齐与文档订正）**：**+18 条真触发用例**（95 例全绿 · skipped=0）⇒ **4 条变异**逐条转红（证明不是假绿）⇒
+> **3 处 javadoc 措辞订正**（`HotApiService` / `HotApiSupport` / `HotPartitionSketchRegistry`）⇒ **只动测试与注释，不动实现** ⇒ 域级行为读数不变。
 > 📌 **本域的两档台账已补齐**（2026-11-04）：[`docs/Intentional_Deviations/hot/_signed-deviations.md`](../../../Intentional_Deviations/hot/_signed-deviations.md)（**6 条**）·
-> [`docs/Pitfalls/hot/_hot-domain-pitfalls.md`](../../../Pitfalls/hot/_hot-domain-pitfalls.md)（**8 条**）⇒ ⚠️ 两个 `_INDEX.md` **不归本 lane**（Worktree.md §三.1）⇒ **待主会话合并**。
+> [`docs/Pitfalls/hot/_hot-domain-pitfalls.md`](../../../Pitfalls/hot/_hot-domain-pitfalls.md)（**11 条** —— 2026-11-05 追加 **P-HOT-10**「变异没红有两种可能」＋ **P-HOT-11**「会被截断切掉的脆弱断言」）⇒ ⚠️ 两个 `_INDEX.md` **不归本 lane**（Worktree.md §三.1）⇒ **待主会话合并**。
+
+---
+
+## 十、阶段 M6 · 守护网补齐与文档订正（2026-11-05 · 独立复审后的收口）
+
+> **触发**：[`docs/DRIFT/hot/verification-hot-2026-11-05.md`](verification-hot-2026-11-05.md)（独立复审报告）发现
+> **6 条「B 侧有、C 侧无」的守护网缺口** + **3 处 javadoc 措辞与代码事实不符** ⇒ ⇒ 本节记录本轮的补齐与订正。
+> ⚠️ **本轮不动实现**（只补测试 + 订正注释）⇒ ⇒ 域级行为读数**不变**。
+
+### 10.1 补齐的 18 条用例（**全部真触发**，不是 mock 单测）
+
+| # | 补的判据 | 落在哪 | 类型 | 状态 |
+|---|---|---|---|---|
+| 1 | **撤销落盘发生在写锁之外**（flush 被卡住时读锁仍可用）| `messaging/HotPartitionSketchRegistryLockTest` | 纯单测（mock store + latch）| ✅ |
+| 2 | assign→detach 不死锁 / detach 原子摘除 | 同上 | 纯单测 | ✅ |
+| 3 | 持写锁取 sketch 引用不阻塞（write→read 降级）| 同上 | 纯单测 | ✅ |
+| 4 | detach 后并发读者不被阻塞 | 同上 | 纯单测 | ✅ |
+| 5 | assign 幂等（已存在分区不重建）| 同上 | 纯单测 | ✅ |
+| 6 | detach 不存在的分区是空操作 | 同上 | 纯单测 | ✅ |
+| 7 | sketch 按配置四参数创建 | 同上 | 纯单测 | ✅ |
+| 8 | **分区未持有时指标照样计数**（先计数 → 后查分区的次序）| `messaging/HotEventConsumerContractTest` | 纯单测 | ✅ |
+| 9 | 分区已持有且 type 合法 ⇒ 计数 + 入草图 | 同上 | 纯单测 | ✅ |
+| 10 | **多字段载荷（`user_id`/`timestamp`）不丢**（`ignoreUnknown` 硬要求）| 同上 + `messaging/HotEventConsumerRealKafkaTest` | 纯单测 **＋ 真 Kafka** | ✅ |
+| 11 | 三类坏消息返回非 null error（否则 span 被误标成功）| 同上 | 纯单测 | ✅ |
+| 12 | 正常路径与「分区未持有」返回 null error | 同上 | 纯单测 | ✅ |
+| 13 | **合并 >100 条 ⇒ 只留分数最高的 100 条**（边界分数断言）| `messaging/HotMergeSchedulerRealRedisTest` | 真 Redis | ✅ |
+| 14 | **看门狗续期 Lua 的 CAS**（值匹配才续期、不匹配返 0 且不动锁）| 同上 | 真 Redis | ✅ |
+| 15 | **分区分配策略真的落到了 consumer**（3 分区 2 消费者 ⇒ [0,2]/[1]；带 Range 对照组）| `messaging/HotEventConsumerRealKafkaTest` | 真 Kafka | ✅ |
+| 16 | 多字段载荷在真 broker 上不被丢 | 同上 | 真 Kafka | ✅ |
+| 17 | **form 值 2048 个放行 / 2049 个被拒**（真 Tomcat 端到端）| `http/HotHttpRealTomcatTest` | 真 Tomcat | ✅ |
+| 18 | 2048 个放行时仍是正常业务信封（`code=200`）| 同上 | 真 Tomcat | ✅ |
+
+> 📌 **为什么 #8 只能靠纯单测**：真 Kafka 上分区**总是**会被分配 ⇒ 「分区未持有」分支**不可达** ⇒ ⇒ 只能用纯单测守住这条次序。
+> 📌 **为什么 #17/#18 用真 Tomcat + 裸 socket**：请求行约 20 KB ⇒ 必须确认它**没被 Tomcat 的请求头上限先拒**
+> （本域已把 `server.max-http-request-header-size` 抬到 1028KB，对齐 B 侧 Go 的 `DefaultMaxHeaderBytes(1<<20)`）
+> ⇒ ⇒ 该配置若被回退，本用例会变成「拿到 Tomcat 的拒绝」⇒ **正好起到守门作用**。
+
+### 10.2 变异验证（**证明新断言不是假绿** · 4 条实跑）
+
+| 变异 | 改了什么 | 期望 | 实跑读数 | 判定 |
+|---|---|---|---|---|
+| **V1** | 把 `HotEventConsumer` 的指标自增挪到 `if (hk == null) return null;` **之后** | 「分区未持有仍计数」转红 | **1 红**（`metricIsIncrementedEvenWhenPartitionIsNotAssigned`），其余 4 例绿 | ✅ 有牙齿 |
+| **V2** | 把 `HotMergeScheduler` 的合并排序**改成升序** | 截断用例转红 | **红**：`留存的最低分` = **1.0**（应为 51.0）⇒ **正是「条数断言抓不到、边界断言才抓得到」** | ✅ 有牙齿 |
+| **V3** | 把 `application.yml` 的 `RoundRobinAssignor` 改成 `RangeAssignor` | 分配策略用例转红 | **1 红**（实际 `[0,1]` 而非 `[0,2]`）⇒ **「配置里写了 ≠ 生效了」现在有牙齿** | ✅ 有牙齿 |
+| **V4** | 把 `RENEW_SCRIPT` 的 CAS 去掉（无条件 `EXPIRE`）| 续期用例转红 | **红**：`值不匹配 ⇒ 返回 0` 实得 **1** | ✅ 有牙齿 |
+
+> ✅ 4 条变异**全部按预期转红**，**全部已还原**（`git diff` 为空），**还原后基线复跑 95 例全绿**。
+> ⚠️ **V1 的第一次尝试没红**（把计数挪到分区查找之后但仍在 `null` 检查之前 ⇒ **等价变换**）⇒ ⇒
+> 「**没红**」有**两种**可能：**断言没牙齿** / **变异没打到点上** ⇒ ⇒ 判定前必须先自问「**这行改动的语义后果是什么**」。
+> ⇒ 已登记为 [`P-HOT-10`](../../../Pitfalls/hot/_hot-domain-pitfalls.md)。
+
+### 10.3 订正的 3 处 javadoc（**只改注释，不改行为**）
+
+| # | 位置 | 原措辞的问题 | 订正后 |
+|---|---|---|---|
+| 1 | `service/HotApiService.java`（类注释「一处传输层差异」段）| 说「**只剩 HTTP 层的请求预算兜底**」⇒ **不准确**：HTTP 预算**不约束**那次 Redis 调用 | 改成按 §九·M5 的**双侧实测读数**写清：B = `200`＋5001 信封 @2011ms；C = `503`＋纯文本 @3014ms 且**形状非确定** ⇒ ⇒ 明确「**没有兜底，只有更晚 ＋ 形状不同**」|
+| 2 | `service/HotApiSupport.java`（类注释「上限闸门」段）| 说共享层判据与 B 侧「**不完全相同**」⇒ **与 F-03 台账口径相左** | 改成「**判据口径（阈值 ＋ 文案）与 B 侧一致**；**覆盖面**收窄（query+body → query）且**对 hot 不可达**」+ 指向新增的真 Tomcat 守护用例 |
+| 3 | `messaging/HotPartitionSketchRegistry.java`（类注释标题 ＋ `detachWithinWriteLock` 方法注释）| ①标题「**与 B 侧**的一处有意偏离」⇒ **把 Go 真源当成了 B 侧 Java**（B 侧 Java **已经是**「锁内取引用 → 锁外落盘」）；②方法注释说「把 **C 侧修掉的 B 侧死锁**请回来」⇒ **在 Java 里不构成死锁**（`ReentrantReadWriteLock` 支持 write→read 降级）| ① 标题改成「与 **Go 真源**的偏离」并**显式区分两个「B 侧」**；② 改成「**它不构成死锁**，真实代价是**持写锁做 Redis I/O ⇒ 阻塞所有读者**」+ 指向新增的并发守护用例 |
+
+### 10.4 顺手加固的 1 处**既存**脆弱断言
+
+`HotMergeSchedulerRealRedisTest#mergeReadsOnlyConfiguredPartitionCount` 原来用「成员在不在合并结果里」来断言「哪几片参与了合并」，
+而合并结果会按分数降序**截断到 100 条** ⇒ ⇒ 若那两条的分数落在截断边缘，会被切掉 ⇒ ⇒ 用例会**假红**
+（实测：V2 把排序改成升序时它随之误红 ⇒ **红的原因不是「参与片数不对」**）⇒ ⇒ 已把两条的分数从 `1.0` 提到 `100.0`（远离截断边缘），
+并在用例注释里写明**为什么必须给高**。
+
+### 10.5 本轮读数（**全部真跑**）
+
+| 项 | 读数 |
+|---|---|
+| 域级测试 | **95 例全绿**（原 77 ＋ 本轮 18），**skipped = 0**（真 Tomcat / 真 gRPC / 真 Kafka / 真 Redis）|
+| 变异验证 | **4 条全部按预期转红** ⇒ 还原后基线复跑 **95 例全绿** |
+| 三道守门 | **EXIT = 0**（① 架构断言 38/38 Lombok 展开块 · ② docs↔树对账 · ③ 映射覆盖 C 642/642 · B 752/752）|
+| 文件树 | 已用生成器重生成（`docs/File_Tree/hot.md` ＋2 个新测试类）|
+| 写权面 | 只碰 `service/hot/`（测试 ＋ 注释）＋ `docs/DRIFT/hot/` ＋ `docs/File_Tree/hot.md` ＋ `docs/Pitfalls/hot/` ⇒ **未碰共享面**（`common/**` 只读）|
+
+### 10.6 本轮**没有**动的（留给下一手）
+
+| 项 | 归属 | 理由 |
+|---|---|---|
+| **OTLP 追踪导出整体缺失**（hot 域不装任何 exporter ⇒ span 一条都导不出去）| **`global`**（`comment`/`favorite`/`message`/`task` **同样零 otel 段** ⇒ 共 5 域）| 共享层写权面 · 建议统一处置，域内只写 yml |
+| `health.show-details` 取严 / actuator 暴露集取并集 / gRPC 端口 env 名双名兼容 | hot 域（配置面取舍）| 本轮指令只含「补用例 ＋ 修注释」⇒ 未动 |
+| 三个 `_INDEX.md` 并入主干 | **主会话** | 共享面（AGENTS.md §五.3 规则 3）|
+| **F-15** 共享层「HTTP 预算 × 业务失败」竞态 ⇒ 混血响应 | **`global`** | 共享层缺陷 · hot 只登记 |
+| **F-02** 是否恢复域内方向 2s 上界 | 用户拍板 | D2 既定决策的例外 |
+| **F-11** 命名债 | 用户拍板 | —— |

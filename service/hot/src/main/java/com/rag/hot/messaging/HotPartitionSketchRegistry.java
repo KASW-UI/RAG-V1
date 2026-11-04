@@ -46,8 +46,18 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *   <li><b>B 出处</b>：见上方文件路径 + 行号。</li>
  * </ol>
  *
- * <h2>⚠️ 与 B 侧的一处有意偏离：撤销路径不做「持写锁再取读锁」</h2>
- * B 侧的撤销路径是：
+ * <h2>⚠️ 与 <b>Go 真源</b>的一处有意偏离：撤销路径不做「持写锁再取读锁」</h2>
+ *
+ * <p>⚠️ <b>必须区分两个「B 侧」</b>（否则这段注释会被读反）：
+ * <ul>
+ *   <li><b>Go 真源</b>（{@code service/hot/rpc/internal/mqs/hot_handler.go}）：撤销路径是
+ *       「持写锁 → 调 {@code syncToRedis}（内含 {@code RLock}）」⇒ <b>必然自死锁</b>；</li>
+ *   <li><b>B 侧 Java</b>（{@code service/hot/hot-rpc/.../mq/HotPartitionSketchRegistry.java}）：
+ *       <b>已经是</b>「锁内取引用 → 锁外落盘」的形态 ⇒ ⇒ <b>本实现与 B 侧 Java 逐字一致</b>
+ *       ⇒ ⇒ 下面的偏离是<b>相对 Go 真源</b>的，不是相对 B 侧 Java 的。</li>
+ * </ul>
+ *
+ * Go 真源的撤销路径是：
  * <pre>{@code
  * func (h *HotHandler) OnPartitionsRevoked(partitions []int32) {
  *     h.hkMu.Lock()            // 持写锁
@@ -163,14 +173,23 @@ public class HotPartitionSketchRegistry {
     }
 
     /**
-     * <p><b>⚠️ B 侧零调用点的方法</b>（B 侧全仓 grep：只有它自己的声明命中）。
+     * <p><b>⚠️ 零调用点的方法</b>（B 侧 Java 全仓 grep：只有它自己的声明命中；
+     * 本仓同样<b>只有声明命中</b> ⇒ ⇒ <b>两侧都不调用它</b>）。
      *
-     * <p>本仓<b>逐字保留</b>它（1:1 抄写），<b>但刻意<b>不</b>调用</b>：
-     * 它在<b>写锁内</b>做 Redis I/O ⇒ 正是类注释里论证过的「持写锁再取读锁」死锁形态
-     * ⇒ ⇒ 一旦有人调用它，就会把 C 侧修掉的 B 侧死锁<b>请回来</b>。
+     * <p>本仓<b>逐字保留</b>它（1:1 抄写），<b>但刻意<b>不</b>调用</b>。
      *
-     * <p>⇒ 保留它的理由只有一个：让「B 侧有这个方法」这件事可对照（D16）。
-     * ⇒ <b>要落盘请用 {@link #detach(Collection)}</b>。
+     * <h2>⚠️ 它<b>不构成死锁</b>（措辞订正 · 2026-11-05）</h2>
+     * <p>类注释里论证的「持写锁再取读锁 ⇒ 必然死锁」是<b>Go 真源</b>的形态
+     * （{@code sync.RWMutex} 不可重入）；
+     * 而 Java 的 {@link ReentrantReadWriteLock} <b>允许</b>写锁持有者再取读锁
+     * （官方支持的 write→read 降级）⇒ ⇒ <b>本方法在 Java 里不会死锁</b>
+     * ⇒ ⇒ 它的真实代价是<b>另一件事</b>：<b>持写锁做 Redis I/O ⇒ 阻塞所有读者</b>
+     * （消费路径取 sketch、{@code periodicSync} 的取分区循环都会被 Redis 延迟拖住）。
+     *
+     * <p>⇒ 保留它的理由只有一个：让「B 侧 Java 有这个方法」这件事可对照（D16）。
+     * ⇒ <b>要落盘请用 {@link #detach(Collection)}</b>（锁内取引用 → 锁外做 Redis I/O）。
+     * ⇒ 该约束已由 {@code com.rag.hot.messaging.HotPartitionSketchRegistryLockTest}
+     * 的「flush 阻塞期间读锁仍然可用」一条钉住。
      *
      * @param partitions 撤销的分区号
      * @param store      Redis 快照存储

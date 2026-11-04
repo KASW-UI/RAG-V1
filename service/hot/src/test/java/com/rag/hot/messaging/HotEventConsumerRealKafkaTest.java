@@ -5,19 +5,32 @@ import com.rag.hot.support.HotKafkaTestBase;
 import com.rag.hot.support.ThrowingKafkaListenerConfiguration;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.RangeAssignor;
+import org.apache.kafka.common.TopicPartition;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
+import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.listener.MessageListenerContainer;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * <p><b>真 Kafka 消费链路测试</b> —— hot 域 MQ 面的真触发点。
@@ -69,6 +82,16 @@ class HotEventConsumerRealKafkaTest extends HotKafkaTestBase {
     /** 真实的分区 sketch 注册表。 */
     @Autowired
     private HotPartitionSketchRegistry sketchRegistry;
+
+    /**
+     * 生产那个 {@code ConsumerFactory}（Spring Boot 装配出来的那个）。
+     *
+     * <p>⚠️ <b>必须是容器里这一个</b>：它承载的正是 yml 里的
+     * {@code spring.kafka.consumer.properties.partition.assignment.strategy}
+     * ⇒ ⇒ 用它建消费者才验得到「生产配置真的进了 ConsumerConfig」。</p>
+     */
+    @Autowired
+    private ConsumerFactory<Object, Object> consumerFactory;
 
     // ==================================================================
     // ① listener 真进 registry
@@ -223,6 +246,138 @@ class HotEventConsumerRealKafkaTest extends HotKafkaTestBase {
         assertThat(ThrowingKafkaListenerConfiguration.deliveries())
                 .as("失败记录的投递次数（零重试 ⇒ 1；Boot 默认 FixedBackOff(0,9) ⇒ 10）")
                 .isEqualTo(1);
+    }
+
+    // ==================================================================
+    // ⑤ 生产端多发字段（ignoreUnknown 的硬要求）
+    // ==================================================================
+
+    @Test
+    @DisplayName("生产端发 4 个字段（多 user_id/timestamp）⇒ 真消费成功，不被当坏消息丢掉")
+    void multiFieldPayloadIsNotDropped() {
+        awaitGroupStable(GROUP);
+        String articleId = AUTHOR + "-multi-field";
+        double before = consumeCount("like");
+
+        // 生产端实测发送的就是 4 个字段（article_id / type / user_id / timestamp）
+        // ⇒ 载荷契约上「只有 2 个字段」的是**消费端**，不是**生产端**
+        // ⇒ 若 @JsonIgnoreProperties(ignoreUnknown = true) 被去掉 ⇒ 这条会被 drop ⇒ 热榜永不更新
+        publish(TOPIC, 0, articleId,
+                "{\"article_id\":\"" + articleId + "\",\"type\":\"like\","
+                        + "\"user_id\":\"u9\",\"timestamp\":123456}");
+
+        awaitTrue("多字段消息被计数", () -> consumeCount("like") > before);
+
+        HeavyKeeper hk = awaitSketchContains(0, articleId);
+        assertThat(topKItem(hk, articleId).count()).isEqualTo(1);
+    }
+
+    // ==================================================================
+    // ⑥ 分区分配策略真的落到了 consumer（不能只信 yml）
+    // ==================================================================
+
+    /**
+     * 🔴 <b>RoundRobinAssignor 真的落到了 consumer</b>。
+     *
+     * <h2>为什么必须真跑一遍</h2>
+     * <p>AGENTS.md §3.3.1：「配置里写了」≠「生效了」。本域的 yml 写了
+     * {@code spring.kafka.consumer.properties.partition.assignment.strategy: RoundRobinAssignor}
+     * ⇒ 若该键被 Boot 3.5 忽略 ⇒ <b>静默退回默认的 RangeAssignor</b> ⇒
+     * ⇒ 分区归属改变 ⇒ ⇒ <b>每个分区对应的草图布局改变 ⇒ 热榜分布改变</b>
+     * ⇒ ⇒ 纯读 yml 的断言<b>永远绿</b>。</p>
+     *
+     * <h2>判据为什么这么设计</h2>
+     * <p>3 分区 2 消费者：RoundRobin 分成 <b>[0,2] / [1]</b>；Range 会分成 <b>[0,1] / [2]</b>
+     * ⇒ ⇒ 两者结果<b>不同</b> ⇒ 断言对分配策略<b>敏感</b>。</p>
+     * <p>且带一个 <b>RangeAssignor 对照组</b> ⇒ 证明本用例不是恒真：
+     * 若两种策略结果相同 ⇒ 用例是假绿。</p>
+     *
+     * <h2>为什么用独立消费组</h2>
+     * <p>探针消费者用<b>独立 group</b> ⇒ 不会抢生产组（{@code article-hot-group}）的分区
+     * ⇒ 不会干扰上面那些用例。</p>
+     *
+     * <h2>B 出处</h2>
+     * <p>B 侧 {@code .../mq/HotKafkaConsumerGateTest.java:297-322}（含 RangeAssignor 对照组）
+     * ⇒ 本用例为 1:1 移植。</p>
+     */
+    @Test
+    @DisplayName("RoundRobinAssignor 真的落到了 consumer（3 分区 2 消费者 ⇒ [0,2]/[1]；Range 会是 [0,1]/[2]）")
+    void productionConsumerFactoryReallyUsesRoundRobinAssignor() {
+        Map<String, Set<Integer>> roundRobin = assignmentOf("hot-rr-probe-group", null);
+
+        assertEquals(Set.of(0, 2), roundRobin.get("c0"),
+                "第一个消费者拿到的分区不是 [0,2]（实际 " + roundRobin.get("c0") + "）"
+                        + " ⇒ RoundRobinAssignor 没落到 consumer，或被改成了别的分配策略");
+        assertEquals(Set.of(1), roundRobin.get("c1"),
+                "第二个消费者拿到的分区不是 [1]（实际 " + roundRobin.get("c1") + "）");
+
+        // ── 对照组：换成 RangeAssignor，分配必须变成 [0,1]/[2] ──
+        // 这一步证明本用例**对分配策略敏感**：若两种策略结果相同，断言就是假绿。
+        Map<String, Set<Integer>> range = assignmentOf("hot-range-probe-group",
+                RangeAssignor.class.getName());
+
+        assertEquals(Set.of(0, 1), range.get("c0"),
+                "RangeAssignor 对照组应得 [0,1]（实际 " + range.get("c0") + "）");
+        assertEquals(Set.of(2), range.get("c1"),
+                "RangeAssignor 对照组应得 [2]（实际 " + range.get("c1") + "）");
+    }
+
+    /**
+     * 用<b>生产那个 ConsumerFactory</b> 建两个消费者，看它们各自拿到哪些分区。
+     *
+     * <p>⚠️ 用的就是 Spring 容器里那个 {@code ConsumerFactory} bean ⇒
+     * 它承载的正是 yml 里的 {@code partition.assignment.strategy}
+     * ⇒ ⇒ 本方法验的是「<b>生产配置</b>真的进了 ConsumerConfig」。</p>
+     *
+     * @param group            消费组（用独立组 ⇒ 不抢生产组的分区）
+     * @param assignorOverride 分配策略覆盖（{@code null} ⇒ 用生产配置）
+     * @return 消费者序号（"c0"/"c1"）→ 分区号集合
+     */
+    private Map<String, Set<Integer>> assignmentOf(String group, String assignorOverride) {
+        List<Consumer<Object, Object>> consumers = new ArrayList<>();
+        Map<String, Set<Integer>> result = new LinkedHashMap<>();
+        try {
+            for (int i = 0; i < 2; i++) {
+                Properties override = null;
+                if (assignorOverride != null) {
+                    override = new Properties();
+                    override.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG, assignorOverride);
+                }
+                Consumer<Object, Object> consumer = consumerFactory.createConsumer(
+                        group, "probe-" + group + "-" + i, null, override);
+                consumer.subscribe(List.of(TOPIC));
+                consumers.add(consumer);
+            }
+
+            long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+            while (System.nanoTime() < deadline) {
+                int total = consumers.stream().mapToInt(c -> c.assignment().size()).sum();
+                boolean allAssigned = consumers.stream().allMatch(c -> !c.assignment().isEmpty());
+                if (allAssigned && total == PARTITION_COUNT) {
+                    break;
+                }
+                for (Consumer<Object, Object> consumer : consumers) {
+                    consumer.poll(Duration.ofMillis(200));
+                }
+            }
+
+            for (int i = 0; i < consumers.size(); i++) {
+                Set<Integer> partitions = new TreeSet<>();
+                for (TopicPartition tp : consumers.get(i).assignment()) {
+                    partitions.add(tp.partition());
+                }
+                result.put("c" + i, partitions);
+            }
+            return result;
+        } finally {
+            for (Consumer<Object, Object> consumer : consumers) {
+                try {
+                    consumer.close(Duration.ofSeconds(5));
+                } catch (RuntimeException ignored) {
+                    // 关闭失败不影响断言
+                }
+            }
+        }
     }
 
     // ==================================================================
