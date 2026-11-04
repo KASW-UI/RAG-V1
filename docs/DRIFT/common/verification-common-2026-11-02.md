@@ -781,7 +781,7 @@ comment 域工作树里 `service/comment/src/test/java/com/rag/comment/grpc/Comm
 | **服务名的取值（🔴 一处登记偏离）** | D1 合并 ⇒ B 侧 api / rpc **两个** `Telemetry.Name`（`<域>-api` / `<域>-rpc`）只能填**一个** ⇒ ⇒ 取 `<域>-service`（= `spring.application.name`）⇒ ⇒ **登记为 D1 连带偏离**（**值侧**；键名与形状逐条对齐 B 侧） |
 | **修法（已实施）** | `comment` / `favorite` / `message` / `task` 四域的 `src/main/resources/application.yml` **各补一段** `otel:`（插在顶层 `logging:` 之前 ⇒ 与 like / hot 同位）⇒ ⇒ **5 域同构**（hot 那份在 `align/hot` 分支上，**值与本轮四域逐条一致**） |
 | **⚠️ `hot` 域为何没在主干改** | `hot` 域的实现**尚未合入 main**（主干里还是空壳 ＋ **48 行**的 yml 桩；分支上是 **365 行**）⇒ ⇒ 改主干的 hot yml ⇒ **合并时必冲突** ⇒ ⇒ **不动它** ⇒ ⇒ 它那份在 `align/hot` 分支上，**合入后自动被下面的通用规则覆盖** |
-| **⚠️ 第 6 个缺口：`user-service`（users-user 子域）** | 它**同样没有** `otel:` 段 ⇒ **本轮未动**（归 **users 域 lane** 处置 —— 本轮范围是用户点名的 5 个域）⇒ ⇒ 登记在此 |
+| **第 6 个缺口：`user-service`（users-user 子域）** | 它**同样没有** `otel:` 段 ⇒ ⇒ **2026-11-05 用户指示后已补齐**（用户原话「补」）⇒ ⇒ 形状与 like / hot / 本轮四域**逐条同构**（B 侧基准 = RAG `service/users/user/user-api/src/main/resources/application.yml:192-201` · `service.name: user-api` + 带 scheme 的 endpoint + `sampler: always_on` ⇒ 与 B 侧 **admin-api** 那份同款）⇒ ⇒ **6 域全部齐备** ⇒ ⇒ A14 白名单相应从 8 域扩到 **9 域** |
 | **🔴 机器守门（新增 A14）** | `tools/difftest/check-arch-invariants.py` 新增 **A14**「追踪导出配置（`otel:` 段）齐备且服务名自洽」：<br>① **白名单**：清单内各域（article / comment / favorite / follow / like / message / task / users-admin）**必须**有 `otel:` 段，且端点非空 + `protocol = grpc` + sampler 属两族 + **服务名 == 该域 `spring.application.name`**（**钉不变量而非字面值** ⇒ 域改名自动跟随 ⇒ 不会假红）+ 两套拼法同时出现时**须彼此相等**；<br>② **通用规则**：**任何**域只要 yml 里**有** `otel:` 段就必须合规 ⇒ ⇒ 清单外的域（hot 合入后 / user-service 补齐后）**写出来即刻被覆盖** ⇒ ⇒ **白名单不会随每次合入而腐烂**<br>⇒ **实测 PASS 8/8** · **self-test 14/14 判据均能红**（含 A14）· **变异实测**（删掉 message 域的 endpoint ⇒ A14 当场报「缺失或为空 ⇒ 不装 exporter」⇒ 还原后复绿）⇒ ⇒ 配套更新 `docs/架构符合性断言.md`（新增 A14 段 ＋ 状态行）＋ `docs/README.md`（A1–A13 ⇒ **A1–A14**） |
 
 #### ✅ 读数（2026-11-05）
@@ -789,9 +789,9 @@ comment 域工作树里 `service/comment/src/test/java/com/rag/comment/grpc/Comm
 | 项 | 读数 |
 |---|---|
 | **F-15 守卫** | `HttpTimeoutRaceNoMixedResponseTest` —— **2 例**（① worker 先提交 ⇒ 干净信封 ② 超时先落定 ⇒ 干净 503）⇒ **2/2 绿**；**变异**（拆掉弃权闸）⇒ **① 红 ② 绿** ⇒ 还原复绿 |
-| **otel 统一** | 4 域 yml 各补一段 ⇒ **A14 PASS 8/8**；**self-test 14/14**；**变异实测** ⇒ 删 endpoint 即红、还原即绿 |
+| **otel 统一** | **5 域** yml 各补一段（comment / favorite / message / task + **user-service**）⇒ **A14 PASS 9/9**；**self-test 14/14**；**变异实测** ⇒ 删 endpoint 即红、还原即绿 |
 | **全仓回归** | **串行**（`mvn -o test`，**不带 `-T1C`**）⇒ **BUILD SUCCESS · 16/16 模块 SUCCESS** ⇒ **927 例 · Failures 0 · Errors 0 · Skipped 0**（模块级汇总：common **247**（245 → 247，+2 条 F-15 新例）· article **157** · follow **72** · like **110** · message **103** · users-common **46** · user **40** · admin **152** · proto/comment/favorite/hot/task **0**）⇒ ⇒ ⚠️ **计数只取回归日志的模块级汇总**（AGENTS.md §五.8 规则 ①） |
-| **三道守门** | `check-arch-invariants.py` ⇒ **EXIT=0**（**PASS 11 · FAIL 0 · N/A 2 · PENDING 1**，共 **14** 条 ⇒ **A14 已计入**）· `check-docs-vs-tree.py` ⇒ **EXIT=0**（新增测试文件 ⇒ 已重跑 `tools/gen-file-tree.py`）· `check-mapping-coverage.py` ⇒ **EXIT=0**（C **641/641** · B **752/752**） |
+| **三道守门** | `check-arch-invariants.py` ⇒ **EXIT=0**（**PASS 11 · FAIL 0 · N/A 2 · PENDING 1**，共 **14** 条 ⇒ **A14 已计入**；`--self-test` ⇒ **14/14 判据均能红**）<br>⚠️ **一次环境假红（2026-11-05 · user-service 那轮）**：首次串行全仓回归里 **article 的 6 条 Kafka 用例全红**（`NoClassDefFound: Could not initialize class …KafkaTestBase` ⇒ 根因 `Container startup failed for image apache/kafka:3.7.2` ⇒ `Container exited with code 126` ⇒ **Kafka 容器起不来** ⇒ 与本轮改动**无因果**）⇒ ⇒ **单独复跑那 6 条 ⇒ 全绿**（`Tests run: 6, Failures: 0`）⇒ ⇒ **复跑整轮串行全仓 ⇒ 16/16 SUCCESS · 927 例全绿**⇒ ⇒ **机器当时的状态**：`docker ps` 有 **25 个运行中容器 ＋ 924 个卷（32.7GB）** ⇒ 资源吃紧 ⇒ Kafka 容器偶发 exit 126⇒ ⇒ **判定式（接 P-24）**：**「容器起不来」类红（`ContainerLaunchException` / exit 126 / `NoClassDefFound …TestBase`）⇒ 同样不能直接归因于代码 ⇒ 必须单独复跑**· `check-docs-vs-tree.py` ⇒ **EXIT=0**（新增测试文件 ⇒ 已重跑 `tools/gen-file-tree.py`）· `check-mapping-coverage.py` ⇒ **EXIT=0**（C **641/641** · B **752/752**） |
 
 ## 11.6 完成度统计
 

@@ -50,7 +50,7 @@ management:
 #    ⇒ 共享层 `GoStyleOtelConfig` 读到的 `otel.exporter.otlp.endpoint` = null
 #    ⇒ ⇒ 按 B 侧的 `if len(c.Endpoint) > 0` 口径**不装 exporter**
 #    ⇒ ⇒ 本域的 span **一条都导不出去**（跨域链路在 Jaeger 侧断链）。
-#    ⇒ 同款缺失共 **5 个域**：hot（hot 域已补）＋ **comment / favorite / message / task**（本段）
+#    ⇒ 同款缺失共 **6 个域**：hot（hot 域已补）＋ comment / favorite / message / task / user-service
 #    ⇒ ⇒ 由收口域**统一补齐**（避免各域各补各的再漂）⇒ 形状与 like / hot **逐条同构**。
 # ⚠️ 共享层 `GoStyleOtelConfig` 读的是 **B 侧那套键名**：
 #    `otel.service.name` / `otel.resource.attributes.service.name`（两套拼法都认）·

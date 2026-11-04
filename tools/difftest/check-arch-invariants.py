@@ -127,12 +127,13 @@ A14_DOMAINS = [
     ("message", "message-service"),
     ("task", "task-service"),
     ("users-admin", "admin-service"),
+    ("users-user", "user-service"),
 ]
-# ⚠️ **两个「已登记但不在清单内」的域**（**不是漏写**，各有确切理由）：
+# ⚠️ **一个「已登记但不在清单内」的域**（**不是漏写**，有确切理由）：
 #   · `hot`（hot-service）⇒ **实现尚未合入 main**（主干里还是空壳 + 48 行的 yml 桩）
 #     ⇒ ⇒ 它那份 `otel:` 段在 `align/hot` 分支上（**值与本清单各域逐条同构**）
 #     ⇒ ⇒ 合入 main 后**立刻**被下面的「通用规则」覆盖（见 A14 的 `通用规则` 一段）⇒ 无需改本清单。
-#   · `user-service`（users-user 子域）⇒ **users 域的 lane 未拍板** ⇒ 其同款缺口另行登记。
+#     ⇒ ⇒ ⚠️ **不要**为了让它进清单而去改主干的 hot yml（那是 48 行的桩，合并时必冲突）。
 
 # A10：手写必填校验器的特征类名（RAG 侧 `GoStyleRequired*` / `GoStyleRequest` 同款）
 # ⚠️ **必须精确匹配** —— 用 `GoStyleRequest\w*` 会把 `GoStyleRequestDeadline`（请求超时传递）
