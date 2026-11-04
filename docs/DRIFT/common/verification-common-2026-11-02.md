@@ -694,6 +694,54 @@ S3b（PG 停）= `200 + 信封 1015` @ 2.05s · S4（持锁）= `200 + 信封 10
 | **C 列文件数变化** | `common/` **110 → 112**（+`FormValues` +`JsonbValueTypeHandler` +`JsonbMapTypeHandler`）· `article/` **63 → 60**（−3 份域内副本）· `message/` **53 → 52**（−1 份域内副本）⇒ ⇒ **全仓 C 列 638 → 641**（净 +3） |
 | **证据强度** | **E-2（源码级对照）** 为主 —— 「归一化 diff 逐行相同」是**静态**证据；⚠️ **不是 E-4 双侧活体对拍**（本条**未**起 B 侧进程对拍 ⇒ ⇒ 行为等价性由两侧**各自已有**的测试证据支撑，**不新增**对拍证据）⇒ ⇒ 依 E-2 读作「**在该静态层一致**」 |
 
+---
+
+### ✅ DRIFT-COMMON-V20｜gRPC 服务端**出向载体 `GoStyleRequestDeadline` 从未绑上** ＋ **有效期限不含客户端 deadline** —— **已收口（2026-11-04）**
+
+**状态**：**✅ 已收口**（2026-11-04 · `global` 收口域 · 落点 `common/` ⇒ 符合 AGENTS.md §五.3 规则 3）
+⇒ ⇒ **闭合 `DRIFT-COMMON-V17` 留下的「另案」**（V17 只绑了**入向**载体，出向载体当时被判「爆炸半径更大 ⇒ 另案」⇒ **本条即该另案**）。
+⇒ ⇒ **关联**：comment 域台账 `docs/DRIFT/comment/verification-comment-service-2026-11-03.md` 残留的 **B 组第 ⑨ 点 = 本条 D-15**
+⇒ ⇒ ⚠️ **该域的棘轮会按设计转红**（见下「🔴 连带效应」）。
+
+| 项 | 内容 |
+|---|---|
+| **现象（实测 · 修前）** | ① **全仓 `src/main` 里 `GoStyleRequestDeadline.bindAbsoluteNanos` / `.begin(` 零调用点** —— `git grep -n "GoStyleRequestDeadline\.\(bindAbsoluteNanos\|begin\)" HEAD -- '*/src/main/*'` **只命中 1 处**，且是 `common/…/observability/DeadlineState.java:107` 的**一段 javadoc 提及**（不是调用）⇒ ⇒ **出向载体在生产里从不绑**；② ⇒ 两个消费点因此**恒读到 -1**：① `common/protection/OutboundDeadlineInterceptor:258`（出向 gRPC 上界）② `common/redis/Deadline:114`（Redis 期限闸门）⇒ ⇒ **出向 gRPC 无上界、Redis 期限闸门形同虚设**；③ C 侧 gRPC 服务端**有效期限 = 服务端自己的 `rpc-timeout`**（`rpcDeadlineNanos(long)`）⇒ ⇒ **客户端 deadline 完全不参与** |
+| **B 侧基准（逐字读过消费点）** | RAG `service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java`：`:302-303`（`serverBudgetNanos` = `toNanosSaturated(timeout)`）· **`:304`（`effectiveTimeoutNanos = Math.min(serverBudgetNanos, clientDeadlineRemainingNanos())`）** · `:311-312`（`absoluteDeadlineNanos = saturatingAddNanos(monotonicNanos, effectiveTimeoutNanos)` · **入口算一次**）· `:317`（`hasDeadlineBudget = effectiveTimeoutNanos != Long.MAX_VALUE`）· `:339-340`（**调度器延时用 effective**）· `:501`（无预算**早退** ⇒ 两个载体都不绑）· **`:516-522`（两个载体绑同一绝对时刻）** · `:751-769`（`clientDeadlineRemainingNanos` · 纳秒精度 · 已过期返 0）· `:775-784`（`saturatingAddNanos`） |
+| **🔴 B 侧注释与代码不一致 ⇒ **以代码为准** | B 侧 `:298-301` 的注释写「`timeout<=0` 时**保持旧行为**（不引入客户端 deadline）」⇒ 但 B 侧**代码** `:304` 是 `Math.min(serverBudgetNanos, clientDeadlineRemainingNanos())` ⇒ **无条件参与** ⇒ 按 AGENTS.md §3.1「不要拿代码注释当对照基准」⇒ ⇒ **本仓照抄代码**。<br>⚠️ **这条不是边角**：本仓 **comment / favorite / task / hot 四域的 `application.yml` 没配 `observability.rpc-timeout`**（实测）⇒ ⇒ 这四域的客户端 deadline 是**唯一**的预算来源 ⇒ ⇒ 不实现 min ⇒ 这四域的客户端 deadline **完全不参与** ⇒ ⇒ 与 B 侧漂移 |
+| **修法（已实施 · 2026-11-04）** | ① `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` —— **入口**算一次 `effectiveTimeoutNanos()`（= `min(serverBudgetNanos(), clientDeadlineRemainingNanos())`）⇒ `absoluteDeadlineNanos = saturatingAddNanos(startNanos, effectiveTimeoutNanos)`（**早于 `registry == null` 早退** ⇒ ⇒ 与「装没装 Micrometer registry」无关）；② `withDeadline` 的 `onHalfClose` 里**两个载体绑同一绝对时刻**（`DeadlineState.bindAbsoluteNanos` ＋ `GoStyleRequestDeadline.bindAbsoluteNanos`）⇒ ⇒ 不会出现「SQL 已过期但出向还活着」；③ **调度器延时改用 min 后的值**（B 侧 `:339-340`），**注册条件不变**（服务端预算为正才注册 · 同 B 侧）；④ **删除**旧 `rpcDeadlineNanos(long)`（其语义 = 只取服务端预算 ⇒ 已被 `serverBudgetNanos()` 取代） |
+| **三段式（AGENTS.md §3.2）** | **① 比 B 侧多做了什么**：C 侧因 D11 包压平，「观测＋超时调度」在 `ObservabilityAutoConfiguration.GrpcObservationInterceptor`、「**绑载体**」在同一类的 `withDeadline`（B 侧两者都在 `RpcInterceptor` 一个类里）⇒ ⇒ **纯形态差异**。<br>**② 语义还一样吗**：**一样** —— 逐点对照 B 侧 `:302-304` / `:311-312` / `:317` / `:339-340` / `:501` / `:516-522` / `:751-769` / `:775-784` 全部同形；「**无预算 ⇒ 两个载体都不绑**」由 C 侧 `withDeadline` 的 `absoluteDeadlineNanos == Long.MAX_VALUE` 早退实现（= B 侧 `:501` 早退；B 侧 `:517-520` 那个三元分支**其自身注释已写明「不可达 · 只是冗余防护」**）⇒ ⇒ **等价**。<br>**③ B 出处**：同上行号 |
+| **验收判据** | ① **真 socket**（`NettyServerBuilder.forPort(0)` ＋ `NettyChannelBuilder`）的 **4 例**新测试 ⇒ 断言点落在**handler 体内**（证「绑在真正跑 handler 的线程上」而不是「代码里写了 bind」）⇒ 见「读数」；② **变异双向**：变异 A（摘掉出向载体绑定）⇒ **4/4 红**；变异 B（`effectiveTimeoutNanos` 退回只取服务端预算）⇒ **①④ 红、②③ 绿** ⇒ ⇒ **两次都还原复绿**；③ 全仓回归；④ 三道守门 EXIT=0 |
+| **⚠️ 诚实边界** | ① **作用域随 `onHalfClose` 返回而结束** ⇒ ⇒ **异步 handler 不在作用域内**（与 B 侧同款 · 本仓 10 个域的 proto 全是 unary ⇒ handler 在 `onHalfClose` 内同步跑完）；② **无预算 ⇒ 两个载体都不绑**（服务端预算与客户端 deadline **都**没有 ⇒ 恒 `Long.MAX_VALUE`）⇒ 与 B 侧 `:501` 早退同款；③ **`clientDeadlineRemainingNanos()` 只在 `interceptCall` 入口读一次** ⇒ ⇒ 「入口 → `onHalfClose`」那一小段**不计入**（与 B 侧同款 —— B 侧也在入口算）；④ **grpc-java 的服务端 `Context` 里的 deadline 由客户端 `grpc-timeout` 头派生** ⇒ ⇒ **in-process 传输也传播**（实测见下）⇒ ⇒ 「客户端没带 deadline ⇒ 服务端读到 `null` ⇒ effective = 服务端预算」⇒ ⇒ **不带 deadline 的调用方不受本条影响**（对照用例 ③ 钉住） |
+
+#### 🔴 一次**并行跑法**造成的假红（本条副产品 · 读数纪律）
+
+| 项 | 内容 |
+|---|---|
+| **现象** | 首次全量回归用 `mvn -o -T1C test`（**并行**）⇒ **like-service** 与 **admin-service** 各红 1 条，**两条都是 `DEADLINE_EXCEEDED`** |
+| **⚠️ 差点被误判成「D-15 引入回归」** | 那两条红**恰好**是本条改动会影响的语义（服务端提前掐断）⇒ ⇒ 若不复核，就会把一次**环境假红**当成**行为回归** ⇒ ⇒ 差点回滚掉正确的修复 |
+| **归因（三步实测）** | ① 用 **HEAD 版（无 D-15）单独**跑 like 那条 ⇒ **4/4 绿** ⇒ ⇒ 「本来红」不成立；② 用 **D-15 单独**跑同样两条 ⇒ like **4/4 绿** ＋ admin **1/1 绿**（机器读数 `code=DEADLINE_EXCEEDED description=rpc deadline exceeded elapsedMs=2022` ≈ 该域 2s `rpc-timeout` ⇒ **正是设计行为**）⇒ ⇒ **D-15 不是根因**；③ **根因 = `-T1C` 并行争抢** —— admin 那条用例**本身要跑 30s**，而它的预算只有 **2s** ⇒ ⇒ 稍有 CPU/IO 争抢就超时；like 那条同理 |
+| **⇒ 判定式（可复用）** | **凡用例断言「到点断连 / 超时 / 预算耗尽」，就不能在并行 reactor 下判红** ⇒ ⇒ 必须**单独串行复跑**再归因 ⇒ ⇒ **已入账 [`docs/Pitfalls/_cross/P-24-并行reactor下时间预算类用例会假红.md`](../../Pitfalls/_cross/P-24-并行reactor下时间预算类用例会假红.md)**（**P-24**） |
+
+#### 🔴 连带效应：comment 域的**棘轮**按设计转红
+
+comment 域工作树里 `service/comment/src/test/java/com/rag/comment/grpc/CommentOutboundDeadlineCarrierGateTest.java`（**未入库新文件**）把「出向载体缺席」钉成了**三条会红的断言**：
+① `outboundCarrierPresent` 期望 `isFalse()`（`:405-411`）② 入向剩余期望 `> CLIENT_DEADLINE_MILLIS`（`:415-422`）③ 出向剩余期望 `isEqualTo(-1L)`（`:426-430`）。
+⇒ ⇒ **本条落地后三条同时转红** —— 且断言文案**自己就写着**「📌 已登记差异（台账 D-15 · 归属 global 收口域）…… **本条变红 = 共享层已修** ⇒ ⇒ 届时请把本条改回 B 侧真值断言并撤掉台账 D-15」。
+⇒ ⇒ **这是棘轮按设计响铃，不是回归** ⇒ ⇒ **由 comment lane 翻断言并撤 D-15**（本轮**不代改他 lane 的在制品**）。
+
+#### ✅ 读数（2026-11-04）
+
+| 项 | 读数 |
+|---|---|
+| **新增测试** | `common/src/test/java/com/rag/common/autoconfigure/GrpcOutboundCarrierBindingTest.java` —— **4 例** · **真 socket**（`NettyServerBuilder.forPort(0)` ＋ `NettyChannelBuilder`）⇒ ⇒ 验的是「真 wire 上的 deadline 传播」<br>① `outboundCarrierIsBoundAndEffectiveBudgetIsTheMin`（客户端 400ms ＋ 服务端 5s ⇒ **两载体剩余都 ≤400ms**）② `bothCarriersPointToTheSameInstant`（两载体剩余差 ≤2ms）③ `withoutClientDeadlineTheServerBudgetIsUnchanged`（**对照**：客户端不带 deadline ⇒ 仍 5s）④ `clientDeadlineAppliesEvenWithoutServerBudget`（服务端无 `rpc-timeout` ⇒ 客户端 deadline 独立生效） |
+| **变异 A** | 拿掉 `withDeadline` 里的 `GoStyleRequestDeadline.bindAbsoluteNanos` ⇒ **4/4 全红**（`Tests run: 4, Failures: 4`）⇒ ⇒ 「出向载体绑定」这条有牙齿；⇒ ⇒ 还原后同条件复跑 = **4/4 绿** |
+| **变异 B** | `effectiveTimeoutNanos()` 退回只取 `serverBudgetNanos()`（去掉 min）⇒ **2/4 红** —— ① `Expecting actual: 4999733791L to be less than or equal to: 400000000L` · ④ `Expecting actual: -1L to be greater than: 0L` ⇒ ⇒ **min 语义有牙齿**，且②③（对照）**仍绿** ⇒ ⇒ 还原后同条件复跑 = **4/4 绿** |
+| **服务端 ctx deadline 实测** | 临时探针（已删）量「服务端 interceptor 里 `io.grpc.Context.current().getDeadline()` 看到什么」⇒ **客户端不带 deadline ⇒ `null`**（⇒ effective = 服务端预算）· **客户端带 5s ⇒ `4.994771750s from now`**（**netty 与 in-process 都传播**）⇒ ⇒ 证明「不带 deadline 的调用方不受影响」这条对照成立 |
+| **common 全量** | `mvn -o -pl common -am test` ⇒ **`Tests run: 245, Failures: 0, Errors: 0, Skipped: 0`**（241 → 245，+4 新例） |
+| **三道守门** | `check-arch-invariants.py` ⇒ **EXIT=0**（PASS 10 · FAIL 0 · N/A 2 · PENDING 1）· `check-docs-vs-tree.py` ⇒ **EXIT=0**（新增测试文件 ⇒ 已重跑 `python3 tools/gen-file-tree.py` ⇒ `docs/File_Tree/common.md` 已更新）· `check-mapping-coverage.py` ⇒ **EXIT=0**（C **641/641** · B **752/752**） |
+| **§11.2 状态表复算** | 按台账自述口径（逐行扫 §11.2 · 取**第 5 格**状态）机器复算 ⇒ **承接行 91 / 标记数 91 / 复合状态行 0 / PASS 89 / NOT_IMPLEMENTED 0 / INTENTIONALLY_CHANGED 2 / FAIL 0 / FRAMEWORK_DIFFERENCE 0 / NOT_VERIFIED 0 / BLOCKED 0** ⇒ ⇒ 与自报数**逐项一致**（本条**不新增 B 承接行** ⇒ §11.2 不动） |
+| **⚠️ 全仓回归读数** | **串行**（`mvn -o test`，**不带 `-T1C`**）⇒ **BUILD SUCCESS · 16/16 模块 SUCCESS** ⇒ **925 例 · Failures 0 · Errors 0 · Skipped 0**（模块级汇总：common **245** · article **157** · follow **72** · like **110** · message **103** · users-common **46** · user **40** · admin **152** · proto/comment/favorite/hot/task **0**）⇒ ⇒ ⚠️ **计数只取回归日志的模块级汇总**（AGENTS.md §五.8 规则 ① · 不取 `surefire-reports/*.xml` 求和）<br>⚠️ **同一份代码在 `-T1C` 并行下会红 2 条**（like / admin 各 1 条 `DEADLINE_EXCEEDED`）⇒ ⇒ **已判定为环境假红**，三步实测见上「并行跑法造成的假红」⇒ ⇒ **本条读数取串行** |
+
 ## 11.6 完成度统计
 
 > **口径**：按**职责**统计，**不按文件数或行数**（§11.6 明令）。

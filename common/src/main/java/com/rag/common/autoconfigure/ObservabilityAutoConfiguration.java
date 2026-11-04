@@ -1,6 +1,7 @@
 package com.rag.common.autoconfigure;
 
 import com.rag.common.observability.DeadlineState;
+import com.rag.common.observability.GoStyleRequestDeadline;
 import com.rag.common.observability.HttpMiddleware;
 import com.rag.common.observability.ObservabilityCustomizer;
 import com.rag.common.observability.ObservabilityLifecycle;
@@ -229,8 +230,14 @@ public class ObservabilityAutoConfiguration {
             // ⇒ ⇒ 预算从「调用开始」起算，**不是**从「handler 开始跑」起算。
             // ⚠️ **必须早于 registry 早退**：绑 deadline 与「装没装 Micrometer registry」**无关**
             // ⇒ ⇒ 否则「没装观测的进程」就又没有 deadline ⇒ ⇒ 与 B 侧不符。
+            //
+            // 🔴 **有效期限 = min(服务端预算, 客户端 deadline 剩余)**（B 出处 · `RpcInterceptor.java:304`
+            //   `long effectiveTimeoutNanos = Math.min(serverBudgetNanos, clientDeadlineRemainingNanos());`）
+            //   ⇒ 与 Go 的 `context.WithTimeout(ctx, timeout)` 同语义（父 deadline 更早时**继承父的**）
+            //   ⇒ ⇒ **绝对时刻在入口算一次**，两个载体共用 ⇒ 不会出现「SQL 已过期但出向还活着」。
             final long startNanos = System.nanoTime();
-            final long absoluteDeadlineNanos = rpcDeadlineNanos(startNanos);
+            final long effectiveTimeoutNanos = effectiveTimeoutNanos();
+            final long absoluteDeadlineNanos = saturatingAddNanos(startNanos, effectiveTimeoutNanos);
 
             ObservationRegistry registry = registryProvider.getIfAvailable();
             if (registry == null) {
@@ -258,7 +265,11 @@ public class ObservabilityAutoConfiguration {
                     };
 
             // ⚠️ 超时：B 的 rpc 超时由 zrpc 的 timeout 中间件执行 ⇒ 到点 ⇒ DEADLINE_EXCEEDED
-            ScheduledFuture<?> timeoutTask = scheduleTimeout(wrapped, timeout);
+            // 🔴 **延时用 `effectiveTimeoutNanos`（min 后的）而不是服务端自己的 timeout**
+            //   （B 出处 · `RpcInterceptor.java:339-340`）⇒ ⇒ 与 Go 的 `context.WithTimeout(ctx, timeout)` 同语义
+            //   ⇒ ⚠️ 若客户端 deadline 更短 ⇒ 服务端**跟着客户端**的节奏放弃（两侧同时死）
+            //   ⇒ ⚠️ 若客户端 deadline 已过期 ⇒ effective=0 ⇒ 调度器**立即** fire（同 B 侧）
+            ScheduledFuture<?> timeoutTask = scheduleTimeout(wrapped, timeout, effectiveTimeoutNanos);
 
             ServerCall.Listener<ReqT> listener = next.startCall(wrapped, headers);
             // ⚠️ 用**匿名**的 SimpleForwardingServerCallListener（它本身是 final ⇒ 不能被继承）
@@ -279,20 +290,21 @@ public class ObservabilityAutoConfiguration {
         }
 
         /**
-         * 🔴 **把入向 deadline 绑到「真正跑 handler 的线程」上**（DRIFT-COMMON-V17 · PARITY-006 根因）。
+         * 🔴 **把 deadline 绑到「真正跑 handler 的线程」上**（DRIFT-COMMON-V17 · PARITY-006 根因
+         * ＋ **DRIFT-COMMON-V20 · D-15 出向载体**）。
          *
          * <p><b>比 B 侧多做了什么</b>：B 侧 {@code RpcInterceptor.newUnaryServerInterceptor} 把
          * 「超时调度」＋「span」＋「两个 deadline 载体」都塞在一个拦截器里；C 侧因 D11 包压平被拆成
          * {@code ObservabilityAutoConfiguration.GrpcObservationInterceptor}（观测 ＋ 超时调度）
-         * ＋ 本方法（<b>只补「入向载体」那一个缺口</b>）。
+         * ＋ 本方法（<b>绑两个载体</b>）。
          *
          * <p><b>语义还一样吗</b>：<b>一样</b>，且这是<b>向 B 靠拢</b> —— B 侧
          * {@code RpcInterceptor.java:516-522} 在 {@code onHalfClose} 里
          * {@code try (DeadlineState.Scope ignoredScope = DeadlineState.bindAbsoluteNanos(absoluteDeadlineNanos); …) { super.onHalfClose(); }}
          * ⇒ 本方法<b>逐字同形</b>（同一个绝对时刻、同样包住 {@code super.onHalfClose()}）。
-         * <br>⚠️ <b>刻意只补「入向」载体 {@code DeadlineState}</b>：B 侧同时绑的<b>出向</b>载体
-         * {@code GoStyleRequestDeadline}（跨域 gRPC 调用的出向预算）<b>不在本条范围</b>
-         * ⇒ ⇒ 绑它会改变 message / user 跨域 gRPC 调用的行为 ⇒ ⇒ 爆炸半径超出「修 PARITY-006」⇒ ⇒ 另案。
+         * <br>🔴 **2026-11-03 · D-15 收口**：此前本方法<b>只绑入向载体</b> {@code DeadlineState}
+         * （B 侧同时绑的<b>出向</b>载体 {@code GoStyleRequestDeadline} 被判「另案」⇒ 一直拖着）
+         * ⇒ ⇒ 现<b>两个载体绑同一个绝对时刻</b>，与 B 侧同形。
          *
          * <p><b>B 出处</b>：RAG {@code service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java:516-522}
          * （{@code newUnaryServerInterceptor} 的 {@code onHalfClose}；L2 业务语义层以 RAG 为基准整段抄 · D13）。
@@ -306,8 +318,19 @@ public class ObservabilityAutoConfiguration {
          * ⇒ ⇒ 预算到点 PG 收到 <b>CancelRequest</b> ⇒ SQLState {@code 57014} ⇒ <b>事务回滚</b>
          * ⇒ ⇒ <b>客户端取消 / 服务端超时后，那条写不再落库</b>（修前 = 落库 ⇒ 副作用已发生）。
          *
-         * <p><b>诚实边界</b>：① <b>无预算不绑</b>（{@code rpc-timeout} 未配 ⇒ 恒 {@link Long#MAX_VALUE}
-         * ⇒ 保持原样 ⇒ 与 B 侧「无预算时不绑出向载体」同款）；② 作用域随 {@code onHalfClose} 返回而结束
+         * <p><b>🔴 两个载体各自的消费点（绑了才生效）</b>：
+         * <ul>
+         *   <li><b>入向 {@code DeadlineState}</b> ⇒ {@code common/persistence/DeadlineQueryTimeoutInjector}
+         *       给每条 SQL 设 query timeout ⇒ 在途写回滚；</li>
+         *   <li><b>出向 {@code GoStyleRequestDeadline}</b> ⇒ ① {@code common/protection/OutboundDeadlineInterceptor:258}
+         *       读剩余预算给<b>出向 gRPC</b> 设上界；② {@code common/redis/Deadline:114} 读剩余预算做
+         *       <b>Redis 期限闸门</b>（预算耗尽 ⇒ 下发前就失败）。
+         *       ⚠️ <b>修前这两个消费点在生产里恒读 {@code -1}（载体缺席）⇒ 期限闸门形同虚设</b>。</li>
+         * </ul>
+         *
+         * <p><b>诚实边界</b>：① <b>无预算不绑</b>（服务端预算与客户端 deadline <b>都</b>没有 ⇒
+         * 恒 {@link Long#MAX_VALUE} ⇒ 保持原样 ⇒ 与 B 侧「无预算时不绑出向载体」同款）；
+         * ② 作用域随 {@code onHalfClose} 返回而结束
          * ⇒ ⇒ <b>异步 handler</b>（{@code onHalfClose} 返回后才继续跑）<b>不在作用域内</b>
          * ⇒ ⇒ 与 B 侧同款（本仓 10 个域的 proto 全是 unary ⇒ handler 在 {@code onHalfClose} 内同步跑完）。
          */
@@ -320,8 +343,13 @@ public class ObservabilityAutoConfiguration {
                     .SimpleForwardingServerCallListener<ReqT>(delegate) {
                 @Override
                 public void onHalfClose() {
+                    // 🔴 **两个载体绑【同一个绝对时刻】**（B 出处 · `RpcInterceptor.java:516-522`）
+                    //   ⇒ 二者指向**同一时刻** ⇒ 不会出现「SQL 已过期但出向还活着」
+                    //   ⇒ ⚠️ 绑在**真正跑 handler 的线程**上（grpc-java 在 `onHalfClose` 里跑 handler）
                     try (DeadlineState.Scope scope =
-                                 DeadlineState.bindAbsoluteNanos(absoluteDeadlineNanos)) {
+                                 DeadlineState.bindAbsoluteNanos(absoluteDeadlineNanos);
+                         GoStyleRequestDeadline.Scope carrier =
+                                 GoStyleRequestDeadline.bindAbsoluteNanos(absoluteDeadlineNanos)) {
                         super.onHalfClose();
                     }
                 }
@@ -329,31 +357,106 @@ public class ObservabilityAutoConfiguration {
         }
 
         /**
-         * gRPC 服务端的<b>入向预算绝对时刻</b> = 「调用开始」＋ {@code rpc-timeout}。
+         * gRPC 服务端的<b>有效期限</b> = {@code min(服务端预算, 客户端 deadline 剩余)}。
          *
-         * <p>⚠️ <b>为什么用 {@code rpc-timeout} 而不是 {@code resolveInnerBudget()}</b>：
+         * <p>🔴 <b>为什么必须是 min（B 出处 · {@code RpcInterceptor.java:304}）</b>：
+         * <pre>
+         *   B 出处：service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java:302-304
+         *       long serverBudgetNanos = (timeout != null &amp;&amp; timeout.compareTo(Duration.ZERO) &gt; 0)
+         *               ? toNanosSaturated(timeout) : Long.MAX_VALUE;
+         *       long effectiveTimeoutNanos = Math.min(serverBudgetNanos, clientDeadlineRemainingNanos());
+         * </pre>
+         * ⇒ 与 Go 的 {@code context.WithTimeout(ctx, timeout)} <b>同语义</b>
+         * （父 deadline 更早时 Go 直接继承父的）⇒ ⇒ **客户端给的更短 deadline 参与服务端有效期限**。
+         *
+         * <p>⚠️ <b>为什么服务端预算用 {@code rpc-timeout} 而不是 {@code resolveInnerBudget()}</b>：
          * 后者是 <b>HTTP 路径</b>的口径（= {@code min(http-timeout, rpc-timeout)}，因为 D2 域内直连把
          * DB 搬进了 HTTP 边界 ⇒ 内层预算必须<b>严格早于</b> HTTP 的 3s）；而<b>本方法在 gRPC 边界上</b>
          * ⇒ ⇒ 该边界上**没有 HTTP 预算** ⇒ ⇒ 预算就是 gRPC 自己的 {@code rpc-timeout}
          * （B 侧 {@code zrpc.RpcServerConf.Timeout = 2s}）⇒ ⇒ 与 {@code scheduleTimeout} 的超时**同一刻**。
          *
-         * <p>⚠️ **算法与 {@code HttpMiddleware#innerDeadlineNanos} 同款**（饱和加法 ⇒ 溢出判为「无预算」）。
+         * <p>⚠️ <b>「服务端没配 {@code rpc-timeout}」时客户端 deadline 独立生效</b>
+         * ⇒ ⇒ 与 B 侧<b>代码</b>同形（{@code serverBudgetNanos = Long.MAX_VALUE} ⇒ min 之后就是客户端那个）。
+         * ⚠️ <b>这条不是边角</b>：本仓 **comment / favorite / task / hot 四域的 {@code application.yml}
+         * 没配 {@code observability.rpc-timeout}</b>（实测）⇒ ⇒ 这四域的客户端 deadline 是
+         * <b>唯一</b>的预算来源 ⇒ ⇒ 不实现 min ⇒ 这四域的客户端 deadline **完全不参与** ⇒ ⇒ 与 B 侧漂移。
+         * <br>⚠️ <b>B 侧那段注释与代码不一致</b>：注释写「{@code timeout<=0} 时保持旧行为（不引入客户端 deadline）」
+         * ⇒ 但 B 侧<b>代码</b>是 {@code Math.min(serverBudgetNanos, clientDeadlineRemainingNanos())}
+         * ⇒ ⇒ <b>以代码为准</b>（AGENTS.md §3.1：「不要拿代码注释当对照基准」）⇒ ⇒ 本仓照抄<b>代码</b>。
+         *
+         * <p>⚠️ <b>返回 {@link Long#MAX_VALUE} = 「无预算」</b> ⇒ 调用方据此<b>不绑任何载体</b>
+         * （与 B 侧「Go 侧 ctx 此时没有 deadline ⇒ 出向载体不能绑」同款）。
          */
-        private long rpcDeadlineNanos(long startNanos) {
+        private long effectiveTimeoutNanos() {
+            long serverBudgetNanos = serverBudgetNanos();
+            long clientRemainingNanos = clientDeadlineRemainingNanos();
+            return Math.min(serverBudgetNanos, clientRemainingNanos);
+        }
+
+        /**
+         * 服务端自己的 gRPC 预算（纳秒）；<b>没配 / 非正 / 溢出 ⇒ {@link Long#MAX_VALUE}</b>。
+         *
+         * <p>B 出处：{@code RpcInterceptor.java:302-303}（{@code toNanosSaturated(timeout)}）。
+         */
+        private long serverBudgetNanos() {
             Duration budget = properties == null ? null : properties.getRpcTimeout();
             if (budget == null || budget.isZero() || budget.isNegative()) {
                 return Long.MAX_VALUE;
             }
-            long nanos;
             try {
-                nanos = budget.toNanos();
+                long nanos = budget.toNanos();
+                return nanos <= 0L ? Long.MAX_VALUE : nanos;
             } catch (ArithmeticException overflow) {
                 return Long.MAX_VALUE;
             }
-            if (nanos <= 0L || nanos > Long.MAX_VALUE - startNanos) {
+        }
+
+        /**
+         * 客户端给的 deadline 的<b>剩余纳秒</b>；<b>客户端没带 deadline ⇒ {@link Long#MAX_VALUE}</b>。
+         *
+         * <p>🔴 <b>必须取纳秒</b>：取毫秒会把 grpc-java 内部的纳秒精度截到毫秒
+         * ⇒ 客户端 deadline 的亚毫秒部分被丢弃（B 侧 ctx 是纳秒精度）⇒ 对拍会出现「差不到 1ms」的
+         * 不可解释差异。
+         *
+         * <p>⚠️ <b>必须用全限定名</b>：本类的 import 里<b>没有</b> OTel 的 {@code io.opentelemetry.context.Context}
+         * ⇒ 但为与 B 侧同款（其 {@code RpcInterceptor} import 了 OTel 的 Context）⇒ 一律写全限定名。
+         *
+         * <p>⚠️ <b>已过期 ⇒ 返回 0（不是负数）</b>：B 侧同款（{@code remaining > 0 ? remaining : 0L}）
+         * ⇒ ⇒ effective = 0 ⇒ 绝对时刻 = 入口时刻 ⇒ 载体绑上即「已耗尽」
+         * ⇒ ⇒ 调度器立即 fire（同 Go 的 {@code timeoutCtx.Done()} 已就绪 ⇒ select 立即走超时分支）。
+         *
+         * <p>B 出处：{@code RpcInterceptor.java:751-769}（{@code clientDeadlineRemainingNanos}）。
+         */
+        private static long clientDeadlineRemainingNanos() {
+            try {
+                io.grpc.Deadline deadline = io.grpc.Context.current().getDeadline();
+                if (deadline == null) {
+                    return Long.MAX_VALUE;
+                }
+                long remaining = deadline.timeRemaining(TimeUnit.NANOSECONDS);
+                return remaining > 0 ? remaining : 0L;
+            } catch (RuntimeException e) {
                 return Long.MAX_VALUE;
             }
-            return startNanos + nanos;
+        }
+
+        /**
+         * 饱和加法：{@code base + delta} 溢出 ⇒ 返回 {@link Long#MAX_VALUE}（「几乎无限」）。
+         *
+         * <p>⚠️ <b>为什么不用 {@code base + delta}</b>：溢出后会变成<b>负数</b>
+         * ⇒ 会被读成「已过期」⇒ 请求会被立刻判死（与 {@code DeadlineState} 里的饱和处理一致）。
+         *
+         * <p>B 出处：{@code RpcInterceptor.java:775-784}（{@code saturatingAddNanos}）。
+         */
+        private static long saturatingAddNanos(long base, long delta) {
+            if (delta == Long.MAX_VALUE) {
+                return Long.MAX_VALUE;
+            }
+            try {
+                return Math.addExact(base, delta);
+            } catch (ArithmeticException overflow) {
+                return Long.MAX_VALUE;
+            }
         }
 
         private void finish(Observation observation, Status status, Duration duration, AtomicBoolean finalized) {
@@ -384,14 +487,28 @@ public class ObservabilityAutoConfiguration {
             }
         }
 
-        private ScheduledFuture<?> scheduleTimeout(ServerCall<?, ?> call, Duration timeout) {
+        /**
+         * 注册超时调度器：<b>延时用 {@code effectiveTimeoutNanos}（min 后的）而不是服务端自己的 timeout</b>。
+         *
+         * <p>🔴 <b>为什么延时用 min 后的值</b>（B 出处 · {@code RpcInterceptor.java:339-340}）：
+         * 与 Go 的 {@code context.WithTimeout(ctx, timeout)} 同语义 ⇒ 客户端 deadline 更短时
+         * ⇒ 服务端<b>跟着客户端</b>的节奏放弃 ⇒ ⇒ 两侧同时死（Go 侧 {@code ctx} 随客户端一起到期）。
+         * <br>⚠️ <b>注册条件仍是「服务端预算为正」</b>（同 B 侧）：服务端没配 {@code rpc-timeout} 时
+         * ⇒ <b>不注册</b>调度器（服务端不主动断连）⇒ 但<b>客户端 deadline 仍参与载体绑定</b>
+         * ⇒ ⇒ 出向/入向的<b>剩余预算</b>按客户端的来 ⇒ 与 B 侧代码同形。
+         *
+         * @param timeout               服务端自己的 {@code rpc-timeout}（<b>只用于判「要不要注册」</b>）
+         * @param effectiveTimeoutNanos 实际延时（= {@code min(服务端预算, 客户端 deadline 剩余)}）
+         */
+        private ScheduledFuture<?> scheduleTimeout(
+                ServerCall<?, ?> call, Duration timeout, long effectiveTimeoutNanos) {
             if (timeout == null || timeout.isZero() || timeout.isNegative()) {
                 return null;
             }
             return timeoutScheduler().schedule(
                     () -> call.close(Status.DEADLINE_EXCEEDED
                             .withDescription("rpc deadline exceeded"), new Metadata()),
-                    timeout.toNanos(), TimeUnit.NANOSECONDS);
+                    effectiveTimeoutNanos, TimeUnit.NANOSECONDS);
         }
 
         private static void cancelQuietly(ScheduledFuture<?> task) {
