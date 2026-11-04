@@ -107,6 +107,7 @@
 │                       │   └── model/
 │                       │       └── HeavyKeeperContractTest.java    # HeavyKeeper 的数值契约测试 —— 三组判据：① {@code uint32} 无符号语义；
 │                       ├── grpc/
+│                       │   ├── HotGrpcErrorMappingTest.java    # hot 域 gRPC 边界的「错误码映射」契约测试 —— 本轮补上的真实缺口。
 │                       │   └── HotGrpcServiceRealGrpcTest.java    # hot 域 gRPC 面的「真 gRPC」测试 —— 把 5 个方法逐条钉死。
 │                       ├── http/
 │                       │   └── HotHttpRealTomcatTest.java    # hot 域 HTTP 面的「真 Tomcat」测试 —— 真 Spring 上下文 + 真 Tomcat

@@ -14,6 +14,11 @@
       （否则比的是分块帧而不是业务字节 ⇒ 假红）；
     · ``Date`` / ``Server`` 等**易变头**刻意不比（见 README「比对口径」）。
 
+⚠️ **1xx informational 会被跳过**（RFC 9110 §15.2）：本仓共享层的 ``ClientDisconnectProbe``
+会**直接往 socket 写** ``HTTP/1.1 103 Early Hints`` ⇒ **慢请求**的响应流前面会带若干个 1xx 块
+⇒ 必须**跳过所有 1xx、只取最终响应** ⇒ 否则整份读数错位（详见 ``_split_final_response`` 的注释）。
+⇒ 解析器的自检见 ``http_probe_selftest.py``（每次探针运行都会被执行）。
+
 用法：
     python3 http_probe.py <port> <method> <path> [body]
 """
@@ -53,6 +58,58 @@ def _decode_chunked(raw: bytes) -> bytes:
     return bytes(out)
 
 
+def _status_code(status_line: str) -> int | None:
+    """从状态行里取状态码（取不到就返回 None）。"""
+    parts = status_line.split(" ")
+    if len(parts) < 2:
+        return None
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
+
+
+def _split_final_response(raw: bytes) -> tuple[str, str, bytes]:
+    """从原始响应字节里切出**最终响应**（跳过所有 1xx informational）。
+
+    🔴 **为什么必须跳过 1xx（RFC 9110 §15.2）**：
+        1xx（informational）**不终结**响应 ⇒ 后面还有真正的响应。
+        而本仓共享层的 ``ClientDisconnectProbe`` 会**直接往 socket 写**
+        ``HTTP/1.1 103 Early Hints\\r\\n\\r\\n`` 作断连探针
+        ⇒ **慢请求**（本域的超时面就要 2~3s）的响应流**前面会带若干个 1xx 块**。
+
+    ⚠️ **旧实现按第一个 ``\\r\\n\\r\\n`` 切分** ⇒ 遇到 1xx 前缀时**整份读数错位**
+    （把 1xx 当成最终响应 ⇒ 状态行取到 "103 Early Hints"、body 变成后续全部字节）。
+    ⇒ 那不是「偶发」：请求越慢越容易触发 ⇒ **超时面 100% 触发**。
+
+    返回：(原始状态行, Content-Type, body 字节)
+    """
+    rest = raw
+    while True:
+        head, sep, payload = rest.partition(b"\r\n\r\n")
+        if not sep:
+            # 连状态行都没拿到 ⇒ 连接层失败（探针据此判定「挂死」）
+            return "<NO-RESPONSE>", "", raw
+        lines = head.split(b"\r\n")
+        status_line = lines[0].decode("latin-1")
+        code = _status_code(status_line)
+        if code is not None and 100 <= code < 200:
+            # 1xx informational ⇒ 丢弃本块，继续读下一段（**不终结响应**）
+            rest = payload
+            continue
+        content_type = ""
+        chunked = False
+        for line in lines[1:]:
+            lowered = line.lower()
+            if lowered.startswith(b"content-type:"):
+                content_type = line.split(b":", 1)[1].decode("latin-1").strip()
+            elif lowered.startswith(b"transfer-encoding:") and b"chunked" in lowered:
+                chunked = True
+        if chunked:
+            payload = _decode_chunked(payload)
+        return status_line, content_type, payload
+
+
 def probe(port: int, method: str, path: str, body: str | None) -> str:
     req = f"{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
     if body is not None:
@@ -70,23 +127,7 @@ def probe(port: int, method: str, path: str, body: str | None) -> str:
     finally:
         sock.close()
 
-    head, sep, payload = raw.partition(b"\r\n\r\n")
-    if not sep:
-        # 连状态行都没拿到 ⇒ 连接层失败（探针据此判定「挂死」）
-        return "HTTP|<NO-RESPONSE>||" + payload.hex()
-
-    lines = head.split(b"\r\n")
-    status_line = lines[0].decode("latin-1")
-    content_type = ""
-    chunked = False
-    for line in lines[1:]:
-        lowered = line.lower()
-        if lowered.startswith(b"content-type:"):
-            content_type = line.split(b":", 1)[1].decode("latin-1").strip()
-        elif lowered.startswith(b"transfer-encoding:") and b"chunked" in lowered:
-            chunked = True
-    if chunked:
-        payload = _decode_chunked(payload)
+    status_line, content_type, payload = _split_final_response(raw)
     return f"HTTP|{status_line}|{content_type}|{payload.hex()}"
 
 

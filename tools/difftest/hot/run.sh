@@ -258,7 +258,7 @@ cleanup() {
 trap cleanup EXIT
 
 # ══════════════════════════ 0. 前置检查（缺 ⇒ exit 2，绝不静默降级）═════════════
-step "0/13 前置检查"
+step "0/14 前置检查"
 for cmd in docker mvn java javac curl python3 lsof nc unzip; do
   command -v "${cmd}" >/dev/null 2>&1 || die "缺命令：${cmd}"
 done
@@ -274,7 +274,7 @@ B_REPO_DIRTY="$( cd "${B_REPO}" && git status --porcelain -- service/hot service
 say "   ✓ 命令齐 / Nacos+Jaeger 在跑 / B 仓干净"
 
 # ══════════════════════════ 1. 隔离资源 ═══════════════════════════════════════
-step "1/13 隔离资源：2 × Redis（+ 1 × PG + 2 × Kafka broker）"
+step "1/14 隔离资源：2 × Redis（+ 1 × PG + 2 × Kafka broker）"
 # ⚠️ **必须先清掉「上一轮遗留的同前缀容器」**：容器名带 `$$` ⇒ 每轮唯一
 #    ⇒ 上一轮的容器**不会被本轮的 cleanup 删掉**（上一轮若被强杀 ⇒ cleanup 没跑）
 #    ⇒ ⚠️ **Exited 的容器仍然占着发布端口**（docker-proxy 还在）⇒ `docker run -p` 报
@@ -391,7 +391,7 @@ else
 fi
 
 # ══════════════════════════ 2. 构建两侧 ═══════════════════════════════════════
-step "2/13 构建两侧（离线；B 侧**只读**）"
+step "2/14 构建两侧（离线；B 侧**只读**）"
 ( cd "${B_REPO}" && mvn -o -q -pl service/hot/hot-api,service/hot/hot-rpc -am package -DskipTests ) \
   || die "B 侧构建失败"
 B_API_JAR="${B_REPO}/service/hot/hot-api/target/hot-api-0.0.1-SNAPSHOT.jar"
@@ -412,7 +412,7 @@ B_REPO_DIRTY2="$( cd "${B_REPO}" && git status --porcelain -- service/hot servic
 say "   ✓ 两侧构建完成（B 两 jar + C 一 jar；**B 仓源码仍然干净**）"
 
 # ══════════════════════════ 3. 编译探针 ═══════════════════════════════════════
-step "3/13 编译探针（article-rpc 桩 + gRPC wire 探针）"
+step "3/14 编译探针（article-rpc 桩 + gRPC wire 探针）"
 PROBE_OUT="$(mktemp -d "${WORK}/probe.XXXXXX")" || die "建探针临时目录失败"
 CP="$(cat "${WORK}/hot-cp.txt")"
 javac -nowarn -cp "${CP}" -d "${PROBE_OUT}" \
@@ -422,8 +422,14 @@ javac -nowarn -cp "${CP}" -d "${PROBE_OUT}" \
 PROBE_CP="${PROBE_OUT}:${CP}"
 say "   ✓ 探针编译完成（桩 + wire）"
 
+# 🔴 **解析器自检必须在起服务之前跑**：
+#    M5（超时面）依赖「跳过 1xx、只取最终响应」这个解析规则
+#    ⇒ 解析器一旦回退，**超时面 100% 读数错位**，而症状是「形状对但字段乱」⇒ 极难一眼看出
+#    ⇒ 故用合成字节流把它变成**可执行判据**（见 http_probe_selftest.py 的注释）。
+python3 "${HERE}/http_probe_selftest.py" || die "http_probe 解析器自检失败（解析器回退 ⇒ 读数会错位）"
+
 # ══════════════════════════ 4. Nacos 命名空间 + 桩注册 ═════════════════════════
-step "4/13 Nacos 专属命名空间 + article-rpc 桩注册（**两个组**）"
+step "4/14 Nacos 专属命名空间 + article-rpc 桩注册（**两个组**）"
 # ⚠️ **专属命名空间**：避免与其它 lane（public / probe-b-smoke / probe-c-smoke）同名串扰。
 curl -s -m 10 -X POST "http://127.0.0.1:${NACOS_PORT}/nacos/v1/console/namespaces" \
   --data-urlencode "customNamespaceId=${NACOS_NAMESPACE}" \
@@ -465,7 +471,7 @@ disown %% 2>/dev/null
 say "   ✓ article-rpc 桩已注册进 Nacos[${B_GROUP}] 与 [${C_GROUP}]（同一进程 · 127.0.0.1:${STUB_PORT}）"
 
 # ══════════════════════════ 5. 起 B 侧 hot-rpc ════════════════════════════════
-step "5/13 起 B 侧 hot-rpc（gRPC :${B_RPC_PORT}）"
+step "5/14 起 B 侧 hot-rpc（gRPC :${B_RPC_PORT}）"
 # ⚠️ **B 侧的 Redis 必须指向 B 侧容器** ⇒ 两侧的 `hot:articles` 物理隔离。
 # ⚠️ **B 侧不传 NACOS_GROUP** ⇒ 它的 discovery group = DEFAULT_GROUP
 #    ⇒ 与 hot-rpc 的**硬编码注册组**天然对上（见文件头「Nacos 分组隔离」）。
@@ -487,7 +493,7 @@ nacos_assert_instance hot-rpc "${B_GROUP}" "${B_RPC_PORT}" \
 say "   ✓ B 侧 hot-rpc 已监听 :${B_RPC_PORT} 且已自注册进 Nacos[${B_GROUP}]"
 
 # ══════════════════════════ 6. 起 B 侧 hot-api ════════════════════════════════
-step "6/13 起 B 侧 hot-api（HTTP :${B_API_PORT}）"
+step "6/14 起 B 侧 hot-api（HTTP :${B_API_PORT}）"
 # ⚠️ **必须先起 hot-rpc 再起 hot-api**：hot-api 的 `grpc.client.hot-rpc.address`
 #    = `discovery:///hot-rpc` ⇒ 下游没就绪时首请求会拿到 5001。
 ( cd "${WORK}" && exec env \
@@ -502,7 +508,7 @@ host_port_open "${B_API_PORT}" || die "B 侧 hot-api 没监听 :${B_API_PORT}（
 say "   ✓ B 侧 hot-api 已监听 :${B_API_PORT}"
 
 # ══════════════════════════ 7. 起 C 侧 hot-service ═══════════════════════════
-step "7/13 起 C 侧 hot-service（HTTP :${C_HTTP_PORT} · gRPC :${C_GRPC_PORT}）"
+step "7/14 起 C 侧 hot-service（HTTP :${C_HTTP_PORT} · gRPC :${C_GRPC_PORT}）"
 ( cd "${WORK}" && exec env \
   REDIS_HOST=127.0.0.1 REDIS_PORT="${C_REDIS_PORT}" REDIS_PASSWORD= \
   POSTGRES_HOST=127.0.0.1 POSTGRES_PORT="${C_PG_PORT}" POSTGRES_DB=first_db \
@@ -549,7 +555,7 @@ wait_ready "${B_API_PORT}"  "B 侧" || die "B 侧没就绪（见上面的日志�
 wait_ready "${C_HTTP_PORT}" "C 侧" || die "C 侧没就绪（见上面的日志）"
 
 # ══════════════════════════ 9. 阶段 M1 · HTTP 字节面 ══════════════════════════
-step "9/13 阶段 M1 · HTTP 字节面（C :${C_HTTP_PORT} ↔ B :${B_API_PORT}）"
+step "9/14 阶段 M1 · HTTP 字节面（C :${C_HTTP_PORT} ↔ B :${B_API_PORT}）"
 # ⚠️ **比对口径**：原始状态行（含 HTTP 版本与 reason phrase）+ Content-Type + body hex。
 #    `Date` / `Server` 等易变头**刻意不比**（每请求都变 ⇒ 恒红）。
 # ⚠️ **用裸 socket 而不是 curl**：curl 的 `-w '%{http_code}'` 只给状态码，
@@ -708,7 +714,7 @@ http_case "method_not_allowed" POST "/hot/v1/articles" ""
 report_http "method_not_allowed"
 
 # ══════════════════════════ 10. 阶段 M2 · gRPC wire 字节面 ═════════════════════
-step "10/13 阶段 M2 · gRPC wire 字节面（C :${C_GRPC_PORT} ↔ B :${B_RPC_PORT}）"
+step "10/14 阶段 M2 · gRPC wire 字节面（C :${C_GRPC_PORT} ↔ B :${B_RPC_PORT}）"
 # ⚠️ **为什么单独做这一层**：HTTP 层的 JSON 字节一致 **推不出** gRPC wire 字节一致
 #    （proto 编码、字段号、status description 全是另一套面）。
 # ⚠️ **探针不用任何 pb 生成码**（手构 proto3 字节 ＋ byte[] marshaller）⇒ **同一个 jar 跑两侧**
@@ -768,7 +774,7 @@ else
 fi
 
 # ══════════════════════════ 11. 阶段 M3 · Redis 状态面 ═════════════════════════
-step "11/13 阶段 M3 · Redis 状态面（hot:articles 成员 + 分数 + TTL）"
+step "11/14 阶段 M3 · Redis 状态面（hot:articles 成员 + 分数 + TTL）"
 # ⚠️ **TTL 刻意单列、不进「逐字节」判据**：
 #    合并出来的 `hot:articles` 带 `EXPIRE 3600` ⇒ TTL 是**剩余秒数**
 #    ⇒ 两侧的合并 tick 差 1 秒 ⇒ TTL 就差 1 ⇒ 进逐字节判据必然假红。
@@ -815,9 +821,9 @@ fi
 
 # ══════════════════════════ 12. 阶段 M4 · Kafka 三面 ══════════════════════════
 if [ "${SKIP_KAFKA}" = "1" ]; then
-  step "12/13 阶段 M4 · Kafka 三面（**已跳过** · SKIP_KAFKA=1）"
+  step "12/14 阶段 M4 · Kafka 三面（**已跳过** · SKIP_KAFKA=1）"
 else
-  step "12/13 阶段 M4 · Kafka 三面（发同款事件 → 两侧消费 → HeavyKeeper → 合并 → 比 hot:articles）"
+  step "12/14 阶段 M4 · Kafka 三面（发同款事件 → 两侧消费 → HeavyKeeper → 合并 → 比 hot:articles）"
   # ⚠️ **为什么只用 1 个 article_id**：
   #   HeavyKeeper 是**有损概率 sketch** —— 桶冲突时按 `decay^count` **概率**让位
   #   （B 侧 `HeavyKeeper.java:138` 的 `ThreadLocalRandom.current().nextDouble()`）
@@ -884,10 +890,156 @@ else
   report_http "post_kafka_hot_score"
 fi
 
-# ══════════════════════════ 13. 收尾：服务**真正**停掉 + 端口零残留 ═══════════
+# ══════════════════════════ 13. 阶段 M5 · 超时面（Redis 卡住）══════════════════
+# ⚠️ **本面与 M1–M4 的判定口径相反**：
+#    M1–M4 判「两侧**应当**逐字节一致」；本面判的是**已登记的差异（F-02）**
+#    ⇒ ⇒ 两侧**本来就该不同** ⇒ ⇒ 判据 = 「**差异的形状**必须与登记一致」，
+#    **不是**「两侧相等」，**也不是**「差异随便什么样都行」。
+#    ⚠️ **「已登记的差异」不是豁免** ⇒ 两侧的**读数形状都要冻结**（下面两个 EXPECT_*）
+#    ⇒ 若哪天差异的**形状**变了（不是「还在」而是「变了」）⇒ 判失败。
+step "13/14 阶段 M5 · 超时面（Redis 卡住 ⇒ 失败形态与时延）"
+
+# ── 注入「卡住」：让两侧的 Redis 收下命令但**延迟应答** ────────────────────────
+# ⚠️ **为什么是 CLIENT PAUSE，而不是代理 / 断网 / kill 容器**：
+#    · 代理 ⇒ 要改两侧的启动拓扑（本探针已冻结的那套拓扑不能动）；
+#    · kill 容器 / 断网 ⇒ Redis **不可达** ⇒ 客户端**立刻**失败（连接被拒）
+#      ⇒ 测到的是「**连不上**」，**不是**「**卡住**」⇒ **测不到 F-02 说的那个场景**；
+#    · `CLIENT PAUSE <ms> ALL` ⇒ 服务端**收下命令、延迟应答**
+#      ⇒ 客户端的**命令超时**（两侧都是 3s）真的被触发 ⇒ **这才是「卡住」**。
+# ⚠️ **两侧各暂停一次**：两侧 Redis 物理隔离 ⇒ 暂停 B 侧完全不影响 C 侧。
+# ⚠️ **窗口要盖住两次请求**：B 侧约 2s 失败、C 侧约 3s 失败 ⇒ 窗口给 6s。
+M5_PAUSE_MS=6000
+docker exec "${B_REDIS_CONTAINER}" redis-cli CLIENT PAUSE "${M5_PAUSE_MS}" ALL >/dev/null \
+  || die "B 侧 CLIENT PAUSE 失败"
+docker exec "${C_REDIS_CONTAINER}" redis-cli CLIENT PAUSE "${M5_PAUSE_MS}" ALL >/dev/null \
+  || die "C 侧 CLIENT PAUSE 失败"
+say "   · 两侧 Redis 已 CLIENT PAUSE ${M5_PAUSE_MS}ms（服务端收下命令但延迟应答 ⇒ 客户端命令超时被触发）"
+
+# ── 两侧**并发**发请求 ───────────────────────────────────────────────────────
+# ⚠️ **必须并发**（串行 ⇒ 第二个请求落在暂停窗口之外 ⇒ 两侧场景不对称 ⇒ 假差）。
+#    `( … ) &` + `wait <pid>` **只用于收集输出**（不杀进程）⇒ 不碰「$! 是子 shell 的 PID」那个坑。
+M5_B_OUT="${WORK}/m5-b.txt"
+M5_C_OUT="${WORK}/m5-c.txt"
+( python3 "${HERE}/http_timeout_probe.py" "${B_API_PORT}" GET "/hot/v1/articles" >"${M5_B_OUT}" 2>&1 ) &
+M5_PID_B=$!
+( python3 "${HERE}/http_timeout_probe.py" "${C_HTTP_PORT}" GET "/hot/v1/articles" >"${M5_C_OUT}" 2>&1 ) &
+M5_PID_C=$!
+# ⚠️ **只等这两个 pid**（裸 `wait` 会连两侧服务进程一起等 ⇒ 永远等不到）。
+wait "${M5_PID_B}" "${M5_PID_C}"
+
+m5_field() {  # $1 = 读数 $2 = 段号（2=状态行 3=Content-Type 4=body hex 5=耗时 ms）
+  # ⚠️ **段号从 2 起**：读数格式是 `TIMEOUT|<状态行>|<Content-Type>|<body hex>|<耗时>`
+  #    ⇒ 第 1 段是字面量 `TIMEOUT`（不是数据）⇒ 早先写成 1..4 ⇒ **整体错位一格**
+  #    （症状：状态行取到 "TIMEOUT"、耗时取到 body hex ⇒ 场景有效性闸门直接 die）。
+  printf '%s' "$1" | cut -d'|' -f"$2"
+}
+m5_is_num() {
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+M5_B="$(cat "${M5_B_OUT}" 2>/dev/null)"
+M5_C="$(cat "${M5_C_OUT}" 2>/dev/null)"
+M5_B_STATUS="$(m5_field "${M5_B}" 2)"; M5_B_CT="$(m5_field "${M5_B}" 3)"
+M5_B_HEX="$(m5_field "${M5_B}" 4)";    M5_B_MS="$(m5_field "${M5_B}" 5)"
+M5_C_STATUS="$(m5_field "${M5_C}" 2)"; M5_C_CT="$(m5_field "${M5_C}" 3)"
+M5_C_HEX="$(m5_field "${M5_C}" 4)";    M5_C_MS="$(m5_field "${M5_C}" 5)"
+say "   · B 侧读数：${M5_B_STATUS} · ${M5_B_MS}ms · CT=${M5_B_CT}"
+say "   · C 侧读数：${M5_C_STATUS} · ${M5_C_MS}ms · CT=${M5_C_CT}"
+
+# ── 判据 ①：**场景有效性**（「我测的是这个场景吗」与「行为对不对」分开判）──────
+# ⚠️ **这条是 P-FOLLOW-01 的教训**：请求若没真的卡住（毫秒级就回来）⇒
+#    说明注入没生效 ⇒ **不许给结论** ⇒ 环境问题 ⇒ exit 2。
+if ! m5_is_num "${M5_B_MS}" || ! m5_is_num "${M5_C_MS}" \
+   || [ "${M5_B_MS}" -lt 1500 ] || [ "${M5_C_MS}" -lt 1500 ]; then
+  say ""
+  say "❌ M5 场景无效：请求没有真的卡住（B=${M5_B_MS}ms · C=${M5_C_MS}ms）⇒ 注入没生效 ⇒ 环境问题，不给结论"
+  exit 2
+fi
+
+# ── 判据 ②：两侧的**失败形状**必须与 F-02 的登记一致（冻结）────────────────────
+# B 侧：hot-api → hot-rpc 的 gRPC 出向有 **2s 封顶**（共享层 cap-millis=2000）
+#       ⇒ Redis 卡住时 **2s** 就失败 ⇒ 形状 = **200 + 5001 业务信封**（**不是** 503）。
+# C 侧：D2 域内直连 ⇒ 该方向**没有**出向上界 ⇒ 只能等 **HTTP 预算 3s**
+#       ⇒ 形状 = **503 + text/plain "Request Timeout\n"**（共享层 HttpMiddleware）。
+# ⚠️ **期望值是「冻结的形状」**（不是「随便不同就行」）⇒ 形状变了 ⇒ 判失败。
+M5_EXP_B_STATUS="HTTP/1.1 200 "
+M5_EXP_B_HEX="7b22636f6465223a353030312c226d7367223a22696e7465726e616c20736572766572206572726f72222c2264617461223a6e756c6c7d"
+# 🔴 **C 侧的失败形状是「三个候选」的竞态** ⇒ 冻结为**集合**，不是单一值：
+#    三个事件的先后决定客户端拿到什么：
+#      (a) worker 的**业务失败**（Redis 命令超时 3s）  (b) 容器线程的 **HTTP 预算**（3s）
+#      (c) worker 的**异常处理路径**调 `flushBuffer()`（把响应 commit 掉，但 body 还在缓冲里）
+#    ⇒ 三个候选：
+#      ① `200` ＋ 5001 业务信封       —— (a) 先到，worker 正常收尾并 flush ⇒ **干净**；
+#      ② `200` ＋ `application/json` ＋ body `Request Timeout\n`
+#         —— (c) 先 commit 了「200 + json + **空 body**」，(b) 随后**往已提交的响应里追加**纯文本
+#            ⇒ ⇒ **混血响应**：状态码与 Content-Type 是业务信封的，body 却是纯文本
+#            ⇒ ⇒ **信封契约被打断**（客户端按 JSON 解会失败）⇒ **共享层缺陷**（见 DRIFT 台账 F-15）；
+#      ③ `503` ＋ `text/plain` ＋ `Request Timeout\n` —— (b) 先落定 ⇒ **超时分支的干净形状**。
+#    ⇒ ⇒ **两个都是 3s 预算** ⇒ 谁先到取决于毫秒级抖动 ⇒ ⇒ **实测三轮各命中一个** ⇒ 冻结成集合。
+M5_EXP_C_STATUS_1="HTTP/1.1 200 "
+M5_EXP_C_HEX_1="7b22636f6465223a353030312c226d7367223a22696e7465726e616c20736572766572206572726f72222c2264617461223a6e756c6c7d"
+M5_EXP_C_STATUS_2="HTTP/1.1 200 "
+M5_EXP_C_HEX_2="526571756573742054696d656f75740a"
+M5_EXP_C_STATUS_3="HTTP/1.1 503 "
+M5_EXP_C_HEX_3="526571756573742054696d656f75740a"
+M5_B_MS_MIN=1500; M5_B_MS_MAX=2700
+M5_C_MS_MIN=2700; M5_C_MS_MAX=4400
+M5_SHAPE_OK=1
+if [ "${M5_B_STATUS}" != "${M5_EXP_B_STATUS}" ] || [ "${M5_B_HEX}" != "${M5_EXP_B_HEX}" ]; then
+  M5_SHAPE_OK=0
+  FAILED=$((FAILED+1)); FAILED_CASES="${FAILED_CASES} m5:shape_b"
+  say "   ❌ M5 B 侧失败形状与登记（F-02）不符"
+  say "      期望：${M5_EXP_B_STATUS} · body=${M5_EXP_B_HEX}"
+  say "      实得：${M5_B_STATUS} · body=${M5_B_HEX}（${M5_B_MS}ms · CT=${M5_B_CT}）"
+fi
+M5_C_SHAPE_OK=0
+M5_C_SHAPE_IDX=0
+if [ "${M5_C_STATUS}" = "${M5_EXP_C_STATUS_1}" ] && [ "${M5_C_HEX}" = "${M5_EXP_C_HEX_1}" ]; then
+  M5_C_SHAPE_OK=1; M5_C_SHAPE_IDX=1
+elif [ "${M5_C_STATUS}" = "${M5_EXP_C_STATUS_2}" ] && [ "${M5_C_HEX}" = "${M5_EXP_C_HEX_2}" ]; then
+  M5_C_SHAPE_OK=1; M5_C_SHAPE_IDX=2
+elif [ "${M5_C_STATUS}" = "${M5_EXP_C_STATUS_3}" ] && [ "${M5_C_HEX}" = "${M5_EXP_C_HEX_3}" ]; then
+  M5_C_SHAPE_OK=1; M5_C_SHAPE_IDX=3
+fi
+if [ "${M5_C_SHAPE_OK}" = "0" ]; then
+  M5_SHAPE_OK=0
+  FAILED=$((FAILED+1)); FAILED_CASES="${FAILED_CASES} m5:shape_c"
+  say "   ❌ M5 C 侧失败形状不在冻结的三候选集合里 ⇒ 形状漂移"
+  say "      实得：${M5_C_STATUS} · body=${M5_C_HEX}（${M5_C_MS}ms · CT=${M5_C_CT}）"
+fi
+if [ "${M5_B_MS}" -lt "${M5_B_MS_MIN}" ] || [ "${M5_B_MS}" -gt "${M5_B_MS_MAX}" ]; then
+  FAILED=$((FAILED+1)); FAILED_CASES="${FAILED_CASES} m5:latency_b"
+  say "   ❌ M5 B 侧失败时延不在登记区间 [${M5_B_MS_MIN},${M5_B_MS_MAX}]ms ⇒ 实得 ${M5_B_MS}ms"
+fi
+if [ "${M5_C_MS}" -lt "${M5_C_MS_MIN}" ] || [ "${M5_C_MS}" -gt "${M5_C_MS_MAX}" ]; then
+  FAILED=$((FAILED+1)); FAILED_CASES="${FAILED_CASES} m5:latency_c"
+  say "   ❌ M5 C 侧失败时延不在登记区间 [${M5_C_MS_MIN},${M5_C_MS_MAX}]ms ⇒ 实得 ${M5_C_MS}ms"
+fi
+if [ "${M5_SHAPE_OK}" = "1" ]; then
+  KNOWN=$((KNOWN+1))
+  say "   ✅ M5 失败形状与 F-02 的登记一致（B：${M5_B_STATUS} ＋ 5001 信封 @${M5_B_MS}ms · C：${M5_C_STATUS} @${M5_C_MS}ms）"
+  say "      ⚠️ **两侧本来就不同**（F-02 · D2 域内直连的连带后果）⇒ 记为**已知现象**，不计失败"
+  case "${M5_C_SHAPE_IDX}" in
+    1) say "      · C 侧本轮命中候选①（200 ＋ 5001 信封）—— **干净形状**" ;;
+    2) say "      · 🔴 C 侧本轮命中候选②（200 ＋ application/json ＋ body「Request Timeout\n」）—— **混血响应**"
+       say "        ⇒ 信封契约被打断（body 不是 JSON）⇒ **共享层缺陷**（`common/observability/`）⇒ 见 DRIFT 台账 **F-15**"
+       say "        ⇒ **修法属收口域（global）** ⇒ 本域**只登记、不改**（AGENTS.md §五.3 规则 3）" ;;
+    3) say "      · C 侧本轮命中候选③（503 ＋ text/plain ＋「Request Timeout\n」）—— 超时分支的干净形状" ;;
+  esac
+fi
+
+# ── 判据 ③：**恢复校验**（暂停窗口过后，两侧必须恢复正常）──────────────────────
+# ⚠️ **必须等暂停窗口过去**（否则恢复请求也会被卡住 ⇒ 读数无意义）。
+sleep $(( M5_PAUSE_MS / 1000 + 2 ))
+http_case "post_timeout_recovery" GET "/hot/v1/articles" ""
+report_http "post_timeout_recovery"
+
+# ══════════════════════════ 14. 收尾：服务**真正**停掉 + 端口零残留 ═══════════
 # ⚠️ **必须先真正收尾（kill + 等），再查残留**（stop_stacks 幂等 ⇒ trap 再调一次无害）。
 #    反过来（先查残留后收尾）⇒ 进程还活着 ⇒ **必然**报残留 ⇒ **恒红的假信号**。
-step "13/13 收尾复核（服务真停 · 端口零残留）"
+step "14/14 收尾复核（服务真停 · 端口零残留）"
 stop_stacks
 # ⚠️ **必须先删容器、再查端口**：容器发布端口时是 **docker-proxy** 持有那个口
 #    ⇒ `docker rm -f` 之后 proxy 还会 linger 几秒 ⇒ 不删容器就查 ⇒ **必然**报残留
