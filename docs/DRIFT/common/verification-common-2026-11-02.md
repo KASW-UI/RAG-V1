@@ -742,6 +742,57 @@ comment 域工作树里 `service/comment/src/test/java/com/rag/comment/grpc/Comm
 | **§11.2 状态表复算** | 按台账自述口径（逐行扫 §11.2 · 取**第 5 格**状态）机器复算 ⇒ **承接行 91 / 标记数 91 / 复合状态行 0 / PASS 89 / NOT_IMPLEMENTED 0 / INTENTIONALLY_CHANGED 2 / FAIL 0 / FRAMEWORK_DIFFERENCE 0 / NOT_VERIFIED 0 / BLOCKED 0** ⇒ ⇒ 与自报数**逐项一致**（本条**不新增 B 承接行** ⇒ §11.2 不动） |
 | **⚠️ 全仓回归读数** | **串行**（`mvn -o test`，**不带 `-T1C`**）⇒ **BUILD SUCCESS · 16/16 模块 SUCCESS** ⇒ **925 例 · Failures 0 · Errors 0 · Skipped 0**（模块级汇总：common **245** · article **157** · follow **72** · like **110** · message **103** · users-common **46** · user **40** · admin **152** · proto/comment/favorite/hot/task **0**）⇒ ⇒ ⚠️ **计数只取回归日志的模块级汇总**（AGENTS.md §五.8 规则 ① · 不取 `surefire-reports/*.xml` 求和）<br>⚠️ **同一份代码在 `-T1C` 并行下会红 2 条**（like / admin 各 1 条 `DEADLINE_EXCEEDED`）⇒ ⇒ **已判定为环境假红**，三步实测见上「并行跑法造成的假红」⇒ ⇒ **本条读数取串行** |
 
+---
+
+### ✅ DRIFT-COMMON-V21｜共享层「HTTP 预算 × 业务失败」竞态（F-15）＋ **追踪导出配置 5 域统一** —— **已收口（2026-11-05）**
+
+**状态**：**✅ 已收口**（2026-11-05 · `global` 收口域 · 落点 `common/` ＋ 4 个域的 `application.yml` ⇒ 符合 AGENTS.md §五.3 规则 3）
+⇒ ⇒ **F-15 首次由 hot 域登记**（`docs/DRIFT/hot/verification-hot-service-2026-11-03.md` §五·F-15 · 该台账在 `align/hot` 分支上）
+⇒ ⇒ 本条**只改共享层与配置**，**未改 hot 域任何一行**（hot 域只登记、不改）。
+
+本条含**两件事**：
+
+| # | 事 | 一句话 |
+|---|---|---|
+| **F-15** | 共享层的「HTTP 预算」与「业务失败」**竞态** ⇒ 客户端可能收到**混血响应** | 两条写路径并发写同一个响应 ⇒ 状态码/CT 是业务信封的、body 却是纯文本 ⇒ **信封契约被打断** |
+| **OTEL-5** | **5 个域**的追踪导出配置（`otel:` 段）**整段缺失** ⇒ span 一条都导不出去 | 共享层按 B 侧 `if len(c.Endpoint) > 0` 口径 ⇒ **端点为空 ⇒ 不装 exporter** ⇒ **零编译错误、零测试红灯** |
+
+---
+
+#### F-15｜共享层「HTTP 预算 × 业务失败」竞态 ⇒ **混血响应**
+
+| 项 | 内容 |
+|---|---|
+| **现象** | **两条写路径并发写同一个响应**：<br>① **容器线程**（预算耗尽 · `HttpMiddleware:441-445`）⇒ `rec.markTimedOut()` → `cancel(true)` → `rec.writeTimeoutResponseQuietly(503)` ⇒ 写 `status=503` + `Content-Type=text/plain` + `"Request Timeout\n"` + `flush()` ⇒ **commit**；<br>② **worker 线程**（业务异常 ⇒ `@ExceptionHandler` ⇒ `ObservabilityResponseWriter#flushBuffer`）⇒ `original.flushBuffer()` ⇒ **commit**（此刻 body 还在**捕获缓冲**里 ⇒ wire 上是空的）<br>⇒ ⇒ 谁先落定，客户端拿到哪个形状：**① 先** ⇒ `503 + text/plain + "Request Timeout\n"`（干净）· **② 先** ⇒ `200 + application/json + body 被 ① 追加成 "Request Timeout\n"` ⇒ ⇒ **混血**（状态码与 CT 是业务信封的、body 是纯文本 ⇒ **客户端按 JSON 解会失败**） |
+| **位置（共享层）** | `common/src/main/java/com/rag/common/observability/ObservabilityResponseWriter.java`（`writeTimeoutResponseQuietly` · `flushBuffer` · `getWriter`/`getOutputStream` 捕获缓冲）＋ `common/src/main/java/com/rag/common/observability/HttpMiddleware.java:438-448`（超时分支） |
+| **B 侧同源核对（🔴 关键）** | RAG `service/common/src/main/java/com/rag/common/observability/HttpMiddleware.java:1153`（`ObservabilityResponseWriter#flushBuffer`）与 `:1222`（`flushTo`）**与 C 侧逐字同形** ⇒ ⇒ **竞态两侧都有** ⇒ ⇒ **不是 C 侧引入的漂移** ⇒ 是**双方共有的共享层缺陷**（本仓 B 侧只读 ⇒ 只在 C 侧修） |
+| **修法（已实施）** | 在 `ObservabilityResponseWriter.writeTimeoutResponseQuietly` 里加一道闸：**底层响应已 commit ⇒ 超时分支完全弃权**（不得再写 status / CT / body）⇒ 改为**把已捕获的业务 body 补写出去**（只写 body：头已随 commit 上 wire）⇒ ⇒ 客户端拿到**干净的「200 + 业务信封」**；⚠️ **只动超时分支，<b>不碰 worker 的提交路径</b>** ⇒ ⇒ 异常路径的字节形状（commit-then-append、Content-Length 是否生效）**一字未变** ⇒ ⇒ **B 侧字节级不动** |
+| **三段式（AGENTS.md §3.2）** | **① 比 B 侧多做了什么**：B 侧**没有**「已提交就弃权」这道检查 ⇒ 本仓多了一道**互斥且幂等**的闸。**② 语义还一样吗**：**一样，且更安全** —— commit 之后**头已上 wire** ⇒ 再改 status / CT **对客户端无效**、而 body **会被追加** ⇒ ⇒ 那只会造出「混血」这个**非法形状**；本仓改成「弃权 + 补写业务 body」⇒ ⇒ 客户端拿到的是 B 侧在该窗口里的**干净候选之一**（另一个干净候选 = 503 纯文本，由「超时先落定」那条分支产出）⇒ ⇒ **只删掉非法形状，不新增任何形状** ⇒ ⇒ 在「B 侧行为确定」的所有场景下**逐字节一致**。**③ B 出处**：同上行号 |
+| **验收判据** | **确定性**守卫（真 Tomcat 复现竞态必 flaky ⇒ 不用）：`common/src/test/java/com/rag/common/observability/HttpTimeoutRaceNoMixedResponseTest.java` —— **2 例** · **显式控制两个写者的先后**（不是靠竞态碰运气）⇒ ① worker 先提交 ⇒ body 必须是业务信封且**不得**含 `"Request Timeout"` ② 超时先落定（**反向对照**）⇒ 必须是干净的 `503 + "Request Timeout\n"` 且**不得**混进信封 |
+| **⚠️ 替身为什么必须仿 Tomcat 的 commit 语义** | Spring 的 `MockHttpServletResponse` **不冻结**已提交响应的 status / CT ⇒ ⇒ 用它断言会**看不到混血**（status 会被改成 503 ⇒ 看着像正常超时）⇒ ⇒ 守门自造 `TomcatLikeResponse`：commit（`flushBuffer()` **与** `getWriter().flush()` —— Tomcat 的 `PrintWriter.flush()` ⇒ `OutputBuffer.flush()` ⇒ 状态行与头上 wire）**冻结** status / CT，commit 后**仍可追加 body**（这正是混血的成因） |
+| **变异实测** | 拆掉「已提交 ⇒ 完全弃权」那道闸 ⇒ **① 红、② 仍绿**（红灯精确）⇒ 机器读数：`Expecting actual: "Request Timeout\n" not to contain: "Request Timeout"` ⇒ ⇒ **判据有牙齿** ⇒ ⇒ 还原后同条件复跑 = **2/2 绿** |
+
+#### OTEL-5｜**5 个域**的追踪导出配置（`otel:` 段）统一补齐
+
+| 项 | 内容 |
+|---|---|
+| **现象（实测）** | `comment` / `favorite` / `message` / `task` / `hot` 五域的 `application.yml` **没有 `otel:` 段** ⇒ ⇒ 共享层 `GoStyleOtelConfig` 读到的 `otel.exporter.otlp.endpoint` = **null** ⇒ ⇒ 按 B 侧的 `if len(c.Endpoint) > 0` 口径**不装 exporter** ⇒ ⇒ 该域的 span **一条都导不出去**（跨域链路在 Jaeger 侧断链）⇒ ⇒ **零编译错误、零测试红灯**（配置面缺一整段 ⇒ 没有任何代码路径会报错） |
+| **B 侧基准（逐字读过）** | B 侧各域的**服务自己的 yml** 里都有 `otel:` 段：<br>· **api 侧**：`comment-api:195-204` / `favorite-api:221-229` / `message-api:230-238` / `task-api:275-284` ⇒ 形状 = `exporter.otlp.endpoint: http://${OTEL_ADDR:jaeger}:${OTLP_PORT:4317}`（**带 scheme**）+ `protocol: grpc` + `resource.attributes.service.name: <域>-api` + `traces.sampler: always_on`（favorite 的 api 侧写 `parentbased_always_on`）<br>· **rpc 侧**：`comment-rpc:364-372` / `favorite-rpc:352-361` / `message-rpc:337-345` / `task-rpc:341-349` ⇒ 形状 = `service.name: <域>-rpc` + `endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:jaeger:4317}`（**裸**）+ `traces.sampler: parentbased_always_on`<br>⇒ ⇒ **两套拼法合并成一个进程（D1）** ⇒ ⇒ 本仓取**统一形状**（与 like / hot 同款）：**两套服务名都写**（值一致 ⇒ 无歧义）+ **endpoint 取 api 侧**（带 scheme ⇒ 显式优于隐式）+ **protocol = grpc**（= B 侧 `Batcher: otlpgrpc`）+ **sampler = `always_on`**（共享层 `toRatio` 把 `always_on` 与 `parentbased_always_on` **都**映射成 ratio = 1.0 ⇒ **行为等价**） |
+| **服务名的取值（🔴 一处登记偏离）** | D1 合并 ⇒ B 侧 api / rpc **两个** `Telemetry.Name`（`<域>-api` / `<域>-rpc`）只能填**一个** ⇒ ⇒ 取 `<域>-service`（= `spring.application.name`）⇒ ⇒ **登记为 D1 连带偏离**（**值侧**；键名与形状逐条对齐 B 侧） |
+| **修法（已实施）** | `comment` / `favorite` / `message` / `task` 四域的 `src/main/resources/application.yml` **各补一段** `otel:`（插在顶层 `logging:` 之前 ⇒ 与 like / hot 同位）⇒ ⇒ **5 域同构**（hot 那份在 `align/hot` 分支上，**值与本轮四域逐条一致**） |
+| **⚠️ `hot` 域为何没在主干改** | `hot` 域的实现**尚未合入 main**（主干里还是空壳 ＋ **48 行**的 yml 桩；分支上是 **365 行**）⇒ ⇒ 改主干的 hot yml ⇒ **合并时必冲突** ⇒ ⇒ **不动它** ⇒ ⇒ 它那份在 `align/hot` 分支上，**合入后自动被下面的通用规则覆盖** |
+| **⚠️ 第 6 个缺口：`user-service`（users-user 子域）** | 它**同样没有** `otel:` 段 ⇒ **本轮未动**（归 **users 域 lane** 处置 —— 本轮范围是用户点名的 5 个域）⇒ ⇒ 登记在此 |
+| **🔴 机器守门（新增 A14）** | `tools/difftest/check-arch-invariants.py` 新增 **A14**「追踪导出配置（`otel:` 段）齐备且服务名自洽」：<br>① **白名单**：清单内各域（article / comment / favorite / follow / like / message / task / users-admin）**必须**有 `otel:` 段，且端点非空 + `protocol = grpc` + sampler 属两族 + **服务名 == 该域 `spring.application.name`**（**钉不变量而非字面值** ⇒ 域改名自动跟随 ⇒ 不会假红）+ 两套拼法同时出现时**须彼此相等**；<br>② **通用规则**：**任何**域只要 yml 里**有** `otel:` 段就必须合规 ⇒ ⇒ 清单外的域（hot 合入后 / user-service 补齐后）**写出来即刻被覆盖** ⇒ ⇒ **白名单不会随每次合入而腐烂**<br>⇒ **实测 PASS 8/8** · **self-test 14/14 判据均能红**（含 A14）· **变异实测**（删掉 message 域的 endpoint ⇒ A14 当场报「缺失或为空 ⇒ 不装 exporter」⇒ 还原后复绿）⇒ ⇒ 配套更新 `docs/架构符合性断言.md`（新增 A14 段 ＋ 状态行）＋ `docs/README.md`（A1–A13 ⇒ **A1–A14**） |
+
+#### ✅ 读数（2026-11-05）
+
+| 项 | 读数 |
+|---|---|
+| **F-15 守卫** | `HttpTimeoutRaceNoMixedResponseTest` —— **2 例**（① worker 先提交 ⇒ 干净信封 ② 超时先落定 ⇒ 干净 503）⇒ **2/2 绿**；**变异**（拆掉弃权闸）⇒ **① 红 ② 绿** ⇒ 还原复绿 |
+| **otel 统一** | 4 域 yml 各补一段 ⇒ **A14 PASS 8/8**；**self-test 14/14**；**变异实测** ⇒ 删 endpoint 即红、还原即绿 |
+| **全仓回归** | **串行**（`mvn -o test`，**不带 `-T1C`**）⇒ **BUILD SUCCESS · 16/16 模块 SUCCESS** ⇒ **927 例 · Failures 0 · Errors 0 · Skipped 0**（模块级汇总：common **247**（245 → 247，+2 条 F-15 新例）· article **157** · follow **72** · like **110** · message **103** · users-common **46** · user **40** · admin **152** · proto/comment/favorite/hot/task **0**）⇒ ⇒ ⚠️ **计数只取回归日志的模块级汇总**（AGENTS.md §五.8 规则 ①） |
+| **三道守门** | `check-arch-invariants.py` ⇒ **EXIT=0**（**PASS 11 · FAIL 0 · N/A 2 · PENDING 1**，共 **14** 条 ⇒ **A14 已计入**）· `check-docs-vs-tree.py` ⇒ **EXIT=0**（新增测试文件 ⇒ 已重跑 `tools/gen-file-tree.py`）· `check-mapping-coverage.py` ⇒ **EXIT=0**（C **641/641** · B **752/752**） |
+
 ## 11.6 完成度统计
 
 > **口径**：按**职责**统计，**不按文件数或行数**（§11.6 明令）。

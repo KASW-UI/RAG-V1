@@ -112,6 +112,28 @@ A11_REQUIRED = [
     "{d}FactProcessLogging.java",
 ]
 
+# A14：必须有 `otel:` 段（追踪导出配置）的域清单
+# ⚠️ **为什么是「清单」而不是「扫全仓」**：判据是「域**应该**有追踪导出配置」——
+#   域清单 = 显式声明 ⇒ 新增域时**由人决定**要不要进清单（而不是脚本默默要求）。
+#   ⇒ ⚠️ `user-service`（users-user 子域）**不在清单内** ⇒ 它那同款缺口由 users 域 lane 处置
+#   ⇒ （**登记在 `docs/DRIFT/common/verification-common-2026-11-02.md` 的 V21**）。
+# ⚠️ **模块定位一律按 artifactId**（与 A11 同款 ⇒ 对目录改名鲁棒）。
+A14_DOMAINS = [
+    ("article", "article-service"),
+    ("comment", "comment-service"),
+    ("favorite", "favorite-service"),
+    ("follow", "follow-service"),
+    ("like", "like-service"),
+    ("message", "message-service"),
+    ("task", "task-service"),
+    ("users-admin", "admin-service"),
+]
+# ⚠️ **两个「已登记但不在清单内」的域**（**不是漏写**，各有确切理由）：
+#   · `hot`（hot-service）⇒ **实现尚未合入 main**（主干里还是空壳 + 48 行的 yml 桩）
+#     ⇒ ⇒ 它那份 `otel:` 段在 `align/hot` 分支上（**值与本清单各域逐条同构**）
+#     ⇒ ⇒ 合入 main 后**立刻**被下面的「通用规则」覆盖（见 A14 的 `通用规则` 一段）⇒ 无需改本清单。
+#   · `user-service`（users-user 子域）⇒ **users 域的 lane 未拍板** ⇒ 其同款缺口另行登记。
+
 # A10：手写必填校验器的特征类名（RAG 侧 `GoStyleRequired*` / `GoStyleRequest` 同款）
 # ⚠️ **必须精确匹配** —— 用 `GoStyleRequest\w*` 会把 `GoStyleRequestDeadline`（请求超时传递）
 # 一并误判成必填校验器 ⇒ 断言误报 ⇒ 会被当成噪声忽略 ⇒ 真违规时反而没人看。
@@ -299,6 +321,38 @@ def parse_grpc_clients(yml_text: str) -> dict:
             out[cur] = {}
         elif indent >= 6 and cur is not None:
             out[cur][key] = val
+    return out
+
+
+def parse_yaml_block(yml_text: str, top_key: str) -> dict:
+    """抽出顶层 `top_key:` 下的「点路径 → 值」映射。**手写解析，不依赖 PyYAML**（零依赖）。
+
+    例：`otel:` 段里的 `service.name` ⇒ `{"service.name": "hot-service", ...}`。
+    ⚠️ **只收叶子**（有值的行）⇒ 纯容器键（`service:`）不进映射。
+    """
+    out: dict = {}
+    in_block = False
+    stack: list = []  # [(indent, key)]
+    for raw in yml_text.splitlines():
+        if not raw.strip() or raw.strip().startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip())
+        s = raw.strip()
+        if indent == 0:
+            in_block = (s == f"{top_key}:")
+            stack = []
+            continue
+        if not in_block:
+            continue
+        m = re.match(r"^([A-Za-z0-9_.\-]+):\s*(.*)$", s)
+        if not m:
+            continue
+        key, val = m.group(1), m.group(2).split("#")[0].strip()
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+        if val:
+            out[".".join([k for _, k in stack] + [key])] = val
+        stack.append((indent, key))
     return out
 
 
@@ -815,6 +869,110 @@ def check_a13(root: pathlib.Path, contract: str) -> Result:
 
 
 # ---------------------------------------------------------------------------
+# A14 · 凡清单内的域 ⇒ 其 `application.yml` 必须有 `otel:` 段且键齐（追踪导出配置）
+# ---------------------------------------------------------------------------
+def check_a14(root: pathlib.Path, contract: str) -> Result:
+    """A14 · 清单内各域的 `application.yml` 必须有 `otel:` 段，且**端点非空 / 服务名自洽**。
+
+    🔴 **为什么要有这条**：共享层 `GoStyleOtelConfig` 按 B 侧的
+    ``if len(c.Endpoint) > 0`` 口径 —— **端点为空就不装 exporter** ⇒ ⇒ 缺 `otel:` 段
+    ⇒ ⇒ **零编译错误、零测试红灯**（配置面缺一整段 ⇒ 没有任何代码路径会报错）
+    ⇒ ⇒ 该域的 span **一条都导不出去**（跨域链路在 Jaeger 侧断链）⇒ ⇒ **静默失效**。
+
+    ⚠️ **判据钉的是「不变量」而不是「字面值」**：服务名一律与该域自己的
+    `spring.application.name` 比 ⇒ ⇒ 域改名 / 目录改名时判据**自动跟随** ⇒ ⇒ 不会假红。
+    ⇒ ⇒ 值侧唯一被钉住的是「协议 = grpc」（= B 侧 `Telemetry.Batcher: otlpgrpc`）与
+    「sampler 属 always_on / parentbased_always_on 两族」（两者都被共享层映射成 ratio = 1.0）。
+
+    ⚠️ **两套服务名拼法**：共享层 `GoStyleOtelConfig` 同时认 `otel.service.name` 与
+    `otel.resource.attributes.service.name` ⇒ ⇒ **两者都写时必须一致**（否则「读哪套」成谜）。
+    ⇒ ⇒ 判据：出现即须与 `spring.application.name` 相等；两套同时出现时还须彼此相等。
+    """
+    viol, checked = [], 0
+    for dom, aid in A14_DOMAINS:
+        module = module_by_artifact_id(root, aid)
+        if module is None:
+            viol.append(f"全仓无 artifactId={aid} 的模块 ⇒ 域 {dom} 的 `otel:` 段无从谈起")
+            continue
+        rel = module.relative_to(root).as_posix()
+        yml = module_yml(module)
+        if not yml.exists():
+            viol.append(f"{rel}/src/main/resources/application.yml ⇒ 不存在")
+            continue
+        checked += 1
+        text = yml.read_text(encoding="utf-8")
+        otel = parse_yaml_block(text, "otel")
+        app_name = parse_yaml_block(text, "spring").get("application.name", "")
+        if not otel:
+            viol.append(f"{rel} ⇒ 缺 `otel:` 段 ⇒ 端点为空 ⇒ 共享层不装 exporter ⇒ span 导不出去")
+            continue
+        endpoint = otel.get("exporter.otlp.endpoint", "")
+        if not endpoint:
+            viol.append(f"{rel} ⇒ `otel.exporter.otlp.endpoint` 缺失或为空 ⇒ 不装 exporter")
+        protocol = otel.get("exporter.otlp.protocol", "")
+        if protocol != "grpc":
+            viol.append(f"{rel} ⇒ `otel.exporter.otlp.protocol` = {protocol!r}"
+                        f"（应 `grpc` = B 侧 `Telemetry.Batcher: otlpgrpc`）")
+        svc = otel.get("service.name", "")
+        res = otel.get("resource.attributes.service.name", "")
+        if not res:
+            viol.append(f"{rel} ⇒ 缺 `otel.resource.attributes.service.name` ⇒ 服务名无据")
+        elif app_name and res != app_name:
+            viol.append(f"{rel} ⇒ `otel.resource.attributes.service.name` = {res!r}"
+                        f" ≠ `spring.application.name` = {app_name!r}")
+        if svc and res and svc != res:
+            viol.append(f"{rel} ⇒ 两套服务名不一致：otel.service.name={svc!r} vs resource…={res!r}")
+        sampler = otel.get("traces.sampler", "")
+        if sampler not in ("always_on", "parentbased_always_on"):
+            viol.append(f"{rel} ⇒ `otel.traces.sampler` = {sampler!r}"
+                        f"（应 always_on / parentbased_always_on）")
+
+    # ---- 通用规则：**任何**域，只要它的 yml 里有 `otel:` 段，就必须合规 ----
+    # ⚠️ 为什么要有这一段：清单是「**必须要有**」的白名单；这一段是「**有了就不得歪**」的黑名单
+    #   ⇒ ⇒ 清单外的域（如 hot · 合入 main 后 / user-service · users lane 补齐后）
+    #   **一旦写出 otel 段就立刻被覆盖** ⇒ ⇒ 白名单不必随每次合入而改 ⇒ ⇒ 不会腐烂。
+    for module, kind in iter_modules(root):
+        if kind != "service" or "target" in module.parts:
+            continue
+        aid = module_artifact_id(module / "pom.xml")
+        if any(aid == known for _, known in A14_DOMAINS):
+            continue          # 清单内域上面已查过
+        yml = module_yml(module)
+        if not yml.exists():
+            continue
+        text = yml.read_text(encoding="utf-8")
+        otel = parse_yaml_block(text, "otel")
+        if not otel:
+            continue          # 没有 otel 段 ⇒ 不在清单 ⇒ 本规则不管它
+        rel = module.relative_to(root).as_posix()
+        checked += 1
+        endpoint = otel.get("exporter.otlp.endpoint", "")
+        if not endpoint:
+            viol.append(f"{rel} ⇒ `otel.exporter.otlp.endpoint` 缺失或为空 ⇒ 不装 exporter")
+        protocol = otel.get("exporter.otlp.protocol", "")
+        if protocol != "grpc":
+            viol.append(f"{rel} ⇒ `otel.exporter.otlp.protocol` = {protocol!r}"
+                        f"（应 `grpc` = B 侧 `Telemetry.Batcher: otlpgrpc`）")
+        app_name = parse_yaml_block(text, "spring").get("application.name", "")
+        svc = otel.get("service.name", "")
+        res = otel.get("resource.attributes.service.name", "")
+        if not res:
+            viol.append(f"{rel} ⇒ 缺 `otel.resource.attributes.service.name` ⇒ 服务名无据")
+        elif app_name and res != app_name:
+            viol.append(f"{rel} ⇒ `otel.resource.attributes.service.name` = {res!r}"
+                        f" ≠ `spring.application.name` = {app_name!r}")
+        if svc and res and svc != res:
+            viol.append(f"{rel} ⇒ 两套服务名不一致：otel.service.name={svc!r} vs resource…={res!r}")
+        sampler = otel.get("traces.sampler", "")
+        if sampler not in ("always_on", "parentbased_always_on"):
+            viol.append(f"{rel} ⇒ `otel.traces.sampler` = {sampler!r}"
+                        f"（应 always_on / parentbased_always_on）")
+    if viol:
+        return Result(FAIL, f"{len(viol)} 处违规（已核 {checked} 个域）", viol)
+    return ok(f"{checked}/{checked} 个域的 `otel:` 段齐备且自洽")
+
+
+# ---------------------------------------------------------------------------
 # 断言注册表
 # ---------------------------------------------------------------------------
 CHECKS = [
@@ -831,6 +989,7 @@ CHECKS = [
     ("A11", "fact-* 独立进程须有域内装配落点", check_a11),
     ("A12", "模块内无同名简单类", check_a12),
     ("A13", "用了 Lombok ⇒ 须写原本的完整代码展开块", check_a13),
+    ("A14", "追踪导出配置（otel 段）齐备且服务名自洽", check_a14),
 ]
 
 
@@ -851,6 +1010,7 @@ FIXTURE_VIOLATIONS = {
     "A11": "缺 FactProcessLogging 落点",
     "A12": "模块内同名类",
     "A13": "Lombok 类缺「原本的完整代码」展开块",
+    "A14": "域的 application.yml 缺 `otel:` 段（追踪导出配置）",
 }
 
 
@@ -934,6 +1094,10 @@ def build_fixture(base: pathlib.Path) -> pathlib.Path:
     _write(root / "service/comment/src/main/java/com/rag/comment/wiring/"
                   "CommentAuthorityEndpointConfig.java",
            "package com.rag.comment.wiring;\npublic class CommentAuthorityEndpointConfig { }\n")
+    # A14 违规：`comment-service` 的 application.yml **缺 `otel:` 段**
+    #   ⇒ 端点为空 ⇒ 共享层不装 exporter ⇒ 该域的 span 一条都导不出去（静默失效）
+    _write(root / "service/comment/src/main/resources/application.yml",
+           "spring:\n  application:\n    name: comment-service\n")
     # A12 违规：同名类，不同包
     _write(root / f"{j}/Dup.java", "package com.rag.x;\npublic class Dup { }\n")
     _write(root / f"{j}/sub/Dup.java", "package com.rag.x.sub;\npublic class Dup { }\n")

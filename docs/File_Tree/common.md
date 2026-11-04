@@ -224,6 +224,7 @@
 │                       │   ├── GoStyleOtelAgentTest.java    # 🔴🔴 **全局 OpenTelemetry 装配守门**（对应 B 侧 {@code core/trace/agent.go} 的 {@code startAgent}）。
 │                       │   ├── GoStyleOtelConfigTest.java    # 🔴 **B 侧 {@code Telemetry} 段的配置投影守门** —— 对应 B 侧
 │                       │   ├── HttpMiddlewareTest.java    # §3.3「机制可证」守门：HTTP 中间件的三条拒绝路径真的按 B 的形状走。
+│                       │   ├── HttpTimeoutRaceNoMixedResponseTest.java    # 🔴🔴 DRIFT-COMMON-V21 · F-15 的确定性守门：
 │                       │   ├── MqConsumerTest.java    # §3.3「机制可证」守门：MQ 消费端包装真的产出观测、真的按 B 的口径分类错误。
 │                       │   ├── ObservabilityPropertiesTest.java    # §3.3「机制可证」守门：观测层自己用的 3 个 Duration 字段真的能被绑定。
 │                       │   ├── ObservabilityRuntimeTest.java    # §3.3「机制可证」守门：观测层的两个进程级池真的能被关闭钩子回收，且关掉后能重建。

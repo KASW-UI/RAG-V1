@@ -182,6 +182,46 @@ management:
     health:
       show-details: always
 
+# =============================================================================
+# OpenTelemetry OTLP exporter（对齐 B 侧 Telemetry.*）
+# =============================================================================
+# ⚠️ **2026-11-05 补齐（`global` 收口域统一处置 · 5 域一起补）**：本段此前**整段缺失**
+#    ⇒ 共享层 `GoStyleOtelConfig` 读到的 `otel.exporter.otlp.endpoint` = null
+#    ⇒ ⇒ 按 B 侧的 `if len(c.Endpoint) > 0` 口径**不装 exporter**
+#    ⇒ ⇒ 本域的 span **一条都导不出去**（跨域链路在 Jaeger 侧断链）。
+#    ⇒ 同款缺失共 **5 个域**：hot（hot 域已补）＋ **comment / favorite / message / task**（本段）
+#    ⇒ ⇒ 由收口域**统一补齐**（避免各域各补各的再漂）⇒ 形状与 like / hot **逐条同构**。
+# ⚠️ 共享层 `GoStyleOtelConfig` 读的是 **B 侧那套键名**：
+#    `otel.service.name` / `otel.resource.attributes.service.name`（两套拼法都认）·
+#    `otel.exporter.otlp.endpoint` / `otel.exporter.otlp.protocol` /
+#    `otel.traces.sampler` / `otel.traces.sampler.arg`
+# ⇒ 端点**没有 scheme** 时共享层会补 `http://`（= B 的 WithInsecure() 明文）。
+otel:
+  # B 侧 rpc 侧的拼法（Go: Telemetry.Name = message-rpc）—— D1 合并后只能填**一个**值
+  service:
+    name: message-service
+  exporter:
+    otlp:
+      # 🔴 **合并裁决（scheme）**：B 侧 api 写 `http://${OTEL_ADDR}:${OTLP_PORT}`（带 scheme）、
+      #    B 侧 rpc 写裸 `${OTEL_EXPORTER_OTLP_ENDPOINT:jaeger:4317}`（不带 scheme）
+      #    ⇒ 共享层两种都认 ⇒ 取**带 scheme** 的那一侧（显式优于隐式）。
+      #    protocol=grpc 同样取 api 侧写法。
+      endpoint: http://${OTEL_ADDR:jaeger}:${OTLP_PORT:4317}
+      protocol: grpc
+  resource:
+    attributes:
+      # B 侧 api 侧的拼法（Go: Telemetry.Name = message-api）
+      # ⚠️ **D1 合并的连带偏离**：B 侧 api 填 `message-api`、rpc 填 `message-rpc`（两个值）
+      #    ⇒ 合并成一个进程后只能填**一个** ⇒ 取 `message-service`（= `spring.application.name`）
+      #    ⇒ **登记为 D1 连带偏离**（值侧；键名与形状逐条对齐 B 侧）。
+      service.name: message-service
+  traces:
+    # B 侧 api 写 `always_on`（favorite 的 api 侧写 `parentbased_always_on`）· rpc 侧写 `parentbased_always_on`
+    # ⇒ 共享层 `GoStyleOtelConfig#toRatio` 把 `always_on` 与 `parentbased_always_on`
+    #    **都**映射成 ratio = 1.0 ⇒ ⇒ **行为等价**
+    # ⇒ ⇒ 取 C 侧既有的统一写法 `always_on`（article / follow / like / hot 同款）。
+    sampler: always_on
+
 logging:
   level:
     com.rag: INFO
