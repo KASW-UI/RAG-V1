@@ -56,6 +56,12 @@
 > ⇒ ⇒ **验收**：新 `GrpcDeadlineBindingTest`（3 例）＋ `GrpcInboundDeadlinePgTest`（**2 例 · 真 PG** · 服务端预算到点 / 客户端主动取消）⇒ **5 例全绿**；**变异实测** ⇒ 两条都**红在核心判据**（`expected: 0L but was: 1L`）⇒ ⇒ **判据精确、其余维仍绿** ⇒ 还原后同条件复跑回绿
 > ⇒ ⇒ 现状 = **✅ 已修 10 · ✅ 已裁决 1（V11）· ⚪ 已登记 4（V10/V12/V13/V16/V18）· 🔴 0**。
 > ⚠️ **诚实边界**：① **只绑入向载体** ⇒ 出向 `GoStyleRequestDeadline` **另案**；② 作用域随 `onHalfClose` 返回而结束 ⇒ **异步 handler 不在作用域内**（与 B 侧同款）；③ **跨域复测**（admin 域 E-4-R2 场景轮 ⇒ `admin_admin` 0 行）**待 admin 域 lane 落地**（本 lane 只写 `common/`）。
+>
+> ✅ **2026-11-05（`global` 收口域 · 本轮）· V16 已收口（保护层开关接线）**：B 侧 `GoStyleRpcProtectionChain.java:228/235` 用两个开关**决定这两层是否拼进链** ⇒ ⇒ **C 侧修前两个 Bean 恒在且不读开关** ⇒ ⇒ `Stat` 层**照记样本 ＋ 照打那条每 60s 的统计日志**、`Prometheus` 层**照写指标** ⇒ ⇒ **现行配置下两侧行为一致**（默认值同为 `true` ＋ 各域 yml 均未覆盖）⇒ ⇒ 本条闭合的是「**接线缺口**」，**不是**现行行为漂移
+> ⇒ ⇒ **修法**：两层各在**构造期**接 `enabled` ⇒ 关掉时 **Stat 层不记样本 ＋ 不起那条 60s 上报线程**（B 侧那条线程的**唯一来源** = `GoStyleStatInterceptor.java:82` ⇒ 开关关掉时 B 侧也没有那行日志）、**Prometheus 层一条指标都不写** ⇒ ⇒ 与 B 侧「层不拼进链」**逐项等价**（沿用本类既有的 breaker / cpu-shedding 惯例 ⇒ 链的组成不变 ⇒ **客户端可观测面零差异**）
+> ⇒ ⇒ **验收**：新 `ProtectionLayerSwitchWiringTest`（**4 例 · 真 Spring 装配 + 真 in-process gRPC 调用**）⇒ 4/4 绿；**变异两轮**：抽「配置→层」接线 ⇒ **2 红**（对照维仍绿）· 只抽「上报线程门」⇒ **1 红且红在 `reporterStarted()`** ⇒ 还原 4/4 绿
+> ⇒ ⇒ **🔴 新增机器守门 A15**（保护层每个 `enabled` 开关都必须有消费点）⇒ 脚本**自己从属性类解析开关清单** ⇒ **将来新增的开关自动进清单**；⚠️ **判据先剥注释** ⇒ 本仓 javadoc 里大量引用 B 侧源码 ⇒ 不剥会**假绿**（fixture 里故意放了一句注释里的引用，自检仍判红 ⇒ 证明没被骗到）⇒ ⇒ **self-test 15/15 · 真仓变异实测**
+> ⇒ ⇒ **全仓**：串行 `mvn -o test` ⇒ **BUILD SUCCESS · 16/16 模块 · 931 例 · 0/0/0**（common **247 → 251**）· 三道守门 **EXIT=0**（A15 已计入，共 15 条）· §11.2 状态表机器复算 **91 行 / 91 标记 / PASS 89 / INTENTIONALLY_CHANGED 2**（未变）
 
 ---
 
@@ -583,9 +589,12 @@ S3b（PG 停）= `200 + 信封 1015` @ 2.05s · S4（持锁）= `200 + 信封 10
 上游 = **status code 本身就是业务码** + description 业务文案；grpc-java 的 `Status.fromCodeValue(int)` 对未知码回落 `UNKNOWN` ⇒ **承载不了任意数值业务码** ⇒ C 侧走 **trailer `sea-biz-code`**。
 **状态**：**⚪ 已登记**（`docs/L3-降级清单.md` **D-05**）⇒ 本次实测确认该判断成立（`GrpcExceptionMapperAutoConfigurationTest` 5 例覆盖 trailer 业务码与 description 逐字）。
 
-### ⚪ DRIFT-COMMON-V16｜`ProtectionProperties` 的 **Stat / Prometheus 两个开关未接线**（层恒装）
+### ✅ DRIFT-COMMON-V16｜`ProtectionProperties` 的 **Stat / Prometheus 两个开关未接线**（层恒装）—— **已收口（2026-11-05）**
 
-**状态**：**⚪ 已登记**（**接线缺口**，**非行为漂移**）⇒ 落点在 `common/` ⇒ 归 `global` 收口域（AGENTS.md §五.3）。
+**状态**：**✅ 已收口**（2026-11-05 · `global` 收口域 · 落点 `common/` ⇒ 符合 AGENTS.md §五.3 规则 3）
+⇒ ⇒ **只改共享层**（4 个主代码文件 ＋ 1 个新测试文件）⇒ ⇒ **未改任何域的代码或 yml**（本条不需要动域侧）。
+
+**登记时的定性（2026-11-03 · 原文保留）**：
 ⚠️ **定性**：B 侧 `GoStyleRpcProtectionChain.build` 用 `props.getStat().isEnabled()`（`:235`）与
 `props.getPrometheus().isEnabled()`（`:228`）**决定这两层装不装**；C 侧的装配点
 `ProtectionAutoConfiguration#rpcStatInterceptor` **不读本开关** ⇒ ⇒ **Stat 层恒装**。
@@ -599,6 +608,33 @@ S3b（PG 停）= `200 + 信封 1015` @ 2.05s · S4（持锁）= `200 + 信封 10
 ⇒ ⇒ **同类已接线的对照**：`breaker.enabled` **有**消费点（`ProtectionAutoConfiguration:321` / `:468` · `ClientProtectionAutoConfiguration:61`）⇒ ⇒ 说明「开关未接线」是**逐个开关**的状态，不是整体缺口。
 ⚠️ **连带订正（本轮）**：`ProtectionProperties` 的 `Stat` 类注释原先写「观测层的开关在 `GoStyleRpcProtectionChain#build` 内直接读本属性」
 ⇒ ⇒ **该说法在 C 侧不成立** ⇒ ⇒ 已改写为「C 侧**未接线**」＋ 指向本条。
+
+**本轮收口（2026-11-05）**：
+
+| 项 | 内容 |
+|---|---|
+| **B 侧消费点（逐字读过 · 本轮复核）** | B `service/common/src/main/java/com/rag/common/protection/GoStyleRpcProtectionChain.java`<br>· `:228` → `if (props.getPrometheus().isEnabled()) { chain = prometheusThen(chain); }`<br>· `:235` → `if (props.getStat().isEnabled()) { chain = statThen(chain); }`<br>⇒ ⇒ **两个开关决定这两层是否被拼进链**；⚠️ **全仓消费点就这两处**（`grep` 实测：B 侧 `getStat().isEnabled()` / `getPrometheus().isEnabled()` **零其它调用**）⇒ ⇒ **B 侧没有第二个开关源** ⇒ ⇒ 语义唯一 |
+| **C 侧修前现状（实测）** | ① `ProtectionAutoConfiguration#rpcStatInterceptor`（修前 `:290`）**签名里收了 `ProtectionProperties`，函数体却从不读 `getStat()`** ⇒ ⇒ **Stat 层恒装**；② `#rpcPrometheusInterceptor`（修前 `:303`）**只读 registry、不读 `getPrometheus()`** ⇒ ⇒ **Prometheus 层恒装**<br>⇒ ⇒ **唯一的「关」是「没有 registry ⇒ 整段跳过」⇒ 那是另一根轴**（**有没有地方可写** ≠ **配置意图**）<br>⇒ ⇒ **C 侧已接线的同类开关** = `breaker.enabled`（修前 `:321`）＋ `cpu-shedding.enabled`（修前 `:336`）⇒ ⇒ 「开关未接线」是**逐个开关**的状态，不是整体缺口 |
+| **修法（已实施）** | ① 两层各加 `enabled` 字段，**在构造期**接收；② 装配点把 `properties.getStat().isEnabled()` / `properties.getPrometheus().isEnabled()` **传进去**（`ProtectionAutoConfiguration.java:304-306` / `:329-334`）；③ **关掉时完全不做事**：<br>　· **Stat 层**（`RpcStatInterceptor.java:97` / `:140-142` / `:161`）：**不记样本** ＋ **不起那条每 60s 的统计日志线程**；<br>　· **Prometheus 层**（`RpcPrometheusInterceptor.java:131`）：**一条指标都不写**<br>⇒ ⇒ **沿用本类既有惯例**（`breaker` / `cpu-shedding` 同款：「Bean 恒在 ＋ 构造时传 `enabled` ＋ 关掉即透传」）⇒ ⇒ **链的组成不变**（B = 「层不在链上」· C = 「层在但透传」⇒ 只影响内部断言的**层名列表**，**不影响任何客户端可观测行为**） |
+| **🔴 「连线程一起不起」这一半为什么是必须的** | B 侧那条**每 60s 一行统计日志**的线程，**唯一来源** = `GoStyleStatInterceptor.java:82` 的 `metrics.startReporter()` ⇒ ⇒ 而 `GoStyleStatInterceptor` **只在开关为真时才被构造** ⇒ ⇒ **开关关掉 ⇒ B 侧既没有样本、也没有那行日志**。<br>⚠️ **差点读错的一处（已逐字排除）**：`GoStyleRpcSheddingInterceptor.java:126` 也有一句 `this.stat.startReporter();` ⇒ 但它的 `stat` 字段是 **`GoStyleSheddingStat`**（**另一套统计**，降载用的）⇒ **不是** stat-metrics 那条 ⇒ ⇒ 「Stat 关掉 ⇒ 无 60s 日志」的结论成立<br>⇒ ⇒ C 侧若只做「不记样本」而仍起线程 ⇒ **C 会比 B 多打一行日志** ⇒ ⇒ **线程门必须一起关** |
+| **三段式（AGENTS.md §3.2）** | **① 比 B 侧多做了什么**：B 侧用「**层不拼进链**」表达「这层关着」；本仓用「**层在链上但透传**」（与本类既有的 breaker / cpu-shedding 惯例同款）⇒ ⇒ 差别只在**链的组成**。<br>**② 语义还一样吗**：**一样** —— 逐项对齐三处可观测面：<b>① 无样本</b>（B 不在链上 ⇒ 不记；C 透传 ⇒ 不记）· <b>② 无那条 60s 的统计日志</b>（B 无线程；C 开关关掉时**不启动线程**）· <b>③ 降载 drop 计数口径不变</b>（两侧都是 `...getInstance().addDrop()`：都只增计数、都没有上报线程去打印它 ⇒ ⇒ **两边都「计了但看不见」**）⇒ ⇒ **客户端可观测面零差异**。<br>**③ B 出处**：`GoStyleRpcProtectionChain.java:228` / `:235`（消费点）＋ `GoStyleStatInterceptor.java:82`（上报线程**唯一**来源）＋ `zrpc/internal/config.go:23-24`（两个开关的默认值 `true`） |
+| **配置键名（L1 面）** | 两侧**前缀与键名完全一致**：`rag.protection`（B `GoStyleProtectionProperties.java:94` ＋ C `ProtectionProperties.java:95`）⇒ ⇒ 键名 = `rag.protection.stat.enabled` / `rag.protection.prometheus.enabled` ⇒ ⇒ **L1 未变**（本条只补「消费点」，不动键名、不动默认值） |
+| **⚠️ 现行配置下两侧行为一致（本条不判行为漂移的理由）** | ① 两个开关的**默认值**两侧同为 `true`（B `zrpc/internal/config.go:23-24` ＋ C `ProtectionProperties.Stat/Prometheus.enabled`）；② **真源各域 yaml 未覆盖**（B 侧 `service/**/src/main/resources/*.yml` 里**没有** `Stat:` / `Prometheus:` 顶层键 —— 唯一命中的 `tools/difftest/conf/go/hot-rpc.yaml` 是 **zrpc 的 `Prometheus.Host/Port/Path` 配置**，**同名不同物**）；③ **C 侧各域 yml 同样未覆盖**（本轮 `grep` 实测：各域 `application.yml` 里**没有** `rag.protection.stat.enabled` / `rag.protection.prometheus.enabled`）⇒ ⇒ ⇒ **修前修后行为一致** ⇒ ⇒ 本条闭合的是「**接线缺口**」，**不是**现行行为漂移 |
+| **验收判据** | `common/src/test/java/com/rag/common/observability/ProtectionLayerSwitchWiringTest.java` —— **4 例**（2 条目标维 ＋ 2 条对照维）<br>① `stat.enabled=false` ⇒ **一条样本都不记** **且** **那条 60s 上报线程没起**（**真 Spring 装配** ＋ **真 in-process gRPC server 上真发一次 unary 调用**）<br>② 对照：`stat` 开关默认 true ⇒ **记一条样本** ＋ **线程已起**<br>③ `prometheus.enabled=false` ⇒ **registry 里一个 meter 都没有**<br>④ 对照：`prometheus` 开关默认 true ⇒ **写出那两个 meter**（`rpc_server_requests_duration_ms` ＋ `rpc_server_requests_code`）<br>⇒ ⇒ **判据落在「真执行期」**（不是「构造器接受了这个参数」）；⇒ ⇒ **两条对照维是必需的**（否则「关掉就不做」在「层压根没跑起来」时也是绿的 ⇒ 守门恒真） |
+| **⚠️ 守门为什么放在 `com.rag.common.observability` 包** | Stat 层的读数取自**进程级单例** `RpcStatMetrics` ⇒ 必须先重置成干净状态 ⇒ 而重置口 `resetInstanceForTest()` 是 **package-private**（**B 侧同款**：`GoStyleStatMetrics.resetInstanceForTest()` 同样包私有 ⇒ **不为测试放宽可见性**）⇒ ⇒ 守门必须与它同包 |
+| **新增的观察点（生产代码的一处小开口）** | `RpcStatMetrics#reporterStarted()`（**public · 「仅测试用」**）：读「这条 60s 上报线程起没起」⇒ ⇒ **为什么不用线程名判**：同 JVM 里别的测试可能已经起过同名线程 ⇒ **会假红**；**为什么不等 60s**：守门必须快 ⇒ ⇒ 读**本实例**的调度器引用（`startReporter()` 幂等、只置位一次）⇒ ⇒ **纯观察点，不改任何行为**（与本类既有 3 个 public「仅测试用」方法同款） |
+| **变异实测（两轮 · 红灯精确）** | **变异 A（抽掉「配置 → 层」的接线）**：两个 Bean 改成写死 `true` ⇒ ⇒ **机器读数：`Tests run: 4, Failures: 2`** ⇒ 红的是 `statDisabledIsFullyInert`（`expected: 0L but was: 1L`）＋ `prometheusDisabledWritesNoMeter`（`Expecting empty but was: [...]`）⇒ ⇒ **两条对照维仍绿** ⇒ ⇒ **「接线」这半有牙**<br>**变异 B（只抽掉「上报线程门」，接线保持正确）** ⇒ ⇒ **机器读数：`Tests run: 4, Failures: 1`** ⇒ 红的是 `statDisabledIsFullyInert`，且**红在 `reporterStarted()` 那条断言**（`Expecting value to be false but was true`）⇒ ⇒ 样本那条断言这次**是绿的** ⇒ ⇒ **「线程门」这半独立有牙**（不是被样本那条顺带盖住的）<br>⇒ ⇒ **还原后同条件复跑 = `Tests run: 4, Failures: 0, Errors: 0, Skipped: 0`** |
+
+#### ✅ 读数（2026-11-05）
+
+| 项 | 读数 |
+|---|---|
+| **行为层守门** | `ProtectionLayerSwitchWiringTest` —— **4 例**（2 条目标维 ＋ 2 条对照维）⇒ **4/4 绿**；**变异 A**（抽接线）⇒ **`Tests run: 4, Failures: 2`**（红：`statDisabledIsFullyInert` `expected: 0L but was: 1L` ＋ `prometheusDisabledWritesNoMeter` `Expecting empty but was: [...]`；两条对照维仍绿）；**变异 B**（只抽线程门）⇒ **`Tests run: 4, Failures: 1`**（红在 `reporterStarted()` 那条：`Expecting value to be false but was true`）⇒ ⇒ **还原 = `Tests run: 4, Failures: 0, Errors: 0, Skipped: 0`** |
+| **🔴 机器守门（新增 A15）** | `tools/difftest/check-arch-invariants.py` 新增 **A15**「保护层每个 `enabled` 开关都必须有消费点（接线守门）」：脚本**自己从 `ProtectionProperties.java` 解析出带 `enabled` 字段的嵌套类** ⇒ ⇒ **将来新增的开关自动进清单**（不腐烂）⇒ 逐枚核对**共享层**里有没有人读它的 `isEnabled()`<br>⚠️ **🔴 判据会先剥掉注释与字符串字面量** —— 本仓 javadoc 里**大量引用 B 侧源码**（`if (props.getStat().isEnabled())` 之类）⇒ ⇒ 不剥离的话「接线被摘掉」也照样绿 ⇒ ⇒ **假绿** ⇒ ⇒ **fixture 里故意放了一句注释里的引用，自检仍判红 ⇒ 证明它不会被注释骗到**<br>⇒ **实测 PASS**（6 枚开关：`RedisDeadline` / `OutboundDeadline` / `CpuShedding` / `Breaker` / `Stat` / `Prometheus`）· **self-test 15/15 判据均能红**（含 A15）· **真仓变异实测**（摘掉 `rpcStatInterceptor` 的接线 ⇒ A15 当场报「`Stat` 共享层零消费点 ⇒ 该层恒装（零编译错误、零测试红灯 ⇒ 静默失效）」⇒ 还原后复绿）⇒ ⇒ 配套更新 `docs/架构符合性断言.md`（新增 A15 段 ＋ 状态行 ＋ 契约矩阵补两列）＋ `docs/README.md`（A1–A14 ⇒ **A1–A15**）＋ `AGENTS.md`（4 处 A1–A13 ⇒ **A1–A15**） |
+| **全仓回归** | **串行**（`mvn -o test`，**不带 `-T1C`**）⇒ **BUILD SUCCESS**（**6 分 36 秒**）⇒ **16/16 模块 SUCCESS** ⇒ **931 例 · Failures 0 · Errors 0 · Skipped 0**（模块级汇总：common **251**（247 → 251，+4 条新守门）· article **157** · follow **72** · like **110** · message **103** · users-common **46** · user **40** · admin **152** · proto/comment/favorite/hot/task **0**）⇒ ⇒ ⚠️ **计数只取回归日志的模块级汇总**（AGENTS.md §五.8 规则 ①） |
+| **三道守门** | `check-arch-invariants.py` ⇒ **EXIT=0**（**PASS 12 · FAIL 0 · N/A 2 · PENDING 1**，共 **15** 条 ⇒ **A15 已计入**）；`--self-test` ⇒ **15/15 判据均能红**<br>· `check-docs-vs-tree.py` ⇒ **EXIT=0**（新增测试文件 ⇒ 已重跑 `tools/gen-file-tree.py`）<br>· `check-mapping-coverage.py` ⇒ **EXIT=0**（C **641/641** · B **752/752**） |
+| **§11.2 状态表（机器复算）** | **承接行 = 91 · 标记数 = 91 · 复合状态行 = 0 · PASS 89 / NOT_IMPLEMENTED 0 / INTENTIONALLY_CHANGED 2 / FAIL 0 / FRAMEWORK_DIFFERENCE 0 / NOT_VERIFIED 0 / BLOCKED 0** ⇒ ⇒ **与本轮改动前一致**（本条不改 §11.2 的任何一行） |
+| **🧠 元教训落档** | [`docs/Pitfalls/_cross/P-25-配置开关没接线也是哑弹且关掉它要连构造期副作用一起关.md`](../../../Pitfalls/_cross/P-25-配置开关没接线也是哑弹且关掉它要连构造期副作用一起关.md) —— 三条可复用教训：① **「开关存在」≠「开关被读」**（配置面有**两类**哑弹：配置项缺失 / **消费点缺失**）；② **「关掉一个层」≠「主路径不做事」**（**构造期副作用**照样在 ⇒ 「等价于不装」不成立）；③ **机器守门不能数注释里的引用**（本仓 javadoc 里大量引用 B 侧源码 ⇒ 不剥注释 ⇒ **假绿** ⇒ 自检 fixture 里要**故意**放一句注释引用来证明没被骗） |
 
 ### ✅ DRIFT-COMMON-V17｜gRPC 服务端路径**零绑定点** ⇒ `DeadlineState` 绑不到 handler 线程 ⇒ **PARITY-006 根因** —— **已修（2026-11-03）**
 
@@ -832,7 +868,7 @@ comment 域工作树里 `service/comment/src/test/java/com/rag/comment/grpc/Comm
 > |---|---|
 > | **V11** | ✅ **已裁决 · 非漂移**（用户定：行为侧 C ≡ B ⇒ 归属不动 ⇒ AGENTS.md §2.3 的 🔴 解除） |
 > | **V12** | ⚪ **裁决保留**（两个类都留 ⇒ 处置措辞改为「等 article / task 域落地时再判」＋ **口径订正**：原「同一异常映射出两个 code」当前**不成立**） |
-> | **V16** | ⚪ **新登记** · Stat / Prometheus 两个开关**未接线**（**接线缺口**，现行配置下行为等价 ⇒ 非漂移） |
+> | **V16** | ✅ **已收口（2026-11-05 · `global` 收口域）** · Stat / Prometheus 两个开关**已接线**（原为「接线缺口」，现行配置下行为等价 ⇒ 非漂移）⇒ 两个 Bean 改为在**构造期**接开关 ⇒ 关掉时 **Stat 层不记样本 ＋ 不起那条 60s 上报线程**、**Prometheus 层一条指标都不写** ⇒ ⇒ 与 B 侧「层不拼进链」逐项等价（B 出处：`GoStyleRpcProtectionChain.java:228/235` ＋ `GoStyleStatInterceptor.java:82`）⇒ 守门 `ProtectionLayerSwitchWiringTest`（4 例 · 真 gRPC 调用）⇒ **变异两轮**（抽接线 ⇒ 2 红 / 只抽线程门 ⇒ 1 红且红在 `reporterStarted()`）⇒ 还原 4/4 绿 |
 > | **V17** | ✅ **已修（本轮 · 2026-11-03）** · gRPC 服务端路径**零绑定点** ⇒ **PARITY-006 根因** —— 已在 `GrpcObservationInterceptor` 补 `onHalfClose()` ⇒ 在 handler 线程上绑**入向** `DeadlineState`（绝对时刻 = 调用开始 ＋ `rpc-timeout`）⇒ 真 PG 两场景（服务端预算到点 / 客户端主动取消）⇒ 在途写 **0 行**；变异实测 ⇒ 两条都**红在核心判据**（`0L` vs `1L`）⇒ ⇒ 跨域复测（admin 域 E-4-R2）**待 admin 域 lane 落地** |
 > | **V18** | ⚪ **新登记** · 出向 deadline 的**运行期守门缺口**（装配层有网 · 运行期差分无网） |
 >

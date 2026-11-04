@@ -62,13 +62,42 @@ import io.grpc.ServerInterceptor;
  * <p>B 的 Stat 层用 {@code defer} ⇒ <b>panic 也会记样本</b>（defer 在栈展开时执行）。
  * 本类的记录点同样在「调用结束」⇒ ⇒ panic（被外层 {@link RpcRecoverInterceptor} 兜住后 close）
  * 也会记一条样本 ⇒ 与 B 侧 同形。
+ *
+ * <h3>🔴 开关语义（V16 收口 · 2026-11-05）：关掉 ⇒ <b>层等于没装</b></h3>
+ * <p><b>① 比 B 侧多做了什么</b>：B 侧 {@code GoStyleRpcProtectionChain.build} 用
+ * {@code if (props.getStat().isEnabled())} <b>决定这一层是否被拼进链</b>（B: {@code :235}）
+ * ⇒ ⇒ 开关关掉时 B 侧<b>根本不构造</b> {@code GoStyleStatInterceptor}
+ * ⇒ ⇒ 既<b>不记样本</b>，也<b>不起那条每 60s 的统计日志线程</b>（该线程只由
+ * {@code GoStyleStatInterceptor.java:82} 带起来 ⇒ 是它的唯一来源）。
+ * 本仓把这件事做成 <b>「层仍在链上，但开关关掉时完全不做事」</b>（透传 ＋ 不起线程）。
+ * <p><b>② 语义还一样吗</b>：<b>一样</b> —— 可观测面上三件事全部对齐：
+ * <b>无样本</b>（B 不在链上 ⇒ 不记；C 透传 ⇒ 不记）、<b>无那条 60s 日志</b>
+ * （B 无线程；C 开关关掉时不启动线程）、<b>降载 drop 计数口径不变</b>
+ * （B 的 {@code GoStyleStatMetrics.getInstance().addDrop()} 与 C 的
+ * {@code RpcStatMetrics.getInstance().addDrop()} 同款：都只增计数、都没有上报线程去打印它
+ * ⇒ ⇒ 两边都「计了但看不见」）。
+ * ⚠️ <b>诚实边界</b>：<b>链的组成</b>两侧不同（B = 层不在链上；C = 层在但透传）
+ * ⇒ ⇒ 只影响内部断言（层名列表），不影响任何客户端可观测行为。
+ * <p><b>③ B 出处</b>：{@code service/common/src/main/java/com/rag/common/protection/GoStyleRpcProtectionChain.java:235}
+ * （消费点）＋ {@code service/common/src/main/java/com/rag/common/observability/GoStyleStatInterceptor.java:82}
+ * （上报线程的唯一来源）＋ {@code zrpc/internal/config.go:23}（{@code Stat bool `json:",default=true"`}）。
  */
 public final class RpcStatInterceptor implements ServerInterceptor, RpcLayer {
 
     private final RpcStatMetrics metrics;
 
+    /**
+     * 本层是否启用（B 侧 = {@code rag.protection.stat.enabled}）。
+     *
+     * <p>⚠️ <b>关掉时必须「什么都不做」——包括不起那条每 60s 的上报线程</b>：
+     * B 侧那条线程是 <b>由 Stat 拦截器被构造</b> 这件事带起来的
+     * （{@code GoStyleStatInterceptor.java:82}），而拦截器只在开关为真时才被构造
+     * （{@code GoStyleRpcProtectionChain.java:235}）⇒ ⇒ 开关关掉 ⇒ <b>既没有样本、也没有那行日志</b>。
+     */
+    private final boolean enabled;
+
     public RpcStatInterceptor() {
-        this(RpcStatMetrics.getInstance());
+        this(RpcStatMetrics.getInstance(), true);
     }
 
     /**
@@ -77,12 +106,40 @@ public final class RpcStatInterceptor implements ServerInterceptor, RpcLayer {
      * <p>⚠️ 生产路径用 {@link #RpcStatInterceptor()}（进程级单例 ＋ 幂等上报线程）。
      */
     public RpcStatInterceptor(RpcStatMetrics metrics) {
+        this(metrics, true);
+    }
+
+    /**
+     * 按开关构造（生产路径用这个：{@code rag.protection.stat.enabled} 决定本层装不装）。
+     *
+     * @param enabled {@code false} ⇒ 本层<b>完全不做事</b>（不记样本 ＋ 不起上报线程）
+     */
+    public RpcStatInterceptor(boolean enabled) {
+        this(RpcStatMetrics.getInstance(), enabled);
+    }
+
+    /**
+     * 按开关构造（聚合器 + 开关全指定）。
+     *
+     * @param metrics 聚合器
+     * @param enabled {@code false} ⇒ 本层<b>完全不做事</b>（不记样本 ＋ 不起上报线程）
+     */
+    public RpcStatInterceptor(RpcStatMetrics metrics, boolean enabled) {
         this.metrics = metrics;
+        this.enabled = enabled;
         // B 侧: zrpc/server.go:37 —— metrics := stat.NewMetrics(c.ListenOn)
         //   ⇒ **每个 rpc server 一个** ⇒ 只有「真的装了 Stat 层」的进程才会有这条上报线程
         //   （B 侧同理：Stat 拦截器只在 c.Middlewares.Stat 为真时才被构造）。
         // ⚠️ 与 SheddingStat.startReporter() 同款：幂等 + 守护线程。
-        metrics.startReporter();
+        //
+        // 🔴 **开关关掉时必须连线程一起不起**（V16 收口 · 2026-11-05）：
+        //   B 侧那条「每 60s 一行统计日志」的线程**只**由本构造器带起来
+        //   （B: GoStyleStatInterceptor.java:82 是 GoStyleStatMetrics.startReporter() 的**唯一**调用点）
+        //   ⇒ ⇒ 开关关掉 ⇒ B 侧**既不记样本、也没有那行日志**
+        //   ⇒ ⇒ 本类照抄：enabled=false ⇒ 不起线程 ⇒ 否则 C 会多打一行 B 侧不打的日志。
+        if (enabled) {
+            metrics.startReporter();
+        }
     }
 
     /** 排障用：本次使用的聚合器。 */
@@ -93,6 +150,17 @@ public final class RpcStatInterceptor implements ServerInterceptor, RpcLayer {
     @Override
     public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
             ServerCall<ReqT, RespT> call, Metadata headers, ServerCallHandler<ReqT, RespT> next) {
+
+        // 🔴 **开关关掉 ⇒ 本层完全不做事**（V16 收口 · 2026-11-05）
+        //   B 侧: GoStyleRpcProtectionChain.java:235 ——
+        //     if props.getStat().isEnabled() { chain = statThen(chain); }
+        //   ⇒ ⇒ 开关关掉时，B 侧这一层**根本不在链上** ⇒ ⇒ **一条样本都不记**。
+        //   ⇒ ⇒ 本仓的形态是「层仍在链上，但透传」⇒ ⇒ **行为等价**（可观测面：无样本、无那行 60s 日志）。
+        //   ⚠️ 诚实边界：B 是「层不在链上」、本仓是「层在但透传」⇒ **链的组成**两者不同（层名列表）
+        //   ⇒ ⇒ 但链组成只影响内部断言，不影响任何客户端可观测行为（无样本 / 无日志 / 无指标）。
+        if (!enabled) {
+            return next.startCall(call, headers);
+        }
 
         final long startNanos = System.nanoTime();
         final long[] handlerDoneNanos = new long[1];

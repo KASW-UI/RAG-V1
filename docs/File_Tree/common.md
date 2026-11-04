@@ -228,6 +228,7 @@
 │                       │   ├── MqConsumerTest.java    # §3.3「机制可证」守门：MQ 消费端包装真的产出观测、真的按 B 的口径分类错误。
 │                       │   ├── ObservabilityPropertiesTest.java    # §3.3「机制可证」守门：观测层自己用的 3 个 Duration 字段真的能被绑定。
 │                       │   ├── ObservabilityRuntimeTest.java    # §3.3「机制可证」守门：观测层的两个进程级池真的能被关闭钩子回收，且关掉后能重建。
+│                       │   ├── ProtectionLayerSwitchWiringTest.java    # 🔴 DRIFT-COMMON-V16 的守门：Stat / Prometheus 两个开关必须真的接到层上
 │                       │   ├── RpcHandleRunnerTest.java    # §3.3「机制可证」守门：非 gRPC 路径的业务调用真的带超时控制 + 观测分类。
 │                       │   └── RpcRecoverInterceptorTest.java    # §3.3「机制可证」守门：gRPC handler panic ⇒ {@code INTERNAL + "panic: "}。
 │                       ├── persistence/

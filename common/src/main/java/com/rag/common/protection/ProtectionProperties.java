@@ -430,11 +430,16 @@ public class ProtectionProperties {
      * 加字段会<b>破坏 8 个域级守门的编译</b>（域侧写权面）⇒
      * ⇒ 保护层的构成仍由 {@code compose()} 唯一计算；观测层的开关在
      * B 侧 {@code GoStyleRpcProtectionChain#build} 内直接读本属性。
-     * <p>🔴 <b>⚠️ C 侧现状：本开关未接线</b> ——
-     * C 侧的装配点 {@link com.rag.common.autoconfigure.ProtectionAutoConfiguration#rpcStatInterceptor}
-     * <b>不读</b>本开关 ⇒ Stat 层<b>恒装</b>。
-     * ⇒ ⇒ <b>现行配置下行为与 B 侧 等价</b>（B 侧默认 {@code true}，且真源各域 yaml <b>未覆盖</b>）
-     * ⇒ ⇒ 属「<b>接线缺口</b>」而非行为漂移（登记见 common 域台账 DRIFT-COMMON-V16）。
+     * <p>✅ <b>2026-11-05 · V16 已收口：本开关现已接线</b> ——
+     * 装配点 {@link com.rag.common.autoconfigure.ProtectionAutoConfiguration#rpcStatInterceptor}
+     * <b>读本开关</b>（{@code properties.getStat().isEnabled()}）⇒
+     * ⇒ 关掉时 Stat 层<b>完全不做事</b>（不记样本 ＋ 不起那条每 60s 的统计日志线程）
+     * ⇒ ⇒ 与 B 侧「这一层根本不拼进链」<b>逐项等价</b>（B 出处：{@code GoStyleRpcProtectionChain.java:235}
+     * ＋ {@code GoStyleStatInterceptor.java:82}）。
+     * ⇒ ⇒ 守门见 {@code ProtectionLayerSwitchWiringTest}（4 例 · 真 gRPC 调用）；台账见
+     * common 域台账 <b>DRIFT-COMMON-V16</b>。
+     * <p>⚠️ <b>现行配置下行为与 B 侧 等价</b>（B 侧默认 {@code true}，且真源各域 yaml <b>未覆盖</b>）
+     * ⇒ ⇒ 本条闭合的是「<b>接线缺口</b>」而非现行行为漂移。
      */
     public static class Stat {
 
@@ -458,6 +463,14 @@ public class ProtectionProperties {
      *
      * <p>⚠️ 关掉它<b>只</b>停掉「写指标」这一件事，<b>不</b>停掉「暴露面」
      * （暴露面由各域的 actuator 决定 ⇒ 域侧写权面）。
+     *
+     * <p>✅ <b>2026-11-05 · V16 已收口：本开关现已接线</b> ——
+     * 装配点 {@link com.rag.common.autoconfigure.ProtectionAutoConfiguration#rpcPrometheusInterceptor}
+     * <b>读本开关</b>（{@code properties.getPrometheus().isEnabled()}）⇒
+     * ⇒ 关掉时本层<b>一条指标都不写</b> ⇒ ⇒ 与 B 侧「这一层根本不拼进链」<b>逐项等价</b>
+     * （B 出处：{@code GoStyleRpcProtectionChain.java:228}）。
+     * ⚠️ <b>两根轴要分清</b>：本开关 = <b>配置意图</b>；「没有 {@code MeterRegistry}」= <b>没有地方可写</b>
+     * ⇒ ⇒ 任一为「否」⇒ 一条都不写。台账见 common 域台账 <b>DRIFT-COMMON-V16</b>。
      */
     public static class Prometheus {
 

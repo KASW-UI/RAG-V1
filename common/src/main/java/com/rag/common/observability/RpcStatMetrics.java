@@ -464,4 +464,24 @@ public final class RpcStatMetrics {
     void addForTest(long durationNanos) {
         add(durationNanos);
     }
+
+    /**
+     * 仅测试用：那条<b>每 60s 一行统计日志</b>的上报线程是否已经启动。
+     *
+     * <p>🔴 <b>2026-11-05 · V16 收口新增的观察点</b>：本仓「Stat 层关掉 ⇒ B 侧那行日志<b>也不打</b>」
+     * 这条语义需要一个<b>确定性</b>的判据 ——
+     * <ul>
+     *   <li><b>不能靠等 60s</b>（守门必须快）；</li>
+     *   <li><b>也不能靠线程名</b>（同 JVM 里别的测试可能已经起过同名线程 ⇒ 假红）。</li>
+     * </ul>
+     * ⇒ ⇒ 本方法读的是<b>本实例</b>的调度器引用（{@link #startReporter()} 是幂等的、
+     * 只在本实例上置位一次）⇒ ⇒ 读数只反映「<b>这个聚合器</b>有没有起过那条线程」。
+     *
+     * <p>⚠️ <b>只读、不改变任何行为</b>（纯观察点）⇒ 不影响 B 侧语义。
+     */
+    public boolean reporterStarted() {
+        synchronized (this) {
+            return scheduler != null;
+        }
+    }
 }

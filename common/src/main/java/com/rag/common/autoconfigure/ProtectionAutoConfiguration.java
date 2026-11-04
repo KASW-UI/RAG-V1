@@ -282,27 +282,55 @@ public class ProtectionAutoConfiguration {
 
     /**
      * ② stat 层：每请求耗时样本（进程内 RPC 聚合器 + 每 60s 统计日志）。
+     *
+     * <p>🔴 <b>开关接线（V16 收口 · 2026-11-05）：本层读 {@code rag.protection.stat.enabled}</b>
+     * <p><b>① 比 B 侧多做了什么</b>：B 侧 {@code GoStyleRpcProtectionChain.build} 用
+     * {@code if (props.getStat().isEnabled())}（B: {@code :235}）<b>决定这一层是否被拼进链</b>
+     * ⇒ ⇒ 开关关掉 ⇒ B 侧<b>不构造</b>这一层 ⇒ ⇒ 既无样本、也无那条 60s 的统计日志线程
+     * （该线程只由 {@code GoStyleStatInterceptor.java:82} 带起来）。
+     * 本仓<b>不删 Bean</b>（链的组成保持稳定）⇒ 改成 <b>把开关传进拦截器，由它决定「装不装」</b>
+     * —— 与本类里 {@code breaker.enabled} / {@code cpu-shedding.enabled} 的既有惯例<b>同款</b>
+     * （那两个开关同样是「Bean 恒在 ＋ 构造时传 enabled ＋ 关掉即透传」）。
+     * <p><b>② 语义还一样吗</b>：<b>一样</b> —— 见 {@link RpcStatInterceptor} 类 javadoc 的「开关语义」段：
+     * 可观测面三项全对齐（无样本 / 无那行 60s 日志 / 降载 drop 计数照旧「计了但看不见」）。
+     * <p><b>③ B 出处</b>：{@code service/common/src/main/java/com/rag/common/protection/GoStyleRpcProtectionChain.java:235}
+     * ＋ {@code service/common/src/main/java/com/rag/common/observability/GoStyleStatInterceptor.java:82}
+     * ＋ {@code zrpc/internal/config.go:23}（{@code Stat bool `json:",default=true"`}）。
      */
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnClass(name = "io.grpc.ServerInterceptor")
     @Order(RPC_LAYER_STAT)
     public RpcStatInterceptor rpcStatInterceptor(ProtectionProperties properties) {
-        return new RpcStatInterceptor();
+        return new RpcStatInterceptor(properties.getStat().isEnabled());
     }
 
     /**
      * ③ prometheus 层：耗时分布 + 状态码计数。
      *
      * <p>⚠️ <b>没有 registry ⇒ 本层整段跳过</b>（B 侧：{@code prometheus.Enabled()==false}）。
+     *
+     * <p>🔴 <b>开关接线（V16 收口 · 2026-11-05）：本层读 {@code rag.protection.prometheus.enabled}</b>
+     * <p><b>① 比 B 侧多做了什么</b>：B 侧 {@code GoStyleRpcProtectionChain.build} 用
+     * {@code if (props.getPrometheus().isEnabled())}（B: {@code :228}）<b>决定这一层是否被拼进链</b>
+     * ⇒ ⇒ 开关关掉 ⇒ B 侧不构造这一层 ⇒ ⇒ <b>一条指标都不写</b>。
+     * 本仓同样<b>不删 Bean</b> ⇒ 改成把开关传进拦截器（与 {@link RpcStatInterceptor} 同款）。
+     * <p><b>② 语义还一样吗</b>：<b>一样</b> —— B 侧这一层只做「记耗时分布」＋「记状态码计数」两件事
+     * ⇒ ⇒ 开关关掉 ⇒ 两件都不发生 ⇒ ⇒ 与「不在链上」逐项等价。
+     * ⚠️ <b>两根轴要分清</b>：<b>开关</b>（配置意图）≠ <b>没有 registry</b>（没有地方可写）
+     * ⇒ ⇒ 前者本轮补上，后者是既有语义，两根轴任一为「否」⇒ 本层一条都不写。
+     * <p><b>③ B 出处</b>：{@code service/common/src/main/java/com/rag/common/protection/GoStyleRpcProtectionChain.java:228}
+     * ＋ {@code zrpc/internal/config.go:24}（{@code Prometheus bool `json:",default=true"`}）。
      */
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnClass(name = "io.grpc.ServerInterceptor")
     @Order(RPC_LAYER_PROMETHEUS)
     public RpcPrometheusInterceptor rpcPrometheusInterceptor(
+            ProtectionProperties properties,
             ObjectProvider<io.micrometer.core.instrument.MeterRegistry> registryProvider) {
-        return new RpcPrometheusInterceptor(registryProvider.getIfAvailable());
+        return new RpcPrometheusInterceptor(registryProvider.getIfAvailable(),
+                properties.getPrometheus().isEnabled());
     }
 
     /**

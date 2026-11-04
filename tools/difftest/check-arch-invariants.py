@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""架构符合性守门（A1–A13）。
+"""架构符合性守门（A1–A15）。
 
 > 断言的完整定义 → [`../../docs/架构符合性断言.md`](../../docs/架构符合性断言.md)
 
@@ -21,8 +21,8 @@
 
 | 契约 | 形态 | 适用断言 |
 |---|---|---|
-| **A** | B 侧部署等价（api / rpc 分离） | A1 · A2 · A3 · A4–A13 |
-| **B** | Spring 惯用（api + rpc 合并）★ RAG-V1 | A4–A13 |
+| **A** | B 侧部署等价（api / rpc 分离） | A1 · A2 · A3 · A4–A15 |
+| **B** | Spring 惯用（api + rpc 合并）★ RAG-V1 | A4–A15 |
 
 ⚠️ **A1 / A2 / A3 是 api/rpc 分离的派生物**，合并形态下它们**自动消失**。
 ⇒ 在 `--contract B` 下它们报 **`N/A`**，**不得改成红灯**（AGENTS.md §二 D1 连带效应）。
@@ -355,6 +355,58 @@ def parse_yaml_block(yml_text: str, top_key: str) -> dict:
             out[".".join([k for _, k in stack] + [key])] = val
         stack.append((indent, key))
     return out
+
+
+def strip_java_comments(text: str) -> str:
+    """把 Java 源码里的**注释与字符串字面量**剥掉，只留可执行代码。
+
+    🔴 **为什么需要它**：本仓的 javadoc 里**大量引用 B 侧源码**
+    （例如 `if (props.getStat().isEnabled())` 这样的原文摘录）
+    ⇒ ⇒ 若判据直接在**带注释**的文本里找调用点 ⇒ ⇒ 它会数到**注释里的引用**
+    ⇒ ⇒ 「接线被摘掉」也照样绿 ⇒ ⇒ **假绿**
+    ⇒ ⇒ 这正是 AGENTS.md §3.1 那条「**不要拿代码注释当对照基准**」的机器化形态。
+
+    ⚠️ 字符串 / 字符字面量也一并置空 ⇒ ⇒ 免得源码里的示例字符串被误当成调用点。
+    """
+    out: list = []
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == "/" and i + 1 < n and text[i + 1] == "/":
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] == "*":
+            j = text.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            continue
+        if c == '"':
+            j = i + 1
+            while j < n:
+                if text[j] == "\\":
+                    j += 2
+                    continue
+                if text[j] == '"':
+                    break
+                j += 1
+            i = j + 1
+            out.append('""')
+            continue
+        if c == "'":
+            j = i + 1
+            while j < n:
+                if text[j] == "\\":
+                    j += 2
+                    continue
+                if text[j] == "'":
+                    break
+                j += 1
+            i = j + 1
+            out.append("''")
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
 
 
 # ---------------------------------------------------------------------------
@@ -974,6 +1026,82 @@ def check_a14(root: pathlib.Path, contract: str) -> Result:
 
 
 # ---------------------------------------------------------------------------
+# A15 · 保护层的每个 `enabled` 开关都必须**真的接到层上**（接线守门）
+# ---------------------------------------------------------------------------
+def check_a15(root: pathlib.Path, contract: str) -> Result:
+    """A15 · `ProtectionProperties` 里每个 `enabled` 开关都必须有消费点。
+
+    🔴 **为什么要有这条**（DRIFT-COMMON-V16 的原形态）：`rag.protection.stat.enabled` /
+    `rag.protection.prometheus.enabled` 这两个开关在 C 侧**从来没被读过**
+    ⇒ ⇒ 置 `false` 也毫无效果（该层恒装）⇒ ⇒ **零编译错误、零测试红灯**
+    ⇒ ⇒ 只有「某个域真的去关它」的那一天才会显形 ⇒ ⇒ **静默失效**。
+
+    ⚠️ **判据钉的是「不变量」而不是「字面值」**：脚本自己从 `ProtectionProperties.java`
+    **解析出带 `enabled` 字段的嵌套类** ⇒ ⇒ **将来新增的开关自动进清单**
+    ⇒ ⇒ 不必改脚本 ⇒ ⇒ 清单不会腐烂。
+
+    ⚠️ **🔴 为什么必须先剥注释**：本仓的 javadoc 里**大量引用 B 侧源码**
+    （例如 `if (props.getStat().isEnabled())` 这样的原文摘录）
+    ⇒ ⇒ 不剥离的话，判据会数到**注释里的引用** ⇒ ⇒ 「接线被摘掉」也照样绿 ⇒ ⇒ **假绿**
+    ⇒ ⇒ 这正是 AGENTS.md §3.1「**不要拿代码注释当对照基准**」的机器化形态。
+
+    ⚠️ **消费点只在共享层找**：保护层的装配点全在 `common/`
+    ⇒ ⇒ 域侧读它不构成「这层装不装」的判据。
+    """
+    props_rel = "common/src/main/java/com/rag/common/protection/ProtectionProperties.java"
+    props = root / props_rel
+    if not props.exists():
+        return Result(FAIL, f"{props_rel} ⇒ 不存在 ⇒ 无法核对保护层开关的接线")
+    code = strip_java_comments(props.read_text(encoding="utf-8"))
+
+    # 解析出「带 `enabled` 字段的嵌套类」⇒ 每个就是一枚开关
+    class_pos = [(m.group(1), m.start()) for m in re.finditer(r"public static class (\w+)", code)]
+    switches: list = []
+    for m in re.finditer(r"private boolean enabled\b", code):
+        owner = None
+        for name, pos in class_pos:
+            if pos < m.start():
+                owner = name
+            else:
+                break
+        if owner and owner not in switches:
+            switches.append(owner)
+    if not switches:
+        return Result(PENDING, f"{props_rel} ⇒ 解析不到任何 `enabled` 开关 ⇒ 判据无从施加")
+
+    files = sorted((root / "common/src/main/java").rglob("*.java"))
+    if not files:
+        return Result(PENDING, "共享层 `common/src/main/java` 下没有 Java 文件 ⇒ 判据无从施加")
+    codes = [strip_java_comments(f.read_text(encoding="utf-8")) for f in files]
+
+    viol, wired = [], []
+    for cls in switches:
+        direct = f"get{cls}().isEnabled()"
+        found = False
+        for text in codes:
+            if direct in text:
+                found = True
+                break
+            # 间接形态：先把开关对象存进局部变量再读（`Stat s = props.getStat(); s.isEnabled()`）
+            for var in re.findall(r"\b" + cls + r"\s+(\w+)\s*=", text):
+                if f"{var}.isEnabled()" in text:
+                    found = True
+                    break
+            if found:
+                break
+        if found:
+            wired.append(cls)
+        else:
+            viol.append(f"保护层开关 `{cls}`（消费点应为 `{direct}`）**共享层零消费点**"
+                        f" ⇒ 置 false 也毫无效果 ⇒ 该层恒装"
+                        f"（零编译错误、零测试红灯 ⇒ 静默失效）")
+
+    if viol:
+        return Result(FAIL, f"保护层开关接线：{len(switches)} 枚开关里 {len(viol)} 枚没有消费点", viol)
+    return ok(f"保护层开关接线：{len(switches)} 枚开关全都有消费点（{' / '.join(wired)}）")
+
+
+# ---------------------------------------------------------------------------
 # 断言注册表
 # ---------------------------------------------------------------------------
 CHECKS = [
@@ -991,6 +1119,7 @@ CHECKS = [
     ("A12", "模块内无同名简单类", check_a12),
     ("A13", "用了 Lombok ⇒ 须写原本的完整代码展开块", check_a13),
     ("A14", "追踪导出配置（otel 段）齐备且服务名自洽", check_a14),
+    ("A15", "保护层每个 enabled 开关都必须有消费点（接线守门）", check_a15),
 ]
 
 
@@ -1012,6 +1141,7 @@ FIXTURE_VIOLATIONS = {
     "A12": "模块内同名类",
     "A13": "Lombok 类缺「原本的完整代码」展开块",
     "A14": "域的 application.yml 缺 `otel:` 段（追踪导出配置）",
+    "A15": "保护层开关（ProtectionProperties 的 enabled）共享层零消费点",
 }
 
 
@@ -1110,6 +1240,24 @@ def build_fixture(base: pathlib.Path) -> pathlib.Path:
            "@Data\n"
            "public class LombokNoExpand {\n"
            "    private Long id;\n"
+           "}\n")
+    # A15 违规：`ProtectionProperties` 里的 `Stat.enabled` 开关**共享层零消费点**
+    #   ⇒ 置 false 也毫无效果 ⇒ 该层恒装（零编译错误、零测试红灯 ⇒ 静默失效）
+    # ⚠️ 注释里**故意**引用一次 `props.getStat().isEnabled()` ⇒ 验证判据**不会**被注释骗到
+    _write(root / "common/src/main/java/com/rag/common/protection/ProtectionProperties.java",
+           "package com.rag.common.protection;\n"
+           "public class ProtectionProperties {\n"
+           "  public static class Stat {\n"
+           "    private boolean enabled = true;\n"
+           "    public boolean isEnabled() { return enabled; }\n"
+           "    public void setEnabled(boolean e) { this.enabled = e; }\n"
+           "  }\n"
+           "  public Stat getStat() { return new Stat(); }\n"
+           "}\n")
+    _write(root / "common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java",
+           "package com.rag.common.autoconfigure;\n"
+           "public class ProtectionAutoConfiguration {\n"
+           "  // if (props.getStat().isEnabled()) { ... }  <= **注释里的引用不算消费点**\n"
            "}\n")
     return root
 
@@ -1255,7 +1403,7 @@ def self_test() -> int:
 # 主流程
 # ---------------------------------------------------------------------------
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="架构符合性守门（A1–A13）")
+    ap = argparse.ArgumentParser(description="架构符合性守门（A1–A15）")
     ap.add_argument("--contract", choices=["A", "B"], default="B",
                     help="断言绑定契约：A=api/rpc 分离（B 侧部署等价）· B=api+rpc 合并（RAG-V1，默认）")
     ap.add_argument("--only", nargs="+", metavar="A#", help="只跑指定断言，如 --only A4 A11")

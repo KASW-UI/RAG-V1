@@ -80,6 +80,19 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * ② B 的 Counter {@code rpc_server_requests_code_total} 在 Micrometer 里
  * <b>不能</b>直接叫这个名字（Prometheus 命名约定会给 Counter 自动加 {@code _total} 后缀 ⇒ 变 {@code ..._total_total}）
  * ⇒ ⇒ 本类把 Meter 名取为 {@code rpc_server_requests_code} ⇒ 导出后正是 {@code rpc_server_requests_code_total}。
+ *
+ * <p><b>🔴 开关语义（V16 收口 · 2026-11-05）：关掉 ⇒ <b>一条指标都不写</b></b>
+ * <p><b>① 比 B 侧多做了什么</b>：B 侧 {@code GoStyleRpcProtectionChain.build} 用
+ * {@code if (props.getPrometheus().isEnabled())} <b>决定这一层是否被拼进链</b>（B: {@code :228}）
+ * ⇒ ⇒ 开关关掉时 B 侧根本不构造这一层 ⇒ ⇒ <b>一条指标都不写</b>。
+ * 本仓把这件事做成 <b>「层仍在链上，但开关关掉时一条都不写」</b>。
+ * <p><b>② 语义还一样吗</b>：<b>一样</b> —— B 侧这一层<b>只做两件事</b>
+ * （{@code metricServerReqDur.Observe(...)} ＋ {@code metricServerReqCodeTotal.Inc(...)}）
+ * ⇒ ⇒ 开关关掉 ⇒ 两件都不发生 ⇒ ⇒ 与「不在链上」逐项等价。
+ * ⚠️ <b>诚实边界</b>：<b>链的组成</b>两侧不同（B = 层不在链上；C = 层在但空转）
+ * ⇒ ⇒ 只影响内部断言（层名列表），不影响任何客户端可观测行为（无指标写入）。
+ * <p><b>③ B 出处</b>：{@code service/common/src/main/java/com/rag/common/protection/GoStyleRpcProtectionChain.java:228}
+ * （消费点）＋ {@code zrpc/internal/config.go:24}（{@code Prometheus bool `json:",default=true"`}）。
  */
 public final class RpcPrometheusInterceptor implements ServerInterceptor, RpcLayer {
 
@@ -109,9 +122,28 @@ public final class RpcPrometheusInterceptor implements ServerInterceptor, RpcLay
      */
     private final MeterRegistry registry;
 
+    /**
+     * 本层是否启用（B 侧 = {@code rag.protection.prometheus.enabled}）。
+     *
+     * <p>⚠️ <b>与「没有 registry」是两根独立的轴</b>：开关是<b>配置意图</b>，
+     * registry 是<b>有没有地方可写</b> ⇒ ⇒ 两根轴任一为「否」⇒ 本层一条都不写。
+     */
+    private final boolean enabled;
+
     /** 可实例化：它是一个无状态的拦截器，由共享层的装配点直接 new。 */
     public RpcPrometheusInterceptor(MeterRegistry registry) {
+        this(registry, true);
+    }
+
+    /**
+     * 按开关构造（生产路径用这个：{@code rag.protection.prometheus.enabled} 决定本层装不装）。
+     *
+     * @param registry 写入面；{@code null} ⇒ 一条都不写
+     * @param enabled  {@code false} ⇒ 本层<b>一条都不写</b>
+     */
+    public RpcPrometheusInterceptor(MeterRegistry registry, boolean enabled) {
         this.registry = registry;
+        this.enabled = enabled;
     }
 
     @Override
@@ -120,7 +152,13 @@ public final class RpcPrometheusInterceptor implements ServerInterceptor, RpcLay
 
         // ⚠️ B 侧: core/metric/metric.go:14-20 —— prometheus 未启用 ⇒ **整次写入被丢弃**。
         //    本仓的同形语义 = 「没有 registry ⇒ 本层整段跳过」。
-        if (registry == null) {
+        //
+        // 🔴 **开关关掉 ⇒ 本层一条都不写**（V16 收口 · 2026-11-05）：
+        //   B 侧: GoStyleRpcProtectionChain.java:228 ——
+        //     if props.getPrometheus().isEnabled() { chain = prometheusThen(chain); }
+        //   ⇒ ⇒ 开关关掉时 B 侧这一层**根本不在链上** ⇒ ⇒ **一条指标都不写**。
+        //   ⇒ ⇒ 本仓的形态是「层仍在链上，但开关关掉时不写」⇒ ⇒ **行为等价**。
+        if (!enabled || registry == null) {
             return next.startCall(call, headers);
         }
 
@@ -171,7 +209,7 @@ public final class RpcPrometheusInterceptor implements ServerInterceptor, RpcLay
 
     /** 记一条耗时样本（单位：毫秒；与 B 的整型毫秒口径一致）。 */
     void observeDuration(String method, long millis) {
-        if (registry == null) {
+        if (!enabled || registry == null) {
             return;
         }
         DistributionSummary.builder(DURATION_METRIC)
@@ -182,7 +220,7 @@ public final class RpcPrometheusInterceptor implements ServerInterceptor, RpcLay
 
     /** 记一条状态码计数。 */
     void incrementCode(String method, int code) {
-        if (registry == null) {
+        if (!enabled || registry == null) {
             return;
         }
         Counter.builder(CODE_METRIC)
