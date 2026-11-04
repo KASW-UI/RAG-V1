@@ -14,6 +14,9 @@
       （否则比的是分块帧而不是业务字节 ⇒ 假红）；
     · ``Date`` / ``Server`` 等**易变头**刻意不比（见 README「比对口径」）。
 
+⚠️ **另有一个 ``probe_framing``**（**传输分帧面**）：只吐状态行 + Transfer-Encoding +
+Content-Length，**不动**上面这个 4 段输出格式 ⇒ ⇒ 既有判据（M1 面逐字节比对）不受影响。
+
 ⚠️ **1xx informational 会被跳过**（RFC 9110 §15.2）：本仓共享层的 ``ClientDisconnectProbe``
 会**直接往 socket 写** ``HTTP/1.1 103 Early Hints`` ⇒ **慢请求**的响应流前面会带若干个 1xx 块
 ⇒ 必须**跳过所有 1xx、只取最终响应** ⇒ 否则整份读数错位（详见 ``_split_final_response`` 的注释）。
@@ -69,8 +72,8 @@ def _status_code(status_line: str) -> int | None:
         return None
 
 
-def _split_final_response(raw: bytes) -> tuple[str, str, bytes]:
-    """从原始响应字节里切出**最终响应**（跳过所有 1xx informational）。
+def _split_final_response_headers(raw: bytes) -> tuple[str, dict[str, str], bytes]:
+    """从原始响应字节里切出**最终响应**（跳过所有 1xx informational）⇒ (状态行, 头字典, body)。
 
     🔴 **为什么必须跳过 1xx（RFC 9110 §15.2）**：
         1xx（informational）**不终结**响应 ⇒ 后面还有真正的响应。
@@ -82,14 +85,16 @@ def _split_final_response(raw: bytes) -> tuple[str, str, bytes]:
     （把 1xx 当成最终响应 ⇒ 状态行取到 "103 Early Hints"、body 变成后续全部字节）。
     ⇒ 那不是「偶发」：请求越慢越容易触发 ⇒ **超时面 100% 触发**。
 
-    返回：(原始状态行, Content-Type, body 字节)
+    ⚠️ **头字典的键一律小写**（HTTP 头名大小写不敏感 ⇒ 不小写就没法比）。
+
+    返回：(原始状态行, 头字典, body 字节)
     """
     rest = raw
     while True:
         head, sep, payload = rest.partition(b"\r\n\r\n")
         if not sep:
             # 连状态行都没拿到 ⇒ 连接层失败（探针据此判定「挂死」）
-            return "<NO-RESPONSE>", "", raw
+            return "<NO-RESPONSE>", {}, raw
         lines = head.split(b"\r\n")
         status_line = lines[0].decode("latin-1")
         code = _status_code(status_line)
@@ -97,20 +102,32 @@ def _split_final_response(raw: bytes) -> tuple[str, str, bytes]:
             # 1xx informational ⇒ 丢弃本块，继续读下一段（**不终结响应**）
             rest = payload
             continue
-        content_type = ""
-        chunked = False
+        headers: dict[str, str] = {}
         for line in lines[1:]:
-            lowered = line.lower()
-            if lowered.startswith(b"content-type:"):
-                content_type = line.split(b":", 1)[1].decode("latin-1").strip()
-            elif lowered.startswith(b"transfer-encoding:") and b"chunked" in lowered:
-                chunked = True
-        if chunked:
+            if b":" not in line:
+                continue
+            name, value = line.split(b":", 1)
+            headers[name.decode("latin-1").strip().lower()] = value.decode("latin-1").strip()
+        if "chunked" in headers.get("transfer-encoding", "").lower():
             payload = _decode_chunked(payload)
-        return status_line, content_type, payload
+        return status_line, headers, payload
 
 
-def probe(port: int, method: str, path: str, body: str | None) -> str:
+def _split_final_response(raw: bytes) -> tuple[str, str, bytes]:
+    """同 :func:`_split_final_response_headers`，但只吐 (状态行, Content-Type, body)。
+
+    ⚠️ **这个 3 元组的形状是 M1 面的冻结读数基础** ⇒ **不许改签名、不许改字段含义**。
+    """
+    status_line, headers, payload = _split_final_response_headers(raw)
+    return status_line, headers.get("content-type", ""), payload
+
+
+def _send_raw(port: int, method: str, path: str, body: str | None) -> bytes:
+    """发一次请求并读回**原始**响应字节（不解析）。
+
+    ⚠️ **单一口径**：``probe`` 与 ``probe_framing`` 都走这里 ⇒
+    ⇒ 不会出现「两份探针各写一遍 socket 逻辑 ⇒ 口径悄悄分叉」。
+    """
     req = f"{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
     if body is not None:
         payload = body.encode("utf-8")
@@ -123,12 +140,31 @@ def probe(port: int, method: str, path: str, body: str | None) -> str:
     sock = socket.create_connection(("127.0.0.1", port), timeout=30)
     try:
         sock.sendall(req.encode("utf-8"))
-        raw = _read_all(sock)
+        return _read_all(sock)
     finally:
         sock.close()
 
+
+def probe(port: int, method: str, path: str, body: str | None) -> str:
+    raw = _send_raw(port, method, path, body)
     status_line, content_type, payload = _split_final_response(raw)
     return f"HTTP|{status_line}|{content_type}|{payload.hex()}"
+
+
+def probe_framing(port: int, method: str, path: str, body: str | None) -> str:
+    """只读**传输分帧面**：状态行 + Transfer-Encoding + Content-Length。
+
+    ⚠️ **为什么单独一个函数（而不是给 :func:`probe` 加字段）**：
+        ``probe`` 的输出格式被 run.sh 直接切分比对 ⇒ 那是 **M1 面的冻结读数形状**
+        ⇒ 往里加字段会动到判据基础 ⇒ ⇒ 另起一个函数，另起一个探针脚本。
+
+    返回：``FRAMING|<状态行>|<Transfer-Encoding 或 ->|<Content-Length 或 ->``
+    """
+    raw = _send_raw(port, method, path, body)
+    status_line, headers, _payload = _split_final_response_headers(raw)
+    transfer_encoding = headers.get("transfer-encoding", "-")
+    content_length = headers.get("content-length", "-")
+    return f"FRAMING|{status_line}|{transfer_encoding}|{content_length}"
 
 
 def main() -> int:

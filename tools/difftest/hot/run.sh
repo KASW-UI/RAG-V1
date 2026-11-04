@@ -713,6 +713,36 @@ report_http "unknown_path"
 http_case "method_not_allowed" POST "/hot/v1/articles" ""
 report_http "method_not_allowed"
 
+# ── 9d. 🔴 **传输编码面**（响应怎么分帧：chunked 还是 Content-Length）────────────
+# ⚠️ **为什么单独做这一层**（2026-11-05 审核补的缺口）：
+#    M1 面比的是「状态行 + Content-Type + body hex」⇒ **不含**「响应怎么分帧」
+#    ⇒ ⇒ 「一侧用 chunked、另一侧用定长」这种差异**在 M1 面看不见**
+#    ⇒ ⇒ 而这恰恰是「客户端能不能按 Content-Length 直接读 body」的分野。
+# ⚠️ **判据 = 两侧相等，不断言绝对值**：
+#    · B 侧与 C 侧**都是 Java / Spring**（Boot 4 vs Boot 3.5）⇒ 分帧方式**必须一致**
+#      ⇒ ⇒ 判据 = 「两侧读数相等」。
+#    · ⚠️ **不写死「必须是 chunked」**：Go 真源那边是定长
+#      ⇒ 那是**两侧共同继承的、已登记的差异**（相对 Go）
+#      ⇒ ⇒ 写死绝对值会把「继承的差异」和「C 侧自己的漂移」混成同一条
+#      ⇒ ⇒ 本面**只判两侧相等**；绝对值那一面由**冻结锚**（Go 侧逐字节读数）承担。
+# ⚠️ **只比分帧字段（第 3、4 段）**：状态行（第 2 段）**两侧本就可能不同**
+#    （Tomcat 10.1 vs 11 的 reason phrase 差异）⇒ 混进来会把本面变成「另一个面」。
+ENC_C="$(python3 "${HERE}/http_encoding_probe.py" "${C_HTTP_PORT}" GET "/hot/v1/articles" 2>/dev/null)"
+ENC_B="$(python3 "${HERE}/http_encoding_probe.py" "${B_API_PORT}"  GET "/hot/v1/articles" 2>/dev/null)"
+ENC_C_FRAMING="$(printf '%s' "${ENC_C}" | cut -d'|' -f3-)"
+ENC_B_FRAMING="$(printf '%s' "${ENC_B}" | cut -d'|' -f3-)"
+if [ -z "${ENC_C}" ] || [ -z "${ENC_B}" ]; then
+  FAILED=$((FAILED+1)); FAILED_CASES="${FAILED_CASES} encoding"
+  say "   ❌ 传输编码面：探针没拿到响应（C='${ENC_C}' · B='${ENC_B}'）"
+elif [ "${ENC_C_FRAMING}" = "${ENC_B_FRAMING}" ]; then
+  say "   ✅ 传输编码面  两侧一致（Transfer-Encoding / Content-Length = ${ENC_C_FRAMING}）"
+else
+  FAILED=$((FAILED+1)); FAILED_CASES="${FAILED_CASES} encoding"
+  say "   ❌ 传输编码面  两侧不一致"
+  say "      C : ${ENC_C}"
+  say "      B : ${ENC_B}"
+fi
+
 # ══════════════════════════ 10. 阶段 M2 · gRPC wire 字节面 ═════════════════════
 step "10/14 阶段 M2 · gRPC wire 字节面（C :${C_GRPC_PORT} ↔ B :${B_RPC_PORT}）"
 # ⚠️ **为什么单独做这一层**：HTTP 层的 JSON 字节一致 **推不出** gRPC wire 字节一致
@@ -891,12 +921,13 @@ else
 fi
 
 # ══════════════════════════ 13. 阶段 M5 · 超时面（Redis 卡住）══════════════════
-# ⚠️ **本面与 M1–M4 的判定口径相反**：
-#    M1–M4 判「两侧**应当**逐字节一致」；本面判的是**已登记的差异（F-02）**
-#    ⇒ ⇒ 两侧**本来就该不同** ⇒ ⇒ 判据 = 「**差异的形状**必须与登记一致」，
-#    **不是**「两侧相等」，**也不是**「差异随便什么样都行」。
-#    ⚠️ **「已登记的差异」不是豁免** ⇒ 两侧的**读数形状都要冻结**（下面两个 EXPECT_*）
-#    ⇒ 若哪天差异的**形状**变了（不是「还在」而是「变了」）⇒ 判失败。
+# ⚠️ **本面在 2026-11-05 变了口径**：
+#    改之前 = M1–M4 判「两侧应当逐字节一致」，本面判「**已登记的差异**（F-02）该长什么样」
+#    ⇒ ⇒ 两侧**本来就该不同** ⇒ 判据 = 「差异的形状必须与登记一致」。
+#    改之后 = **C 侧补了域内 2s 出向上界**（`hot-api.domain-query-timeout` = 2000 = B 侧同一个数）
+#    ⇒ ⇒ C 侧的失败**拉回 2s** ⇒ ⇒ **两侧形状回到逐条相同**（都是 200 + 5001 业务信封）
+#    ⇒ ⇒ 本面**回到「两侧应当一致」的口径**（与 M1–M4 同向）。
+#    ⚠️ **判据仍然是「冻结的形状」**（不是「随便一样就行」）⇒ 形状变了 ⇒ 判失败。
 step "13/14 阶段 M5 · 超时面（Redis 卡住 ⇒ 失败形态与时延）"
 
 # ── 注入「卡住」：让两侧的 Redis 收下命令但**延迟应答** ────────────────────────
@@ -958,56 +989,42 @@ if ! m5_is_num "${M5_B_MS}" || ! m5_is_num "${M5_C_MS}" \
   exit 2
 fi
 
-# ── 判据 ②：两侧的**失败形状**必须与 F-02 的登记一致（冻结）────────────────────
+# ── 判据 ②：两侧的**失败形状**必须逐条相同（冻结）──────────────────────────────
 # B 侧：hot-api → hot-rpc 的 gRPC 出向有 **2s 封顶**（共享层 cap-millis=2000）
 #       ⇒ Redis 卡住时 **2s** 就失败 ⇒ 形状 = **200 + 5001 业务信封**（**不是** 503）。
-# C 侧：D2 域内直连 ⇒ 该方向**没有**出向上界 ⇒ 只能等 **HTTP 预算 3s**
-#       ⇒ 形状 = **503 + text/plain "Request Timeout\n"**（共享层 HttpMiddleware）。
-# ⚠️ **期望值是「冻结的形状」**（不是「随便不同就行」）⇒ 形状变了 ⇒ 判失败。
+# C 侧：🔴 **2026-11-05 补了域内 2s 上界**（`hot-api.domain-query-timeout` = 2000 = B 侧同一个数）
+#       ⇒ ⇒ 失败**拉回 2s** ⇒ 形状**回到与 B 侧同形** = **200 + 5001 业务信封**
+#       ⇒ ⇒ **不再有**「503 + 纯文本」与「混血响应」那两个候选 ——
+#            它们是「域内无上界 ⇒ 与 HTTP 预算 3s **同时到点**」的产物；
+#            有了 2s 上界 ⇒ 早于 3s ⇒ ⇒ **撞不上那个竞态**（F-15 的触发条件消失）。
+# ⚠️ **期望值是「冻结的形状」**（不是「随便一样就行」）⇒ 形状变了 ⇒ 判失败。
 M5_EXP_B_STATUS="HTTP/1.1 200 "
 M5_EXP_B_HEX="7b22636f6465223a353030312c226d7367223a22696e7465726e616c20736572766572206572726f72222c2264617461223a6e756c6c7d"
-# 🔴 **C 侧的失败形状是「三个候选」的竞态** ⇒ 冻结为**集合**，不是单一值：
-#    三个事件的先后决定客户端拿到什么：
-#      (a) worker 的**业务失败**（Redis 命令超时 3s）  (b) 容器线程的 **HTTP 预算**（3s）
-#      (c) worker 的**异常处理路径**调 `flushBuffer()`（把响应 commit 掉，但 body 还在缓冲里）
-#    ⇒ 三个候选：
-#      ① `200` ＋ 5001 业务信封       —— (a) 先到，worker 正常收尾并 flush ⇒ **干净**；
-#      ② `200` ＋ `application/json` ＋ body `Request Timeout\n`
-#         —— (c) 先 commit 了「200 + json + **空 body**」，(b) 随后**往已提交的响应里追加**纯文本
-#            ⇒ ⇒ **混血响应**：状态码与 Content-Type 是业务信封的，body 却是纯文本
-#            ⇒ ⇒ **信封契约被打断**（客户端按 JSON 解会失败）⇒ **共享层缺陷**（见 DRIFT 台账 F-15）；
-#      ③ `503` ＋ `text/plain` ＋ `Request Timeout\n` —— (b) 先落定 ⇒ **超时分支的干净形状**。
-#    ⇒ ⇒ **两个都是 3s 预算** ⇒ 谁先到取决于毫秒级抖动 ⇒ ⇒ **实测三轮各命中一个** ⇒ 冻结成集合。
-M5_EXP_C_STATUS_1="HTTP/1.1 200 "
-M5_EXP_C_HEX_1="7b22636f6465223a353030312c226d7367223a22696e7465726e616c20736572766572206572726f72222c2264617461223a6e756c6c7d"
-M5_EXP_C_STATUS_2="HTTP/1.1 200 "
-M5_EXP_C_HEX_2="526571756573742054696d656f75740a"
-M5_EXP_C_STATUS_3="HTTP/1.1 503 "
-M5_EXP_C_HEX_3="526571756573742054696d656f75740a"
+M5_EXP_C_STATUS="HTTP/1.1 200 "
+M5_EXP_C_HEX="7b22636f6465223a353030312c226d7367223a22696e7465726e616c20736572766572206572726f72222c2264617461223a6e756c6c7d"
 M5_B_MS_MIN=1500; M5_B_MS_MAX=2700
-M5_C_MS_MIN=2700; M5_C_MS_MAX=4400
+M5_C_MS_MIN=1500; M5_C_MS_MAX=2800
 M5_SHAPE_OK=1
 if [ "${M5_B_STATUS}" != "${M5_EXP_B_STATUS}" ] || [ "${M5_B_HEX}" != "${M5_EXP_B_HEX}" ]; then
   M5_SHAPE_OK=0
   FAILED=$((FAILED+1)); FAILED_CASES="${FAILED_CASES} m5:shape_b"
-  say "   ❌ M5 B 侧失败形状与登记（F-02）不符"
+  say "   ❌ M5 B 侧失败形状与冻结值不符"
   say "      期望：${M5_EXP_B_STATUS} · body=${M5_EXP_B_HEX}"
   say "      实得：${M5_B_STATUS} · body=${M5_B_HEX}（${M5_B_MS}ms · CT=${M5_B_CT}）"
 fi
-M5_C_SHAPE_OK=0
-M5_C_SHAPE_IDX=0
-if [ "${M5_C_STATUS}" = "${M5_EXP_C_STATUS_1}" ] && [ "${M5_C_HEX}" = "${M5_EXP_C_HEX_1}" ]; then
-  M5_C_SHAPE_OK=1; M5_C_SHAPE_IDX=1
-elif [ "${M5_C_STATUS}" = "${M5_EXP_C_STATUS_2}" ] && [ "${M5_C_HEX}" = "${M5_EXP_C_HEX_2}" ]; then
-  M5_C_SHAPE_OK=1; M5_C_SHAPE_IDX=2
-elif [ "${M5_C_STATUS}" = "${M5_EXP_C_STATUS_3}" ] && [ "${M5_C_HEX}" = "${M5_EXP_C_HEX_3}" ]; then
-  M5_C_SHAPE_OK=1; M5_C_SHAPE_IDX=3
-fi
-if [ "${M5_C_SHAPE_OK}" = "0" ]; then
+if [ "${M5_C_STATUS}" != "${M5_EXP_C_STATUS}" ] || [ "${M5_C_HEX}" != "${M5_EXP_C_HEX}" ]; then
   M5_SHAPE_OK=0
   FAILED=$((FAILED+1)); FAILED_CASES="${FAILED_CASES} m5:shape_c"
-  say "   ❌ M5 C 侧失败形状不在冻结的三候选集合里 ⇒ 形状漂移"
+  say "   ❌ M5 C 侧失败形状与冻结值不符（域内 2s 上界 ⇒ 应与 B 侧同形）"
+  say "      期望：${M5_EXP_C_STATUS} · body=${M5_EXP_C_HEX}"
   say "      实得：${M5_C_STATUS} · body=${M5_C_HEX}（${M5_C_MS}ms · CT=${M5_C_CT}）"
+fi
+# ⚠️ **额外钉一条「两侧相同」**：两侧**都**等于冻结值**不自动**保证两侧实测相等
+#    ⇒ ⇒ 实测也必须相等（防「两侧被改成同一个错误形状、而冻结值没跟上」）。
+if [ "${M5_B_STATUS}" != "${M5_C_STATUS}" ] || [ "${M5_B_HEX}" != "${M5_C_HEX}" ]; then
+  M5_SHAPE_OK=0
+  FAILED=$((FAILED+1)); FAILED_CASES="${FAILED_CASES} m5:shape_same"
+  say "   ❌ M5 两侧失败形状**不一致**（B=${M5_B_STATUS}/${M5_B_HEX} · C=${M5_C_STATUS}/${M5_C_HEX}）"
 fi
 if [ "${M5_B_MS}" -lt "${M5_B_MS_MIN}" ] || [ "${M5_B_MS}" -gt "${M5_B_MS_MAX}" ]; then
   FAILED=$((FAILED+1)); FAILED_CASES="${FAILED_CASES} m5:latency_b"
@@ -1018,16 +1035,9 @@ if [ "${M5_C_MS}" -lt "${M5_C_MS_MIN}" ] || [ "${M5_C_MS}" -gt "${M5_C_MS_MAX}" 
   say "   ❌ M5 C 侧失败时延不在登记区间 [${M5_C_MS_MIN},${M5_C_MS_MAX}]ms ⇒ 实得 ${M5_C_MS}ms"
 fi
 if [ "${M5_SHAPE_OK}" = "1" ]; then
-  KNOWN=$((KNOWN+1))
-  say "   ✅ M5 失败形状与 F-02 的登记一致（B：${M5_B_STATUS} ＋ 5001 信封 @${M5_B_MS}ms · C：${M5_C_STATUS} @${M5_C_MS}ms）"
-  say "      ⚠️ **两侧本来就不同**（F-02 · D2 域内直连的连带后果）⇒ 记为**已知现象**，不计失败"
-  case "${M5_C_SHAPE_IDX}" in
-    1) say "      · C 侧本轮命中候选①（200 ＋ 5001 信封）—— **干净形状**" ;;
-    2) say "      · 🔴 C 侧本轮命中候选②（200 ＋ application/json ＋ body「Request Timeout\n」）—— **混血响应**"
-       say "        ⇒ 信封契约被打断（body 不是 JSON）⇒ **共享层缺陷**（`common/observability/`）⇒ 见 DRIFT 台账 **F-15**"
-       say "        ⇒ **修法属收口域（global）** ⇒ 本域**只登记、不改**（AGENTS.md §五.3 规则 3）" ;;
-    3) say "      · C 侧本轮命中候选③（503 ＋ text/plain ＋「Request Timeout\n」）—— 超时分支的干净形状" ;;
-  esac
+  say "   ✅ M5 失败形状**两侧逐条相同**（B：${M5_B_STATUS} ＋ 5001 信封 @${M5_B_MS}ms · C：${M5_C_STATUS} ＋ 5001 信封 @${M5_C_MS}ms）"
+  say "      · B 侧是 **gRPC 出向 2s 封顶**先到点；C 侧是**域内 2s 上界**先到点 ⇒ ⇒ **机制不同、形状同形**"
+  say "      · ⇒ C 侧**不再撞上**「HTTP 预算 3s × 业务失败」的竞态 ⇒ 「混血响应」这个候选**消失**（F-15 的触发条件没了）"
 fi
 
 # ── 判据 ③：**恢复校验**（暂停窗口过后，两侧必须恢复正常）──────────────────────

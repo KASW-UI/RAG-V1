@@ -92,6 +92,11 @@ import java.util.concurrent.TimeUnit;
                 "logging.level.com.alibaba.nacos=WARN",
                 // ── 追踪不外发 ──
                 "management.otlp.tracing.export.enabled=false",
+                // ⚠️ 共享层的 OTLP exporter 也**关掉**（端点为空 ⇒ 按 B 侧口径不装 exporter）：
+                //    本域的 application.yml 里 otel 段是**真配了**的（生产要导出到 jaeger）⇒
+                //    ⇒ 测试环境若不关 ⇒ 每次跑测试都去连 jaeger:4317（不可达）⇒ 日志噪音。
+                //    ⇒ 「配了 ⇒ 真的装上了 exporter」由 HotOtelExporterWiringTest 单独钉。
+                "otel.exporter.otlp.endpoint=",
                 // ── gRPC 端口交给 OS（devh 的 gRPC server 是 SmartLifecycle ⇒ 启动即 bind）──
                 "grpc.server.port=0",
                 // ⚠️ **不覆盖 spring.kafka.consumer.auto-offset-reset** ⇒ 保留生产的 latest

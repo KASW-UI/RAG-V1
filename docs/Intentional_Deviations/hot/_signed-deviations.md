@@ -10,7 +10,7 @@
 >
 > **产出坐标**：`align/hot` 工作树（`/Users/pr/Documents/GitHub/RAG-V1.worktrees/hot`）· 基线 commit `7dbc283`。
 >
-> **📌 本文件的条目计数（核对日期 2026-11-04）**：共 **6 条编号**（DEV-HOT-001~006）⇒ **全部生效**（无撤销项）。
+> **📌 本文件的条目计数（核对日期 2026-11-05）**：共 **6 条编号**（DEV-HOT-001~006）⇒ **5 条仍生效** ＋ **1 条已修复**（**DEV-HOT-002**，2026-11-05 域内方向补回 2s 上界 ⇒ 差异消除 ⇒ 转历史登记）。
 > ⇒ 对应 DRIFT 台账 [`../../DRIFT/hot/verification-hot-service-2026-11-03.md`](../../DRIFT/hot/verification-hot-service-2026-11-03.md)
 > 的 **F-01 / F-02 / F-03 / F-12 / F-14** ＋ §四·4.6 里登记的 **Nacos namespace/group 部署面差异**。
 
@@ -58,38 +58,47 @@
 
 ---
 
-## DEV-HOT-002 · D2 域内直连 ⇒ **域内方向没有出向上界**（L2 · 超时面 · 已批准的连带后果）
+## DEV-HOT-002 · D2 域内直连 ⇒ **域内方向没有出向上界**（L2 · 超时面）· **✅ 2026-11-05 已修复 ⇒ 差异消除**
 
 | 项 | 内容 |
 |---|---|
-| **状态** | 🏷 **已登记**（**D2**「同域调用改直连，消除自我 gRPC 往返」的**连带后果**） |
+| **状态** | ✅ **已修复**（2026-11-05）—— 域内方向**补回 2s 出向上界** ⇒ 与 B 侧**形状逐条一致**；本条转为**历史登记**（保留原文，供追溯）|
 | **分域** | hot 域（`service/hot/`） |
-| **偏离类型** | **有意偏离**（L2 · 业务语义层的**超时面**） |
-| **提出 / 签字** | D2 决策（2026-10-26）⇒ 本条是它的**连带后果**，非本域自创 |
+| **偏离类型** | 原为 **有意偏离**（L2 · 业务语义层的**超时面**）⇒ **现已消除** |
+| **提出 / 签字** | D2 决策（2026-10-26）⇒ 本条是它的**连带后果**，非本域自创；**2026-11-05 用户指令「修」⇒ 消除** |
 
-### 偏离内容
+### 偏离内容（**当时**）
 
 B 侧 hot-api 调 hot-rpc 走**自我 gRPC 往返** ⇒ 该方向**也**受共享层出向封顶
 （`rag.protection.outbound-deadline.cap-millis: 2000`）约束。
 C 侧按 **D2** 把这条自我往返**改成本地方法直连** ⇒ **该方向不再经过任何出向拦截器** ⇒ **没有 2s 上界**。
 
-⇒ ⇒ **可观察差异（本轮双侧活体实测 · 2026-11-04 · `tools/difftest/hot/run.sh` 的 M5 面）**：
+### 🔴 修复前的实测读数（**历史** · 2026-11-04 · `tools/difftest/hot/run.sh` 的 M5 面）
 
 | | **B 侧** | **C 侧** |
 |---|---|---|
 | 域内方向的上界 | **2s**（共享层 gRPC 出向封顶） | **无**（D2 直连 ⇒ 唯一兜底是 HTTP 预算 **3s**） |
 | Redis 卡住时的**失败时延** | **2011ms** | **3014ms** |
-| Redis 卡住时的**失败形状** | **`HTTP/1.1 200 ` ＋ `application/json` ＋ `{"code":5001,"msg":"internal server error","data":null}`** | **三候选集合**（见下） |
+| Redis 卡住时的**失败形状** | **`HTTP/1.1 200 ` ＋ `application/json` ＋ `{"code":5001,"msg":"internal server error","data":null}`** | **三候选集合**（非确定）|
 
-> ⚠️ **这比原台账的定性更强**：原 F-02 写的是「两条路径都最终失败，**只是失败时延不同**」⇒
-> **实测证明失败「形状」也不同**（B 走业务信封 200 · C 可能走 503 文本）⇒ **本条按实测形状冻结**。
->
 > ⚠️ **C 侧的形状是「竞态」⇒ 非确定**（实测四轮命中过全部三种）：
 > ① `200` ＋ `application/json` ＋ 5001 信封（干净）；
 > ② `200` ＋ `application/json` ＋ body **`Request Timeout\n`**（**混血** ⇒ **信封契约被打断**）
 > —— 根因是**共享层**的「HTTP 预算 × 业务失败」竞态 ⇒ **归属收口域**（见 DRIFT 台账 **F-15**）；
 > ③ `503` ＋ `text/plain` ＋ `Request Timeout\n`（超时分支的干净形状）。
-> ⇒ ⇒ **「C 侧会拿到哪种形状」客户端无法预知** ⇒ ⇒ 这比「时延不同」更值得关注。
+> ⇒ ⇒ **「C 侧会拿到哪种形状」客户端无法预知**。
+
+### ✅ 修复落地（2026-11-05 · **向 B 侧对齐**）
+
+| 项 | 落地 |
+|---|---|
+| **上界从哪来** | B 侧的 2s 封顶在**共享层的 gRPC 出向拦截器**上 ⇒ **D2 域内直连不经它** ⇒ ⇒ C 侧**域内自持**一个同值上界：配置键 `hot-api.domain-query-timeout`（env `HOT_API_DOMAIN_QUERY_TIMEOUT_MS`，默认 **2000** = **B 侧同一个数**）|
+| **落点** | `service/hot/src/main/java/com/rag/hot/service/HotApiService.java` 的 `callDomainQuery()`：`CompletableFuture.supplyAsync(..., domainQueryExecutor).orTimeout(2000ms).join()` ⇒ 超时抛 `CompletionException`（**是 `RuntimeException`**）⇒ ⇒ 落进 `fetchTopK` 那个**放宽后的 catch** ⇒ ⇒ `hot_api_rpc_error_total{callee="hot_rpc_get_hot_articles"}` **照常 +1**（指标语义与 B 侧一致）|
+| **执行器** | 新增 `service/hot/src/main/java/com/rag/hot/config/HotDomainQueryConfiguration.java`（bean `hotDomainQueryExecutor`）⇒ Spring `SimpleAsyncTaskExecutor` 的**虚拟线程**模式 ⇒ **不排队**（普通池排队 ⇒ 排队时间算进超时预算 ⇒ 偏离 B 侧 gRPC「直发」）；**不能用** `hotHydrationExecutor`（CallerRuns ⇒ 超时永远等不到 ⇒ 上界形同虚设）|
+| **超时之后** | 原线程**继续跑**（Redis 读继续到自己的 socket timeout）⇒ ⇒ 与 B 侧**同形**（B 侧 gRPC deadline 到点后客户端放弃，hot-rpc 服务端那边照样在跑）⇒ 两侧都是「客户端先放弃、后台继续」|
+| **形状变化** | C 侧失败**拉回 2s** ⇒ 早于 HTTP 预算 3s ⇒ ⇒ **不再撞上**「HTTP 预算 × 业务失败」的竞态 ⇒ ⇒ **失败形状回到 `200` ＋ 5001 业务信封**（= B 侧**逐条一致**）⇒ ⇒ 「503 + 纯文本」与「混血响应」两个候选**消失** |
+
+> ⚠️ **F-15（共享层竞态）本身仍在** —— 本域只是**不再触发**它（触发条件 = 「域内方向无上界」与「HTTP 预算同时到点」）⇒ ⇒ **共享层缺陷仍归 `global` 收口域**。
 
 ### B 侧出处（逐行核对）
 
@@ -98,31 +107,28 @@ C 侧按 **D2** 把这条自我往返**改成本地方法直连** ⇒ **该方�
 - B 侧 `service/hot/hot-api/.../api/service/HotArticleQueryService.java` —— `fetchTopK(...)` 走 `HotRpcClient`（自我 gRPC 往返）
 - B 侧 `service/hot/hot-api/src/main/resources/application.yml` —— `observability.http-timeout: 3s`（go-zero `rest.RestConf.Timeout` 默认 3000）
 
-### RAG-V1 落点
+### RAG-V1 落点（**修复后**）
 
-- `service/hot/src/main/java/com/rag/hot/service/HotApiService.java` —— **直接注入** `HotRankingQueryService`（**无** `HotRpcClient` ⇒ D2）
-- `service/hot/src/main/resources/application.yml` —— `observability.http-timeout: 3s`（**B 侧逐字保留**）
-- 共享层 `common/observability/HttpMiddleware.java:438-448` —— 预算耗尽 ⇒ `writeTimeoutResponseQuietly(503)` ⇒ `Request Timeout\n`
+- `service/hot/src/main/java/com/rag/hot/service/HotApiService.java` —— **直接注入** `HotRankingQueryService`（**无** `HotRpcClient` ⇒ D2）＋ `callDomainQuery()` 承担 2s 上界
+- `service/hot/src/main/java/com/rag/hot/config/HotDomainQueryConfiguration.java` —— 虚拟线程执行器（**不排队**）
+- `service/hot/src/main/java/com/rag/hot/config/HotApiProperties.java` —— `domainQueryTimeout`（默认 2000）
+- `service/hot/src/main/resources/application.yml` —— `hot-api.domain-query-timeout`（**新增键**）＋ `observability.http-timeout: 3s`（**B 侧逐字保留**）
+- 共享层 `common/observability/HttpMiddleware.java:438-448` —— 预算耗尽 ⇒ `writeTimeoutResponseQuietly(503)` ⇒ `Request Timeout
+`（**未动**）
 
-### 影响面（已核实）
+### 影响面（**修复后**）
 
 | 项 | 结论 |
 |---|---|
-| **正常路径** | ✅ **零影响**（D2 少一次 gRPC 往返 ⇒ 更快） |
-| **Redis 卡住 / 变慢** | ⚠️ **失败时延 2s → 3s ＋ 失败形状不同**（上表）⇒ **客户端拿到的不是同一个信封** |
-| **可重试语义** | ⚠️ 不同（B = 200+信封 ⇒ 客户端按业务码处理；C = 503 ⇒ 客户端按 HTTP 状态处理）⇒ **调用方需要知道** |
-
-### 修复建议（**不修**，但登记口径要写清）
-
-- **不修**：D2 是既定决策；**若**将来要恢复该上界，**正确做法**是在 `HotApiService` 调用
-  `HotRankingQueryService` 的那一点折算预算（与 `ArticleRpcClient` 同款），
-  **不要**给共享层再加第二个 cap 来源（会造出「两个上界来源」⇒ 违反 cap 单一来源纪律）。
-- ⚠️ **不得**为了「两侧形状一致」而把 C 侧的 HTTP 预算改大 / 改小 —— 那会动 L1 配置键的语义。
+| **正常路径** | ✅ **零影响**（多一次虚拟线程调度 + 一个 `orTimeout` ⇒ 微秒级）|
+| **Redis 卡住 / 变慢** | ✅ **失败时延 ~2s** ＋ **失败形状 = 与 B 侧逐条相同**（`200` + 5001 信封）⇒ **客户端不再需要区分两种失败** |
+| **可重试语义** | ✅ **与 B 侧一致**（两侧都是「HTTP 200 + 业务码 5001」⇒ 客户端按业务码处理）|
 
 ### ⚠️ 边界声明（不得越界）
 
 - 本条**只覆盖「域内方向的上界与失败形态」**；**出向 article-rpc 方向**的上界见 **DEV-HOT-004**（承载键位不同，但**有效值相同** 2000ms）。
 - 本条**不豁免** L1 的其它部分：proto / 错误码值 / HTTP path / Kafka topic **仍须逐字对齐 B 侧**。
+- ⚠️ **不得**为了让两侧一致而改 C 侧的 HTTP 预算（`observability.http-timeout: 3s`）—— 那会动 L1 配置键的语义。
 
 ---
 

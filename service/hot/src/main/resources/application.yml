@@ -157,7 +157,10 @@ server:
 grpc:
   server:
     # B 侧 hot-rpc 的 Go ListenOn: 0.0.0.0:8083（三副本是 8083/8084/8085）。
-    port: ${HOT_GRPC_PORT:8083}
+    # ⚠️ **env 名双名兼容**（2026-11-05）：B 侧这个键叫 `HOT_RPC_GRPC_PORT`（B 侧 hot-rpc yml:223）
+    #    ⇒ 按 B 侧契约部署的环境变量在 C 侧会**静默失效**、回落默认 8083
+    #    ⇒ 若集群里 8083 已占用 ⇒ 启动冲突 ⇒ ⇒ 老名字**优先**，新名字保留为兼容别名。
+    port: ${HOT_RPC_GRPC_PORT:${HOT_GRPC_PORT:8083}}
     address: 0.0.0.0
     # ⚠️ B 端 reflection 仅在 DevMode/TestMode 注册（hot.go:38-40），
     #    三份 yaml 均未写 Mode（默认 pro）⇒ **生产不暴露 reflection**。
@@ -193,8 +196,23 @@ grpc:
 #    ⇒ ⇒ 共享层的 `rag.protection.outbound-deadline.cap-millis` **保持未配置**
 #    （出厂默认 0 = 不启用）。
 hot-api:
+  # ⚠️ **域内查询方向（hot-api → hot-rpc 域内直连）的出向上界**（2026-11-05 新增）：
+  #    B 侧这条方向走 gRPC ⇒ 共享层按 `rag.protection.outbound-deadline.cap-millis = 2000` 封顶
+  #    ⇒ Redis 卡住时 2s 就失败 ⇒ **200 + 5001 业务信封**。
+  #    本仓 D2 域内直连 ⇒ 不经过 gRPC ⇒ 共享层那个封顶**管不到它**
+  #    ⇒ Redis 要等到自己的 socket timeout（3s）才抛，而 HTTP 请求预算也是 3s
+  #    ⇒ ⇒ 两者同时到点 ⇒ 落进共享层的「HTTP 预算 × 业务失败」竞态（F-15）
+  #    ⇒ ⇒ 客户端可能拿到 **503 + 纯文本**（不是业务信封）。
+  #    ⇒ ⇒ 本键把这条方向的失败**拉回 2s** ⇒ 失败形状与 B 侧**逐条一致**，且不再撞上那个竞态。
+  #    ⚠️ 与上面的 `article-rpc.timeout` 是**两个键**：B 侧只有**一个** cap-millis 统一管所有出向；
+  #    本仓两个方向的**传输形态**不同（gRPC / 同进程调用）⇒ 共享层拦截器管不到域内方向
+  #    ⇒ ⇒ 只能域内自持 ⇒ 拆成两个键，**值同为 2000**（= B 侧的同一个数）。
+  domain-query-timeout: ${HOT_API_DOMAIN_QUERY_TIMEOUT_MS:2000}
   article-rpc:
-    timeout: ${HOT_API_ARTICLE_RPC_TIMEOUT_MS:2000}
+    # ⚠️ **env 名双名兼容**（2026-11-05）：B 侧同一个数写的是共享层的
+    #    `HOT_API_OUTBOUND_DEADLINE_CAP_MILLIS`（B 侧 hot-api yml:171）⇒ 同款理由：
+    #    老名字优先（保持与 B 侧的部署契约不断裂），新名字保留为别名。
+    timeout: ${HOT_API_OUTBOUND_DEADLINE_CAP_MILLIS:${HOT_API_ARTICLE_RPC_TIMEOUT_MS:2000}}
 
 # =============================================================================
 # hot-rpc.* —— 业务参数（L1 配置键名 · 逐字照抄 B 侧 hot-rpc 段）
@@ -275,6 +293,43 @@ rag:
     #    （B 侧把这个数写在共享层的 cap-millis；本仓改由域侧承载 ⇒ 键位差异已登记。）
 
 # =============================================================================
+# OpenTelemetry OTLP exporter（对齐 B 侧 Telemetry.*）
+# =============================================================================
+# ⚠️ **2026-11-05 补齐**：本段此前**整段缺失** ⇒ 共享层 `GoStyleOtelConfig` 读到的
+#    `otel.exporter.otlp.endpoint` = null ⇒ 按 B 侧的 `if len(c.Endpoint) > 0` 口径
+#    **不装 exporter** ⇒ ⇒ hot 域的 span **一条都导不出去**（跨域链路在 Jaeger 侧断链）。
+#    ⚠️ 同款缺失还有 **comment / favorite / message / task** 四域 ⇒ 共 5 个域 ⇒
+#    ⇒ 建议由**收口域统一处置**（避免各域各补各的再漂）；本域按 B 侧 hot-api 的写法补齐。
+# ⚠️ 共享层 `GoStyleOtelConfig` 读的是 **B 侧那套键名**：
+#    `otel.service.name` / `otel.resource.attributes.service.name`（两套拼法都认）·
+#    `otel.exporter.otlp.endpoint` / `otel.exporter.otlp.protocol` /
+#    `otel.traces.sampler` / `otel.traces.sampler.arg`
+# ⇒ 端点**没有 scheme** 时共享层会补 `http://`（= B 的 WithInsecure() 明文）。
+otel:
+  # B 侧 rpc 侧的拼法（Go: Name: hot.rpc）—— D1 合并后只能填**一个**值
+  service:
+    name: hot-service
+  exporter:
+    otlp:
+      # 🔴 **合并裁决（scheme）**：B 侧 api 写 `http://${OTEL_ADDR}:${OTLP_PORT}`（带 scheme）、
+      #    B 侧 rpc 写裸 `host:port`（不带 scheme）⇒ 共享层两种都认 ⇒ 取**带 scheme** 的
+      #    那一侧（显式优于隐式）。protocol=grpc 同样取 api 侧写法。
+      endpoint: http://${OTEL_ADDR:jaeger}:${OTLP_PORT:4317}
+      protocol: grpc
+  resource:
+    attributes:
+      # B 侧 api 侧的拼法（Go: Telemetry.Name = hot-api）
+      # ⚠️ **D1 合并的连带偏离**：B 侧 api 填 `hot-api`、rpc 填 `hot-rpc`（两个值）
+      #    ⇒ 合并成一个进程后只能填**一个** ⇒ 取 `hot-service`（= `spring.application.name`）
+      #    ⇒ **登记为 D1 连带偏离**（值侧；键名与形状逐条对齐 B 侧）。
+      service.name: hot-service
+  traces:
+    # B 侧 api 写 `always_on`、B 侧 rpc 写 `parentbased_always_on`
+    # ⇒ 共享层 `GoStyleOtelConfig#toRatio` 把两者都映射成 ratio = 1.0
+    # ⇒ 取 api 侧写法（follow / like 域同款）。
+    sampler: always_on
+
+# =============================================================================
 # Metrics / Actuator
 # =============================================================================
 # ⚠️ 这是与 B 侧的一处**有意单向增强**：B 侧的 5 个 hot_api_* 指标虽然注册进了
@@ -285,10 +340,16 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        # ⚠️ **取并集**（2026-11-05）：B 侧 hot-api 暴露 `health,info,prometheus`、
+        #    B 侧 hot-rpc 暴露 `health,info,prometheus,metrics` ⇒ D1 合并后取**并集**
+        #    ⇒ `/actuator/metrics` 不应从 200 变 404。
+        include: health,info,prometheus,metrics
   endpoint:
     health:
-      show-details: always
+      # ⚠️ **取严**（2026-11-05）：B 侧 hot-api **未配**（Boot 默认 `never` ⇒ 只回 {"status":"UP"}）·
+      #    B 侧 hot-rpc 配 `when_authorized` ⇒ **两侧都不是 `always`** ⇒ ⇒ 取 `when_authorized`
+      #    （与 B 侧 hot-rpc 一致）⇒ 避免无鉴权端点多吐内部信息。
+      show-details: when_authorized
   metrics:
     tags:
       application: ${spring.application.name}

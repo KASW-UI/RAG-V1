@@ -64,9 +64,13 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
  * public class HotApiProperties {
  *
  *     private ArticleRpc articleRpc = new ArticleRpc();
+ *     private long domainQueryTimeout = 2000L;
  *
  *     public ArticleRpc getArticleRpc() { return articleRpc; }
  *     public void setArticleRpc(ArticleRpc articleRpc) { this.articleRpc = articleRpc; }
+ *
+ *     public long getDomainQueryTimeout() { return domainQueryTimeout; }
+ *     public void setDomainQueryTimeout(long domainQueryTimeout) { this.domainQueryTimeout = domainQueryTimeout; }
  *
  *     public static class ArticleRpc {
  *         private long timeout = 2000L;
@@ -85,6 +89,26 @@ public class HotApiProperties {
     /** 出向 {@code article-rpc} 的客户端配置。 */
     @NestedConfigurationProperty
     private ArticleRpc articleRpc = new ArticleRpc();
+
+    /**
+     * <p><b>域内查询方向（hot-api → hot-rpc 域内直连）的单次调用上界</b>，单位毫秒，默认 <b>2000</b>。
+     *
+     * <p>⚠️ <b>为什么需要它</b>：B 侧这条方向走 gRPC ⇒ 客户端出向 deadline
+     * （{@code rag.protection.outbound-deadline.cap-millis} = 2000）⇒ <b>Redis 卡住时 2s 就失败</b>
+     * ⇒ hot-api 侧收到失败 ⇒ 走 fatal ⇒ <b>HTTP 200 + 5001 业务信封</b>。
+     * <p>⚠️ <b>本仓 D2 域内直连</b> ⇒ 没有 gRPC ⇒ <b>没有任何出向上界</b>
+     * ⇒ Redis 自己要等到 socket timeout（3s）才抛 ⇒ 而 HTTP 层的请求预算也是 3s
+     * ⇒ ⇒ <b>两者同时到点</b> ⇒ 落进共享层的「HTTP 预算 × 业务失败」竞态（F-15）
+     * ⇒ ⇒ 客户端可能拿到 <b>503 + 纯文本</b>（不是业务信封）。
+     * <p>⇒ 本值把这条方向的失败<b>拉回到 2s</b> ⇒ ⇒ 失败形状与 B 侧<b>逐条一致</b>
+     * （200 + 5001 信封），且<b>早于</b> HTTP 预算 3s ⇒ ⇒ 不再撞上那个竞态。
+     *
+     * <p>⚠️ <b>与 {@link ArticleRpc#getTimeout()} 为什么是两个键</b>：B 侧只有<b>一个</b>
+     * {@code cap-millis}（共享层参数）统一管所有出向；本仓两个方向的<b>传输形态不同</b>
+     * （一个走 gRPC、一个是同进程调用）⇒ 共享层那个拦截器<b>管不到域内方向</b>
+     * ⇒ ⇒ 只能域内自持 ⇒ 拆成两个键，<b>值同为 2000</b>（= B 侧的同一个数）。
+     */
+    private long domainQueryTimeout = 2000L;
 
     /**
      * <p><b>出向 {@code article-rpc} 的客户端单次调用上界</b>。

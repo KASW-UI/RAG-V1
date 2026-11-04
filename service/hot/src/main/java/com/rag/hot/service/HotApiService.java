@@ -7,6 +7,8 @@ import com.rag.common.logger.LogOption;
 import com.rag.common.logger.LoggerFactoryBean;
 import com.rag.common.observability.GoStyleRequestDeadline;
 import com.rag.hot.client.ArticleRpcClient;
+import com.rag.hot.config.HotApiProperties;
+import com.rag.hot.config.HotDomainQueryConfiguration;
 import com.rag.hot.contract.CodeError;
 import com.rag.hot.contract.ErrCodes;
 import com.rag.hot.contract.ErrMsg;
@@ -77,25 +79,26 @@ import java.util.concurrent.TimeUnit;
  *         <li>4 条 skip 分支 + 各自的 metric 逐条未动；</li>
  *         <li>并发窗口 = 8（每请求一个 {@link Semaphore}）+ <b>先 acquire 再 submit</b> 逐条未动。</li>
  *       </ul>
- *       ⚠️ <b>一处传输层差异（已登记 · DRIFT 台账 F-02）</b>：B 侧的 hot-rpc 走 gRPC ⇒ 失败是
- *       {@code StatusRuntimeException}、且带 <b>2s 客户端上界</b>；本仓走直连 ⇒ 失败是
- *       {@code DataAccessException} 等 {@link RuntimeException}（<b>已把 catch 放宽到
- *       {@code RuntimeException}</b> ⇒ fatal 语义不变），但<b>少了一层 2s per-call 上界</b>
- *       ⇒ ⇒ <b>这次 Redis 调用没有任何出向上界</b>（D2 域内直连的必然结果）。
- *       <br>⚠️ <b>HTTP 层的请求预算并不约束它</b>：请求预算约束的是「整个 HTTP 响应何时返回」，
- *       <b>不是</b>「这一次 Redis 调用何时返回」⇒ ⇒ Redis 卡住时两侧的<b>失败形状不同</b>
- *       （双侧活体对拍实测 · DRIFT 台账 §九·M5）：
- *       <ul>
- *         <li>B 侧：{@code HTTP/1.1 200} ＋ {@code {"code":5001,…}}（<b>业务信封</b>）@2011ms
- *             —— 2s 的 gRPC 出向封顶先到期 ⇒ 走 fatal 分支；</li>
- *         <li>C 侧：{@code HTTP/1.1 503} ＋ {@code text/plain} 的 {@code "Request Timeout\n"}
- *             @3014ms，<b>且形状非确定</b>（三候选，含 {@code 200 + application/json}
- *             但 body 是纯文本的「混血」形态 ⇒ 共享层缺陷 F-15）
- *             —— <b>不是</b>业务信封 ⇒ 客户端按信封解会解析失败。</li>
- *       </ul>
- *       ⇒ ⇒ <b>不要</b>把这条读成「还有 HTTP 预算兜底」：<b>没有兜底，只有更晚 ＋ 形状不同</b>。
- *       （F-02 是 D2 的已批准连带后果 ⇒ 不修；恢复域内方向 2s 上界是唯一能<b>同时</b>
- *       消掉时延差与混血形状的修法。）</li>
+ *       ⚠️ <b>一处传输层差异（DRIFT 台账 F-02）</b>：B 侧的 hot-rpc 走 gRPC ⇒ 失败是
+ *       {@code StatusRuntimeException}；本仓走直连 ⇒ 失败是 {@code DataAccessException} 等
+ *       {@link RuntimeException}（<b>已把 catch 放宽到 {@code RuntimeException}</b> ⇒ fatal 语义不变）。
+ *       <br>⚠️ <b>2s 出向上界由域内自持</b>：B 侧那个封顶在共享层
+ *       （{@code rag.protection.outbound-deadline.cap-millis = 2000}）⇒ <b>管的是 gRPC 出向</b>
+ *       ⇒ ⇒ D2 域内直连<b>不经它</b> ⇒ ⇒ 本仓另由
+ *       {@link HotApiProperties#getDomainQueryTimeout()}（默认 2000 = B 侧同一个数）承担，
+ *       落在 {@link #callDomainQuery()}。
+ *       <br>⇒ ⇒ <b>失败形状与 B 侧一致</b>（双侧活体对拍实测 · DRIFT 台账 §九·M5）：
+ *       两侧都是 {@code HTTP/1.1 200} ＋ {@code {"code":5001,"msg":"internal server error","data":null}}
+ *       （<b>业务信封</b>）@ ≈2s —— B 侧是 gRPC 出向封顶先到点，本仓是域内上界先到点。
+ *       <br>⚠️ <b>超时也是 {@link RuntimeException}</b>（{@code join()} 抛 {@code CompletionException}
+ *       包裹 {@code TimeoutException}）⇒ ⇒ 落进上面那个放宽后的 catch
+ *       ⇒ ⇒ {@code hot_api_rpc_error_total{callee="hot_rpc_get_hot_articles"}} <b>照常 +1</b>
+ *       ⇒ ⇒ 指标语义与 B 侧一致（B 侧 gRPC deadline 到点也走同一个 fatal 计数）。
+ *       <br>⚠️ <b>HTTP 层的请求预算并不约束这一次 Redis 调用</b>：请求预算约束的是
+ *       「整个 HTTP 响应何时返回」，<b>不是</b>「这一次 Redis 调用何时返回」
+ *       ⇒ ⇒ <b>域内上界必须自己存在</b>，否则 Redis 卡住时会与 HTTP 预算（3s）同时到点
+ *       ⇒ ⇒ 落进共享层的「HTTP 预算 × 业务失败」竞态（F-15）
+ *       ⇒ ⇒ 客户端可能拿到 <b>503 + 纯文本</b>（不是业务信封）。</li>
  *   <li><b>B 出处</b>：见上方逐条行号。</li>
  * </ol>
  *
@@ -125,17 +128,24 @@ public class HotApiService {
     private final HotApiMetrics metrics;
     private final LoggerFactoryBean logger;
     private final Executor hydrationExecutor;
+    private final Executor domainQueryExecutor;
+    private final HotApiProperties properties;
 
     public HotApiService(HotRankingQueryService rankingQuery,
                          ArticleRpcClient articleRpcClient,
                          HotApiMetrics metrics,
                          LoggerFactoryBean logger,
-                         @Qualifier("hotHydrationExecutor") Executor hydrationExecutor) {
+                         @Qualifier("hotHydrationExecutor") Executor hydrationExecutor,
+                         @Qualifier(HotDomainQueryConfiguration.DOMAIN_QUERY_EXECUTOR_BEAN_NAME)
+                         Executor domainQueryExecutor,
+                         HotApiProperties properties) {
         this.rankingQuery = rankingQuery;
         this.articleRpcClient = articleRpcClient;
         this.metrics = metrics;
         this.logger = logger;
         this.hydrationExecutor = hydrationExecutor;
+        this.domainQueryExecutor = domainQueryExecutor;
+        this.properties = properties;
     }
 
     /**
@@ -198,7 +208,7 @@ public class HotApiService {
     private List<com.rag.proto.hot.HotArticleItem> fetchTopK() {
         List<com.rag.proto.hot.HotArticleItem> items;
         try {
-            items = rankingQuery.getHotArticles(HotApiSupport.MAX_HOT_ARTICLES);
+            items = callDomainQuery();
         } catch (RuntimeException e) {
             metrics.observeRpcError(HotApiMetrics.CALLEE_HOT_RPC);
             throw fatal(e);
@@ -214,6 +224,49 @@ public class HotApiService {
             throw fatal(null);
         }
         return items;
+    }
+
+    /**
+     * <p><b>域内查询调用（带出向上界）</b> —— 把 B 侧的 2s 客户端 deadline 补回这条方向。</p>
+     *
+     * <h2>⚠️ 为什么必须有这个上界（B 侧有、C 侧原本没有）</h2>
+     * <p>B 侧这条方向走 gRPC ⇒ 共享层的出向拦截器按
+     * {@code rag.protection.outbound-deadline.cap-millis = 2000} 封顶
+     * ⇒ ⇒ <b>Redis 卡住时 2s 就失败</b> ⇒ hot-api 收到失败 ⇒ 走 fatal
+     * ⇒ ⇒ <b>HTTP 200 + 5001 业务信封</b>。</p>
+     *
+     * <p>本仓 D2 改成域内直连（同进程调用）⇒ <b>不经过 gRPC ⇒ 共享层那个封顶管不到它</b>
+     * ⇒ ⇒ Redis 要等到自己的 socket timeout（3s）才抛，而 HTTP 层的请求预算<b>也是 3s</b>
+     * ⇒ ⇒ <b>两者同时到点</b> ⇒ 落进共享层的「HTTP 预算 × 业务失败」竞态（F-15）
+     * ⇒ ⇒ 客户端可能拿到 <b>503 + 纯文本</b>（<b>不是</b>业务信封）⇒ ⇒ 与 B 侧形状不同。</p>
+     *
+     * <p>⇒ ⇒ 本方法把这条方向的失败<b>拉回到 2s</b>（= B 侧同一个数）
+     * ⇒ ⇒ 失败形状回到 <b>200 + 5001 信封</b>（与 B 侧逐条一致），
+     * 且<b>早于</b> HTTP 预算 3s ⇒ ⇒ <b>不再撞上那个竞态</b>。</p>
+     *
+     * <h2>⚠️ 为什么用虚拟线程执行器</h2>
+     * <p>见 {@link com.rag.hot.config.HotDomainQueryConfiguration} 的类注释：
+     * <b>不排队</b>（普通池会排队 ⇒ 排队时间算进超时预算 ⇒ 语义偏离 B 侧的「直发」），
+     * 且<b>不能用</b> {@code hotHydrationExecutor}（CallerRunsPolicy ⇒ 超时等不到）。</p>
+     *
+     * <h2>⚠️ 超时之后原调用还在跑吗</h2>
+     * <p><b>会</b>（Redis 读继续到它自己的 socket timeout）⇒ ⇒ 与 B 侧<b>同形</b>
+     * （B 侧 gRPC deadline 到点后客户端放弃，hot-rpc 服务端那边照样在跑）。
+     * ⇒ 两边都是「客户端先放弃、后台继续」。</p>
+     *
+     * @return hot-rpc 的 TopK 条目
+     */
+    private List<com.rag.proto.hot.HotArticleItem> callDomainQuery() {
+        long timeoutMillis = properties.getDomainQueryTimeout();
+        if (timeoutMillis <= 0L) {
+            // ⚠️ 上界关闭（= B 侧 cap-millis 为 0 的口径：不启用）⇒ 直接同步调用
+            return rankingQuery.getHotArticles(HotApiSupport.MAX_HOT_ARTICLES);
+        }
+        return CompletableFuture
+                .supplyAsync(() -> rankingQuery.getHotArticles(HotApiSupport.MAX_HOT_ARTICLES),
+                        domainQueryExecutor)
+                .orTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
+                .join();
     }
 
     /**

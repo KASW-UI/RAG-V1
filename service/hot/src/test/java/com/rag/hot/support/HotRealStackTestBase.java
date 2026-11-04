@@ -60,6 +60,11 @@ import java.nio.charset.StandardCharsets;
                 "logging.level.com.alibaba.nacos=WARN",
                 // ── 追踪不外发 ──
                 "management.otlp.tracing.export.enabled=false",
+                // ⚠️ 共享层的 OTLP exporter 也**关掉**（端点为空 ⇒ 按 B 侧口径不装 exporter）：
+                //    本域的 application.yml 里 otel 段是**真配了**的（生产要导出到 jaeger）⇒
+                //    ⇒ 测试环境若不关 ⇒ 每次跑测试都去连 jaeger:4317（不可达）⇒ 日志噪音。
+                //    ⇒ 「配了 ⇒ 真的装上了 exporter」由 HotOtelExporterWiringTest 单独钉。
+                "otel.exporter.otlp.endpoint=",
                 // ── gRPC 端口交给 OS（devh 的 gRPC server 是 SmartLifecycle ⇒ 启动即 bind）──
                 "grpc.server.port=0",
                 // ── Kafka 不可达（本底座不验 Kafka 面）──
@@ -143,6 +148,127 @@ public abstract class HotRealStackTestBase {
     protected String rawBodyOf(String rawResponse) {
         int separator = rawResponse.indexOf("\r\n\r\n");
         return separator < 0 ? "" : rawResponse.substring(separator + 4);
+    }
+
+    /**
+     * 取<b>最终响应</b>的状态行（<b>跳过所有 1xx</b>）。
+     *
+     * <p>⚠️ <b>为什么不能直接用第一行</b>：共享层在慢请求时会先发
+     * {@code 103 Early Hints}（RFC 9110 §15.2 的 informational 响应）
+     * ⇒ ⇒ 直接取第一行会拿到 {@code HTTP/1.1 103 Early Hints} 而<b>不是</b>最终响应
+     * ⇒ ⇒ 断言「状态码必须是 200」会**假红**。</p>
+     *
+     * @param rawResponse 原始响应报文
+     * @return 最终响应的状态行
+     */
+    protected String finalStatusLineOf(String rawResponse) {
+        int pos = 0;
+        while (true) {
+            int lineEnd = rawResponse.indexOf('\r', pos);
+            if (lineEnd < 0) {
+                return "";
+            }
+            String statusLine = rawResponse.substring(pos, lineEnd);
+            int headerEnd = rawResponse.indexOf("\r\n\r\n", pos);
+            if (headerEnd < 0) {
+                return statusLine;
+            }
+            int code = statusCodeOf(statusLine);
+            if (code >= 100 && code < 200) {
+                // 1xx（informational）⇒ 跳过，继续找最终响应
+                pos = headerEnd + 4;
+                continue;
+            }
+            return statusLine;
+        }
+    }
+
+    /**
+     * 取<b>最终响应</b>的 body（跳过所有 1xx ＋ 解 chunked）。
+     *
+     * <p>⚠️ 两个动作各自的原因：
+     * <ul>
+     *   <li><b>跳过 1xx</b>：同上（103 Early Hints 会把读数整份错位）；</li>
+     *   <li><b>解 chunked</b>：失败响应走共享层的响应捕获器 ⇒ 响应<b>提前提交</b> ⇒
+     *       Tomcat 来不及按缓冲内容算长度 ⇒ 退化为 {@code Transfer-Encoding: chunked}
+     *       ⇒ body 前面会带块长（如 {@code 37}）与结束块（{@code 0}）。</li>
+     * </ul>
+     *
+     * @param rawResponse 原始响应报文
+     * @return 解码后的 body 文本
+     */
+    protected static String decodedBodyOf(String rawResponse) {
+        int pos = 0;
+        while (true) {
+            int headerEnd = rawResponse.indexOf("\r\n\r\n", pos);
+            if (headerEnd < 0) {
+                return "";
+            }
+            int lineEnd = rawResponse.indexOf('\r', pos);
+            int code = lineEnd < 0 ? -1 : statusCodeOf(rawResponse.substring(pos, lineEnd));
+            if (code >= 100 && code < 200) {
+                pos = headerEnd + 4;
+                continue;
+            }
+            String rawBody = rawResponse.substring(headerEnd + 4);
+            boolean chunked = rawResponse.substring(pos, headerEnd)
+                    .toLowerCase(java.util.Locale.ROOT)
+                    .contains("transfer-encoding: chunked");
+            return chunked ? decodeChunked(rawBody) : rawBody;
+        }
+    }
+
+    /**
+     * 解 chunked 传输编码的 body。
+     *
+     * @param raw 含块长的 body 文本
+     * @return 解块后的文本
+     */
+    private static String decodeChunked(String raw) {
+        StringBuilder out = new StringBuilder();
+        int pos = 0;
+        while (pos < raw.length()) {
+            int eol = raw.indexOf("\r\n", pos);
+            if (eol < 0) {
+                break;
+            }
+            String sizeHex = raw.substring(pos, eol).trim();
+            int semi = sizeHex.indexOf(';');
+            if (semi >= 0) {
+                sizeHex = sizeHex.substring(0, semi);
+            }
+            int size;
+            try {
+                size = Integer.parseInt(sizeHex, 16);
+            } catch (NumberFormatException e) {
+                break;
+            }
+            pos = eol + 2;
+            if (size == 0) {
+                break;
+            }
+            out.append(raw, pos, Math.min(pos + size, raw.length()));
+            pos += size + 2;
+        }
+        return out.toString();
+    }
+
+    /**
+     * 从状态行里取状态码。
+     *
+     * @param statusLine 状态行（如 {@code HTTP/1.1 200 }）
+     * @return 状态码（解析不出时返回 -1）
+     */
+    private static int statusCodeOf(String statusLine) {
+        String[] parts = statusLine.trim().split("\\s+");
+        if (parts.length < 2) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(parts[1]);
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     /**

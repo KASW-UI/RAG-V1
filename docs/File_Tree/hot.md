@@ -53,6 +53,7 @@
 │   │   │               │   └── ArticleRpcClient.java    # article-rpc 的 gRPC 客户端 —— hot 域唯一的跨域依赖。
 │   │   │               ├── config/
 │   │   │               │   ├── HotApiProperties.java    # hot 域 HTTP 层的配置聚合点 —— 只承载一个业务阈值：
+│   │   │               │   ├── HotDomainQueryConfiguration.java    # 域内查询方向的执行器 —— 给「hot-api → hot-rpc 域内直连」这条方向提供
 │   │   │               │   ├── HotHydrationExecutorConfiguration.java    # 补全线程池 —— 为 hot 域的并发补全提供「有界的平台线程」，
 │   │   │               │   ├── HotKafkaConfig.java    # Kafka 监听容器的两项容器级语义：分区分配回调 与 错误处理策略。
 │   │   │               │   ├── HotRpcProperties.java    # hot 域的业务配置绑定点 —— 只承载三段业务参数：
@@ -110,6 +111,7 @@
 │                       │   ├── HotGrpcErrorMappingTest.java    # hot 域 gRPC 边界的「错误码映射」契约测试 —— 本轮补上的真实缺口。
 │                       │   └── HotGrpcServiceRealGrpcTest.java    # hot 域 gRPC 面的「真 gRPC」测试 —— 把 5 个方法逐条钉死。
 │                       ├── http/
+│                       │   ├── HotDomainQueryTimeoutRealTomcatTest.java    # 域内查询方向的 2s 出向上界的守护测试（真 Tomcat + 真 Spring 上下文）。
 │                       │   └── HotHttpRealTomcatTest.java    # hot 域 HTTP 面的「真 Tomcat」测试 —— 真 Spring 上下文 + 真 Tomcat
 │                       ├── messaging/
 │                       │   ├── HotEventConsumerContractTest.java    # 消费入口的「指标计数次序」与「drop 契约」 —— 纯单测（不连 Kafka / Redis）。
@@ -117,6 +119,8 @@
 │                       │   ├── HotMergeSchedulerRealRedisTest.java    # 合并调度器（分布式锁 + 跨分片求和 + 3 段 Lua）的真 Redis 测试。
 │                       │   ├── HotPartitionSketchRegistryLockTest.java    # 分区生命周期 + 「Redis 落盘发生在写锁之外」的守门测试。
 │                       │   └── HotRedisSnapshotStoreRealRedisTest.java    # 分片快照 + Lua 脚本的真 Redis 测试。
+│                       ├── observability/
+│                       │   └── HotOtelExporterWiringTest.java    # 「追踪导出真的装上了吗」的守门测试。
 │                       ├── service/
 │                       │   └── HotApiSupportContractTest.java    # hot 域的输入解释与分页数值契约测试。
 │                       ├── support/

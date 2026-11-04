@@ -80,6 +80,44 @@ def main() -> int:
     check("⑤ 跳过 100 后的状态行", status, "HTTP/1.1 200 ")
     check("⑤ body", body, b"{}")
 
+    # ── ⑥ 🔴 **传输分帧面**（chunked / Content-Length）────────────────────────
+    # ⚠️ **为什么要在这里钉**：新增的「传输编码面」判据（两侧分帧方式必须相等）
+    #    **完全依赖这个解析器** ⇒ 解析器回退 ⇒ 该面读数错位而**判据恒绿**
+    #    ⇒ ⇒ 解析器一旦改坏，这里必须先红。
+    raw = (b"HTTP/1.1 200 \r\n"
+           b"Content-Type: application/json;charset=utf-8\r\n"
+           b"Transfer-Encoding: chunked\r\n"
+           b"\r\n"
+           b"2\r\n{}\r\n"
+           b"0\r\n\r\n")
+    status, headers, body = http_probe._split_final_response_headers(raw)
+    check("⑥ chunked 的状态行", status, "HTTP/1.1 200 ")
+    check("⑥ chunked 的 Transfer-Encoding", headers.get("transfer-encoding"), "chunked")
+    check("⑥ chunked 没有 Content-Length", headers.get("content-length", "-"), "-")
+    check("⑥ chunked 已解块", body, b"{}")
+
+    raw = (b"HTTP/1.1 200 \r\n"
+           b"Content-Type: application/json;charset=utf-8\r\n"
+           b"Content-Length: 2\r\n"
+           b"\r\n{}")
+    _status, headers, body = http_probe._split_final_response_headers(raw)
+    check("⑥ 定长的 Transfer-Encoding", headers.get("transfer-encoding", "-"), "-")
+    check("⑥ 定长的 Content-Length", headers.get("content-length"), "2")
+    check("⑥ 定长的 body", body, b"{}")
+
+    # ── ⑦ 🔴 **1xx 前缀不能把头读串位**（分帧面同样要跳过 1xx）──────────────
+    raw = (b"HTTP/1.1 103 Early Hints\r\n"
+           b"Transfer-Encoding: chunked\r\n"
+           b"\r\n"
+           b"HTTP/1.1 200 \r\n"
+           b"Content-Length: 2\r\n"
+           b"\r\n{}")
+    status, headers, body = http_probe._split_final_response_headers(raw)
+    check("⑦ 跳过 1xx 后的状态行", status, "HTTP/1.1 200 ")
+    check("⑦ 1xx 的 Transfer-Encoding 没串位", headers.get("transfer-encoding", "-"), "-")
+    check("⑦ 最终响应的 Content-Length", headers.get("content-length"), "2")
+    check("⑦ body", body, b"{}")
+
     if FAILURES:
         for line in FAILURES:
             sys.stderr.write("   ❌ " + line + "\n")

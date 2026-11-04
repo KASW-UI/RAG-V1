@@ -73,7 +73,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **comment** | [comment/comment.md](comment/comment.md) | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
 | **favorite** | [favorite/favorite.md](favorite/favorite.md) | 519 | **61 / 61 = 100%** | **75 / 75 = 100%** | 88 |
 | **follow** | [follow/follow.md](follow/follow.md) | 517 | **37 / 37 = 100%** | **51 / 51 = 100%** | 116 |
-| **hot** | [hot/hot.md](hot/hot.md) | 519 | **31 / 31 = 100%** | **34 / 34 = 100%** | 56 |
+| **hot** | [hot/hot.md](hot/hot.md) | 520 | **32 / 32 = 100%** | **34 / 34 = 100%** | 56 |
 | **like** | [like/like.md](like/like.md) | 451 | **69 / 69 = 100%** | **83 / 83 = 100%** | 81 |
 | **message** | [message/message.md](message/message.md) | 533 | **53 / 53 = 100%** | **71 / 71 = 100%** | 69 |
 | **task** | [task/task.md](task/task.md) | 394 | **39 / 39 = 100%** | **39 / 39 = 100%** | 56 |

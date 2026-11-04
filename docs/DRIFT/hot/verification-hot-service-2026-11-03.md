@@ -360,18 +360,21 @@
 | 修复建议 | 不修。**登记为签字偏离**；部署时用 `HOT_HTTP_PORT` 覆盖 |
 | 验证方法 | `HotHttpRealTomcatTest`（真 Tomcat 起在随机口 ⇒ 行为面已验）；端口值由 `application.yml` 单点决定 |
 
-### F-02 · D2 域内直连 ⇒ 域内查询方向**不再有**出向上界 · 性能面
+### F-02 · D2 域内直连 ⇒ 域内查询方向**不再有**出向上界 · ✅ **2026-11-05 已修复 ⇒ 差异消除**
 
 | 项 | 内容 |
 |---|---|
 | 位置 | `service/HotApiService.java`（`getHotArticles` 直接注入 `HotRankingQueryService`） |
 | B | B 侧 hot-api 有**两个**出向 devh client（`hot-rpc` ＋ `article-rpc`）⇒ 共享层的 `GoStyleOutboundDeadlineInterceptor`（`@GrpcGlobalClientInterceptor` ⇒ 装在**每个**出向调用上）按 `rag.protection.outbound-deadline.cap-millis: 2000` **统一封顶** ⇒ ⇒ **域内方向（hot-rpc）也受这同一个 2000ms 封顶**。<br>（`GoStyleGrpcCallDeadline` 只**传播请求预算**、**不封顶** ⇒ 二者合起来 = `min(2s, 请求剩余预算)`。） |
-| C | **D2 域内直连** ⇒ `HotApiService` **本地方法调用** `HotRankingQueryService` ⇒ **不再经过任何出向拦截器** ⇒ ⇒ **域内查询方向没有 2s 上界**；而共享层 cap **刻意未配置**（默认 0 = 不启用）⇒ 也没有第二个来源兜着 |
-| 原因 | **D2**（同域调用改直连，消除自我 gRPC 往返）—— **既定决策** ＋ **F-04**（出向上界的承载键位从共享层搬到域侧，**覆盖范围随之收窄到只剩 article-rpc 方向**） |
-| 影响范围 | **超时面 ＋ 响应形状面**（**2026-11-04 实测升级**）：域内 Redis 查询卡住时 ——<br>· **B 侧**：`2014ms` ⇒ **`HTTP/1.1 200 ` ＋ `{"code":5001,"msg":"internal server error","data":null}`**（2s gRPC 出向封顶 ⇒ 业务信封，**干净**）<br>· **C 侧**：`3013ms` ⇒ **失败响应的形状非确定**（三候选，见 §九·M5）⇒ ⇒ **不只是时延不同，连「失败长什么样」都不同** ⇒ ⇒ 客户端若按信封解，C 侧可能拿到 `503 + text/plain`，**或** `200 + application/json` 但 body 是纯文本（⇒ **信封契约被打断**） |
-| 严重程度 | 🟠 **中高**（2026-11-04 实测**升级**：原判「🟡 中 · 性能/超时面 · **非正确性** —— 两条路径都最终失败，只是失败时延不同」⇒ **该定性不成立** ⇒ 失败**形状**也不同、且 C 侧**非确定** ⇒ 归**响应契约面**）<br>⚠️ **但仍不改 D2**（既定决策）⇒ 且「两条路径都最终失败」这一半仍成立 |
-| 修复建议 | 不修（D2 是既定决策）。⚠️ 若将来要恢复该上界，**正确做法**是在 `HotApiService` 调用 `HotRankingQueryService` 的那一点折算预算（与 `ArticleRpcClient` 同款），**不要**给共享层再加第二个 cap 来源（会造出「两个上界来源」⇒ 违反 cap 单一来源纪律）<br>⚠️ **附带**：把失败时延从 3s 拉回 2s 之下，**顺带**会让 C 侧**不再命中**共享层的「预算竞态窗口」⇒ ⇒ **恢复上界是唯一能同时消掉「形状差异」与「混血响应」的修法**（F-15 的混血形状只在「业务失败时延 ≈ HTTP 预算」时出现） |
-| 验证方法 | ✅ **PASS（2026-11-04 · 双侧活体实测 · §九·M5）** —— 用 `CLIENT PAUSE` 让两侧 Redis **卡住**（服务端收下命令、延迟应答 ⇒ 客户端命令超时被真触发）⇒ 两侧并发发同一请求：<br>· **B 侧 `2014ms`** ＋ `HTTP/1.1 200 ` ＋ 5001 信封（**逐字节**）<br>· **C 侧 `3013ms`** ＋ 失败响应（三候选集合，**逐字节冻结**）<br>⇒ ⇒ **时延关系与登记一致**（2s vs 3s）⇒ ⇒ **失败形状的差异是实测事实**（不再是推断）⇒ ⚠️ 场景有效性断言（请求必须真的卡住 ≥1.5s，否则 `exit 2` 不给结论）+ 恢复校验（暂停窗口过后两侧恢复正常且逐字节一致） |
+| C（**修复前**） | **D2 域内直连** ⇒ `HotApiService` **本地方法调用** `HotRankingQueryService` ⇒ **不再经过任何出向拦截器** ⇒ ⇒ **域内查询方向没有 2s 上界**；而共享层 cap **刻意未配置**（默认 0 = 不启用）⇒ 也没有第二个来源兜着 |
+| 原因 | **D2**（同域调用改直连，消除自我 gRPC 往返）—— **既定决策** ＋ **F-14**（出向上界的承载键位从共享层搬到域侧，**覆盖范围随之收窄到只剩 article-rpc 方向**） |
+| 影响范围（**修复前**） | **超时面 ＋ 响应形状面**（2026-11-04 实测升级）：域内 Redis 查询卡住时 ——<br>· **B 侧**：`2014ms` ⇒ **`HTTP/1.1 200 ` ＋ `{"code":5001,"msg":"internal server error","data":null}`**（2s gRPC 出向封顶 ⇒ 业务信封，**干净**）<br>· **C 侧**：`3013ms` ⇒ **失败响应的形状非确定**（三候选，见 §九·M5）⇒ ⇒ 客户端若按信封解，C 侧可能拿到 `503 + text/plain`，**或** `200 + application/json` 但 body 是纯文本（⇒ **信封契约被打断**） |
+| 严重程度 | 🟠 **中高**（2026-11-04 实测升级）⇒ ✅ **2026-11-05 修复后 ⇒ 差异消除**（两侧形状逐条相同 ⇒ 客户端不必再区分两种失败） |
+| **修复落地（2026-11-05）** | ✅ **域内自持 2s 上界**（**不是**给共享层加第二个 cap 来源 ⇒ 不违反「cap 单一来源」纪律）：<br>· 配置键 `hot-api.domain-query-timeout`（env `HOT_API_DOMAIN_QUERY_TIMEOUT_MS`，默认 **2000** = **B 侧同一个数**）<br>· 落点 `HotApiService#callDomainQuery()`：`CompletableFuture.supplyAsync(..., domainQueryExecutor).orTimeout(2000ms).join()`<br>· 执行器 `HotDomainQueryConfiguration`（Spring `SimpleAsyncTaskExecutor` 的**虚拟线程**模式 ⇒ **不排队** ⇒ 与 gRPC「直发」同形；**不能用** `hotHydrationExecutor`（CallerRuns ⇒ 超时等不到）<br>· 超时抛 `CompletionException`（**是 `RuntimeException`**）⇒ ⇒ 落进 `fetchTopK` 那个**放宽后的 catch** ⇒ ⇒ `hot_api_rpc_error_total{callee="hot_rpc_get_hot_articles"}` **照常 +1**（指标语义与 B 侧一致）<br>· 超时后原线程**继续跑** ⇒ ⇒ 与 B 侧**同形**（B 侧 gRPC deadline 到点后客户端放弃，服务端照样在跑）|
+| 验证方法 | ✅ **PASS（2026-11-04 首测 · §九·M5）** ⇒ ✅ **PASS（2026-11-05 复测 · §十一·M7）**：<br>· **B 侧 `2021ms`** ＋ `HTTP/1.1 200 ` ＋ 5001 信封（**逐字节**）<br>· **C 侧 `2017ms`** ＋ `HTTP/1.1 200 ` ＋ 5001 信封（**逐字节**）<br>⇒ ⇒ **两侧形状逐条相同** ⇒ ⇒ 「三候选」与「混血响应」**消失**（F-15 的**触发条件**没了；**缺陷本身仍在** ⇒ 仍归 `global`）|
+
+> 📌 **本条与 F-15 的关系**：F-15（共享层「HTTP 预算 × 业务失败」竞态）**本身没有被修** ⇒ ⇒ 仍然归收口域；
+> 本轮只是让 **hot 域不再触发它**（触发条件 = 「域内方向无上界」且「业务失败时延 ≈ HTTP 预算 3s」）⇒ ⇒ hot 域不再是它的复现样本。
 
 ### F-03 · form 解析与闸门判据的口径差异（域内自持 2 个方法）· 正确性面
 
@@ -564,7 +567,8 @@
 | **明确存在漂移（FAIL）** | **0** | ✅ **本域无 FAIL** |
 | **框架差异待验证（FRAMEWORK_DIFFERENCE）** | **1** | A-15（form 解析口径 · 共享层判据已实测与 B 一致 ⇒ 最终行为 **PASS**，差异保留在 §四·4.6 清单内） |
 | **被外部条件阻塞（BLOCKED）** | **0** | ✅ |
-| **已批准的主动变更（INTENTIONALLY_CHANGED）** | **3** | A-14（D2 删除 `HotRpcClient`）· A-17（`WebMvcConfig` 空实现显式化免鉴权）· F-02（D2 连带：丢一层 2s 上界）—— ⚠️ **2026-11-04 实测升级**：其可观察后果**不止时延**，还有**失败形状**（§五·F-02 / §九·M5） |
+| **已批准的主动变更（INTENTIONALLY_CHANGED）** | **3** | A-14（D2 删除 `HotRpcClient`）· A-17（`WebMvcConfig` 空实现显式化免鉴权）· F-02（D2 连带：丢一层 2s 上界）—— ⚠️ **2026-11-04 实测升级**：其可观察后果**不止时延**，还有**失败形状**（§五·F-02 / §九·M5）<br>🔴 **2026-11-05 更正（§十一·M7）**：**F-02 已不再是「已批准差异」** ⇒ 域内方向**补回 2s 上界** ⇒ **差异消除** ⇒ ⇒ 本类**实为 2 条**（A-14 · A-17）＋ **1 条已修复**（F-02）；**A-14 本身不变**（D2 仍生效 —— 只是**它连带的失败面**被补平了）|
+| 🔴 **2026-11-05 已消除的差异（本表新增类）** | **1** | **F-02**（D2 连带的「域内方向无出向上界」⇒ 域内自持 2s 上界 ⇒ **失败形状与 B 侧逐条相同**）⇒ 详见 §五·F-02 与 §十一·11.2 · 双侧活体读数见 §十一·11.7 |
 | **已登记的部署面 / 表达面签字偏离（不影响业务语义）** | **2** | F-01（端口 8895）· F-03（域内自持 2 个 form 方法） |
 | **🔴 共享层缺陷（归属收口域 · 不计入本域 PASS/FAIL）** | **1** | **F-15**（共享层「HTTP 预算 × 业务失败」竞态 ⇒ **混血响应**）⇒ ⚠️ **两侧共享层代码同源** ⇒ **不是本域引入** ⇒ **修法属 `global`**（AGENTS.md §五.3 规则 3） |
 
@@ -782,6 +786,13 @@
 > 📌 **这一面测的是「已登记的差异」（F-02）**，**不是**「两侧应当一致」
 > ⇒ ⇒ 判据 = 「**差异的形状必须与登记一致**」⇒ ⇒ **两侧各自的状态行 + body 字节 + 时延区间**全部冻结
 > ⇒ ⇒ 「差异还在但形状变了」⇒ 判失败；「差异消失了」⇒ 也判失败。
+>
+> 🔴 **🔴 2026-11-05 更正（§十一·M7）**：**本小节的全部读数与判据口径已过时** ——
+> 域内方向**补回了 2s 出向上界** ⇒ ⇒ **差异消失** ⇒ ⇒ 本面**回到「两侧应当逐条相同」的口径**
+> （C 侧 = `200` ＋ 5001 信封 @**2017ms** · B 侧 = `200` ＋ 5001 信封 @**2021ms** ⇒ **逐条相同**）。
+> ⇒ ⇒ **本小节保留为历史记录**（「修之前长什么样」），**当前判据与读数见 §十一·11.6 / §十一·11.7**。
+> ⇒ ⇒ ⚠️ **9.8.3 的「三种形状」**（含混血响应）**在 hot 域已不可复现**（触发条件没了）
+> ⇒ ⇒ 但 **F-15 缺陷本身仍在共享层**（仍归 `global`）—— hot 域**不再是它的复现样本**。
 
 #### 9.8.1 注入手段：为什么是 `CLIENT PAUSE`
 
@@ -830,7 +841,7 @@
 > **双侧活体对拍 31 条逐字节断言 ＋ 1 个超时面全绿**（B 侧 Boot 4 ↔ C 侧 Boot 3.5 · **逐字节** · 见 §九），
 > **三道守门 EXIT=0**，**零重试判据经变异验证确认有牙齿**；
 > ⚠️ 残留 **15 条登记项**（**0 条业务正确性 FAIL**）：**F-06** 是本轮真修的启动期缺陷；
-> **F-02** 是 D2 的已批准连带后果（**INTENTIONALLY_CHANGED**）；**F-01/F-03** 是部署面/表达面的签字偏离；
+> **F-02** 是 D2 的已批准连带后果（**INTENTIONALLY_CHANGED**）—— 🔴 **2026-11-05 已消除**（§十一·M7：域内方向补回 2s 上界 ⇒ 两侧形状逐条相同）；**F-01/F-03** 是部署面/表达面的签字偏离；
 > **F-04/F-07/F-08/F-10/F-11/F-12/F-14** 行为面已判定（框架限制或单向增强，见 §四/§五）；
 > ⚠️ **F-09 已按 §九·9.3 更正**：原判「Tomcat 10.1 状态行与 Go `net/http` 不同 ⇒ 框架限制」——
 > **B 侧不是 Go，而是 Tomcat 11.0.24** ⇒ **两侧状态行逐字节相同** ⇒ **原判定作废，改为 PASS**；
@@ -846,8 +857,8 @@
 > **V5 验的是探针的闸门**（C 侧改键名 ⇒ 闸门必须 `die(exit 2)`，不许报「全绿」））⇒ ⇒ 五条**实跑全部按预期** ＋ **还原后基线复跑 `EXIT=0`、红名单为空**（§九·9.6）。
 > 📌 **2026-11-05 追加 §十（M6 轮 · 守护网补齐与文档订正）**：**+18 条真触发用例**（95 例全绿 · skipped=0）⇒ **4 条变异**逐条转红（证明不是假绿）⇒
 > **3 处 javadoc 措辞订正**（`HotApiService` / `HotApiSupport` / `HotPartitionSketchRegistry`）⇒ **只动测试与注释，不动实现** ⇒ 域级行为读数不变。
-> 📌 **本域的两档台账已补齐**（2026-11-04）：[`docs/Intentional_Deviations/hot/_signed-deviations.md`](../../../Intentional_Deviations/hot/_signed-deviations.md)（**6 条**）·
-> [`docs/Pitfalls/hot/_hot-domain-pitfalls.md`](../../../Pitfalls/hot/_hot-domain-pitfalls.md)（**11 条** —— 2026-11-05 追加 **P-HOT-10**「变异没红有两种可能」＋ **P-HOT-11**「会被截断切掉的脆弱断言」）⇒ ⚠️ 两个 `_INDEX.md` **不归本 lane**（Worktree.md §三.1）⇒ **待主会话合并**。
+> 📌 **本域的两档台账已补齐**（2026-11-04）：[`docs/Intentional_Deviations/hot/_signed-deviations.md`](../../../Intentional_Deviations/hot/_signed-deviations.md)（**6 条编号** —— **5 条仍生效 ＋ 1 条已修复**，即 **DEV-HOT-002**，2026-11-05 域内方向补回 2s 上界 ⇒ 差异消除）·
+> [`docs/Pitfalls/hot/_hot-domain-pitfalls.md`](../../../Pitfalls/hot/_hot-domain-pitfalls.md)（**13 条** —— 2026-11-05 追加 **P-HOT-10**「变异没红有两种可能」＋ **P-HOT-11**「会被截断切掉的脆弱断言」＋ **P-HOT-12**「换掉调用方式 ⇒ 装在传输层上的出向上界一起消失」＋ **P-HOT-13**「传输编码面只能钉两侧相等、不能钉绝对值」）⇒ ⚠️ 两个 `_INDEX.md` **不归本 lane**（Worktree.md §三.1）⇒ **待主会话合并**。
 
 ---
 
@@ -934,3 +945,95 @@
 | **F-15** 共享层「HTTP 预算 × 业务失败」竞态 ⇒ 混血响应 | **`global`** | 共享层缺陷 · hot 只登记 |
 | **F-02** 是否恢复域内方向 2s 上界 | 用户拍板 | D2 既定决策的例外 |
 | **F-11** 命名债 | 用户拍板 | —— |
+
+---
+
+## 十一、阶段 M7 · 审核剩余问题收口（2026-11-05 · 「修」指令）
+
+> 📌 **本节对应** `docs/DRIFT/hot/verification-hot-2026-11-05.md`（独立审核报告）的 §十三 收口清单。
+> 📌 **本轮指令**：把审核列出的剩余问题**逐项修掉**（不再只报告）。
+> 📌 **写权面**：只碰 `service/hot/` ＋ `docs/DRIFT/hot/` ＋ `docs/File_Tree/hot.md` ＋ `docs/Intentional_Deviations/hot/` ＋ `docs/Pitfalls/hot/` ＋ `docs/Mapping_Table/`（**hot 域自己的行**）＋ `tools/difftest/hot/` ⇒ **未碰共享面**（`common/**` 只读 · 三个 `_INDEX.md` 未动）。
+
+### 11.1 配置面四项取舍（**全部落进 `service/hot/src/main/resources/application.yml`**）
+
+| # | 项 | 改前 | 改后 | **依据（B 侧）** |
+|---|---|---|---|---|
+| 1 | **OTLP 追踪导出段** | **整段缺失** ⇒ 共享层 `GoStyleOtelConfig` 读到 `endpoint = null` ⇒ 按 B 侧的 `if len(c.Endpoint) > 0` 口径**不装 exporter** ⇒ ⇒ **本域的 span 一条都导不出去** | 新增 `otel:` 段（`service.name=hot-service` · `exporter.otlp.endpoint=http://${OTEL_ADDR:jaeger}:${OTLP_PORT:4317}` · `protocol=grpc` · `resource.attributes.service.name=hot-service` · `traces.sampler=always_on`）| B 侧 `hot-api` 写 `http://${OTEL_ADDR}:${OTLP_PORT}`（带 scheme）＋ `always_on`；`hot-rpc` 写裸 `host:port` ＋ `parentbased_always_on` ⇒ ⇒ **scheme 取 api 侧**（显式优于隐式）· **sampler 取 api 侧**（两者共享层都映射成 ratio=1.0）· **service.name 取合并后的单值**（D1 连带偏离，值侧已登记）|
+| 2 | `management.endpoint.health.show-details` | `always` | `when_authorized` | B 侧 hot-api **未配**（Boot 默认 `never`）· hot-rpc 配 `when_authorized` ⇒ ⇒ **两侧都不是 `always`** ⇒ ⇒ **取严** |
+| 3 | `management.endpoints.web.exposure.include` | `health,info,prometheus` | `health,info,prometheus,metrics` | B 侧 hot-api 暴露 3 个 · hot-rpc 暴露 4 个（含 `metrics`）⇒ ⇒ D1 合并后**取并集** ⇒ ⇒ `/actuator/metrics` **不应**从 200 变 404 |
+| 4 | **env 变量名**（2 处）| `grpc.server.port=${HOT_GRPC_PORT:8083}`<br>`hot-api.article-rpc.timeout=${HOT_API_ARTICLE_RPC_TIMEOUT_MS:2000}` | `${HOT_RPC_GRPC_PORT:${HOT_GRPC_PORT:8083}}`<br>`${HOT_API_OUTBOUND_DEADLINE_CAP_MILLIS:${HOT_API_ARTICLE_RPC_TIMEOUT_MS:2000}}` | B 侧写的是 `HOT_RPC_GRPC_PORT`（hot-rpc yml:223）＋ `HOT_API_OUTBOUND_DEADLINE_CAP_MILLIS`（hot-api yml:171）⇒ ⇒ 按 B 侧契约部署的环境变量在 C 侧会**静默失效**⇒ ⇒ **老名字优先**（老契约优先），新名字保留为兼容别名 |
+
+### 11.2 🔴 域内查询方向补 **2s 出向上界**（**F-02 的修法** · §五·F-02）
+
+| 项 | 内容 |
+|---|---|
+| **为什么要修** | D2 域内直连 ⇒ **不经过 gRPC** ⇒ 共享层的 `cap-millis=2000`（装在 gRPC 出向拦截器上）**管不到它** ⇒ ⇒ 域内 Redis 查询**没有出向上界** ⇒ 失败时要等到 Redis 自己的 socket timeout（3s）⇒ 而 HTTP 预算**也是 3s** ⇒ ⇒ **两者同时到点** ⇒ ⇒ 落进共享层的「HTTP 预算 × 业务失败」竞态（**F-15**）⇒ ⇒ C 侧可能拿到 `503 + 纯文本`，**或** `200 + application/json` 但 body 是纯文本（**信封契约被打断**）⇒ ⇒ **客户端无法预知** |
+| **修法（**不是**给共享层加第二个 cap 来源）** | **域内自持**一个同值上界：<br>· 配置键 `hot-api.domain-query-timeout`（env `HOT_API_DOMAIN_QUERY_TIMEOUT_MS`，默认 **2000** = **B 侧同一个数**）<br>· 落点 `HotApiService#callDomainQuery()`：`CompletableFuture.supplyAsync(..., domainQueryExecutor).orTimeout(2000ms).join()`<br>· 执行器 `HotDomainQueryConfiguration`（bean `hotDomainQueryExecutor`）|
+| **为什么用**虚拟线程**执行器** | ① **生态优先**：Spring 自带 `SimpleAsyncTaskExecutor` 的虚拟线程模式（`setVirtualThreads(true)`）⇒ **不手写**线程池、**不**手写生命周期（它没有 `close()`，虚拟线程是 daemon）<br>② **不能排队**（关键）：普通线程池负载高时会**排队** ⇒ 排队时间算进超时预算 ⇒ ⇒ 语义偏离 B 侧（gRPC 是**直发**、客户端侧不排队）⇒ 虚拟线程**不排队**⇒ 与 B 侧同形<br>③ **不能用 `hotHydrationExecutor`**：它是 `CallerRunsPolicy` ⇒ 池满时调用线程自己跑 ⇒ ⇒ **超时永远等不到** ⇒ 上界形同虚设 |
+| **超时之后原线程还在跑吗** | **会**（Redis 读继续到自己的 socket timeout）⇒ ⇒ 与 B 侧**完全同形**（B 侧 gRPC deadline 到点后客户端放弃，hot-rpc 服务端那边照样在跑）⇒ ⇒ 两侧都是「客户端先放弃、后台继续」 |
+| **指标语义** | 超时抛的是 `CompletionException`（**是 `RuntimeException`**）⇒ ⇒ 落进 `fetchTopK` 那个**放宽后的 catch** ⇒ ⇒ `hot_api_rpc_error_total{callee="hot_rpc_get_hot_articles"}` **照常 +1** ⇒ ⇒ 与 B 侧一致（B 侧 gRPC deadline 到点也走同一个 fatal 计数）|
+| **对 F-15 的关系** | ⚠️ **F-15 本身没有被修**（共享层缺陷仍在 ⇒ 仍归 `global`）⇒ ⇒ 本轮只是让 **hot 域不再触发它**（触发条件没了）⇒ ⇒ hot 域不再是它的复现样本 |
+
+### 11.3 新增的 5 条守护用例（**全部真触发**）
+
+| # | 用例 | 落在 | 触发方式 | 钉住什么 |
+|---|---|---|---|---|
+| 1 | `otelSectionIsPresentAndReadBySharedLayer` | `observability/HotOtelExporterWiringTest` | **真读**本域 `application.yml` ＋ 起 Spring 上下文 | otel 段**真的被共享层读到**（不是「yml 里写了」）|
+| 2 | `exporterIsReallyInstalledWhenEndpointIsPresent` | 同上 | 起上下文后**读 provider 的 processor 链** | 端点非空 ⇒ **真的挂了 `BatchSpanProcessor`** ⇒ span 真的会被导出（**不是「Noop」**）|
+| 3 | `noExporterWhenEndpointIsBlank` | 同上 | 同上 | **反向对照**：端点为空 ⇒ **不装** processor ⇒ ⇒ 证明上一条不是因为「怎么都装」而绿 |
+| 4 | `domainQueryTimeoutYieldsBusinessEnvelope` | `http/HotDomainQueryTimeoutRealTomcatTest` | **真 Tomcat** ＋ 慢 Redis（测试基座注入）| 超过 2s ⇒ **`200` ＋ `{code:5001,…}`**（**不是** 503 纯文本）＋ 时延落在 [1800,2800]ms ＋ `rpc_error{callee=hot_rpc_get_hot_articles}` **+1** |
+| 5 | `fastDomainQueryIsNotAffectedByTimeout` | 同上 | 同上 | 正常路径**不误伤**（仍是正常业务信封）|
+
+> 📌 **基座改动**：`HotRealStackTestBase` / `HotKafkaTestBase` 补 `otel.exporter.otlp.endpoint=`（**测试环境不装 exporter**，免得往真 Jaeger 发）＋ 基类新增 `finalStatusLineOf` / `decodedBodyOf`（**跳过 1xx** ＋ 解 chunked）⇒ `HotHttpRealTomcatTest` 删掉本地重复 helper 改用基类。
+
+### 11.4 变异验证（**证明新断言不是假绿**）
+
+| 变异 | 改了什么 | 期望 | 实跑读数 | 判定 |
+|---|---|---|---|---|
+| **V5** | 把 `otel.exporter.otlp.endpoint` **置空** | otel 用例转红 | **恰好 1 红**（`exporterIsReallyInstalledWhenEndpointIsPresent`），另 2 例绿 | ✅ 有牙齿 |
+
+> ⚠️ **V5 特别值得记**：它证明第 2 条用例**不是恒绿**（若断言写错，例如只看「provider 存在」，置空端点后仍会绿）⇒ ⇒ 「exporter 真的装上了」这句话**有牙齿**。
+> ⚠️ 另注：第 3 条（反向对照）**单独跑时不会红** —— 它的作用是**给第 2 条当对照组**（证明第 2 条不是因为「怎么都装」才绿）⇒ ⇒ **不能单独用「变异后红」来验它**。
+
+### 11.5 订正 / 新增的 javadoc（**只改注释，不改行为**）
+
+| # | 位置 | 改了什么 |
+|---|---|---|
+| 1 | `service/HotApiService.java`（类注释「一处传输层差异」段）| **2026-11-05 再次订正**：该段仍写着「C 侧 `503` + 纯文本 @3014ms，形状非确定」⇒ ⇒ **加了 2s 上界之后这句话已经不成立** ⇒ 改成按 §十一·M7 的**实测读数**写：两侧都是 `200` ＋ 5001 信封 @ ≈2s；并补上「**超时也是 `RuntimeException` ⇒ 指标照常 +1**」这条语义 |
+| 2 | `service/HotApiService.java`（类级 import 段）| 修掉两处**重复 import**（`CompletableFuture` × 2 · `TimeUnit` × 2）—— 纯整理，零行为改动 |
+| 3 | `config/HotDomainQueryConfiguration.java` | **新类**：写清「为什么必须有它 / 为什么用虚拟线程 / 为什么不能用 `hotHydrationExecutor` / 超时后原线程还在跑」＋ B 出处 |
+| 4 | `config/HotApiProperties.java` | `domainQueryTimeout` 字段的 javadoc（含 Lombok 展开块同步更新）|
+
+> ✅ **验证**：`git diff` 逐块核对 ⇒ **第 1、2、4 条是纯注释改动**（零实现改动）；第 3 条是**新增类**。
+
+### 11.6 E-4 探针的升级（`tools/difftest/hot/`）
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| **M5 的判定口径** | 「**已登记的差异**（F-02）该长什么样」⇒ 判据 = 差异的**形状**必须与登记一致（三候选集合）| 「**两侧应当逐条相同**」（与 M1–M4 同向）⇒ 冻结值 = 两侧都是 `HTTP/1.1 200 ` ＋ 5001 信封；**另加一条**「两侧实测必须相等」（防「两侧被改成同一个错误形状、而冻结值没跟上」）|
+| **M5 的时延区间** | C 侧 `[2700,4400]ms`（3s 预算线）| C 侧 `[1500,2800]ms`（≈2s 域内上界）|
+| **传输编码面（新增）** | ❌ **没有这一面** ⇒ M1 面比的是「状态行 + Content-Type + body hex」⇒ **不含**「响应怎么分帧」⇒ ⇒ 「一侧 chunked、另一侧定长」**在 M1 面看不见**| ✅ 新增 `http_encoding_probe.py` ＋ `http_probe.probe_framing()` ⇒ 只比 **Transfer-Encoding / Content-Length** ⇒ 判据 = **两侧相等，不断言绝对值**（Go 真源那边是定长 ⇒ 那是**两侧共同继承的已登记差异** ⇒ 写死绝对值会把「继承的差异」和「C 侧自己的漂移」混成一条）|
+| **解析器自检** | 5 条 | **8 条**（新增「分帧面」两类形态 + 「1xx 前缀不能把头读串位」）⇒ ⇒ 分帧面判据**依赖**这个解析器 ⇒ 解析器回退 ⇒ 自检先红 |
+
+> ⚠️ **既有读数形状零改动**：`http_probe.probe()` 的 4 段输出格式**一字未动**（M1 面的判据基础不受影响）⇒ ⇒ 新面另起函数、另起脚本（与 `http_timeout_probe.py` 同款做法）。
+
+### 11.7 本轮读数（**全部真跑**）
+
+| 项 | 读数 |
+|---|---|
+| 域级测试 | **100 例全绿**（原 95 ＋ 本轮 5），**skipped = 0**（真 Tomcat / 真 gRPC / 真 Kafka / 真 Redis）|
+| 变异验证 | **V5 按预期转红**（恰好 1 红）⇒ 还原后基线复跑 **100 例全绿** |
+| **E-4 双侧活体对拍** | ✅ **EXIT = 0** —— **真差异 0 · 已知现象 0 · 端口零残留**<br>· M1 HTTP 字节面 **18 条**逐字节一致（＋ **传输编码面**两侧一致：`Transfer-Encoding = -` / `Content-Length = 6449`）<br>· M2 gRPC wire 字节面 **9 条**逐字节一致<br>· M3 Redis 状态面 逐字节一致<br>· M4 Kafka 三面 逐字节一致（TTL B=3593 · C=3599，各自从本侧合并时刻起算）<br>· **M5 超时面：两侧形状逐条相同** —— B `HTTP/1.1 200` ＋ 5001 信封 @**2021ms** · C `HTTP/1.1 200` ＋ 5001 信封 @**2017ms** ⇒ ⇒ 「三候选」与「混血响应」**消失**<br>· 恢复校验：暂停窗口过后两侧逐字节一致 |
+| 三道守门 | **EXIT = 0**（① 架构断言 A1–A13：PASS 10 · FAIL 0 · N/A 2 · PENDING 1 · ② docs↔树对账 ③ 映射覆盖 **C 643/643 · B 752/752**）|
+| 文件树 | 已用生成器重生成（`docs/File_Tree/hot.md` ＋ 3 个新文件落点）|
+| 映射表 | `docs/Mapping_Table/hot/hot.md` 补 `HotDomainQueryConfiguration.java` 一行（**C 新增**，注明「B 侧那个 2s 封顶在共享层的 gRPC 出向拦截器上」）⇒ `_INDEX.md` 的 hot 行自报数同步为 **32/32** 与行数 **520** |
+
+### 11.8 本轮**没有**动的（留给下一手）
+
+| 项 | 归属 | 理由 |
+|---|---|---|
+| **共享层缺陷 F-15**（「HTTP 预算 × 业务失败」竞态 ⇒ 混血响应）| **`global`** | 共享层写权面 · 本域只是**不再触发**它 ⇒ **缺陷仍在** |
+| **otel 段缺失的另外 4 个域**（`comment`/`favorite`/`message`/`task` 同样零 otel 段）| **`global`** | 建议 5 域统一处置，避免各域各补各的再漂 |
+| 三个 `_INDEX.md` 并入主干（`docs/DRIFT/_INDEX.md` hot 行 · `docs/Intentional_Deviations/_INDEX.md` · `docs/Pitfalls/_INDEX.md`）| **主会话** | 共享面（AGENTS.md §五.3 规则 3）|
+| **F-11** 命名债（`HotArticleItem` 与 proto message 同名）| 用户拍板 | 表达层债 · 改名的风险收益比不划算 |
+| 仓库根的 **env 契约文件**（`.env.example` / docker-compose）是否也用了新 env 名 | **主会话** | 本轮只核了 `service/hot/application.yml` |
