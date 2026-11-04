@@ -22,7 +22,7 @@
 | 共享层 | `common/`（C 侧包名 `com.rag.common`） |
 | 工作树 | `/Users/pr/Documents/GitHub/RAG-V1.worktrees/task` |
 | 分支 / 基点 | `align/task` / `0a35865`（本地 `main`） |
-| 本轮改动 | **已提交 `ef4fb5d`**（分支 `align/task` · 基线 `0a35865`）—— 61 个文件 · ＋9074 / −210 行<br>· **2026-11-04 补记提交 `c1086dc`**（U-1 消费面真跑 ＋ U-2 双侧活体对拍 ＋ fat jar 启动缺陷修复）—— **17 个文件 · ＋1831 / −56 行**<br>· **2026-11-04 补记提交 `52c272d`**（U-3 gRPC wire 真 netty 收发 ＋ M-6 变异）—— **8 个文件 · ＋511 / −26 行** |
+| 本轮改动 | **已提交 `ef4fb5d`**（分支 `align/task` · 基线 `0a35865`）—— 61 个文件 · ＋9074 / −210 行<br>· **2026-11-04 补记提交 `c1086dc`**（U-1 消费面真跑 ＋ U-2 双侧活体对拍 ＋ fat jar 启动缺陷修复）—— **17 个文件 · ＋1831 / −56 行**<br>· **2026-11-04 补记提交 `52c272d`**（U-3 gRPC wire 真 netty 收发 ＋ M-6 变异）—— **8 个文件 · ＋511 / −26 行**<br>· **2026-11-04 补记提交 `e4030fc`**（**U-6 gRPC 面双侧活体对拍** ＋ M-P4）—— **13 个文件 · ＋805 / −49 行** |
 | 本轮核对日期 | **2026-11-03** |
 | 本轮对 `common/**` 的改动 | **零**（只读） |
 
@@ -166,7 +166,7 @@
 | 7-5 | `docs/DRIFT/task/verification-task-service-2026-11-03.md` | 本域八阶段迁移审核报告 |
 | 7-6 | `docs/DRIFT/task/vs-common.md`（**本文件**） | 跨层对账 |
 | 7-7 | `docs/Mapping_Table/task/task.md`（**401 行**） ＋ `docs/Mapping_Table/_INDEX.md` 的 **task 行** ＋ `docs/File_Tree/task.md` | 本域域文档（**只改 task 相关**） |
-| 7-8 | 🔴 **`tools/difftest/task/`**（**15 个文件**） | **双侧活体对拍探针**（**E-4 强度 · HTTP 面 + gRPC 面**）：`run.sh`（编排 · 10 步）· `http_probe.py`（裸 socket 字节探针）· `cases.txt`（21 条 HTTP 用例）· `expected.txt`（**冻结锚 = B 侧读数**）· `known-cases.txt` ＋ `known-readings.txt`（**已登记的表达层差异** ＋ 其形状）· `grpc_probe/GrpcProbe.java`（**真 netty client**）· `grpc_probe.py`（gRPC 面驱动）· `grpc_cases.txt`（7 条 gRPC 用例 · **uid 与 HTTP 面物理错开**）· `grpc_expected.txt`（**gRPC 面的冻结锚**）· `grpc_known-cases.txt` ＋ `grpc_known-readings.txt`（**当前 0 条**）· `judge_report.py`（变异判定器 · **两面共用**）· `mutate-parity.sh`（**HTTP 面变异** M-P1~M-P3）· `mutate-grpc-parity.sh`（**gRPC 面变异** M-P4）· `README.md`（口径与用法） |
+| 7-8 | 🔴 **`tools/difftest/task/`**（**17 个文件**） | **双侧活体对拍探针**（**E-4 强度 · HTTP 面 + gRPC 面**）：`run.sh`（编排 · 10 步）· `http_probe.py`（裸 socket 字节探针）· `cases.txt`（21 条 HTTP 用例）· `expected.txt`（**冻结锚 = B 侧读数**）· `known-cases.txt` ＋ `known-readings.txt`（**已登记的表达层差异** ＋ 其形状）· `grpc_probe/GrpcProbe.java`（**真 netty client**）· `grpc_probe.py`（gRPC 面驱动）· `grpc_cases.txt`（7 条 gRPC 用例 · **uid 与 HTTP 面物理错开**）· `grpc_expected.txt`（**gRPC 面的冻结锚**）· `grpc_known-cases.txt` ＋ `grpc_known-readings.txt`（**当前 0 条**）· `judge_report.py`（变异判定器 · **两面共用**）· `mutate-parity.sh`（**HTTP 面变异** M-P1~M-P3）· `mutate-grpc-parity.sh`（**gRPC 面变异** M-P4）· `README.md`（口径与用法） |
 | 7-9 | `common/**` | 🔴 **零改动** |
 
 > 📌 **本 lane 对共享面的改动合计 = 0** ⇒ 共享层的任何问题都**不是**本域引入的；
