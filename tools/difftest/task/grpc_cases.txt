@@ -1,0 +1,31 @@
+# task 域 **双侧活体对拍 · gRPC 面**用例表（B 侧 task-rpc ↔ C 侧 task-service）
+#
+# 格式（**制表符分隔**，2 列）：<名称> <TAB> <user_id>
+#
+# 🔴 **为什么 uid 与 HTTP 面完全错开（2001~ vs 1001~）**：
+#    ① `ok-pg-fallback` 会让服务端**回填 Redis 缓存**（`task:progress:<uid>`）
+#       ⇒ 若与 HTTP 面共用 uid ⇒ **谁先跑谁就替对方把回填做了**
+#       ⇒ HTTP 面的 M2 状态面（验「读路径写了库/写了缓存」）就会**失去判据**
+#       ⇒ ⇒ **两面的 uid 必须物理错开**，互不污染。
+#    ② 同样的道理，gRPC 面**不读** HTTP 面的 `user_like_count` 那行。
+#
+# ⚠️ **本表只覆盖 gRPC 面能表达的输入维度**：proto 的 `GetTaskReq` **只有一个
+#    `int64 user_id`** ⇒ ⇒ HTTP 面的「id 是字符串 / 是浮点 / 缺字段 / 空串 /
+#    Content-Type 无关」那些用例**在 gRPC 面不存在**（不是漏测，是**协议层没有这个维度**）。
+#
+# ── 用例与判据的对应（B 出处）────────────────────────────────────────────────
+# ok-redis-hit        Redis 命中 ⇒ 直接用缓存（190 进度 2 / 1902 进度 4）
+# ok-pg-fallback      Redis 未命中 ⇒ 回源 task_progress（190 进度 7 / 1902 进度 9）
+# ok-empty            两侧都无 ⇒ progress 缺省 0
+# ok-malformed-cache  缓存里的打包值**第二段非法** ⇒ 该条 progress 回落 0（同条另一条仍取到真值）
+# ok-malformed-count  缓存里的打包值**不是 3 段** ⇒ 该条 progress 回落 0
+# err-zero            user_id = 0 ⇒ INVALID_ARGUMENT + 「user_id invalid」
+# err-neg             user_id = -1 ⇒ INVALID_ARGUMENT + 「user_id invalid」
+
+ok-redis-hit	2001
+ok-pg-fallback	2002
+ok-empty	2003
+ok-malformed-cache	2005
+ok-malformed-count	2006
+err-zero	0
+err-neg	-1

@@ -98,7 +98,7 @@
 > 错误码 / envelope · 端口治理 · errmsg 契约 · proto 契约 · DDL 时间列 / 类型 · trace / otel）。
 > ⚠️ **「✅ 一致」的含义 = 在该证据强度下一致**，**不是**已做双侧活体对拍。
 > 📌 **2026-11-04 补记**：本域**已建** `tools/difftest/task/`（双侧活体对拍，**E-4 强度**）⇒ 见 §6·6-2。
-> ⚠️ **口径**：该 **E-4 只覆盖 HTTP 面**（M1/M2/M3/M4）⇒ **gRPC 面尚未双侧对拍** ⇒ **已登记为 U-6**。
+> ✅ **口径更新（2026-11-04）**：**HTTP 面**（M1/M2/M3/M4）**与 gRPC 面**（**M5 gRPC 字节面**）**都已是 E-4** ⇒ ⇒ task 域的 **HTTP 契约**与 **gRPC wire 契约**两条面**都有双侧证据** ⇒ ⇒ **U-6 已闭合**。
 
 | 轴 | 机制 | 本域侧的落点 / 调用 | 结论 | 证据强度 | 核对日期 |
 |---|---|---|---|---|---|
@@ -151,7 +151,7 @@
 | 6-3 | ✅ **gRPC wire 层真 netty 收发** | — | ✅ **2026-11-04 已闭合**：新增 `grpc/TaskGrpcNettyServerRealTest`（**6 例**）＋ `support/GrpcServerPortCapture.java`<br>⇒ 真 netty server（`grpc.server.port=0` ⇒ OS 分配 ⇒ 取 `event.getServer().getPort()` —— ⚠️ **不是** `event.getPort()`，那在 port=0 时返回 0）＋ 真 netty client（🔴 **必须** `forAddress(SocketAddress)` ⇒ 免疫 devh `DiscoveryClientResolverFactory` 的**全局劫持**）＋ **真 proto 编解码** ＋ **真 Redis / 真 PG**<br>⇒ 覆盖：服务全名 `task.TaskService/GetTask`（**L1 契约**）· 两条任务定义逐字段 · Redis 命中路径 · PG 回源路径 · 错误出口（`INVALID_ARGUMENT` ＋ `"user_id invalid"` ＋ **trailer 非空**）<br>⇒ 读数：**Tests run: 6, Failures: 0, Errors: 0, Skipped: 0**（13.65 s）⇒ **默认回归 52 → 58 例**<br>⇒ **变异 M-6**（把 `StatusRuntimeException` 透传抹成 UNKNOWN）⇒ **目标红 ＋ 对照绿 ＋ 还原绿** ⇒ 配套报告 §七·7-1 **U-3** / §八·8.1<br>⚠️ **判定强度 = E-3（C 侧单侧真触发）** ⇒ **不冒充 E-4**（**gRPC 面尚未双侧对拍** ⇒ 现有 `tools/difftest/task/` 只覆盖 HTTP 面 ⇒ **已登记为 U-6** · 配套报告 §七·7-1） |
 | 6-4 | ✅ **Redis flush 管线** | — | ✅ **2026-11-04 已闭合（随 6-1）**：真 Kafka 投递 ⇒ 真消费 ⇒ 真 flush ⇒ **真落 PG**（`TaskKafkaConsumeRealTest` 的两条端到端用例）⇒ 配套报告 §七·7-1 **U-4** |
 | 6-5 | ✅ **共享层 gRPC 错误映射的「共享层版本」已核** | — | ✅ **本轮已闭合**：§1.4 的**机器比对**（`httpStatusOf` 17/17 ＋ `goCodeName` 17/17 **逐条一致**） |
-| 6-6 | ✅ **变异证据（判据有牙齿）** | — | ✅ **已闭合**：**M-1 ~ M-6** 六组（单元测试层）+ **M-P1 ~ M-P3** 三组（**对拍探针层**）⇒ 每组都要求「目标断言转红 ＋ 对照断言仍绿」＋ 还原后回绿 ⇒ **实测 EXIT=0**<br>⇒ 脚本：`tools/difftest/task/mutate-task.py`（M-1~M-6）· `tools/difftest/task/mutate-parity.sh`（M-P1~M-P3）⇒ 配套报告 §八·8.1 / §八·8.1-b<br>⚠️ **M-4 第一轮曾「仍绿」** ⇒ 暴露出一条**假覆盖**用例（自己手拼 key、没调用被测类）⇒ **已修**（判据迁到 `messaging/TaskCountStoreRealRedisTest`）⇒ 复跑转红 ⇒ 配套报告 §八·8.2 #11 |
+| 6-6 | ✅ **变异证据（判据有牙齿）** | — | ✅ **已闭合**：**M-1 ~ M-6** 六组（单元测试层）+ **M-P1 ~ M-P4** 四组（**对拍探针层**）⇒ 每组都要求「目标断言转红 ＋ 对照断言仍绿」＋ 还原后回绿 ⇒ **实测 EXIT=0**<br>⇒ 脚本：`tools/difftest/task/mutate-task.py`（M-1~M-6）· `tools/difftest/task/mutate-parity.sh`（M-P1~M-P3 · **HTTP 面**）· `tools/difftest/task/mutate-grpc-parity.sh`（**M-P4 · gRPC 面** · 多一条「HTTP 面看不见」判据）⇒ 配套报告 §八·8.1 / §八·8.1-b<br>⚠️ **M-4 第一轮曾「仍绿」** ⇒ 暴露出一条**假覆盖**用例（自己手拼 key、没调用被测类）⇒ **已修**（判据迁到 `messaging/TaskCountStoreRealRedisTest`）⇒ 复跑转红 ⇒ 配套报告 §八·8.2 #11 |
 
 ---
 
@@ -165,8 +165,8 @@
 | 7-4 | `service/task/src/test/java/com/rag/task/**`（**9 个测试类 ＋ 5 个 support · 61 例**＝默认 58 ＋ 外部依赖面 3） | 真 PG ＋ 真 Redis ＋ 真 Tomcat ＋ **真 Kafka**（U-1）＋ **真 netty gRPC server/client**（U-3）＋ Kafka 装配层 ＋ **变异验证脚本**（`tools/difftest/task/mutate-task.py` · M-1~M-6） |
 | 7-5 | `docs/DRIFT/task/verification-task-service-2026-11-03.md` | 本域八阶段迁移审核报告 |
 | 7-6 | `docs/DRIFT/task/vs-common.md`（**本文件**） | 跨层对账 |
-| 7-7 | `docs/Mapping_Table/task/task.md`（**400 行**） ＋ `docs/Mapping_Table/_INDEX.md` 的 **task 行** ＋ `docs/File_Tree/task.md` | 本域域文档（**只改 task 相关**） |
-| 7-8 | 🔴 **`tools/difftest/task/`**（**9 个文件**） | **双侧活体对拍探针**（**E-4 强度**）：`run.sh`（编排）· `http_probe.py`（裸 socket 字节探针）· `cases.txt`（21 条用例）· `expected.txt`（**冻结锚 = B 侧读数**）· `known-cases.txt` ＋ `known-readings.txt`（**已登记的表达层差异** ＋ 其形状）· `judge_report.py`（变异判定器）· `mutate-parity.sh`（**探针层变异** M-P1~M-P3）· `README.md`（口径与用法） |
+| 7-7 | `docs/Mapping_Table/task/task.md`（**401 行**） ＋ `docs/Mapping_Table/_INDEX.md` 的 **task 行** ＋ `docs/File_Tree/task.md` | 本域域文档（**只改 task 相关**） |
+| 7-8 | 🔴 **`tools/difftest/task/`**（**15 个文件**） | **双侧活体对拍探针**（**E-4 强度 · HTTP 面 + gRPC 面**）：`run.sh`（编排 · 10 步）· `http_probe.py`（裸 socket 字节探针）· `cases.txt`（21 条 HTTP 用例）· `expected.txt`（**冻结锚 = B 侧读数**）· `known-cases.txt` ＋ `known-readings.txt`（**已登记的表达层差异** ＋ 其形状）· `grpc_probe/GrpcProbe.java`（**真 netty client**）· `grpc_probe.py`（gRPC 面驱动）· `grpc_cases.txt`（7 条 gRPC 用例 · **uid 与 HTTP 面物理错开**）· `grpc_expected.txt`（**gRPC 面的冻结锚**）· `grpc_known-cases.txt` ＋ `grpc_known-readings.txt`（**当前 0 条**）· `judge_report.py`（变异判定器 · **两面共用**）· `mutate-parity.sh`（**HTTP 面变异** M-P1~M-P3）· `mutate-grpc-parity.sh`（**gRPC 面变异** M-P4）· `README.md`（口径与用法） |
 | 7-9 | `common/**` | 🔴 **零改动** |
 
 > 📌 **本 lane 对共享面的改动合计 = 0** ⇒ 共享层的任何问题都**不是**本域引入的；
