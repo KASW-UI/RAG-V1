@@ -391,19 +391,6 @@ observability:
   rpc-timeout: 2s
 
 # =============================================================================
-# OpenTelemetry OTLP —— 对应 Go Telemetry{Name, Endpoint, Sampler}
-# =============================================================================
-otel:
-  service:
-    name: task-service
-  exporter:
-    otlp:
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:jaeger:4317}
-  traces:
-    exporter: otlp
-    sampler: parentbased_always_on
-
-# =============================================================================
 # Actuator / Metrics
 # =============================================================================
 management:

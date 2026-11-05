@@ -65,9 +65,73 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+            🔴🔴 **刻意不在这里声明 grpc-inprocess**（2026-11-04 · 本域迁移审核实测修正）
+            —— **B 出处 = B 侧 `service/comment/comment-api/pom.xml:159-174`**（逐字继承其结论）。
+
+            【B 侧原文的结论】
+              "🔴🔴 **刻意不在这里声明 grpc-inprocess**（2026-10-24 双侧活体对拍时踩过）：
+               本仓所有 api 模块的 grpc-inprocess 都来自
+               `net.devh:grpc-client-spring-boot-starter:3.1.0.RELEASE` 的**传递依赖**
+               （compile 作用域）—— devh 的 `GrpcClientAutoConfiguration` 在**运行期**
+               就要 `io.grpc.inprocess.InProcessChannelBuilder`。"
+
+            【Maven「最近者优先」是这里的关键陷阱】
+              一旦在本模块**直接**声明 `io.grpc:grpc-inprocess` 并标成 `<scope>test</scope>`，
+              它（深度 1）就会**顶掉** devh 传递过来的那份（深度 2、compile 作用域）
+              ⇒ **运行时 classpath 里就没有 grpc-inprocess 了**
+              ⇒ 启动期报 `NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`
+              （抛点：`GrpcClientAutoConfiguration#shadedNettyGrpcChannelFactory`）
+              ⇒ **组件根本起不来**，而单元测试全绿。
+
+            【本轮实测：这条坑在 C 侧 comment 域真的踩中了（修前）】
+              ① `mvn -o -pl service/comment dependency:list` ⇒ `io.grpc:grpc-inprocess:jar:1.63.0:**test**`
+                 （直接声明压过了 devh 的传递 compile）；
+              ② 修前 fat jar 的 175 个 `BOOT-INF/lib/` 条目里 **没有** `grpc-inprocess`，
+                 而 `grpc-client-spring-boot-starter-3.1.0.RELEASE.jar` **在**
+                 ⇒ 其内 `net/devh/boot/grpc/client/channelfactory/InProcessChannelFactory.class`
+                 的类签名**硬引用** `io.grpc.inprocess.InProcessChannelBuilder`（`javap -v` 实测）；
+              ③ `java -jar service/comment/target/comment-service-1.0-SNAPSHOT.jar` ⇒ **启动失败**：
+                 `BeanCreationException: articleRpcClient … Failed to create channel: article-rpc`
+                 → `NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`
+                 ⇒ **整个服务起不来**（硬失败，不是静默失效）；
+              ④ ⚠️ **修前 `mvn -o -pl service/comment -am test` 是全绿的** ——
+                 测试跑在 **test classpath** 上 ⇒ grpc-inprocess 在那儿 ⇒ **缺陷看不见**
+                 ⇒ 这是 AGENTS.md §3.3.3「**跑绿 ≠ 本来就绿**」的教科书形态。
+
+            【修法：整条删除本声明】（不是把 scope 改成 compile）
+              删除后 grpc-inprocess 由 `pom.xml:116-124` 的 devh **client** starter 传递进来，
+              **compile 作用域** ⇒ 同时满足「测试要 in-process server」与「运行期要 InProcessChannelBuilder」
+              两个需求 ⇒ **与 B 侧 comment-api 的做法逐字一致**。
+              ⇒ 且「本模块没有直接声明」⇒ **「最近者优先」这个陷阱在本模块根本不存在**
+                ⇒ 不会再有人用一行 `<scope>test</scope>` 把产物打穿。
+
+            【版本不写】
+              由根 pom 的 `<dependencyManagement>`（`pom.xml:213-215`）统一管
+              （`${grpc.version}` = **1.63.0**）⇒ 与 grpc-stub / -core / -netty-shaded 同源。
+              （B 侧要显式写 `<version>` 是因为 B 的根 pom **没管** grpc-inprocess
+               ⇒ 漏写会让整个 reactor 在读 POM 阶段就失败 ⇒ C 侧的根 pom 已管 ⇒ **不写** · D14 口径。）
+
+            【守门点】
+              B 侧的 4 条守门点已原样移植为 C 侧测试：
+              `CommentArtifactClasspathGateTest`（运行时 classpath / fat jar `BOOT-INF/lib` /
+              fat jar 内嵌 `common-*.jar` 的 `AutoConfiguration.imports`）
+              ＋ `CommentRuntimeBootGateTest`（真 fat jar 起真应用，gRPC 端口真的在监听）。
+        -->
+        <!--
+            ⚠️ **protobuf-java-util 必须显式声明（test scope）** ——
+            本域的 proto 契约测试要断言「proto3 的 message 字段**没有** presence API」
+            （`hasXxx()` / `getXxx()` 在 JSON 形态下的行为）⇒ 需要 `JsonFormat`
+            ⇒ ⇒ 该 artifact **目前只是经 `grpc-services` 传递进来的**（解析到 3.25.1），
+            而 `protobuf-java` 本仓是 **3.25.5** ⇒ **两个 protobuf artifact 版本不一致**
+            ⇒ ⇒ 一旦 `grpc-services` 被移除/换版，该测试就会**编译失败**（不是运行时才发现）。
+            ⇒ ⇒ 这里显式声明，版本与 `protobuf-java` **对齐**（用根 pom 的同一个 property）。
+            ⇒ 作用域限 test ⇒ **不进产物 jar**。
+        -->
         <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-inprocess</artifactId>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java-util</artifactId>
+            <version>${protobuf.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>

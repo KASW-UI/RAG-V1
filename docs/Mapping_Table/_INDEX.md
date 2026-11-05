@@ -75,9 +75,9 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **follow** | [follow/follow.md](follow/follow.md) | 517 | **37 / 37 = 100%** | **51 / 51 = 100%** | 116 |
 | **hot** | [hot/hot.md](hot/hot.md) | 520 | **32 / 32 = 100%** | **34 / 34 = 100%** | 56 |
 | **like** | [like/like.md](like/like.md) | 451 | **69 / 69 = 100%** | **83 / 83 = 100%** | 81 |
-| **message** | [message/message.md](message/message.md) | 533 | **53 / 53 = 100%** | **71 / 71 = 100%** | 69 |
+| **message** | [message/message.md](message/message.md) | 533 | **52 / 52 = 100%** | **71 / 71 = 100%** | 69 |
 | **task** | [task/task.md](task/task.md) | 401 | **40 / 40 = 100%** | **39 / 39 = 100%** | 56 |
-| **合计** |  | **5,990** | **643 / 643 = 100%** | **752 / 752 = 100%** | 895 |
+| **合计** |  | **5,995** | **643 / 643 = 100%** | **752 / 752 = 100%** | 898 |
 
 > 📌 **users 域拆分的守恒性**（2026-10-25 拆分后实测）：
 > 拆分前单文件 515 行 / 127 映射行 ⇒ 拆分后四份合计 **1,011 行 / 127 映射行**（行数增加是**导航与分节标题**带来的，非内容膨胀）。
@@ -148,7 +148,7 @@ python3 tools/check-mapping-coverage.py     # 全部域；EXIT=0 才算通过
 | **task** | ✅ **2026-11-03 · 本域 5 处落点缺口全部闭合** —— ① **`goka.Persist`（RocksDB 本地表）无生态等价物** ⇒ **B 侧已定案**（Redis `INCR` + group 命名空间），C 侧照抄（`TaskCountStore`）② **`WebMvcConfig` 的 javadoc 与本域事实冲突** ⇒ 已改写为否定式声明（零鉴权 ＋ 零 CORS）③ **`TaskApiResponseAdvice` 的职责未定** ⇒ 已定：**原样透传、不加信封** ④ **持久层空位**（`db/migration/` 只有 `.gitkeep`、yml 无 `flyway`/`hikari`/`id-type`）⇒ **V1/V2 逐字复制 ＋ 三段配置全补** ⑤ **RAG-V1 `common/` 无 `RpcServerInterceptorFactory`** ⇒ 已由 `ProtectionAutoConfiguration` 的 `seaGrpcServerConfigurer` 承担（守门 A3 PASS） | 401 | **40 / 40 = 100%** | **39 / 39 = 100%** | 56 |
 | **task** | ✅ **同上（2026-11-03 已闭合）** —— 原缺口「`WebMvcConfig` 的 javadoc 与本域事实冲突」」⇒ 见本表上一行的 task 闭合说明（**逐条对应 `docs/Mapping_Table/task/task.md` §7.3 #3 / #4**） | 401 | **40 / 40 = 100%** | **39 / 39 = 100%** | 56 |
 | **task** | ✅ **同上（2026-11-03 已闭合）** —— 原缺口「`TaskApiResponseAdvice` 的职责未定」⇒ 见本表上一行的 task 闭合说明（**逐条对应 `docs/Mapping_Table/task/task.md` §7.3 #3 / #4**） | 401 | **40 / 40 = 100%** | **39 / 39 = 100%** | 56 |
-| **common** | **`communityfact` 的「三域共享」** ⇒ ✅ **前提已变（D16 + 2026-11-02 实测）**：B 侧 `import com.rag.common.communityfact.*` 的主代码文件数 = **comment 4 / like 4 / favorite 10** ⇒ **B 侧已是三域共享**（favorite 走共享层 `Wire` / `Dispatcher` / `ProcessLogger`）⇒ C 侧按三域共享设计 = 照抄 B 侧；⚠️ **「favorite 域的接线是否已走共享层」归 `favorite.md` 核**<br>✅ **2026-11-03 · 用户定 · 归属亦已裁决**：**行为侧 C ≡ B**（实测 favorite 两侧都走共享层）⇒ ⇒ **非漂移**、**归属不动** ⇒ ⇒ **AGENTS.md §2.3 的 🔴 已解除**（台账 **DRIFT-COMMON-V11**） | 923 | **109 / 109 = 100%** | **88 / 88 = 100%** | 135 |
+| **common** | **`communityfact` 的「三域共享」** ⇒ ✅ **前提已变（D16 + 2026-11-02 实测）**：B 侧 `import com.rag.common.communityfact.*` 的主代码文件数 = **comment 4 / like 4 / favorite 10** ⇒ **B 侧已是三域共享**（favorite 走共享层 `Wire` / `Dispatcher` / `ProcessLogger`）⇒ C 侧按三域共享设计 = 照抄 B 侧；⚠️ **「favorite 域的接线是否已走共享层」归 `favorite.md` 核**<br>✅ **2026-11-03 · 用户定 · 归属亦已裁决**：**行为侧 C ≡ B**（实测 favorite 两侧都走共享层）⇒ ⇒ **非漂移**、**归属不动** ⇒ ⇒ **AGENTS.md §2.3 的 🔴 已解除**（台账 **DRIFT-COMMON-V11**） | 927 | **112 / 112 = 100%** | **88 / 88 = 100%** | 138 |
 | **favorite** | **错误文案串味** —— 🔴 **`ErrorNotFound(5002)` = 英文 `not found`**（B 侧 `favorite-common/…/common/errmsg/FavoriteErrorMessages.java:52`，**本域唯一英文**）+ `Success`="OK" / `Error`="FAIL"（`:48`） | 519 | **61 / 61 = 100%** | **75 / 75 = 100%** | 88 |
 | **comment** | `CommentController` javadoc 与 **B 侧** 端点清单不一致（2 处） | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |
 | **comment** | `CommentKafkaMsg` 与 `service/comment/src/main/java/com/rag/comment/messaging/CommentAuditMessage.java` 的载荷字段归属未锁定 | 481 | **69 / 69 = 100%** | **83 / 83 = 100%** | 84 |

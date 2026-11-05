@@ -1,47 +1,473 @@
 # =============================================================================
-# Comment 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程）
+# Comment 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程 · D1）
+#
+# 1:1 迁移原则：B 侧 **两份** yml
+#   ① service/comment/comment-api/src/main/resources/application.yml
+#   ② service/comment/comment-rpc/src/main/resources/application.yml
+# **合并成这一份**（D1：api 与 rpc 合流进同一进程 ⇒ 同一份 yml 同时承载
+# HTTP 段与 gRPC 段）。**不新增 B 侧不存在的开关**。
+#
+# ⚠️ **配置键名是 L1 契约**（AGENTS §3.1）：`comment-api.*` / `comment.*` /
+#    `observability.*` / `otel.*` / `rag.*` 的**前缀一字不改**。
+# ⚠️ 段内注释的「B 侧出处」行号，一律指 **B 侧那两份 yml 的行号**。
 # =============================================================================
+
 spring:
   application:
+    # B 侧 api 的 Name=comment-api · rpc 的 Name=comment-rpc
+    # ⇒ D1 合并后取 **C 侧单进程名**（映射表 §4 进程拓扑行：comment-service）
+    # ⇒ ⚠️ **服务发现名不取这里的值**：Nacos 注册名由
+    #    wiring/NacosRegistration 手写为 `comment-rpc`（用 gRPC 端口）。
     name: comment-service
+
+  # ============== 1. Postgres ==============
+  # B 侧出处：comment-rpc/…/application.yml:41-75
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:first_db}
+    # 🔴 **TimeZone=Asia/Shanghai 不能省**（B 侧 comment-rpc/…/application.yml:45-49 的必配说明；
+    #    :51 是带该参数的完整 URL）：
+    #    `created_at` 是 TIMESTAMPTZ，而 wire 上要渲染成墙钟时间
+    #    ⇒ B 侧显式把 PG session 时区钉成 Asia/Shanghai
+    #    ⇒ Java 侧必须在 JDBC URL 里带上同一个参数，否则渲染出来会差一个时区。
+    # ⚠️ 这是 C 侧相对 B 侧**补齐**的第 1 项（映射表 §7.4 #7）。
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:first_db}?TimeZone=Asia/Shanghai
     username: ${POSTGRES_USER:admin}
-    password: ${POSTGRES_PASSWORD:password}
+    # 🔴 口令**不加默认值**（逐字照抄 B 侧 comment-rpc/…/application.yml:67）。
+    #   B 侧的裸占位符 `${POSTGRES_PASSWORD}` 走 Go 的 os.ExpandEnv 语义
+    #   ⇒ 不认 `${VAR:default}` ⇒ 缺变量 ⇒ 空口令 ⇒ 连库失败。
+    #   而 Spring 的 `${VAR:default}` 会让**缺变量时用默认口令连上去**
+    #   ⇒ RAG 比 B 侧**松** ⇒ 真漂移 ⇒ 不为「保留兜底」签字。
+    # ⚠️ 残余差异（**失败时刻**不同）：B 侧 = 启动成功、连库时失败；
+    #    RAG = **启动即失败**（占位符解析不到 ⇒ DataSource bean 创建失败）
+    #    ⇒ 属「RAG 更严」的一侧。
+    password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      # B 侧 comment-rpc/…/application.yml:69-75
+      # ⚠️ B 侧 comment-rpc **没有**设 MaxIdleConns / MaxOpenConns
+      #    ⇒ 走的是 GORM/database-sql 默认 ⇒ 这里取 100/10 是**表达层**选择
+      #    （同 message-rpc / like-rpc），不改可观察行为。
+      maximum-pool-size: 100
+      minimum-idle: 10
+
+  # ============== 2. Redis ==============
+  # B 侧出处：comment-rpc/…/application.yml:128-179
   data:
     redis:
       host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      # B 侧 :138-139（对应 Go cache/redis.go:21-22 的 3s Ping 超时）
+      timeout: 3s
+      # ⚠️ connect-timeout（**TCP 连接**超时）必须显式写 5s（B 侧 :140-149 的必配说明）：
+      #    B 侧只设了 Addr ⇒ DialTimeout 未设 ⇒ 走 go-redis 的默认 **5s**；
+      #    不配 ⇒ 落 Lettuce 的 DEFAULT_CONNECT_TIMEOUT = **10s** ⇒ 连接超时差 2 倍。
+      # ⚠️ spring.data.redis.timeout 只管**命令**超时，Boot 3 起不再兼管连接超时。
+      connect-timeout: 5s
+      # ⚠️ pool.enabled=true ⇒ pom **必须**引 commons-pool2，否则
+      #    NoClassDefFoundError: GenericObjectPoolConfig ⇒ 组件起不来。
+      # ⚠️ max-wait 不可省（B 侧 :164-172 的必配说明）：B 侧 PoolTimeout 未设
+      #    ⇒ 落库默认 ReadTimeout + 1s = **4s**；不配 ⇒ commons-pool2 的
+      #    DEFAULT_MAX_WAIT = -1ms ⇒ 借连接永久阻塞 ⇒ **无限等**（比 B 侧更糟）。
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 64
+          max-idle: 16
+          # ⚠️ B 侧 :158-160 的必配说明：B 侧走 **go-redis 直连**（不是 go-zero），
+          #    MinIdleConns 未设 ⇒ go-redis 无 default 赋值 ⇒ **0**（不是 8，也不是 4）。
+          min-idle: 0
+          max-wait: 4s
+
+  # ============== 3. Kafka ==============
+  # B 侧出处：comment-rpc/…/application.yml:181-210
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:kafka:9092}
+
+    consumer:
+      # ⚠️ group-id = `comment-audit-group`（B 侧 :188；对应 Go KqConsumerConf.Group）。
+      #   这也是 wiring/CommentAuditListener 的 `@KafkaListener(groupId=…)` 的取值来源。
+      group-id: comment-audit-group
+      # ⚠️ B 侧 :189-192：对应 Go KqConsumerConf.Offset: last
+      #    ⇒ **从最新开始**（已写进库的历史评论不会被重复审核）。
+      #    ⚠️ 与 like 域的 `earliest` 不同 —— 不跨域统一。
+      auto-offset-reset: latest
+      # ⚠️ B 侧 :193-197：关掉自动提交，位点由容器在 listener 正常返回后提交。
+      #    这是 audit_consumer 那 4 条出口的载体：
+      #      解析失败 ⇒ 提交/drop · 落库失败 ⇒ 不提交/retry
+      #    enable-auto-commit 若留 true，「落库失败 → 不提交 → 重投」这条契约就不成立。
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # ⚠️ B 侧 :203-207：**与 like 域的 acks=1 刻意不同**。
+      #    B 侧的 kq.Pusher.Push 是**同步阻塞**写，且 create_comment_logic.go:126-132
+      #    在 Push 失败时返回 ErrorKafkaPush(5009) ⇒ 「Kafka 失败会让 CreateComment 失败」
+      #    是本域的 L1 行为 ⇒ 配 acks=all 让这个保证在多副本 broker 下也成立。
+      # ⚠️ 这也是 messaging/CommentAuditPublisher **必须同步等待** future.get() 的根因。
+      acks: all
+    listener:
+      # RECORD = listener 正常返回后提交位点（drop/retry 契约的实现载体）。
+      # ⚠️ 与 app 里的 CommentServiceApplication#kafkaListenerContainerFactory
+      #    的 setAckMode(RECORD) 是**同一件事的两处声明**（B 侧同样两处都有）⇒ 逐字保留。
+      ack-mode: record
+
+  # ============== 4. Flyway ==============
+  # B 侧出处：comment-rpc/…/application.yml:94-126
+  # 🔴 **独立账本表名**：`flyway_schema_history` 是 **schema 级**账本，一个 schema 只能有一本账。
+  #    各域的 V1 版本号直接撞车且内容不同 ⇒ 改账本表名即可消除病根，
+  #    **迁移文件名一个字都不用动**。
+  # ⚠️ **baseline-version 必须显式钉 0**：本模块与其它域连同一个库、同一个 public schema
+  #    ⇒ 先启动的模块已把 schema 弄非空 ⇒ 本模块启动时 Flyway 看到「非空 schema + 没有自己的账本」
+  #    ⇒ 因 baseline-on-migrate=true ⇒ **在 V1 处打 baseline 标记**（默认 baseline-version=1）
+  #    ⇒ **V1 的 SQL 从未执行** ⇒ `subject` 表永远建不出来。
+  #    baseline-version=0 ⇒ baseline 标记打在 version 0 ⇒ **V1 之后全部迁移照常执行**。
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+    schemas: public
+    table: flyway_schema_history_comment
+
+  jpa:
+    hibernate:
+      # ⚠️ B 侧 comment-rpc/…/application.yml:90-92 有这一行 ⇒ 逐字照抄。
+      # ⚠️ 但本模块**无 JPA 依赖** ⇒ `spring.jpa.*` **没有消费者**（B 侧同样如此）
+      #    ⇒ 纯「原样搬运」，不构成任何行为差异。
+      ddl-auto: none
+
+  # ============== 5. Nacos 服务发现 ==============
+  # B 侧出处：comment-api/…/application.yml:12-24 ＋ comment-rpc/…/application.yml:212-220
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:nacos:8848}
+        # ⚠️ **必须是 `host` 与 `port` 分开两个变量**（R1-ENV-001）：
+        #    写成 `${NACOS_ADDR:nacos:8848}` 会把端口硬编码进默认值 ⇒ NACOS_PORT 被忽略。
+        server-addr: ${NACOS_ADDR:nacos}:${NACOS_PORT:8848}
+        namespace: ${NACOS_NAMESPACE:public}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+        # 🔴 **必须显式关掉自动注册**（与 like 域同款）：
+        #    自动注册（`NacosAutoServiceRegistration`）注册的是 **web 容器端口**（本进程 8892），
+        #    而本域的注册是**手写的**（wiring/NacosRegistration 用 gRPC 端口 9002）
+        #    ⇒ 自动注册一旦生效 ⇒ Nacos 里会出现两个端口的实例 ⇒ gRPC 链路断。
+        register-enabled: false
 
+# =============================================================================
+# HTTP server（承载 7 个业务端点 + Actuator）
+# =============================================================================
+# 🔴 **合并裁决（端口）**：B 侧 api = 8888（业务）、B 侧 rpc = 9001（**只有** gRPC）。
+#    D1 合并成单进程 ⇒ **只有一个 HTTP 监听** ⇒ 取 C 侧映射表 §4 钉死的
+#    `comment-service`（HTTP `:8892` + gRPC `:9002`）。
+# B 侧出处：comment-api/…/application.yml:26-47
 server:
   port: ${COMMENT_HTTP_PORT:8892}
+  address: 0.0.0.0
+  servlet:
+    context-path: /
+  # ⚠️ 容器三旋钮：逐字照抄 B 侧 comment-api/…/application.yml:35-47
+  #    ① relaxed-query-chars：Go 的 net/http 不校验 query 里的 [ ]，
+  #       且 go-zero httpx.GetFormValues 明确支持方括号数组记法；
+  #       Tomcat 默认拒绝 ⇒ 400 + HTML 错误页（不是业务信封）。
+  #    ② max-parameter-count：Go = go-zero httpx/util.go:15 maxFormParamCount=2048（应用层判）。
+  #    ③ max-http-request-header-size：Go 的真实上限 = DefaultMaxHeaderBytes(1<<20) + 4096
+  #       ⇒ 1 MiB + 4 KiB = **1028KB**；Boot 默认 8KB。
+  # ⚠️ ② 是「写了但被共享层覆盖」的值（B 侧同样如此，不是 C 侧漂移）：
+  #    共享层 common/…/WebAutoConfiguration#seaTomcatParameterLimitCustomizer
+  #    无条件把 maxParameterCount 抬到 **10001**（= Go 的段数上限 10000 + 1）
+  #    ⇒ 判定权交还应用层。
+  tomcat:
+    relaxed-query-chars: ["[", "]"]
+    max-parameter-count: 2048
+  max-http-request-header-size: 1028KB
 
+# =============================================================================
+# gRPC（承载 CommentGrpcService + 出向的 message-rpc / article-rpc 客户端）
+# =============================================================================
+# B 侧出处：comment-rpc/…/application.yml:222-254
 grpc:
   server:
+    # 🔴 **合并裁决（端口）**：B 侧 rpc = 9001 ⇒ C 侧取映射表 §4 钉死的 9002。
+    # ⚠️ 改口时**必须同时确认 Nacos 注册地址跟着变**
+    #    （wiring/NacosRegistration 用 GrpcServerProperties.getPort() 注册）。
     port: ${COMMENT_GRPC_PORT:9002}
     address: 0.0.0.0
-    reflection-service-enabled: false
+    # ⚠️ **本键刻意不配**：B 侧 comment-rpc/…/application.yml:228-229 明确写
+    #    「Java 侧 devh starter 默认即开启 reflection，此处不额外配置」
+    #    （Go 侧只在 DevMode/TestMode 注册 reflection）⇒ 逐字照抄 B 侧 = 保持 devh 的默认（开启）。
   client:
-    # ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而上游 zrpc 是明文 gRPC。
-    #    不写会静默变 TLS —— 见《完全spring化的文件树》§9.1 断言 A4。
+    # ⚠️ **地址必须是三斜杠 `discovery:///<service-name>`**（B 侧 :232-243 的必配说明）：
+    #    devh 的 DiscoveryClientResolverFactory 判定 uri.getPath() 必须非空、长度 > 1、以 "/" 开头
+    #    ⇒ 两斜杠写法会直接抛 IllegalArgumentException（校验发生在任何网络调用之前）。
+    # ⚠️ negotiation-type **不能省**：devh 的默认值是 TLS，
+    #    不写会静默发 TLS ClientHello，而 B 侧是明文 gRPC（zrpc.MustNewServer 无 TLS 配置）。
+    #    ⇒ 断言 A4 专门盯这条。
+    message-rpc:
+      address: discovery:///message-rpc
+      enable-keep-alive: true
+      keep-alive-time: 30s
+      negotiation-type: plaintext
+    # 对应 Go ArticleRpc.Etcd.Key: article.rpc ⇒ 服务发现名 article-rpc
+    article-rpc:
+      address: discovery:///article-rpc
+      enable-keep-alive: true
+      keep-alive-time: 30s
+      negotiation-type: plaintext
+    # ⚠️ **本域没有 comment-rpc 客户端**：D2 域内直连（api 直接注入 domain service）
+    #    ⇒ B 侧 comment-api/…/application.yml:56-63 的 `grpc.client.comment-rpc` 那一段**不迁**
+    #    （那是「自己 gRPC 调自己」）。
 
+# =============================================================================
+# MyBatis-Plus
+# =============================================================================
+# ⚠️ **位置纠偏（不是抄错，是抄「生效值」）**：
+#    B 侧 comment-rpc/…/application.yml:77-88 把这一段写在 **`spring:` 下面**
+#    （`spring.mybatis-plus.*`），而 MyBatis-Plus 的绑定前缀是**根级** `mybatis-plus`
+#    ⇒ ⇒ **B 侧这一整段永远绑不上** ⇒ B 侧的生效值 = MP 自己的默认值。
+#    ⇒ ⇒ C 侧把它放回**根级**（与本仓 like / follow / message 域同款），
+#      并且**只写那些「两侧生效值一致」的键**：
+#      ① map-underscore-to-camel-case: true
+#         —— MP 的 MybatisConfiguration 构造器里就是 mapUnderscoreToCamelCase = true
+#         ⇒ **两侧生效值都是 true** ⇒ 写不写都一样 ⇒ 写出来只为「显式可见」。
+#      ② ⚠️ **default-fetch-size 刻意不写**：
+#         B 侧那个键写在 `spring.mybatis-plus.*` 下 ⇒ **没绑上**
+#         ⇒ B 侧生效值 = MP 默认（CoreConfiguration.defaultFetchSize = null）
+#         ⇒ C 侧补上 100 就是**新增行为**（给每条 JDBC 语句设 fetchSize）⇒ 按 L1 纪律**不补**。
+#      ③ id-type: ASSIGN_ID —— MP 默认就是 ASSIGN_ID，且本域 7 个 Entity 全部显式
+#         `@TableId(type=…)` ⇒ **实际不生效** ⇒ 这里写它只为与 B 侧 yaml 逐字一致。
+#      ④ banner: false —— 只影响启动横幅（stdout），不影响任何业务判定；
+#         与本仓 like / follow / message 域同款。
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+    banner: false
 
+# =============================================================================
+# 业务配置 —— B 侧 comment-api 段
+# =============================================================================
+# ⚠️ **前缀必须与 B 侧逐字一致**（L1 配置键名）：
+#    B 侧 `CommentApiProperties` = `@ConfigurationProperties(prefix = "comment-api")`
+#    ⇒ 键名 `comment-api.user-auth.access-secret`
+comment-api:
+  # ---- B 侧 api 段：UserAuth（JWT 验签）----
+  # B 侧出处：comment-api/…/application.yml:65-97
+  user-auth:
+    # ⚠️ **密钥必须与签发方 user-api 一致**（B 侧 :72-74 的说明），
+    #    否则验签必失败，失败表现为 HTTP 401 + **空 body**（不是业务码信封）。
+    # ⚠️ comment 域**只验签、不签发**：B 侧本服务没有 login / register 端点。
+    # ⚠️ **不挂明文默认值**（B 侧 :77 的口径）：B 侧那个值是写在仓里的公开密钥
+    #    ⇒ 谁都能用它伪造 JWT ⇒ 缺变量 ⇒ 启动失败。
+    # 🔴 **「yaml 不给默认值」只挡得住一半** ⇒ 另一半由**代码守卫**挡
+    #    （config/CommentApiProperties#verifyAccessSecret，@PostConstruct）：
+    #      · 变量完全没设 ⇒ Spring 的绑定器**不报错**、把**占位符原文**当成值绑上去
+    #        ⇒ 那是**仓里公开可知的一串字符** ⇒ 🔴 比空密钥更危险；
+    #      · 变量存在但值为空串 ⇒ PropertyPlaceholderHelper 把**空串当合法值**
+    #        ⇒ 属性绑成 "" ⇒ 空签名密钥 ⇒ token 可伪造。
+    #    ⇒ ⇒ 「未解析占位符」与「空串」**两条都**由守卫显式拒 ⇒ **fail-closed**。
+    # ⚠️ 本条属「RAG 更严」的一侧 ⇒ 登记为有意偏离，不是「RAG 抄错了 B 侧」。
+    access-secret: ${USER_JWT_SECRET}
+    # B 侧 :95（Go commentservice.yaml 的 AccessExpire = 31536000（365 天））
+    # ⚠️ 本模块只验签、不签发，**不读**该值；
+    #   保留是为了让 yaml 与 B 侧 1:1 可对照。
+    access-expire: ${USER_JWT_EXPIRE:31536000}
+  comment-rpc:
+    # B 侧 :96-97（Go 的 CommentRpc.Target = 127.0.0.1:9001 直连）
+    # ⚠️ D2 之后域内不再走网络 ⇒ 该配置在 C 侧**只作为历史字段保留**
+    #   （B 侧的 comment-api/…/client/CommentRpcClient 整包已删除）。
+    target: ${COMMENT_RPC_TARGET:127.0.0.1:9001}
+
+# =============================================================================
+# 业务配置 —— B 侧 comment-rpc 段
+# =============================================================================
+# ⚠️ 前缀 `comment` = B 侧 `CommentRpcProperties` = `@ConfigurationProperties(prefix = "comment")`
+#    ⇒ 四个子段 `kafka` / `fact` / `authority` + `sensitive-words` 都是 `comment` 的**直接子节点**。
+comment:
+  # ---- Kafka 主题（B 侧 :256-267）----
+  kafka:
+    # ⚠️ 生产与消费同一个 topic 是 B 侧的现状（B 侧 :259-261），**不是笔误**。
+    audit-topic: comment-audit-topic
+    # B 侧 :262-263（对应 Go KqConsumerConf.Consumers: 8，同进程 8 个并发 Consume）
+    # ⚠️ 这一条只被 messaging/CommentAuditListener 的
+    #    `@KafkaListener(concurrency = "${comment.kafka.audit-concurrency:8}")` 读。
+    audit-concurrency: 8
+    # ⚠️ B 侧 :264-267：对应 go-queue Pusher 的同步写语义 ——
+    #    Java 的 KafkaTemplate.send 是异步的，要还原 B 侧的
+    #    「Push 失败 ⇒ CreateComment 返回 5009」必须**等 future 结果**。
+    #    上界取 kafka-go Writer 的默认 WriteTimeout 10s。
+    publish-timeout: 10s
+
+  # ---- 敏感词（B 侧 :269-274）----
+  # ⚠️ B 侧写死在代码里（`blackwords := []string{"傻逼", "我草"}`）。
+  #    这里外提到配置，便于运营调整；**默认值与 B 侧逐字一致**。
+  sensitive-words:
+    - "傻逼"
+    - "我草"
+
+  # ---- 事实流派发（B 侧 :276-289，默认关闭）----
+  # ⚠️ B 侧 cmd/fact-dispatch/main.go 要求同时具备：
+  #   DC_PLATFORM_EVENT_URL 非空 / DC_PLATFORM_SERVICE_TOKEN ≥32 字节
+  #   任一不满足即 return error ⇒ **进程退出**。
+  #   Java 侧是单 JVM（还跑着 gRPC 与 Kafka 消费），不能因为缺 DC 配置就让整个 comment 起不来
+  #   ⇒ 改为「默认关闭 + 启动时显式告警」，关闭时该功能完全不参与运行。
+  fact:
+    dispatch-enabled: false
+    dc-endpoint: ${DC_PLATFORM_EVENT_URL:}
+    dc-token: ${DC_PLATFORM_SERVICE_TOKEN:}
+    # B 侧 :286（对应 Go cmd/fact-dispatch/main.go:73 的 &http.Client{Timeout: 8 * time.Second}）
+    dc-timeout: 8s
+    # B 侧 :287-289（对应 Go cmd/fact-dispatch/main.go:26 的 -once 标志）
+    once: false
+    # ---- 进程级 logger 的身份三元组（C 侧新增 · 表达层）----
+    # ⚠️ B 侧的 comment 域**没有** FactProcessLogging 类（like 域的同款是骨架占位），
+    #    ⇒ Go 的 3 个进程各自的 logger 身份在 B 侧**没有落点**。
+    #    ⇒ C 侧补成可用实现（3 份**独立** logger，**不得用 SLF4J 全局 MDC**），
+    #    身份三元组从这里读 ⇒ 部署形态变了（单进程）⇒ 这三个值是**新增表达层**，
+    #    不参与任何业务判定 ⇒ 登记为「C 侧补齐 B 侧骨架」的表达层偏离。
+    # ⚠️ environment 必须 ∈ {local,test,staging,production}
+    #    （共享层 ProcessMetadata#validate 的硬校验）。
+    process:
+      environment: ${COMMENT_ENV:local}
+      instance-id: ${HOSTNAME:unknown-instance}
+      version: ${COMMENT_VERSION:}
+
+  # ---- 权威读（B 侧 :291-302，默认关闭）----
+  # ⚠️ B 侧 cmd/fact-authority/main.go 要求 COMMENT_FACT_AUTHORITY_TOKEN ≥32 字节。
+  #   该端点在 B 侧是**独立进程 + 独立监听端口**。
+  #   ⇒ 这里默认关闭；打开它需要人工同时 ① 确认 servlet 容器 ② 显式设置监听端口
+  #     ③ 拍板对外暴露面。
+  authority:
+    enabled: false
+    token: ${COMMENT_FACT_AUTHORITY_TOKEN:}
+
+# =============================================================================
+# rag.protection —— B 侧「请求保护层」四道中间件
+# =============================================================================
+# ⚠️ 这四个旋钮在 B 侧 comment-api/…/application.yml 里**一个字都没写**，
+#    但在 B 侧**是开启的**（默认值藏在 go-zero v1.10.2 rest/config.go 的 struct tag 里）：
+#      MaxConns     `json:",default=10000"`        （B 侧 comment-api/…/application.yml:144）
+#      MaxBytes     `json:",default=1048576"`      （B 侧 :145）
+#      CpuThreshold `json:",default=900,range=[0:1000)"`（B 侧 :148）
+#      MiddlewaresConf 九个开关**全部** `json:",default=true"`（含 Breaker / Shedding）
+#        ⇒ Breaker.enabled = true（B 侧 :150-151）
+# ⇒ 「yaml 里没写」≠「没开」（AGENTS.md §3.3.1）⇒ C 侧**显式写出**，
+#   否则一旦共享层默认值变化就会与 B 侧分叉。
+# ⚠️ 这是 C 侧相对 B 侧**补齐**的第 3 项（映射表 §7.4 #8）。
+# ⚠️ 拒绝响应是**裸状态码 + 空 body + 无 Content-Type**（B 侧是裸 w.WriteHeader，
+#    没有 httpx.Error），刻意不走本模块的 200+envelope 约定。
+rag:
+  http:
+    # =============================================================================
+    # 🔴 Go 风格 form 值上限闸门
+    # =============================================================================
+    # Go 出处：go-zero rest/httpx/util.go:15  maxFormParamCount = 2048
+    #          （数的是**非空值**）
+    # Go 1.25 net/url/url.go:1001  defaultMaxParams = 10000（数的是**段数**）
+    #
+    # mode = 本域的 form 超限时应该输出什么形状 —— 依据是「B 侧该 api 有没有注册
+    #        httpx.SetErrorHandler」（逐域取证）：
+    #   · raw      ⇒ B 侧未注册 SetErrorHandler ⇒ http.Error(w, err.Error(), 400)
+    #                ⇒ **400 + text/plain; charset=utf-8 + nosniff + B 侧原文**
+    #   · envelope ⇒ B 侧注册了 SetErrorHandler ⇒ 走业务信封
+    #                ⇒ **200 + {"code":5001,"msg":"<该域自己的错误码表文案>","data":null}**
+    #
+    # ⚠️ B 侧 comment-api/…/application.yml:140-142：comment 域**注册了**
+    #   httpx.SetErrorHandler ⇒ **200 + 业务信封** ⇒ mode: envelope
+    go-form-limit:
+      mode: envelope
+  protection:
+    max-conns: 10000
+    max-bytes: 1048576
+    cpu-shedding:
+      enabled: true
+      cpu-threshold: 900
+      cpu-source: SYSTEM
+    breaker:
+      enabled: true
+    outbound-deadline:
+      # ==========================================================================
+      # 🔴 出向 gRPC 客户端硬上界
+      # ==========================================================================
+      # Go 出处（消费点，不是声明点）：
+      #     go-zero@v1.10.2/zrpc/config.go:31          `Timeout int64 \`json:",default=2000"\``
+      #     go-zero@v1.10.2/zrpc/internal/config.go:15 `Timeout bool \`json:",default=true"\``
+      #     go-zero@v1.10.2/zrpc/internal/client.go:113-117（**无条件**装 TimeoutInterceptor）
+      #   本域 B 侧 `etc/comment.yaml` 的 `MessageRpc:` / `ArticleRpc:` 两段**都没写 `Timeout`**
+      #   ⇒ ⇒ 走 struct tag 默认 **2000ms**
+      # ⚠️ 共享层 `ProtectionProperties.OutboundDeadline#capMillis` **默认 0 = 不启用**
+      #   ⇒ ⇒ **不配这一行 = 出向零期限 = 比 B 侧松**（B 侧恒有 2000ms）
+      #   ⇒ ⇒ 域侧那份自带的封顶逻辑已删除（改由共享层统一施加）。
+      # ⚠️ env 变量名取 comment 域的（B 侧两份 yml 写的是两个不同的名字：
+      #    comment-api 写 COMMENT_API_OUTBOUND_DEADLINE_CAP_MILLIS、comment-rpc 写的是字面量 2000；
+      #    合并成单进程后统一成一个；**生效值 2000 与两侧都一致**）。
+      cap-millis: ${COMMENT_OUTBOUND_DEADLINE_CAP_MILLIS:2000}
+
+# =============================================================================
+# Metrics / Actuator
+# =============================================================================
+# B 侧出处：comment-rpc/…/application.yml:339-362
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        # 🔴 **合并裁决**：B 侧 comment-api 写 `health,info,prometheus`（:174-177）；
+        #    B 侧 comment-rpc 写 `health,info,prometheus,metrics`（:341-343）⇒ 取**并集**。
+        include: health,info,prometheus,metrics
+    # B 侧 comment-api/…/application.yml:177
+    enabled-by-default: false
   endpoint:
     health:
-      show-details: always
+      # B 侧 comment-api/…/application.yml:180-181
+      enabled: true
+      # 🔴 **合并裁决**（D1 · api 与 rpc 合流进同一进程 ⇒ 这个键只能有一个值）：
+      #    · B 侧 comment-api（HTTP 侧）：**整段没有 `show-details` 键**
+      #      ⇒ 生效值 = Boot 默认 = **`never`**（连已授权调用方也不给组件明细）；
+      #      （⚠️ **不是 `always`** —— `always` 是 B 侧 **like-api** 的值，
+      #        别把别的域的值抄过来当本域的事实依据。）
+      #    · B 侧 comment-rpc（gRPC 侧）：`when_authorized`
+      #      （`comment-rpc/src/main/resources/application.yml:346`）。
+      #    ⇒ **取 rpc 侧的值**（它是显式写出来的那一侧）⇒ 合并后 health 端点
+      #      对**已授权**调用方**会**给出组件明细。
+      #    ⚠️ **这比 B 侧 comment-api 的 `never` 更松** —— 是 D1 合并的必然结果
+      #      （一个进程只能有一个值）⇒ 登记为合并裁决差异，见
+      #      `docs/DRIFT/comment/verification-comment-service-2026-11-03.md`。
+      show-details: when_authorized
+    info:
+      # B 侧 comment-api/…/application.yml:182-183
+      enabled: true
+    prometheus:
+      # B 侧两侧都有（api :183-184 / rpc :347-348）
+      enabled: true
+    metrics:
+      # B 侧 rpc 段的 exposure 含 metrics（:343）⇒ 显式启用
+      enabled: true
+  metrics:
+    # B 侧 comment-api/…/application.yml:185-187
+    enable:
+      prometheus: true
+    # ⚠️ B 侧 :350-356 的必配说明：
+    #    B 侧的 Go 侧 metrics.go:42-43 **主动注销**了 Go/process 两个 collector
+    #    ⇒ B 侧 comment 域**自建**的 :9091 只暴露 5 个 comment_* 向量。
+    #    Micrometer 默认会额外暴露 jvm_* / process_* / system_*
+    #    ⇒ 照搬就是**新增可观测面**（与 B 侧不一致）。
+    #    ⇒ 这里显式关掉，对齐 B 侧现状（不是「顺手增强」）。
+    # ⚠️ 这是 C 侧相对 B 侧**补齐**的第 4 项（映射表 §7.4 #8 的另一半）。
+      jvm: false
+      process: false
+    tags:
+      # B 侧 comment-rpc/…/application.yml:357-358（合并后取 rpc 侧 —— 它才是注册名那一侧）
+      application: comment-rpc
+  prometheus:
+    metrics:
+      export:
+        # B 侧 comment-rpc/…/application.yml:359-362
+        enabled: true
 
 # =============================================================================
 # OpenTelemetry OTLP exporter（对齐 B 侧 Telemetry.*）
@@ -84,5 +510,24 @@ otel:
     sampler: always_on
 
 logging:
+  # B 侧出处：comment-rpc/…/application.yml:374-378
   level:
+    root: INFO
     com.rag: INFO
+    io.grpc: WARN
+
+# =============================================================================
+# observability
+# =============================================================================
+# B 侧出处：comment-api/…/application.yml:212-218（http-timeout）
+#        ＋ comment-rpc/…/application.yml:380-388（rpc-timeout）
+observability:
+  # ⚠️ B 侧 comment-api 的 yaml **未配置** Timeout，
+  #    实际生效值来自 go-zero v1.10.2 rest/config.go 的 `Timeout int64 json:",default=3000"`。
+  http-timeout: 3s
+  # ⚠️ B 侧 comment.go:33  observability.DisableNativeRpcTimeout(&c.RpcServerConf)
+  #      comment.go:54  s.AddUnaryInterceptors(observability.NewUnaryServerInterceptor(...))
+  #    B 侧 etc/comment.yaml 未配 Timeout ⇒ go-zero zrpc/config.go 的 default = 2000ms。
+  # ⚠️ 这一项**不是装饰**：共享层的 gRPC 拦截链少这一项，
+  #    超时 / deadline 传播 / gRPC span 会**全部静默消失**，而 Bean 断言照样是绿的。
+  rpc-timeout: 2s
