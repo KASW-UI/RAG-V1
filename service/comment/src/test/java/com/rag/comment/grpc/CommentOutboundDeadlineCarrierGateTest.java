@@ -348,11 +348,15 @@ class CommentOutboundDeadlineCarrierGateTest {
     }
 
     @Test
-    @DisplayName("📌 已登记差异（台账 D-15 · 归属 global 收口域）：出向载体（GoStyleRequestDeadline）"
-            + "在 handler 线程上**未绑**，且有效期限**不含**客户端 deadline ⇒ 本条钉住已登记的现状")
-    void outboundCarrierIsNotBoundAndClientDeadlineIsNotHonouredYet() throws Exception {
-        // ⚠️⚠️ **这是「已登记、未签字、待 global 收口域修」的差异，不是「已签字偏离」**
-        //    ⇒ ⇒ 本条**钉住已登记的现状**，**不是**把它锁成「正确」。
+    @DisplayName("✅ 台账 D-15 已由 global 收口域闭合（DRIFT-COMMON-V20 · 2026-11-04）：出向载体"
+            + "（GoStyleRequestDeadline）在 handler 线程上**真绑上**，且有效期限 = "
+            + "**min(服务端预算, 客户端 deadline)** ⇒ 本条已改回 B 侧真值断言")
+    void outboundCarrierIsBoundAndClientDeadlineIsHonoured() throws Exception {
+        // ✅ **本条原是「棘轮」**（2026-11-05 · 合并工作树时由 `global` 收口域翻回）：
+        //    它原本**钉住「已登记、未签字」的现状**（出向载体未绑 ＋ 客户端 deadline 不参与），
+        //    并在自己的注释里写明「**共享层修好后本条会红 ⇒ 那正是提醒改回 B 侧真值断言的信号**」。
+        //    ⇒ ⇒ 共享层 **D-15 已于 2026-11-04 闭合**（`DRIFT-COMMON-V20` · 提交 `01c11dd`）
+        //    ⇒ ⇒ 本条**按它自己的指示**改回 B 侧真值断言 ＋ 本域台账 D-15 同步销账。
         //
         //    B 侧真值（B 出处：service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java）：
         //      ① :517-520 —— `onHalfClose` 把**同一个绝对时刻**绑给**两个**载体：
@@ -360,29 +364,19 @@ class CommentOutboundDeadlineCarrierGateTest {
         //      ② :304     —— `effectiveTimeoutNanos = min(serverBudgetNanos, clientDeadlineRemainingNanos())`
         //             ⇒ 客户端给的更短 deadline **参与**服务端有效期限。
         //
-        //    C 侧现状（消费点，逐行核对过）：
-        //      ① common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java:324
-        //         ⇒ **只** `DeadlineState.bindAbsoluteNanos(absoluteDeadlineNanos)`；
-        //         且 :291-294 的 javadoc **自己写明**「`GoStyleRequestDeadline`（跨域 gRPC 调用的出向预算）
-        //         **不在本条范围**」；
-        //         ⇒ 全仓 `src/main` 里 `GoStyleRequestDeadline.bindAbsoluteNanos` / `.begin(` **零调用点**
-        //         （grep 全仓命中 0）⇒ 出向载体在生产里**从不**被绑。
-        //      ② 同文件 :342-357 `rpcDeadlineNanos(...)` ⇒ **只**用服务端 `observability.rpc-timeout`
-        //         ⇒ 客户端 deadline **不参与**。
+        //    C 侧现状（2026-11-05 复核 · 消费点逐行核对过）：
+        //      ① common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java:349-352
+        //         ⇒ `onHalfClose` 里**两个载体绑【同一个绝对时刻】**（`DeadlineState` ＋ `GoStyleRequestDeadline`）
+        //      ② 同文件 :239-240 ⇒ `effectiveTimeoutNanos = effectiveTimeoutNanos()`（= min 语义）
+        //         ＋ `absoluteDeadlineNanos = saturatingAddNanos(startNanos, effectiveTimeoutNanos)`
+        //         ⇒ 旧的 `rpcDeadlineNanos(...)`（只认服务端 timeout）**已被删除**
         //
-        //    登记：共享层台账 `docs/DRIFT/common/verification-common-2026-11-02.md`
-        //      **DRIFT-COMMON-V17 · PARITY-006 根因 · global 收口域**（2026-11-03）
-        //      ——「⚠️ **只绑入向载体**，出向 `GoStyleRequestDeadline` **仍未绑** ⇒ ⇒ 爆炸半径更大 ⇒ ⇒ **另案**」
-        //      ＋ `common/…/observability/DeadlineState.java:126-129` 的同款自述。
-        //    ⇒ **本域台账**：`docs/DRIFT/comment/verification-comment-service-2026-11-03.md` §5.1 **D-15**
-        //      （B 组第 ⑨ 点的**未闭合原因**）。
+        //    销账依据：共享层台账 `docs/DRIFT/common/verification-common-2026-11-02.md`
+        //      **DRIFT-COMMON-V20**（2026-11-04 · `global` 收口域 · ✅ 已收口）
+        //    ⇒ ⇒ 本域台账 `docs/DRIFT/comment/verification-comment-service-2026-11-03.md` §5.1 **D-15** 同步销账。
         //
-        //    ⚠️ **本域没有 `common/**` 的写权**（AGENTS.md §五.3：`common/**` 只有收口任务能写）
-        //    ⇒ ⇒ 本条**不判 PASS**，且**不改弱到看不出差异** ⇒ ⇒ 钉住「当前形状」。
-        //
-        //    🔴 **棘轮方向**：共享层把出向载体绑上（且把客户端 deadline 纳入 min）之后，
-        //    本条**会变红** ⇒ ⇒ 那正是我们要的提醒：届时把本条**改回 B 侧真值断言**
-        //    （① `isTrue()` ＋ 剩余纳秒 > 0；② 剩余 ≤ 客户端 deadline），并撤掉台账 D-15。
+        //    ⚠️ **本域仍无 `common/**` 的写权**（AGENTS.md §五.3：`common/**` 只有收口任务能写）
+        //    ⇒ ⇒ 本次翻断言是**收口域的收口动作**（不是本域自行改判）。
         GrpcServerConfigurer configurer = ctx.getBean("seaGrpcServerConfigurer", GrpcServerConfigurer.class);
         assertThat(configurer).isNotNull();
 
@@ -401,33 +395,31 @@ class CommentOutboundDeadlineCarrierGateTest {
                             .setTargetId("t-1")
                             .build());
 
-            // ---- ① 出向载体：当前**未绑**（B 侧真值 = 已绑）⇒ 台账 D-15
+            // ---- ① 出向载体：B 侧真值 = **已绑**（两个载体绑同一个绝对时刻）⇒ ✅ D-15 已闭合
             assertThat(outboundCarrierPresent.get())
-                    .as("📌 已登记差异（台账 D-15 · 归属 global 收口域）：出向载体 GoStyleRequestDeadline "
-                            + "在 gRPC handler 线程上**应当**已绑（B 侧 RpcInterceptor.java:517-520 两载体同绑）"
-                            + "，但 C 侧 ObservabilityAutoConfiguration.java:324 **只**绑了入向载体 "
-                            + "DeadlineState ⇒ ⇒ **本条变红 = 共享层已修**（DRIFT-COMMON-V17 的「另案」闭合）"
-                            + "⇒ ⇒ 届时请把本条改回 B 侧真值断言并撤掉台账 D-15")
-                    .isFalse();
+                    .as("B 侧真值（B 出处 RpcInterceptor.java:517-520）：出向载体 GoStyleRequestDeadline "
+                            + "在 gRPC handler 线程上**应当**已绑 ⇒ ✅ 台账 D-15 已由 global 收口域闭合"
+                            + "（DRIFT-COMMON-V20 · 2026-11-04）⇒ ⇒ 本条已改回 B 侧真值断言")
+                    .isTrue();
 
-            // ---- ② 有效期限：当前**不含**客户端 deadline（B 侧真值 = min(server, client)）⇒ 台账 D-15
+            // ---- ② 有效期限：B 侧真值 = **min(服务端预算, 客户端 deadline 剩余)** ⇒ ✅ D-15 已闭合
             Long inboundRemaining = inboundCarrierRemaining.get();
             assertThat(inboundRemaining)
-                    .as("📌 已登记差异（台账 D-15）：服务端载体上的剩余当前**由服务端 rpc-timeout 决定**，"
-                            + "**不含**客户端给的 %dms（B 侧 RpcInterceptor.java:304 是 "
-                            + "min(serverBudgetNanos, clientDeadlineRemainingNanos())）"
-                            + "⇒ ⇒ 实测剩余 = %s ms"
-                            + "⇒ ⇒ **本条变红 = 共享层已把客户端 deadline 纳入 min** ⇒ ⇒ 届时改回 B 侧真值断言",
+                    .as("B 侧真值（B 出处 RpcInterceptor.java:304）：服务端有效期限 = "
+                            + "min(服务端 rpc-timeout, 客户端 deadline 剩余) ⇒ 客户端给的更短 deadline "
+                            + "**参与**服务端有效期限 ⇒ ⇒ 实测剩余 = %s ms（客户端 deadline = %d ms）"
+                            + "⇒ ⇒ 必须 **≤ 客户端 deadline**（修前恒 > 它 ⇒ 那正是 D-15 的症状）",
                             CLIENT_DEADLINE_MILLIS, inboundRemaining)
-                    .isGreaterThan(CLIENT_DEADLINE_MILLIS);
+                    .isLessThanOrEqualTo((long) CLIENT_DEADLINE_MILLIS);
+            assertThat(inboundRemaining)
+                    .as("剩余预算必须 > 0（-1 = 载体在位但没有预算 ⇒ 异常）")
+                    .isPositive();
 
-            // ---- ③ 出向载体的剩余读数：载体未绑 ⇒ 共享层返回 -1（GoStyleRequestDeadline.java:109-115）
-            //        ⇒ 这条把「未绑」钉到**数值**上，而不只钉在布尔上
+            // ---- ③ 出向载体的剩余读数：已绑 ⇒ 共享层返回**剩余纳秒**（> 0），不再返回 -1（未绑哨兵）
             assertThat(outboundCarrierRemainingNanos.get())
-                    .as("📌 已登记差异（台账 D-15）：出向载体未绑 ⇒ `GoStyleRequestDeadline.remainingNanos()` "
-                            + "按共享层契约返回 -1（common/…/GoStyleRequestDeadline.java:109-115）"
-                            + "⇒ ⇒ **本条变红 = 出向载体已被绑上**（共享层已修）⇒ ⇒ 届时改回 B 侧真值断言（> 0）")
-                    .isEqualTo(-1L);
+                    .as("✅ 台账 D-15 已闭合：出向载体**已绑** ⇒ `GoStyleRequestDeadline.remainingNanos()` "
+                            + "返回**剩余纳秒**（> 0），不再返回 -1（= 未绑哨兵）")
+                    .isGreaterThan(0L);
         } finally {
             channel.shutdownNow();
             server.shutdownNow();
