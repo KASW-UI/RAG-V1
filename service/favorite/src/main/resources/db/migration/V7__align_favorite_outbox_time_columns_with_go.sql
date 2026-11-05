@@ -1,0 +1,59 @@
+--
+-- ============================================================================
+-- RAG-V1 · favorite 域 · Flyway 迁移脚本 V7__align_favorite_outbox_time_columns_with_go.sql
+--
+-- C 侧落点: service/favorite/src/main/resources/db/migration/V7__align_favorite_outbox_time_columns_with_go.sql
+-- B 侧出处: /Users/pr/Documents/java&golang/RAG/service/favorite/favorite-rpc/
+--             src/main/resources/db/migration/V7__align_favorite_outbox_time_columns_with_go.sql:1-32
+--
+-- 本文件做: favorite_fact_outbox.created_at / updated_at 的 **DROP DEFAULT**
+--           （对齐 Go 侧 AutoMigrate 产物 = **无 DEFAULT**，两侧同样硬失败）
+--
+-- 搬运方式: **逐字搬运，未改 SQL 文本** —— 除本文件头注释外，本文件与 B 侧同名文件
+--           **逐字节一致**：表名 / 列名 / 列类型 / 长度 / NOT NULL / DEFAULT /
+--           UNIQUE / CHECK / 索引 / 触发器 / 函数体 / 全部原有注释，均照抄未改。
+-- 基准依据: AGENTS.md §三（L1 契约层以 B 侧为准 · D16）·
+--           docs/Mapping_Table/favorite/favorite.md §2.1（4 张表逐表对照）
+--
+-- ⚠️ 幂等性: 保留 B 侧「PostgreSQL 允许对不存在的 DEFAULT 执行 DROP DEFAULT」
+--           这一天然幂等形态，未加任何额外守卫（B 侧是 C 侧 DDL 事实源）。
+-- ⚠️ 账本:   依赖 `spring.flyway.table=flyway_schema_history_favorite` +
+--           `baseline-on-migrate: true` + `baseline-version: 0`
+--           （B 侧出处: favorite-rpc/src/main/resources/application.yml:104-129）。
+--           ⇒ C 侧 `service/favorite/src/main/resources/application.yml` 当前**无**
+--             `spring.flyway` 段 ⇒ 属**待拍板项**（见本次交付报告），本文件未改 yml。
+-- ⚠️ 文件名: `V7__*` 编号是**已发布的迁移历史**（Flyway 按版本号排序），
+--           原样保留，不重排、不改名（否则 checksum mismatch ⇒ 启动失败）。
+-- ============================================================================
+--
+-- V7__align_favorite_outbox_time_columns_with_go.sql
+-- 对齐项：favorite_fact_outbox.created_at / updated_at 的 **DEFAULT now()**
+--
+-- 🔴 为什么需要这条迁移（2026-10-25 第七轮 · 由 tools/ddl-parity-probe/favorite/ 实测查出）：
+--   Go 侧的这两列是 GORM AutoMigrate 建的，struct tag 是
+--     CreatedAt time.Time `gorm:"autoCreateTime;not null"`
+--     UpdatedAt time.Time `gorm:"autoUpdateTime;not null"`
+--   ⚠️ **没有 default tag** ⇒ AutoMigrate 建出来的列**没有 DEFAULT**
+--     （gorm.io/driver/postgres@v1.6.0/postgres.go:214-255 的类型推断链里，
+--      time.Time → timestamptz，且 NotNull 才追加 NOT NULL，不追加 DEFAULT）。
+--
+--   ⚠️ **更关键**：GORM 的 AutoMigrate 会**主动把已存在的 DEFAULT 删掉** ——
+--     gorm.io/gorm@v1.31.1/migrator/migrator.go:543-550：
+--       if dvNotNull && !currentDefaultNotNull { alterColumn = true }   // "default value -> null"
+--     ⇒ 即便运维先跑了 001（001 里的 created_at 带 DEFAULT now()），
+--       随后的 AutoMigrate 也会把它去掉 ⇒ **Go 侧 live schema 确定没有 DEFAULT**。
+--
+--   ⇒ 本迁移把 RAG 侧对齐到「**无 DEFAULT**」。
+--
+-- ⚠️ **为什么要去掉（而不是留着无害的 now()）**：
+--   Go 侧无 DEFAULT ⇒ 若某条 INSERT 忘了绑时间列，Go 会**硬失败**（NOT NULL 违例）；
+--   RAG 侧若留着 DEFAULT ⇒ 同一处遗漏会被**静默兜底**成 DB 服务器时钟
+--   ⇒ 两边行为分叉且**无任何告警**。
+--   去掉之后 ⇒ 两侧**同样硬失败** ⇒ 遗漏立刻暴露。
+--
+-- ⚠️ 为什么是新文件而不是改 V3：
+--   Flyway 的 checksum 校验 ⇒ 改已发布的迁移会让启动失败（AGENTS.md §6.3 问题 4）。
+--
+-- 幂等性：PostgreSQL 允许对**不存在的** DEFAULT 执行 DROP DEFAULT ⇒ 重复执行不报错。
+ALTER TABLE favorite_fact_outbox ALTER COLUMN created_at DROP DEFAULT;
+ALTER TABLE favorite_fact_outbox ALTER COLUMN updated_at DROP DEFAULT;

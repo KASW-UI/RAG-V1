@@ -9,10 +9,40 @@
 | `difftest/run-parity.sh` | **双侧语义探针入口（B 侧 ↔ RAG-V1）** —— **派发器**：按域登记表把请求转给各域的私有探针目录（`<域>/run.sh` 主探针 · `<域>/mutate-parity.sh` 变异验证）⇒ 用法 `bash tools/difftest/run-parity.sh [域...] [--mutate]` | **follow 域已实现**（`difftest/follow/`，见下）；**users-user 域已实现**（`difftest/users-user/`，见下）；新增域在脚本里的 `DOMAINS` 登记一行 |
 | `difftest/users-user/` | 🆕 **user 域 E-5 双侧活体对拍探针**（2026-11-03）—— **C 侧（RAG-V1/Boot 3.5 · D1 合并单进程）↔ B 侧（RAG/Boot 4 · 双进程 user-api+user-rpc）** 两侧**同时起真进程**（真 Tomcat + 真 gRPC + 真 PG + 真 Redis + 真 Nacos）＋ **两侧各自独立 PG 容器** ＋ **Nacos 分组隔离**（`E4UB`/`E4UC`，防 B 的 discovery 拨到 C 的 `user-rpc`）⇒ **HTTP 20 例（结构级 16/20 一致 · 字节级 12/20）＋ DB 最终态逐字段一致**。**两档判据**：结构级（归一化雪花 uid/各自自签 JWT/时间戳/哈希 **＋ JSON 键序**）vs 字节级（键序参与比较）⇒ 表达层差异**单列**、不混进行为判定。🔴 **本探针抓出并修掉 2 个真缺陷**：① `grpc-inprocess` 是 test scope ⇒ **C 侧 fat jar 起不来**（39 例测试全绿却零告警）② 400 的「报哪个字段」**不确定**（违规集合是 `HashSet`）⇒ 另登记 2 条跨域（7 域同型 jar 缺陷 ＋ JSON 键序共享层）。**＋ gRPC wire 18 例（9 个方法全覆盖 · 原始字节请求 + schema 驱动解码 · 只屏蔽易变值不屏蔽 presence）⇒ 真差异 0**（探针 `grpc-wire/UserWireProbe.java` ＋ `wire_compare.py`；**变异证据**：植入 presence 差异 ⇒ 只有 gRPC 维度变红）**＋ 场景轮 8 阶段（2026-11-03 第三轮）⇒ 探针摘要「❌ 真差异 3 ｜ ⚠️ 已知现象 2」⇒ 3 条真差异 = 2 个根因**（并发 register 两侧同 `{200/200, 200/5001}` 且各恰好 1 行 · PG 停两侧同 `1015` · 恢复轮两侧连续 3 轮回 200 · gRPC deadline / 取消的 status 两侧一致 ⇒ **服务端 2s 预算对称**；❌ 两个根因均已归因：DB 完全不可响应档的 HTTP 出口形态 ⇒ 签字偏离 **DEV-USER-010**，取消后在途写回滚 ⇒ **落点共享层** ⇒ 归收口域）（探针 `scenarios.py`） | 改 user 域行为后；发版前；`docs/DRIFT/users/verification-users-user-2026-11-02.md` §十二 的复核入口 |
 | `difftest/follow/` | 🆕 **follow 域 E-4 双侧活体对拍探针**（2026-11-02）—— **C 侧（RAG-V1/Boot 3.5）↔ B 侧（RAG/Boot 4）↔ 冻结的 Go 真源字节** 三方逐字节比对：两侧**同时起真进程**（真 Tomcat + 真 gRPC + 真 PG + 真 Redis + 真 Nacos）＋ 两侧各自播种同一批行 ⇒ **HTTP 21/21 三方一致 ＋ gRPC wire 13/13 双边一致 ＋ 场景轮 6 类双侧一致**（超时 / 恢复 / 外部依赖失败 / 恢复 / 并发 / 事务回滚）。⚠️ **Go 侧不活体**（本机无 `Sea-etcd` 容器）⇒ 用 B 侧已冻结的 `expected.txt` 作第三方锚。配套 `mutate-parity.sh`（M1~M7 变异验证 ⇒ 证明探针非假绿） | 改 follow 域行为后；发版前；`docs/DRIFT/follow/verification-follow-2026-11-02.md` §八·六 的复核入口 |
+| `difftest/favorite/` | 🆕 **favorite 域 E-4 双侧活体对拍探针**（2026-11-04）—— **C 侧（RAG-V1/Boot 3.5 · D1 合并单进程）↔ B 侧（RAG/Boot 4 · 双进程 favorite-api+favorite-rpc）↔ 冻结的 Go 真源字节** **三方逐字节比对**：两侧**同时起真进程**（真 Tomcat + 真 gRPC + 真 PG + 真 Redis）＋ **两侧各自独立库**（`first_db` / `fav_c_db`）＋ **共用同一个 Redis**（⇒ 顺带验黑名单 key 拼法）⇒ **HTTP 面 32 case × 8 组三方一致**（SAME 25 · SAME_CODE 1 · SAME_BODY 2 · SAME_STATUS 4）⚠️ **Go 侧不活体**（本机无 `Sea-etcd` 容器）⇒ 用 B 侧已冻结的 `expected.txt` 作第三方锚（**每次运行核对 B 侧原件 sha256** ⇒ 副本漂了即中止）🔴 **本探针自伤过一次**：黑名单对照组与正常 token 在**同一秒签发** ⇒ 两枚 token **逐字节相同** ⇒ 「所有带 token 的用例都 401」（**症状长得像产品回归**）⇒ 现用 `--iat-offset` 错开配套 `mutate-parity.sh`（变异 `ORDER BY create_time DESC ⇒ ASC` ⇒ **红（精确命中 `s01_list_folders`）→ 还原 → 绿** ⇒ 证明判据非假绿）✅ **2026-11-05 补齐 gRPC 面**（`difftest/favorite/grpc-wire/`）—— **rpc 对 rpc** 的 **36 case × 3 方**：Go 真源的 **gRPC 级可观测契约**冻结锚（status code + description + **protobuf 响应字节** + 响应头/trailer 的 metadata key 集合）↔ B 侧 `favorite-rpc` 活体 ↔ C 侧 `favorite-service` 活体 ⇒ **锚校验 SAME 33 / SAME_CODE 2 / OBS 1**（B 侧 == Go 冻结锚 ⇒ 有锚）＋ **BC 校验 SAME 36 / SAME_CODE 0 / OBS 0**（**C 侧 == B 侧逐字节全等**）🔴 **判据分两段**（锚里的 OBS 是「Go ≠ Java」⇒ 拿它判 Java↔Java 会**判反** ⇒ 另立 `kinds-bc.txt`）⚠️ **探针不用任何 pb 生成码**（手构 proto3 字节 + `byte[]` marshaller ⇒ 两侧 pb 包名不同也不污染证据）⚠️ **classpath 取自 C 侧 fat jar 的 `BOOT-INF/lib`** ⇒ 「量到的是哪一版依赖」不是问题 配套 `mutate-grpc-parity.sh`（`SKIP_HTTP=1` 只跑 gRPC 面 ⇒ **红（精确命中 `c11_list_folders_ok` 且红在「BC 校验」段）→ 还原 → 绿**）⚠️ **证据边界**：HTTP 面 + **gRPC 面的单请求契约面**；**create 成功路径 / 真源下游在场 / 并发 / 超时 / 部分成功 / Redis 故障 / 重复请求（幂等重放）** 仍只有 E-3<br>✅ **2026-11-05 另加一层「场景轮」**（`difftest/favorite/scenarios/` + `stub/DownstreamStub.java`）—— **6 类场景**（create 成功路径 / 并发 / 超时 / 部分成功 / Redis 故障 / **重复请求（幂等重放）**）⇒ **B↔C 双侧活体**（**无第三方锚** ⇒ **强度低于三方** ⇒ 不得混称「E-4 三方」）⇒ 判据 = **绝对断言 + 两侧对称**（两条都要过 ⇒ 只比相等是假绿）⇒ 配套 `mutate-scenarios.sh`（**两轮**：① 删 C 侧唯一索引 ⇒ 红（精确命中 S2 C 侧分布）→ 还原 → 绿；② 改掉 C 侧 9002 的名字 ⇒ 红（精确命中 S6 `update_time` 被推进）→ 还原 → 绿 ⇒ **证明「同名改名不写库」那条断言不是恒真**）✅ **2026-11-05 修复 DRIFT-FAV-014**（慢下游时 api 面业务码 B=1015 / C=5001 ⇒ **用户拍板「方向 ②」** ⇒ C 侧 api 面自持同值 2s 上界（复用同一配置键）+ 领域层保留 gRPC cause ⇒ **两侧同为 1015** ⇒ `KNOWN_DIFFS` 已清空 ⇒ 载体差异登记为 `DEV-FAV-API-003`）| 改 favorite 域行为后；发版前；`docs/DRIFT/favorite/verification-favorite-service-2026-11-04.md` §八·8.4 / §八·8.5 / §八·8.7 的复核入口 |
 | `difftest/check-docs-vs-tree.py` | **`docs/` ↔ 当前文件树对账**（与 `check-mapping-coverage.py` 互补：后者查「类名有没有被提到」，本脚本查「文档说的**路径与数字**对不对得上」）：① File_Tree **双向**覆盖（磁盘 .java 必在文件树里 · 文件树提到的 .java 必在磁盘上）② File_Tree **幂等**（重生成无 diff ⇒ 不与代码漂）③ 文档中的**路径引用有效性**（C 列 / 正文里的 .java 路径 → 磁盘存在）④ 落点表**计数守恒**（汇总数 == 磁盘主代码数）⑤ 落点表**分项求和** == 汇总数（防「补总数忘补分项」）⑥ **包名**有效性（`com.rag.*` → 磁盘存在） | 改完 `docs/` 任一文档后；改完目录结构后（EXIT=0 才算通过）|
 | `sync-mapping-index.py` | 同步 `docs/Mapping_Table/_INDEX.md` §二/§三 两张表的**覆盖度数字**（行数 / C 覆盖 / B 覆盖 / 映射行）—— **数字从文件系统实测**，不手填；不带 `--apply` 只做 dry-run | 改完任一域映射表后（`--apply` 落地）|
 | `recount-ledger-status.py` | **台账状态表复算器** —— 把「审核项 / 状态」表里的状态**按行机器复算**（PASS / INTENTIONALLY_CHANGED / NOT_VERIFIED / FAIL）⇒ **不是手数**（手数必然漂：users-user 台账曾手数成 24 ⇒ 被机器复算当场纠正 · P-08）⇒ 支持 `--expect-total N` 核对台账自报的总数 ⇒ 出现**词表外的状态**时 EXIT=1（**必须先修表**） | 改完任一域台账的状态表后；提交前（`--expect-total` 与自报总数一致才算通过）|
 | `check-mapping-coverage.py` | **两方对照文档（B RAG ↔ C RAG-V1）的八重校验**：① **B / C 列覆盖率**（从文件系统反查，不采信文档自报数字）② **`_INDEX.md` 自报数字对账**（行数 / 覆盖 / 映射行 vs 实测值）③ 映射行计数（扫全行找类型词，避开多列表的列位陷阱）④ **小节标题自报条数 == 表内实际行数**（P-08 同病 ⇒ 机器复算）⑤ **B 列双向对账**（B1 正向：B 列引用的类必须在 RAG 磁盘真实存在；B2 反向：RAG 侧每个业务类都必须被 B 列覆盖 ⇒ 否则抄写路线图会漏掉它）⑥ **B↔C 指代消解后可判定性**（「同上」是确定性指代 ⇒ 消解后每行 B/C 都必须读得出）⑦ **主表行形状**（列数必须为 4 ⇒ 单元格里的 `|` 未转义会被静默吞掉整行的 B 列）⑧ **`_INDEX.md` 合计行对账**（合计行此前无人核对 ⇒ 唯一漂移的盲区） | 改完 `docs/Mapping_Table/` 任一域文档后；提交前（EXIT=0 才算通过） |
+
+## ⚠️ 在**域工作树**里跑守门脚本的约定（2026-11-05 · favorite 域实测撞出）
+
+> 🔴 **本节讲的是一个「跑绿了但验的不是你」的真坑** —— 守门脚本的 `ROOT` 解析方式**不一样**。
+
+| 脚本 | `ROOT` 怎么来 | 在工作树里跑 ⇒ 验的是谁 |
+|---|---|---|
+| `difftest/check-arch-invariants.py` | `pathlib.Path(__file__).resolve().parents[2]` ⇒ **跟着脚本走** | ✅ **工作树** |
+| `difftest/check-docs-vs-tree.py` | 同上 | ✅ **工作树** |
+| `check-mapping-coverage.py` | **硬编码** `ROOT = pathlib.Path("/Users/pr/Documents/GitHub/RAG-V1")` | 🔴 **主仓 `main` 分支** |
+| `gen-file-tree.py` | 同上（硬编码） | 🔴 **主仓 `main` 分支** |
+
+⇒ ⇒ **在工作树（`RAG-V1.worktrees/<域>`）里跑后两个 ⇒ 验的是主仓 ⇒ 域的改动根本没被验到 ⇒ 假绿。**
+（favorite 域实测：工作树已加 2 个主代码（61 → 63），而工作树里跑的 `check-mapping-coverage.py` 仍报 **C 61/61 = 100% · EXIT=0** ⇒ 读数看着是绿的，**但它量的是主仓的 61 个文件**。）
+
+⇒ ⇒ **在域工作树里跑这两个脚本的标准姿势**（**不修改仓内脚本** —— 它们属 `global` 收口域的写权）：
+
+```bash
+# ① 造一份改过 ROOT 的副本
+sed 's|^ROOT = pathlib.Path("/Users/pr/Documents/GitHub/RAG-V1")$|ROOT = pathlib.Path("/Users/pr/Documents/GitHub/RAG-V1.worktrees/<域>")|' \
+  tools/check-mapping-coverage.py > /tmp/<域>-ft/check-mapping-coverage.py
+# ② 跑副本（读的是工作树的 docs/ + 工作树的 service/）
+python3 /tmp/<域>-ft/check-mapping-coverage.py
+```
+
+⇒ ⇒ 🔴 **判据**：**「读数里出现的文件数」必须与工作树磁盘上的实际文件数一致** ⇒ 若对不上 ⇒ **你跑的是主仓** ⇒ **读数作废**。
+⇒ ⇒ **收口域待办**（登记给 `global` 收口域 / 主会话）：给这两个脚本加**「ROOT 可用环境变量 / argv 覆盖」**的口子（`RAGV1_ROOT`），或在脚本启动时**断言** `ROOT` 与脚本所在仓一致 ⇒ 不然每个域工作树都会踩这个坑。
+
+---
 
 ## `gen-file-tree.py` 的约定
 

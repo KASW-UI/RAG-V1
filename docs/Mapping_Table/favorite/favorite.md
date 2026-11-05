@@ -75,7 +75,7 @@
 | `favorite/rpc/config/` | `config/` | 合并 |
 | `favorite/rpc/domain/` | `domain/entity/` + `domain/model/` | 按是否 `*Entity` 拆分（`FavoriteAuthorityFact` 非 Entity ⇒ 落 `domain/model/`）|
 | `favorite/rpc/exception/` | `exception/` | 直接压平 |
-| `favorite/rpc/fact/`（3 类） | `wiring/`（2 类） | `FavoriteAuthorityEndpointConfig` + `FavoriteFactDispatchScheduler`；**`FavoriteLegacyPreflightRunner` 无落点**（P6-c 待拍板） |
+| `favorite/rpc/fact/`（3 类） | `wiring/`（3 类）+ `service/`（1 类） | `FavoriteAuthorityEndpointConfig` + `FavoriteFactDispatchScheduler` + `FavoriteLegacyPreflightEndpoint`（`wiring/`）；`FavoriteLegacyPreflightService`（`service/`，报表计算）—— **P6-c 已拍板 ① Actuator 自定义端点**（2026-11-05），落点见 §1.6 |
 | `favorite/rpc/mapper/` | `mapper/` | 直接压平 |
 | `favorite/rpc/metrics/` | `metrics/` | 与 api 侧合并 |
 | `favorite/rpc/service/` | `service/` + `domain/service/` | 领域服务另出 `domain/service/` |
@@ -96,7 +96,7 @@
 | `favorite-rpc/…/rpc/fact/FavoriteAuthorityEndpointConfig.java` | favorite-rpc 进程内 `@Configuration` + Servlet | **零 gRPC 服务注册**，只起 authority HTTP 入口 | DB 读 + HTTP 入 |
 | `favorite-rpc/…/rpc/fact/FavoriteLegacyPreflightRunner.java` | favorite-rpc 进程内 `@Component` | **零 gRPC 服务注册**，只跑一次只读报表 | DB 只读 |
 
-⇒ **B 侧 2 个进程 → C 侧 1 个 JVM**（`FavoriteServiceApplication`）。3 个 fact 组件落成域内 `wiring/` 组件，preflight 的触发入口**尚未规划 ⇒ 缺口，见 §1.6**。
+⇒ **B 侧 2 个进程 → C 侧 1 个 JVM**（`FavoriteServiceApplication`）。3 个 fact 组件**全部**落成域内组件：dispatch / authority 落 `wiring/`；legacy-preflight 拆成 **`service/`（报表计算）+ `wiring/`（Actuator 触发入口）** ⇒ **缺口已闭合**，见 §1.6。
 
 ---
 
@@ -169,18 +169,18 @@
 | `favorite-rpc/…/rpc/service/FavoriteDomainService.java` | `service/favorite/src/main/java/com/rag/favorite/domain/service/FavoriteDomainService.java` | N:1 | 同上 |
 | `favorite-rpc/…/rpc/service/FavoriteDomainService.java` | `service/favorite/src/main/java/com/rag/favorite/domain/service/FavoriteDomainService.java` | N:1 | 同上 |
 | `favorite-rpc/…/rpc/domain/FavoriteFolderEntity.java` + `…/rpc/domain/FavoriteItemEntity.java` | `service/favorite/src/main/java/com/rag/favorite/domain/entity/FavoriteFolderEntity.java` + `service/favorite/src/main/java/com/rag/favorite/domain/entity/FavoriteItemEntity.java` | 1:N | B 侧两个 `@TableName` Entity（`FavoriteFolderEntity.java:19` / `FavoriteItemEntity.java:30`）⇒ 2 个 `@TableName` Entity。⚠️ 唯一键 / 可空性 / `target_id varchar(255)` 逐列对拍（DDL 探针） |
-| `favorite-rpc/src/main/resources/db/migration/V1__create_favorite_folder.sql` … `V7__align_favorite_outbox_time_columns_with_go.sql` + `favorite-rpc/…/rpc/bootstrap/FavoriteSchemaGate.java` | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteSchemaGate.java` + `service/favorite/src/main/resources/db/migration/`（**当前只有 `.gitkeep`**） | 1:N | 🔴 **缺口**：B 侧 7 个 Flyway 脚本（B 侧 `favorite-rpc/src/main/resources/db/migration/`）在 C 侧**尚无落地脚本**；C 侧 `db/migration/` 是空的。`FavoriteSchemaGate` 负责**启动后校验**「容易静默丢失」的 schema 资产（CHECK / 部分索引 / 2 个不可变触发器 / `favorite_legacy_fact_marker` 整表）⇒ **不抛异常、不阻止启动**（B 侧是 fail-fast 退出进程，C 侧单 JVM 里还跑着别的组件 ⇒ 刻意降级为告警） |
+| `favorite-rpc/src/main/resources/db/migration/V1__create_favorite_folder.sql` … `V7__align_favorite_outbox_time_columns_with_go.sql` + `favorite-rpc/…/rpc/bootstrap/FavoriteSchemaGate.java` | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteSchemaGate.java` + `service/favorite/src/main/resources/db/migration/V1__create_favorite_folder.sql` … `V7__align_favorite_outbox_time_columns_with_go.sql` | 1:N | ✅ **已落地（2026-11-04）**：7 个 Flyway 脚本**逐字零差异**（diff / sed 去注释 / tail-cmp 三层验证全过）⇒ B 侧原文即 C 侧文件末段连续字节后缀，仅文件头新增 C 侧落点注释。`FavoriteSchemaGate` 负责**启动后校验**「容易静默丢失」的 schema 资产（CHECK / 部分索引 / 2 个不可变触发器 / `favorite_legacy_fact_marker` 整表）⇒ **不抛异常、不阻止启动**（B 侧是 fail-fast 退出进程，C 侧单 JVM 里还跑着别的组件 ⇒ 刻意降级为告警） |
 | `favorite-rpc/…/rpc/mapper/FavoriteFolderMapper.java` + `…/rpc/mapper/FavoriteItemMapper.java` + `…/rpc/service/FavoriteDomainService.java` | `service/favorite/src/main/java/com/rag/favorite/mapper/FavoriteFolderMapper.java` + `service/favorite/src/main/java/com/rag/favorite/mapper/FavoriteItemMapper.java` + `service/favorite/src/main/java/com/rag/favorite/domain/service/FavoriteDomainService.java` | 1:N | B 侧 Model 8 方法（7 读 + `InsertFolder`）→ 2 个 Mapper + DomainService |
 | `favorite-rpc/…/rpc/mapper/JsonbTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java`（**共享层，不在本域**） | 1:1 | **D3**：B 侧 favorite 域内带一份 jsonb type handler 副本 ⇒ C 侧归入 `common/` starter；⚠️ C 侧 favorite 域**不建**此文件（域内 `mapper/` 包只有 4 个 Mapper） |
 | `favorite-rpc/…/rpc/domain/FavoriteFactOutboxEntity.java` + `…/rpc/domain/FavoriteLegacyFactMarkerEntity.java` + `…/rpc/mapper/FavoriteFactOutboxMapper.java` + `…/rpc/mapper/FavoriteLegacyFactMarkerMapper.java` + `…/rpc/service/FavoriteFactEnvelopeFactory.java` + `…/rpc/service/FavoriteAssertionSchemaResolver.java` + `…/rpc/service/FavoriteFactWriteService.java` | `service/favorite/src/main/java/com/rag/favorite/domain/entity/FavoriteFactOutboxEntity.java` + `service/favorite/src/main/java/com/rag/favorite/domain/entity/FavoriteLegacyFactMarkerEntity.java` + `service/favorite/src/main/java/com/rag/favorite/mapper/FavoriteFactOutboxMapper.java` + `service/favorite/src/main/java/com/rag/favorite/mapper/FavoriteLegacyFactMarkerMapper.java` + `service/favorite/src/main/java/com/rag/favorite/service/FavoriteFactEnvelopeFactory.java` + `service/favorite/src/main/java/com/rag/favorite/service/FavoriteAssertionSchemaResolver.java` + `service/favorite/src/main/java/com/rag/favorite/service/FavoriteFactWriteService.java` | 1:N | 🔴 **B 侧 1 组文件拆成 7 个 Java 文件**：outbox / legacy marker 两张表的 Entity + **两张表的 Mapper** + 冻结信封单点构造 + 断言版本解析 + **3 个事务写的独立 Bean**。拆 `FavoriteFactWriteService` 的原因是 **`@Transactional` self-invocation 静默失效**（AGENTS.md §3.3） |
 | `favorite-rpc/…/rpc/service/FavoriteDeliveryValidator.java` + `…/rpc/service/FavoriteFactDispatchService.java` + `…/rpc/domain/FavoriteFactOutboxEntity.java` | `service/favorite/src/main/java/com/rag/favorite/service/FavoriteDeliveryValidator.java` + `service/favorite/src/main/java/com/rag/favorite/service/FavoriteFactDispatchService.java` + `service/favorite/src/main/java/com/rag/favorite/domain/entity/FavoriteFactOutboxEntity.java` | 1:N | wire event / receipt / DC sender / 投递一次。⚠️ 投递路径用 `TransactionTemplate` **显式 commit**（B 侧是提交后才返回错误）⇒ 不用 `@Transactional` |
 | `favorite-rpc/…/rpc/domain/FavoriteAuthorityFact.java` + `…/rpc/service/FavoriteAuthorityLookupService.java` | `service/favorite/src/main/java/com/rag/favorite/domain/model/FavoriteAuthorityFact.java` + `service/favorite/src/main/java/com/rag/favorite/service/FavoriteAuthorityLookupService.java` | 1:N | 严格 JSON / JCS hash / 权威事实校验。🔴 v1 的 `subject_ref` 是 **3 字段** `{authority_id, tenant_id, subject_id}` ⇒ **不能用** `common/communityfact` 的 v2 形状（2 字段） |
-| `favorite-rpc/…/rpc/fact/FavoriteLegacyPreflightRunner.java` | `service/favorite/src/main/java/com/rag/favorite/domain/entity/FavoriteLegacyFactMarkerEntity.java`（**仅数据载体**） | 1:N | 🔴 **缺口**：C 侧**只有数据载体**（marker Entity），**没有预检报表 / 触发入口**。B 侧是只读 RR 快照报表 ⇒ C 侧对应物**尚未规划**（决策记录 P6-c）。详见 §1.6 |
+| `favorite-rpc/…/rpc/fact/FavoriteLegacyPreflightRunner.java` | `service/favorite/src/main/java/com/rag/favorite/service/FavoriteLegacyPreflightService.java` + `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteLegacyPreflightEndpoint.java` + `service/favorite/src/main/java/com/rag/favorite/domain/entity/FavoriteLegacyFactMarkerEntity.java`（**数据载体**） | 1:N | ✅ **已落地（2026-11-05）**：B 侧的**只读 RR 快照报表**拆成 2 个 C 侧文件 —— `service/` 放**报表计算**（逐条照抄 Go `favorite_legacy_preflight.go:30-96` + B 侧 `:82-231`）· `wiring/` 放**触发入口**（Actuator `@WebEndpoint`，决策 P6-c 拍板 ①）。详见 §1.6 |
 | `favorite-rpc/…/rpc/exception/FavoriteExceptions.java` | `service/favorite/src/main/java/com/rag/favorite/exception/FavoriteExceptions.java` | 1:1 | B 侧的 `ErrorNotFound` 哨兵族 → Java 异常类型族。⚠️ 哨兵**不自带码翻译**，由用例层决定 |
 | `favorite-rpc/…/rpc/fact/FavoriteAuthorityEndpointConfig.java` | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteAuthorityEndpointConfig.java` | 1:1 | 🔴 B 侧 favorite **自持** authority handler，形态是 **path 参数**：`GET /internal/v1/favorite/facts/{producer}/{event_id}` + `GET /internal/v2/...` ⇒ **不能用** B 侧通用 `AuthorityHandlerFactory` 的 query 形态。C 侧包位从 `fact/` 迁到 `wiring/`（装配层唯一落点） |
 | `favorite-rpc/…/rpc/fact/FavoriteFactDispatchScheduler.java` | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteFactDispatchScheduler.java` | 1:1 | 见 §1.6 |
 | `favorite-rpc/…/rpc/fact/FavoriteAuthorityEndpointConfig.java` | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteAuthorityEndpointConfig.java` | 1:1 | 见 §1.6 |
-| `favorite-rpc/…/rpc/fact/FavoriteLegacyPreflightRunner.java` | （**无对应文件 —— 触发入口未规划**） | 1:N | 🔴 **缺口**：见 §1.6 |
+| `favorite-rpc/…/rpc/fact/FavoriteLegacyPreflightRunner.java` | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteLegacyPreflightEndpoint.java` | 1:N | ✅ **有落点**（**触发入口**）：Actuator `@WebEndpoint(id = "favorite-legacy-preflight")` + `@ConditionalOnProperty(favorite.fact.legacy-preflight.enabled=true)` ⇒ **默认不注册**（404）⇒ 不会被健康检查探活误触发。见 §1.6 |
 | `favorite-proto/src/main/proto/favorite.proto` | `proto/src/main/proto/favorite.proto` | 1:1 | **protoc 生成物 ↔ `.proto` 源**。B 侧的 `.proto` 在 `favorite-proto` 模块内，被 api 与 rpc 共用 |
 | `favorite-proto/src/main/proto/favorite.proto`（service 段） | `proto/src/main/proto/favorite.proto`（service 段） | 1:1 | 7 个 RPC ⇒ 方法路径 `/favorite.FavoriteService/*` |
 
@@ -206,13 +206,13 @@
 
 ---
 
-### 1.6 🔴 三个 fact 组件（dispatch / authority / legacy-preflight）各自的落点（含缺口）
+### 1.6 三个 fact 组件（dispatch / authority / legacy-preflight）各自的落点
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|
 | `favorite-rpc/…/rpc/fact/FavoriteFactDispatchScheduler.java` | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteFactDispatchScheduler.java` | 1:1 | ✅ **有落点**。B 侧的 `-once` 开关降级为配置项（决策 P6-a 已选 ①）；节奏 **1s** / 批次 **16** / 单次 **10s deadline** 逐条保留 |
 | `favorite-rpc/…/rpc/fact/FavoriteAuthorityEndpointConfig.java` | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteAuthorityEndpointConfig.java` | 1:1 | ✅ **有落点**。wire 形态按 **B 侧原样**（path 参数）；⚠️ B 侧是**独立 HTTP 端口**（`FAVORITE_AUTHORITY_LISTEN`），C 并入主 app 端口（决策 P6-b 已选 ①）⇒ **wire 面变更，未拍板**（未决项 U1） |
-| `favorite-rpc/…/rpc/fact/FavoriteLegacyPreflightRunner.java` | 🔴 **无对应文件** | 1:N | ❌ **缺口 —— 触发入口尚未规划**。C 侧只有数据载体 `rpc/domain/FavoriteLegacyFactMarkerEntity` + `rpc/service/FavoriteAssertionSchemaResolver`（B 侧读侧依赖已具备），但**没有**跑一次出报告的入口。决策记录 **P6-c** 待拍板（① Actuator 自定义端点 / ② 一次性 CLI profile / ③ 独立可执行 jar）<br>⚠️ B 侧的**退出码语义**（`exit 2` = 未裁决 / `exit 1` = 读取失败 / `exit 0` = clear）在 Spring 进程内**没有退出码** ⇒ 需显式设计（未决项 U2）<br>⚠️ 若选 ① Actuator 端点，**必须确保它不被健康检查探活**（否则每次探活都跑一次预检） |
+| `favorite-rpc/…/rpc/fact/FavoriteLegacyPreflightRunner.java` | `service/favorite/src/main/java/com/rag/favorite/service/FavoriteLegacyPreflightService.java`（**报表计算**）+ `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteLegacyPreflightEndpoint.java`（**触发入口**） | 1:N | ✅ **有落点（2026-11-05 · 决策 P6-c 拍板 ① Actuator 自定义端点）**。B 侧 1 个类拆成 2 个 C 侧文件：① `service/` = **报表计算**（`Report` 为 immutable record，5 个字段名与顺序由 `@JsonProperty` 钉死，与 Go `favorite_legacy_preflight.go:30-96` 逐字同形）② `wiring/` = **Actuator `@WebEndpoint(id="favorite-legacy-preflight")`**（`@ConditionalOnProperty(favorite.fact.legacy-preflight.enabled=true)` ⇒ **默认不注册** ⇒ 404 ⇒ 不会被健康检查探活误触发）<br>⚠️ **退出码语义的替代**：B 侧/Go 的 `exit 2` = 未裁决 / `exit 1` = 读取失败 / `exit 0` = clear ⇒ Spring 进程内无退出码 ⇒ C 侧改用 **HTTP 状态码**（**200** = clear / **409** = 未裁决 / **500** = 读取失败）+ **结构化日志**双通道表达 ⇒ 登记 `DEV-FAV-RPC-009`<br>⚠️ **刻意不加 `@Transactional`**：B 侧 `preflight()` 的注解在，但**只被同 bean 的 `run()` 自调用** ⇒ Spring AOP 代理被绕过 ⇒ 事务从未生效 ⇒ 按 D16「继承 B 侧既有差异」照抄 ⇒ 登记 `DEV-FAV-RPC-008` |
 
 > 📌 **为什么 dispatch / authority 能合并而 legacy-preflight 不能直接合并**：B 侧把三者做成**独立进程**是**架构意图**（dispatch 的目的是「favorite RPC 可用性不依赖 DC」），不是技术约束 ——
 > dispatch / authority **零 gRPC 注册**、与主 gRPC server 共用同一张 PG；legacy-preflight 更是纯只读 ⇒ 合并无写风险，但**入口形态**（一次性 vs 常驻）不同。
@@ -279,7 +279,7 @@
 1. B 侧 model 层的 2 个实体 → `domain/entity/FavoriteFolderEntity.java` + `FavoriteItemEntity.java`（`@TableName` + `@TableId` + `@TableField`）；
 2. B 侧 `FavoriteModel` 8 方法 → `mapper/FavoriteFolderMapper.java` + `FavoriteItemMapper.java`（`BaseMapper` + 注解式原生 SQL，全仓零 XML mapper）；
 3. B 侧 outbox / delivery / authority 三处的表访问 → `mapper/FavoriteFactOutboxMapper.java` + `FavoriteLegacyFactMarkerMapper.java`；
-4. B 侧 Flyway `V1`–`V7` → `favorite/service/src/main/resources/db/migration/*.sql`（**C 侧当前为空 ⇒ 🔴 缺口**）；
+4. B 侧 Flyway `V1`–`V7` → `favorite/service/src/main/resources/db/migration/*.sql`（✅ **2026-11-04 已落地** · 7 个脚本 · SQL 正文逐字零差异）；
 5. B 侧 `ErrorNotFound` 哨兵族 → `exception/FavoriteExceptions.java`；
 6. jsonb 列的读写 → `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java`（**D3** 归位；Entity 需 `@TableName(autoResultMap = true)` + `ps.setObject(i, json, Types.OTHER)`）。
 
@@ -294,16 +294,16 @@
 |---|---|---|---|
 | 进程拓扑 | **2 个进程**（`favorite-api` + `favorite-rpc`；`favorite-rpc` 内含 3 个 fact 组件） | **1 个进程**（`favorite-service`） | 决策 **D1** |
 | 路由注册 | `@RequestMapping("/favorite/v1")` + 方法映射（`favorite-api/…/api/controller/FavoriteController.java:89`） | 同 B 列 | 前缀是 **L1**，逐字保留 |
-| HTTP method | **POST×3 / DELETE×2 / GET×2**（非全 POST，`FavoriteController.java:129,136,143,156,167,174,191`） | 同 | 同 | `@DeleteMapping` / `@GetMapping` 是 Spring 一等公民 |
-| public 路径集 | **空集**（7 条端点**全部**受保护，`favorite-api/…/api/auth/FavoriteJwtAuthPaths.java:16,53`） | 空集 | ⚠️ **C 侧 `FavoriteController.java` 的 javadoc 写「有 public 段」⇒ 与 B 侧相反**（见 §7 缺口表） | 无 public 路由 ⇒ 无需白名单 |
-| JWT + blacklist 顺序 | JWT 在 chain **外层**（先跑）→ blacklist 在内层（`favorite-api/…/api/interceptor/FavoriteJwtAuthInterceptor.java:46-58`） | Interceptor 顺序 | 同 | ⚠️ 顺序是 L3 语义，必须有断言 |
+| HTTP method | **POST×3 / DELETE×2 / GET×2**（非全 POST，`FavoriteController.java:129,136,143,156,167,174,191`） | 同 | `@DeleteMapping` / `@GetMapping` 是 Spring 一等公民 |
+| public 路径集 | **空集**（7 条端点**全部**受保护，`favorite-api/…/api/auth/FavoriteJwtAuthPaths.java:16,53`） | 空集 | ⚠️ **C 侧 `FavoriteController.java` 的 javadoc 写「有 public 段」⇒ 与 B 侧相反**（见 §7 缺口表）<br>无 public 路由 ⇒ 无需白名单 |
+| JWT + blacklist 顺序 | JWT 在 chain **外层**（先跑）→ blacklist 在内层（`favorite-api/…/api/interceptor/FavoriteJwtAuthInterceptor.java:46-58`） | Interceptor 顺序 | ⚠️ 顺序是 L3 语义，必须有断言（C 侧与 B 侧**同序**） |
 | Handler / Controller | 1 个 `FavoriteController`（7 个 `@*Mapping`）+ 7 个 `Favorite*Service` | 1 个 `FavoriteController` + **1 个** `FavoriteApiService` | C 侧 7 个 api 用例合并（用例内聚判据） |
 | 用例中间层 | api 7 Service / rpc 1 `FavoriteDomainService` | api 1 `FavoriteApiService` / rpc 1 `FavoriteDomainService` | 合并后 HTTP 与 gRPC **共享同一份业务用例** |
 | 响应信封 | `advice/GlobalResponseAdvice` | `service/favorite/src/main/java/com/rag/favorite/advice/FavoriteApiResponseAdvice.java` | 🔴 只包一层；否则双层信封 |
 | 错误表达 | 业务失败 ⇒ **HTTP 200 + body 的 `code`**；解析失败也是 **HTTP 200 + 5003**（`favorite-api/…/api/advice/GlobalExceptionHandler.java:37,44`） | `service/favorite/src/main/java/com/rag/favorite/advice/FavoriteApiExceptionHandler.java` | 🔴 B 侧**没有**框架级错误处理器 ⇒ 框架级错误走框架默认语义（400 + text/plain），**业务错误不走那里** |
 | 业务码 → 响应码 | `FavoriteErrorMessages.getMsg`（`favorite-common/…/common/errmsg/FavoriteErrorMessages.java:86`） | `service/users/common/src/main/java/com/rag/users/common/ErrMsg.java` | 🔴 文案是 **L1**，含语言 |
 | gRPC 错误表达 | `FavoriteGrpcError.grpcError(Status.Code,int)`（`favorite-common/…/common/errmsg/FavoriteGrpcError.java:94`） | `service/favorite/src/main/java/com/rag/favorite/contract/GrpcErrorMapper.java` | ⚠️ **标准 gRPC 码 + 查表文案**（**不是** like 域那种「业务码塞进 grpc-status」的做法） |
-| 业务异常 | **无 `CodeError` 类型** ⇒ 直接抛 gRPC 异常 | `FavoriteExceptions`（rpc 侧，`favorite-rpc/…/rpc/exception/FavoriteExceptions.java:42`） | `service/favorite/src/main/java/com/rag/favorite/exception/FavoriteExceptions.java` | 🔴 哨兵不带码翻译 ⇒ 由用例层决定 |
+| 业务异常 | **无 `CodeError` 类型** ⇒ 直接抛 gRPC 异常 | `FavoriteExceptions`（rpc 侧，`favorite-rpc/…/rpc/exception/FavoriteExceptions.java:42`） | C 侧落点 `service/favorite/src/main/java/com/rag/favorite/exception/FavoriteExceptions.java`<br>🔴 哨兵不带码翻译 ⇒ 由用例层决定 |
 | 配置绑定 | `@ConfigurationProperties(prefix="favorite-api")` / `("favorite")` | `service/favorite/src/main/java/com/rag/favorite/config/FavoriteApiProperties.java` + `service/favorite/src/main/java/com/rag/favorite/config/FavoriteRpcProperties.java` | 类型安全 |
 | 域内调用 | api → rpc **走 gRPC**（`@GrpcClient` + Nacos 寻址） | **直连**（**D2**）⇒ C 侧**无** `FavoriteRpcClient` | — |
 | 跨域调用 | `UserRpcClient` / `ArticleRpcClient`（`@GrpcClient` + Nacos） | `service/favorite/src/main/java/com/rag/favorite/client/UserRpcClient.java` + `service/favorite/src/main/java/com/rag/favorite/client/ArticleRpcClient.java` | 决策 **D6**：跨域仍走 gRPC |
@@ -311,7 +311,7 @@
 | 服务发现 | Nacos | Nacos（`service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteNacosRegistration.java`） | 生态替代（**D4**）已完成 |
 | gRPC 反射 | `grpc.server.reflection-service-enabled` | `application.yml` 写 `false` | 与 B 侧的「非 dev/test 不开」一致 |
 | v2 启动门禁 | `bootstrap/FavoriteSubjectRefGate.java` | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteSubjectRefGate.java` | ⚠️ 模式取值域不在本仓库（U3） |
-| 进程级 logger 身份 | 多个独立 `service` 值（`rtw-favorite-fact-dispatch` / `-fact-authority` / `-legacy-preflight` / gRPC 走 `c.Name`） | `bootstrap/FavoriteFactProcessLogging.java` | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteFactProcessLogging.java` | ⚠️ **不要用 SLF4J 全局 MDC**（会跨线程插值） |
+| 进程级 logger 身份 | 多个独立 `service` 值（`rtw-favorite-fact-dispatch` / `-fact-authority` / `-legacy-preflight` / gRPC 走 `c.Name`） | `bootstrap/FavoriteFactProcessLogging.java` | C 侧落点 `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteFactProcessLogging.java`<br>⚠️ **不要用 SLF4J 全局 MDC**（会跨线程插值） |
 | Schema 闸 | `bootstrap/FavoriteSchemaGate.java`（**不抛异常、不阻止启动**） | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteSchemaGate.java` | C 侧单 JVM 里还跑着别的组件 ⇒ 刻意降级为告警 |
 
 ### 3.1 决策锁 —— §3 的改动清单
@@ -378,7 +378,7 @@
 | **D4** | 生态优先，手写只补生态缺口 | 2 处：`FavoriteNacosRegistration`（注册中心）、`MybatisPlusOrderingBridge`（归 `common/`） | 少维护一套自研基建 |
 | **D5** | DTO 改 immutable record + Bean Validation | 16 个 `api/dto/*.java` 全部 | B 侧的可变 POJO → Java record（**契约不变，只改形态**）。⚠️ Bean Validation 是 **L3 降级**：错误文案从 B 侧改为 Bean Validation 文案 |
 | **D6** | 跨域调用仍走 gRPC | 2 个 `rpc/client/*.java` | 跨域是业务能力（取作者资料、取文章快照），不该被 HTTP 层直连 |
-| **P6** | 3 个 `fact/*` 组件的遗留子项 | 3 处（§1.6） | ⏳ **待拍板**：P6-a `-once` 模式（已选 ①）、P6-b authority 端口（已选 ①）、P6-c **preflight 触发入口（未拍板 ⇒ 本表记为缺口）** |
+| **P6** | 3 个 `fact/*` 组件的遗留子项 | 3 处（§1.6） | ✅ **全部拍板**：P6-a `-once` 模式（① 降级为配置项）、P6-b authority 端口（① 并入主 app 端口 · 未决项 U1 仍挂）、P6-c **preflight 触发入口（① Actuator 自定义端点 · 2026-11-05 拍板 ⇒ §1.6 缺口闭合）** |
 
 ---
 
@@ -426,14 +426,15 @@
 
 > 判据来自 `docs/Mapping_Table/README.MD` §四。
 
-### 7.1 C 列零遗漏 —— ✅ 61/61（100%）
+### 7.1 C 列零遗漏 —— ✅ 63/63（100%）
 
 ```bash
-find "/Users/pr/Documents/GitHub/RAG-V1/service/favorite" -name '*.java' \
+# ⚠️ 在**域工作树**里跑 ⇒ 路径要指向工作树（主仓与工作树的文件数可能不同）
+find service/favorite -name '*.java' \
   -not -path '*/src/test/*' -not -path '*/target/*' | xargs -n1 basename | sort -u
 ```
 
-实测 **61** 个唯一文件名（本域无同名文件），逐条比对结果：
+实测 **63** 个唯一文件名（本域无同名文件），逐条比对结果：
 
 | # | C 列文件 | 出现在 | # | C 列文件 | 出现在 |
 |---|---|---|---|---|---|
@@ -468,8 +469,9 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/favorite" -name '*.java' \
 | 30 | `FavoriteLegacyFactMarkerEntity.java` | §1.3 | 60 | `FavoriteSchemaGate.java` | §1.3 |
 | 31 | `FavoriteAuthorityFact.java` | §1.3 | 61 | `FavoriteSubjectRefGate.java` | §1.3 |
 | — | — | — | 7 | `FavoriteDomainService.java` | §1.3 |
+| 62 | `FavoriteLegacyPreflightService.java` | §1.6 | 63 | `FavoriteLegacyPreflightEndpoint.java` | §1.6 |
 
-> **结论：61/61，无遗漏。**
+> **结论：63/63，无遗漏。**（**2026-11-05 更新** —— P6-c ① 落地后新增 2 个主代码：`service/FavoriteLegacyPreflightService.java` ＋ `wiring/FavoriteLegacyPreflightEndpoint.java`）
 > ⚠️ 排除项：`src/test/java/...`（测试）、`target/`（构建产物）。
 
 ### 7.2 映射类型分布（实测计数）
@@ -494,19 +496,19 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/favorite" -name '*.java' \
 
 | # | 项 | B 列 RAG（事实） | C 列 RAG-V1 | 性质 |
 |---|---|---|---|---|
-| **M1** | **`POST /favorite/v1/folder/create` 端点缺失** | `FavoriteController.java:129` 有 7 个端点，**含** `POST /folder/create` | 🔴 `service/favorite/src/main/java/com/rag/favorite/controller/FavoriteController.java` 的 javadoc 只列 **6 条**，**漏了 `POST /favorite/v1/folder/create`**（其自述的「Post3」分布也与所列 6 条自相矛盾） | **C 列 javadoc 与 B 侧不一致** ⇒ 实现时按 B 侧补第 7 条 |
-| **M2** | **public 路径集** | 7 个端点**全部**受保护（`FavoriteJwtAuthPaths.java:16`）⇒ **public 集为空** | 🔴 `service/favorite/src/main/java/com/rag/favorite/controller/FavoriteController.java` javadoc 写「**有 public 段**」；`service/favorite/src/main/java/com/rag/favorite/config/WebMvcConfig.java` javadoc 写「注册 … + **public 路径白名单**」 | **C 列 javadoc 与 B 侧相反** ⇒ 不得凭空造 public 段 |
-| **M3** | **preflight 触发入口** | `favorite-rpc/…/rpc/fact/FavoriteLegacyPreflightRunner.java` 是**只读报表**组件（一次性语义） | 🔴 **无对应文件**；只有 `FavoriteLegacyFactMarkerEntity` + `FavoriteAssertionSchemaResolver`（数据侧） | **C 列缺口** ⇒ 决策 P6-c 待拍板（Actuator 端点 / CLI profile / 独立 jar） |
-| **M4** | **DDL 迁移脚本** | Flyway 7 个脚本齐（含 2 个不可变触发器 + `favorite_legacy_fact_marker` 整表） | 🔴 `service/favorite/src/main/resources/db/migration/` **只有 `.gitkeep`** | **C 列缺口** ⇒ 触发器缺失会让 `5304` 静默变成 `5008`（只有历史数据暴露） |
+| **M1** | **`POST /favorite/v1/folder/create` 端点缺失** | `FavoriteController.java:129` 有 7 个端点，**含** `POST /folder/create` | ✅ **已订正（2026-11-04）** —— `service/favorite/src/main/java/com/rag/favorite/controller/FavoriteController.java` 的 javadoc 现列出**全部 7 条**路由（含 `POST /favorite/v1/folder/create`），且方法分布写明 **Get2 / Post3 / Delete2**；实现层 7 个 `@*Mapping` 逐条落地 | **已闭合**（C 列 javadoc 与 B 侧一致） |
+| **M2** | **public 路径集** | 7 个端点**全部**受保护（`FavoriteJwtAuthPaths.java:16`）⇒ **public 集为空** | ✅ **已订正（2026-11-04）** —— `FavoriteController.java` javadoc 写「**鉴权划分（L1）：7/7 端点全部受保护，无 public 段**」；`config/WebMvcConfig.java` javadoc 写「**为什么只有两条拦截器、且没有 excludePathPatterns**」⇒ 实现里**没有** `excludePathPatterns` | **已闭合**（C 列 javadoc 与 B 侧一致） |
+| **M3** | **preflight 触发入口** | `favorite-rpc/…/rpc/fact/FavoriteLegacyPreflightRunner.java` 是**只读报表**组件（一次性语义） | ✅ **已订正（2026-11-05）** —— 决策 P6-c 拍板 ① ⇒ C 侧新增 `service/favorite/src/main/java/com/rag/favorite/service/FavoriteLegacyPreflightService.java`（**报表计算**）+ `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteLegacyPreflightEndpoint.java`（**Actuator 触发入口**） | **已闭合**（缺口消 ⇒ C 列 **61 → 63**）<br>⚠️ **附带登记**：`DEV-FAV-RPC-008`（事务：自调用绕过代理 ⇒ B 侧注解在但事务从未生效）· `DEV-FAV-RPC-009`（触发形态：Actuator 端点 + HTTP 状态码替代退出码 + Actuator 响应被业务信封包裹） |
+| **M4** | **DDL 迁移脚本** | Flyway 7 个脚本齐（含 2 个不可变触发器 + `favorite_legacy_fact_marker` 整表） | ✅ **已落地（2026-11-04）** —— `service/favorite/src/main/resources/db/migration/` 下 `V1__create_favorite_folder.sql` … `V7__align_favorite_outbox_time_columns_with_go.sql` 共 7 个，**SQL 正文逐字零差异**（diff / sed 去注释 / tail-cmp 三层验证全过） | **已闭合** ⇒ 触发器到位 ⇒ `5304` 不会被静默变成 `5008`<br>⚠️ **附带缺口**：映射表 §2.1 **漏记**了 V6 ③ 的 `favorite_item_target_revision_scope` CHECK（**B 侧有意加强**）⇒ 登记进 `docs/DRIFT/favorite/` 台账 |
 | **M5** | **`JsonbTypeHandler` / MP 排序桥的归属** | **域内副本**：`favorite-rpc/…/mapper/JsonbTypeHandler.java`、`…/config/MybatisPlusOrderingBridgeAutoConfiguration.java` | C 侧 favorite 域**无**这两个文件 ⇒ 应取 `common/src/main/java/com/rag/common/persistence/JsonbTypeHandler.java` 与 `common/src/main/java/com/rag/common/autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | **D3 归位**（不是缺陷，是形态差异）⇒ 填实现时不要在域内重建副本 |
-| **M6** | **`GetFavoritesByFolderReq.FolderId` 的取参位置** | `favorite-api/…/dto/GetFavoritesByFolderReq.java:11,33` 是 **`form:"folderId,string"`** ⇒ 取自**查询串**，且带 `,string` 解析 | `service/favorite/src/main/java/com/rag/favorite/dto/favorite/GetFavoritesByFolderReq.java` javadoc 只写「immutable record」，**未标注 `form` 语义**；且 C 侧 `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java` **仍是空壳** | **C 列待补**：DTO 注释要写明 `form` + `,string`，且依赖 `common` 的 `form` 解析件（该件属 `common.md`，非本域） |
+| **M6** | **`GetFavoritesByFolderReq.FolderId` 的取参位置** | `favorite-api/…/dto/GetFavoritesByFolderReq.java:11,33` 是 **`form:"folderId,string"`** ⇒ 取自**查询串**，且带 `,string` 解析 | ✅ **已订正（2026-11-04）** —— `service/favorite/src/main/java/com/rag/favorite/dto/favorite/GetFavoritesByFolderReq.java` 的 javadoc 已写明 **form 通道 + `,string` 宽松解析 + 「先滤空值再取首值」**；并提供 `fromForm(String)` 静态工厂（空串 ⇒ 缺席 ⇒ `null`）<br>⚠️ **共享层的 `GetFormValuesFilter` 已实现**（`common/src/main/java/com/rag/common/web/GetFormValuesFilter.java:210-302`，含 `goParseViolation` 判据）⇒ **不再是空壳** ⇒ 域内 `interceptor/QueryLimitInterceptor` 直接复用该判据 | **已闭合**（DTO 注释 + 共享层依赖双侧就位） |
 | **M7** | **域内 gRPC client** | `favorite-api/…/client/FavoriteRpcClient.java`（api → rpc 走 gRPC） | C 侧**无**（**D2** 直连）⇒ `favorite-api` 模块在 C 侧整体消失 | **形态差异**（已定决策 D2），非缺陷 |
 | **M8** | **端口号** | api `${FAVORITE_API_PORT:18893}` / rpc `${FAVORITE_RPC_PORT:8082}` | C 侧 HTTP `:8894` / gRPC `:9003` | **L3 部署层差异**（非 L1），但需在部署文档登记 |
 
 ### 7.4 未决项沿用（不在本表结论内，仅指针）
 
 RAG 侧 `favorite-rpc` 台账的 **7 条未决**（`RAG/docs/DRIFT/favorite/rpc.md` §5）**同样适用于 C 列**：
-U1 authority wire 形态 · U2 preflight 退出码语义 · U3 `Mode` 取值域 · U4 authority lookup 的 3s 超时 ·
+U1 authority wire 形态 · U2 preflight 退出码语义（✅ **已由 P6-c ① 消解**：改用 HTTP 状态码 + 结构化日志，登记 `DEV-FAV-RPC-009`）· U3 `Mode` 取值域 · U4 authority lookup 的 3s 超时 ·
 U5 `ObserveRPC` 的 `result` 标签 · U6 `favorite_request_seconds_counter` 指标名 · U7 双侧活体对拍。
 ⇒ **本表不为它们下任何「已对齐 / 未对齐」结论**；C 列实现前请回 **B 侧源码**逐字核对。
 
@@ -515,5 +517,5 @@ U5 `ObserveRPC` 的 `result` 标签 · U6 `favorite_request_seconds_counter` 指
 ## 一句话总览
 
 `B 列 RAG` = **2 进程**（api + rpc；rpc 内含 3 个 fact 组件）+ MyBatis-Plus + Flyway 7 脚本 + advice 统一信封 + 域内 gRPC 往返 + 24 条域私有错误码（唯一英文 `not found`）+ 4 张表含 2 个不可变触发器；
-`C 列 RAG-V1` = **1 个 app** + 域内 `contract/` 包（proto 在根级 `proto/`）+ Spring 注解式路由 + immutable record + `BusinessException` 双边界适配 + 域内直连 + 3 个 fact 组件落成域内 `wiring/` 组件（**preflight 入口待拍板**）。
+`C 列 RAG-V1` = **1 个 app** + 域内 `contract/` 包（proto 在根级 `proto/`）+ Spring 注解式路由 + immutable record + `BusinessException` 双边界适配 + 域内直连 + 3 个 fact 组件落成域内组件（dispatch / authority → `wiring/`；legacy-preflight → `service/` 报表计算 + `wiring/` Actuator 端点，决策 P6-c ①）。
 ⇒ **文件名与职责逐条对应；行为以 B 侧源码为准。**
