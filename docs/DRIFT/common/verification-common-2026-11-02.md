@@ -829,6 +829,18 @@ comment 域工作树里 `service/comment/src/test/java/com/rag/comment/grpc/Comm
 | **全仓回归** | **串行**（`mvn -o test`，**不带 `-T1C`**）⇒ **BUILD SUCCESS · 16/16 模块 SUCCESS** ⇒ **927 例 · Failures 0 · Errors 0 · Skipped 0**（模块级汇总：common **247**（245 → 247，+2 条 F-15 新例）· article **157** · follow **72** · like **110** · message **103** · users-common **46** · user **40** · admin **152** · proto/comment/favorite/hot/task **0**）⇒ ⇒ ⚠️ **计数只取回归日志的模块级汇总**（AGENTS.md §五.8 规则 ①） |
 | **三道守门** | `check-arch-invariants.py` ⇒ **EXIT=0**（**PASS 11 · FAIL 0 · N/A 2 · PENDING 1**，共 **14** 条 ⇒ **A14 已计入**；`--self-test` ⇒ **14/14 判据均能红**）<br>⚠️ **一次环境假红（2026-11-05 · user-service 那轮）**：首次串行全仓回归里 **article 的 6 条 Kafka 用例全红**（`NoClassDefFound: Could not initialize class …KafkaTestBase` ⇒ 根因 `Container startup failed for image apache/kafka:3.7.2` ⇒ `Container exited with code 126` ⇒ **Kafka 容器起不来** ⇒ 与本轮改动**无因果**）⇒ ⇒ **单独复跑那 6 条 ⇒ 全绿**（`Tests run: 6, Failures: 0`）⇒ ⇒ **复跑整轮串行全仓 ⇒ 16/16 SUCCESS · 927 例全绿**⇒ ⇒ **机器当时的状态**：`docker ps` 有 **25 个运行中容器 ＋ 924 个卷（32.7GB）** ⇒ 资源吃紧 ⇒ Kafka 容器偶发 exit 126⇒ ⇒ **判定式（接 P-24）**：**「容器起不来」类红（`ContainerLaunchException` / exit 126 / `NoClassDefFound …TestBase`）⇒ 同样不能直接归因于代码 ⇒ 必须单独复跑**· `check-docs-vs-tree.py` ⇒ **EXIT=0**（新增测试文件 ⇒ 已重跑 `tools/gen-file-tree.py`）· `check-mapping-coverage.py` ⇒ **EXIT=0**（C **641/641** · B **752/752**） |
 
+### ✅ DRIFT-COMMON-V22｜**YAML 顶层重复键**（合并两个来源的同一份配置 ⇒ 同一层出现重复键）—— **已收口（2026-11-05）**
+
+**状态**：**✅ 已收口**（2026-11-05 · `global` 收口域 · 落点 = 各域 `application.yml` ＋ `tools/difftest/check-arch-invariants.py`）
+
+| 项 | 内容 |
+|---|---|
+| **现象（实测 · 合并工作树时撞出）** | **3 个域**的 `application.yml` 里**顶层 `otel:` 各出现两次**：<br>· `service/comment`（L476 与 L500）· `service/task`（L396 与 L439）· `service/favorite`（L273 与 L408）<br>⇒ ⇒ 一份是**域 lane 自己写的**那段（`service.name: <域>-rpc` ＋ 裸 endpoint ＋ `parentbased_always_on`，**缺** `protocol` 与 `resource.attributes.service.name`）<br>⇒ ⇒ 另一份是**收口域 OTEL-5 统一补**的那段（`<域>-service` ＋ 带 scheme endpoint ＋ `protocol: grpc` ＋ 两套服务名 ＋ `always_on`）<br>⇒ ⇒ **Git 合并把两段都留下了** ⇒ ⇒ **同一层出现重复的顶层键** |
+| **🔴 为什么这是真缺陷（而不是「看着乱」）** | **YAML 重复键是未定义行为**：SnakeYAML 默认「后者覆盖前者」（⇒ 静默只生效一份）⇒ ⇒ 换个更严的解析器就**直接报错**；⇒ ⇒ 且**读者会看到两套互相矛盾的口径**（服务名一个 `<域>-rpc` 一个 `<域>-service`）⇒ ⇒ **零编译错误、零测试红灯**（配置面 ⇒ 没有任何代码路径会报错）⇒ ⇒ **与 A14 的「配置项缺失」同族**：都是**配置面的哑弹** |
+| **修法（已实施）** | **逐域取舍，判据 = 「留 A14 合规**且**注释为真的那一块」**：<br>· **comment / task** ⇒ 域 lane 那块**缺** `protocol: grpc` 与 `resource.attributes.service.name` ⇒ **留着会让 A14 变红** ⇒ ⇒ **删 lane 那块**（留收口域统一块）；<br>· **favorite** ⇒ 域 lane 那块**已是 A14 合规形状**（`favorite-service` ＋ 带 scheme ＋ `protocol: grpc` ＋ 两套服务名 ＋ `parentbased_always_on`）⇒ ⇒ 而收口域那块里的注释「⚠️ **本段此前整段缺失**」对 favorite 而言**是假断言** ⇒ ⇒ **反过来删收口域那块**（留 lane 那块，它带更完整的 B 侧逐行出处）<br>⇒ ⇒ **处置后全仓 yml 顶层重复键 = 0** |
+| **🔴 机器守门（新增 A16）** | `tools/difftest/check-arch-invariants.py` 新增 **A16**「yml 顶层键不得重复（YAML 重复键）」：扫描各域 `application.yml` 的**顶层键** ⇒ 同一键出现两次即判红；⚠️ **只查同一层**（不同层的同名键是正常的）⇒ ⇒ **实测 PASS 10/10** · **self-test 16/16 判据均能红**（含 A16：造「同一份 yml 有两个顶层 `otel:`」的假树 ⇒ 判红）· **真仓变异实测**（往 `service/task` 的 yml 末尾追加一段 `otel:` ⇒ A16 当场报「顶层键 `otel` **重复**（L426 与 L469）⇒ ⇒ YAML 重复键 ⇒ 解析行为不确定」⇒ 还原后复绿）⇒ ⇒ 配套更新 `docs/架构符合性断言.md`（新增 A16 段 ＋ 状态行 ＋ 契约矩阵补一列）＋ `docs/README.md` ＋ `AGENTS.md`（A1–A15 ⇒ **A1–A16**） |
+| **⚠️ 诚实边界** | ① 判据**不判「哪一份是对的」** ⇒ ⇒ 合并时仍需**人工判语义**（本轮三个域的取舍各不相同 ⇒ 就是人工判的）；② 只扫各域 `application.yml` ⇒ ⇒ 新增其他 yml 时按需扩 |
+
 ## 11.6 完成度统计
 
 > **口径**：按**职责**统计，**不按文件数或行数**（§11.6 明令）。

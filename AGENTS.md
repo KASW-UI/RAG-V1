@@ -188,7 +188,7 @@ RAG-V1 侧 10 个 `*.proto` **全部从 B 侧复制**，非翻译。改动**严�
 | 阶段 | 内容 | 完成信号 |
 |---|---|---|
 | **按域填实现** | 每域：**先按 Mapping_Table B↔C 抄 B 侧实现**（§1.0c 三档）→ 各层均以 B 侧为基准（D13 + D16）→ 填各技术角色包 → 建该域 DRIFT 台账 | 该域能**独立启动** + 关键路径有**真触发**测试（§3.3）+ 台账写回 |
-| **全量收口** | `mvn -o -T1C clean verify` + A1–A15 断言脚本绿 + 对拍脚本绿 | 绿且 `skipped=0`（§五.8 守门四规则） |
+| **全量收口** | `mvn -o -T1C clean verify` + A1–A16 断言脚本绿 + 对拍脚本绿 | 绿且 `skipped=0`（§五.8 守门四规则） |
 
 每域独立 stop point：跑绿后停下等用户 review，再决定继续。
 
@@ -229,7 +229,7 @@ B 侧 RAG 仓路径见 §1.0b（**只读**，不接受写入）。RAG-V1 不是�
 | **[`docs/决策记录.md`](docs/决策记录.md)** —— **D1–D18** + P1–P7 + 关系图 | 动结构前 |
 | **[`docs/Mapping_Table/`](docs/Mapping_Table/_INDEX.md)** —— **抄写路线图**（§1.0c） | 填实现前 |
 | **[`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)** —— B 侧的坑 → 本仓处置 | 填实现前 |
-| **[`docs/架构符合性断言.md`](docs/架构符合性断言.md)** —— A1–A15 | 写测试 / 接框架时 |
+| **[`docs/架构符合性断言.md`](docs/架构符合性断言.md)** —— A1–A16 | 写测试 / 接框架时 |
 | **[`docs/GORM-MP-语义对照.md`](docs/GORM-MP-语义对照.md)** —— B 侧持久层写法 → 本仓 MP 用法 | 写 Mapper / Entity / 事务时 |
 | **[`docs/Worktree.md`](docs/Worktree.md)** —— 并发工作树方法论 | 并行开工前 |
 | **[`docs/Lombok-使用规范.md`](docs/Lombok-使用规范.md)** —— **D18** 展开注释强制 | 写实体 / 用 Lombok 时 |
@@ -240,7 +240,7 @@ B 侧 RAG 仓路径见 §1.0b（**只读**，不接受写入）。RAG-V1 不是�
 ### 7.3 工具与孤儿
 
 完整工具清单见 [`tools/README.md`](tools/README.md) 与 [`tools/difftest/README.md`](tools/difftest/README.md)。**改完目录结构必跑** `python3 tools/gen-file-tree.py`（按实际文件系统生成 14 份文件树 ⇒ 不会与代码漂）。
-- **三道守门** —— `check-mapping-coverage.py`（两方对照八重校验）· `check-arch-invariants.py`（**A1–A15**，`--self-test` 自证判据能红，空壳类 `PENDING` **不算 PASS**）· `check-docs-vs-tree.py`（docs ↔ 文件树对账）· ⬜ 待实现 3 个
+- **三道守门** —— `check-mapping-coverage.py`（两方对照八重校验）· `check-arch-invariants.py`（**A1–A16**，`--self-test` 自证判据能红，空壳类 `PENDING` **不算 PASS**）· `check-docs-vs-tree.py`（docs ↔ 文件树对账）· ⬜ 待实现 3 个
 > ⚠️ **B 仓有 4 个已跑通的守门脚本本仓还没有**：`semantic-probe/` · `errmsg-probe/` · `check-plaintext400-headers.sh` · `check-{grpc-interceptor-wiring,jar-executable,tomcat-limits}.py` ⇒ 移植清单见 [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)。
 
 ## 八、新增组件检查清单
@@ -263,7 +263,7 @@ B 侧 RAG 仓路径见 §1.0b（**只读**，不接受写入）。RAG-V1 不是�
 - [ ] **写路径形态已知** —— `updateById(entity)` 还是 `update(null, wrapper)`？两者修法不同
 - [ ] **HTTP 断言走真 Tomcat** —— 断言 `Content-Type`/`nosniff`/状态行时不用 MockMvc
 - [ ] **守门脚本合规** —— 计数取回归日志汇总 + 断言 `skipped=0` + 排除项用前缀匹配（§五.8）
-- [ ] **断言仍绿** —— `check-arch-invariants.py`（A1–A15）+ `check-docs-vs-tree.py`（docs ↔ 文件树）
+- [ ] **断言仍绿** —— `check-arch-invariants.py`（A1–A16）+ `check-docs-vs-tree.py`（docs ↔ 文件树）
 - [ ] **工具链 = Jackson 2 + Boot 3.5**（D14）—— 只用 `com.fasterxml.jackson.*` · pom 里**零** Jackson 2 排除项 · **不引 Boot 4 专有 artifact**
 - [ ] **台账已写** —— 偏离写 Intentional_Deviations，踩坑写 Pitfalls，漂移写 DRIFT
 - [ ] **文档已更新** —— 「已修/未修」断言必须带**核对日期**，否则按 `UNKNOWN` 处理

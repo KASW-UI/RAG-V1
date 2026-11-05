@@ -146,8 +146,15 @@ def tree_of(base, pkg_root):
         # ⚠️ 排除构建产物目录（`target/`）—— 否则编译一次就会把 .class 混进文件树
         # ⚠️ 排除 macOS 元数据（`.DS_Store`）—— 它已被 .gitignore 排除，不属于源码树，
         #    但本脚本直接扫文件系统 ⇒ 不显式跳过就会渲染进文件树（2026-10-26 · D11 重生成时暴露）
-        SKIP = {"target", ".DS_Store"}
-        entries = sorted((e for e in d.iterdir() if e.name not in SKIP),
+        # ⚠️ 排除 **IDE 元数据**（2026-11-05 · 合并工作树时暴露）——
+        #    Eclipse 的 `.settings/` `.classpath` `.factorypath` `.project` 与 IntelliJ 的
+        #    `.idea/` `*.iml` **都是未跟踪的本地垃圾**（`git ls-files` 查不到）⇒ ⇒ 同样会被
+        #    本脚本扫进文件树 ⇒ ⇒ 12 个域的文件树被污染（hot 模块尤其明显）。
+        #    ⚠️ 判据依据 = **它们不在版本控制里** ⇒ 不是源码 ⇒ 不属于源码树。
+        SKIP = {"target", ".DS_Store",
+                ".settings", ".idea", ".classpath", ".factorypath", ".project", ".git"}
+        entries = sorted((e for e in d.iterdir()
+                          if e.name not in SKIP and e.suffix != ".iml"),
                          key=lambda p: (p.is_file(), p.name))
         dirs  = [e for e in entries if e.is_dir()]
         files = [e for e in entries if e.is_file()]

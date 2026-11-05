@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""架构符合性守门（A1–A15）。
+"""架构符合性守门（A1–A16）。
 
 > 断言的完整定义 → [`../../docs/架构符合性断言.md`](../../docs/架构符合性断言.md)
 
@@ -21,8 +21,8 @@
 
 | 契约 | 形态 | 适用断言 |
 |---|---|---|
-| **A** | B 侧部署等价（api / rpc 分离） | A1 · A2 · A3 · A4–A15 |
-| **B** | Spring 惯用（api + rpc 合并）★ RAG-V1 | A4–A15 |
+| **A** | B 侧部署等价（api / rpc 分离） | A1 · A2 · A3 · A4–A16 |
+| **B** | Spring 惯用（api + rpc 合并）★ RAG-V1 | A4–A16 |
 
 ⚠️ **A1 / A2 / A3 是 api/rpc 分离的派生物**，合并形态下它们**自动消失**。
 ⇒ 在 `--contract B` 下它们报 **`N/A`**，**不得改成红灯**（AGENTS.md §二 D1 连带效应）。
@@ -1102,6 +1102,53 @@ def check_a15(root: pathlib.Path, contract: str) -> Result:
 
 
 # ---------------------------------------------------------------------------
+# A16 · 任何 yml 的**顶层键不得重复**（YAML 重复键 ⇒ 解析器行为不确定）
+# ---------------------------------------------------------------------------
+def check_a16(root: pathlib.Path, contract: str) -> Result:
+    """A16 · 配置文件里**同一层不得出现重复键**。
+
+    🔴 **为什么要有这条**（2026-11-05 · 合并工作树时撞出）：**两个来源各自改了同一份 yml**
+    ⇒ Git 合并**可能**把两段内容都留下来 ⇒ ⇒ **同一层出现重复的顶层键**
+    ⇒ ⇒ 实测：`otel:` 在 `service/comment` / `service/task` / `service/favorite`
+    的 `application.yml` 里**各出现两次**（域 lane 自己那段 ＋ 收口域统一补的那段）
+    ⇒ ⇒ **YAML 重复键是未定义行为**：SnakeYAML 默认「后者覆盖前者」（⇒ 静默生效一份），
+    换更严的解析器就**直接报错** ⇒ ⇒ 且**读者会看到两套互相矛盾的口径**
+    ⇒ ⇒ **零编译错误、零测试红灯**（配置面 ⇒ 没有任何代码路径会报错）。
+
+    ⚠️ **判据只查「同一层重复」**：YAML 的重复键问题**发生在同一层**；
+    不同层的同名键（如 `spring.application.name` 与 `otel.service.name`）是**正常**的。
+    """
+    viol, checked = [], 0
+    for yml in sorted(root.glob("service/**/src/main/resources/application.yml")):
+        if "target" in yml.parts:
+            continue
+        checked += 1
+        rel = yml.relative_to(root).as_posix()
+        seen: dict = {}
+        for i, raw in enumerate(yml.read_text(encoding="utf-8").split("\n"), 1):
+            s = raw.strip()
+            if not s or s.startswith("#") or s.startswith("-"):
+                continue
+            m = re.match(r"^([A-Za-z0-9_.\-]+):(.*)$", s)
+            if not m:
+                continue
+            key, rest = m.group(1), m.group(2).strip()
+            # 🔴 **只认「顶层键」**：缩进为 0 的才算；带值的（`key: value`）与
+            #    不带值的（`key:` ＝ 容器）**都要算**（两者都能重复）。
+            if raw[:1] in (" ", "\t"):
+                continue
+            if key in seen:
+                viol.append(f"{rel} ⇒ 顶层键 `{key}` **重复**（L{seen[key]} 与 L{i}）"
+                            f" ⇒ ⇒ YAML 重复键 ⇒ 解析行为不确定（SnakeYAML 后者覆盖前者，"
+                            f"更严的解析器直接报错）⇒ ⇒ 必须只保留一份")
+            else:
+                seen[key] = i
+    if viol:
+        return Result(FAIL, f"{len(viol)} 处重复顶层键（已核 {checked} 份 yml）", viol)
+    return ok(f"{checked}/{checked} 份 yml 的顶层键均唯一")
+
+
+# ---------------------------------------------------------------------------
 # 断言注册表
 # ---------------------------------------------------------------------------
 CHECKS = [
@@ -1120,6 +1167,7 @@ CHECKS = [
     ("A13", "用了 Lombok ⇒ 须写原本的完整代码展开块", check_a13),
     ("A14", "追踪导出配置（otel 段）齐备且服务名自洽", check_a14),
     ("A15", "保护层每个 enabled 开关都必须有消费点（接线守门）", check_a15),
+    ("A16", "yml 顶层键不得重复（YAML 重复键）", check_a16),
 ]
 
 
@@ -1142,6 +1190,7 @@ FIXTURE_VIOLATIONS = {
     "A13": "Lombok 类缺「原本的完整代码」展开块",
     "A14": "域的 application.yml 缺 `otel:` 段（追踪导出配置）",
     "A15": "保护层开关（ProtectionProperties 的 enabled）共享层零消费点",
+    "A16": "yml 顶层键重复（YAML 重复键）",
 }
 
 
@@ -1228,7 +1277,9 @@ def build_fixture(base: pathlib.Path) -> pathlib.Path:
     # A14 违规：`comment-service` 的 application.yml **缺 `otel:` 段**
     #   ⇒ 端点为空 ⇒ 共享层不装 exporter ⇒ 该域的 span 一条都导不出去（静默失效）
     _write(root / "service/comment/src/main/resources/application.yml",
-           "spring:\n  application:\n    name: comment-service\n")
+           "spring:\n  application:\n    name: comment-service\n"
+           "otel:\n  service:\n    name: comment-service\n"
+           "otel:\n  service:\n    name: comment-rpc\n")   # A16 违规：顶层 `otel:` 重复两次
     # A12 违规：同名类，不同包
     _write(root / f"{j}/Dup.java", "package com.rag.x;\npublic class Dup { }\n")
     _write(root / f"{j}/sub/Dup.java", "package com.rag.x.sub;\npublic class Dup { }\n")
@@ -1403,7 +1454,7 @@ def self_test() -> int:
 # 主流程
 # ---------------------------------------------------------------------------
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="架构符合性守门（A1–A15）")
+    ap = argparse.ArgumentParser(description="架构符合性守门（A1–A16）")
     ap.add_argument("--contract", choices=["A", "B"], default="B",
                     help="断言绑定契约：A=api/rpc 分离（B 侧部署等价）· B=api+rpc 合并（RAG-V1，默认）")
     ap.add_argument("--only", nargs="+", metavar="A#", help="只跑指定断言，如 --only A4 A11")
