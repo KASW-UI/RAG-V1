@@ -13,13 +13,123 @@ spring:
     redis:
       host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      # ⚠️ 取值出处：B 侧 favorite-api 的 yaml 写 `timeout: 3s`
+      #    ⇒ 读命令超时 3s（与 go-redis v9.20.0 的 ReadTimeout 默认值一致）。
+      timeout: 3s
+      # ⚠️ **connect-timeout（TCP 连接超时）必须显式写 5s**：
+      #    Go 出处（消费点）：service/favorite/api/internal/svc/service_context.go:20
+      #        redisDB := redis.MustNewRedis(c.BizRedis)
+      #    → go-zero core/stores/redis/redisclientmanager.go:32-40 构造 red.Options
+      #      ⇒ **没有设置 DialTimeout** ⇒ 走 go-redis v9.20.0 options.go:338-340 的默认
+      #      DialTimeout = **5s**。
+      #    ⚠️ **不配 ⇒ 落 Lettuce 的默认 10s** ⇒ 与 Go 差 2 倍（连接不可达时要等 2 倍时间）。
+      #    ⚠️ `spring.data.redis.timeout` 只管**命令**超时，**不再兼管**连接超时。
+      connect-timeout: 5s
+      # ⚠️ 连接池 = 与 B 侧**逐轴**对齐（B 侧 favorite-api 的 yaml 同款）：
+      #    min-idle: 8  ← go-zero 构造 red.Options 时只传 `MinIdleConns: idleConns`
+      #                    （常量 idleConns = 8 ⇒ 有确切值 ⇒ 精确对齐）
+      #    max-active: 64 ← Go 的 PoolSize **未设** ⇒ 落库默认 `10 × GOMAXPROCS`
+      #                    （机器相关、无法逐值对齐）⇒ 按**数量级**对齐（性能面）
+      #    max-idle: 16   ← Go 的 MaxIdleConns **无对应项**（默认 0 = 无上限）
+      #                    ⇒ 本项 16 = **比 Go 更严**（只影响空闲连接回收时机，
+      #                      **不影响命令结果**）⇒ 属可登记残留
+      #    max-wait: 4s   ← Go 的 PoolTimeout = ReadTimeout + 1s = 4s
+      #                    ⇒ **必配项**：不配 ⇒ 落 commons-pool2 的 `DEFAULT_MAX_WAIT = -1`
+      #                    ⇒ `GenericObjectPool:306` 走 `idleObjects.takeFirst()` ⇒ **无限等**；
+      #                    且 Lettuce 的 3s 命令超时**此时尚未起算**（借连接发生在写命令之前）
+      #                    ⇒ ⇒ 光加池反而比 Go 更糟。
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 64
+          max-idle: 16
+          min-idle: 8
+          max-wait: 4s
+  # 🔴🔴 **这一段必须在 `spring:` 下面**（键名 = `spring.flyway.*`）：
+  #   放到**顶层** ⇒ 键名变成 `flyway.*` ⇒ Spring Boot **完全读不到**
+  #   ⇒ 下面 4 项**全部静默失效**：
+  #     · baseline-on-migrate ⇒ 共享 schema 下**启动直接失败**
+  #       （"Found non-empty schema(s) but no schema history table"）；
+  #     · baseline-version: 0 ⇒ baseline 打在 version 1 ⇒ **V1 的 SQL 从未执行**
+  #       ⇒ favorite_folder 表永远建不出来；
+  #     · table: flyway_schema_history_favorite ⇒ 退回**默认的 schema 级账本名**
+  #       ⇒ 与其它域**撞号**（AGENTS.md §六 的核心问题）；
+  #     · locations ⇒ 恰好与默认值相同（本条不表现差异）。
+  #   ⚠️ **这 4 项失效时应用照样能起来、测试照样能跑绿**（schema 空时首次迁移正常）
+  #   ⇒ ⇒ 只能靠「schema 预先非空 + 账本不存在」的真触发场景才暴露。
+  #
+  # **B 出处**：B 侧 `service/favorite/favorite-rpc/src/main/resources/application.yml:104-129`
+  # （B 侧 api 侧**没有** flyway 段 ⇒ 只有 rpc 侧跑迁移 ⇒ C 侧合并为一个 app 后由本段承担）。
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    # 🔴 **baseline-version 必须显式钉 0**：
+    #    本模块与其它域连同一个库、同一个 public schema ⇒ 先启动的模块已把
+    #    schema 弄非空 ⇒ 本模块启动时 Flyway 看到「非空 schema + 没有自己的账本」
+    #    ⇒ 因 baseline-on-migrate=true ⇒ **在 V1 处打 baseline 标记**（默认 baseline-version=1）
+    #    ⇒ **V1 的 SQL 从未执行** ⇒ favorite_folder 表永远建不出来。
+    #    baseline-version=0 ⇒ baseline 标记打在 version 0 ⇒ **V1 之后全部迁移照常执行**。
+    baseline-version: 0
+    locations: classpath:db/migration
+    schemas: public
+    # ⚠️ **独立账本表名**：`flyway_schema_history` 是 **schema 级**账本，一个 schema 只能有一本账。
+    #    各域的 V1 版本号直接撞车且内容不同（favorite_folder vs like_record vs follow_relation vs …）
+    #    ⇒ 改账本表名即可消除病根，**迁移文件名一个字都不用动**。
+    table: flyway_schema_history_favorite
   cloud:
     nacos:
       discovery:
         server-addr: ${NACOS_ADDR:nacos:8848}
+        # ⚠️ namespace / group 必须与**注册侧**一致（public / DEFAULT_GROUP）：
+        #    B 侧 favorite-api 的 yaml 写死这两个默认值，B 侧 favorite-rpc 同款
+        #    ⇒ 两边不一致 ⇒ 解析不到 ⇒ 所有业务码塌成 1015（service busy）。
+        namespace: ${NACOS_NAMESPACE:public}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        # 🔴🔴 **必须显式关掉自动注册**（照抄 B 侧 favorite-rpc 的同名行 · 2026-11-04 补）
+        #
+        # 【为什么】`spring-cloud-starter-alibaba-nacos-discovery` 的**自动注册**
+        # （`NacosAutoServiceRegistration` 继承 `AbstractAutoServiceRegistration`）
+        # ⇒ 监听 `WebServerInitializedEvent` ⇒ **注册的是 web 容器端口**（18894），
+        # 而本域手写的 `wiring/FavoriteNacosRegistration` 注册的是 **gRPC 端口**（19003）。
+        # ⇒ 自动注册一旦生效 ⇒ 同一个服务名下出现**两个端口的实例**
+        # ⇒ 调用方按 Nacos 给出的地址连过来 ⇒ 连到一个只提供 HTTP 路由的端口
+        # ⇒ **gRPC 链路直接断**（业务码塌成 1015）。
+        #
+        # ⚠️ **这是 2026-11-04 真启动实测抓到的**（不是推断）：
+        #   修复前真 fat jar 起来后，Nacos 的服务清单里**同时**出现
+        #     `favorite-service`（= 自动注册，指向 **web 端口** 18894）
+        #     `favorite-rpc`   （= 手写注册，指向 **gRPC 端口** 19003）
+        #   ⇒ 正是 B 侧 rpc 侧注释里警告的「错端口实例」。
+        #
+        # 【B 出处】service/favorite/favorite-rpc/src/main/resources/application.yml:140-156
+        #   （含同款完整理由；B 侧 api 侧**没有**这一行 ⇒ 因为 B 侧 api 侧没有手写注册类）
+        # ⇒ **合并裁决**：C 侧是 api + rpc 合并进程 ⇒ 取 rpc 侧那行
+        #   （与 article / like / follow 三域同款：都关掉自动注册、都只保留 gRPC 端口的手写注册）。
+        register-enabled: false
 
 server:
   port: ${FAVORITE_HTTP_PORT:8894}
+  address: 0.0.0.0
+  servlet:
+    context-path: /
+  # ⚠️ 容器三旋钮：对齐 B 侧 favorite-api 的 yaml（逐字照抄）：
+  #    ① relaxed-query-chars：Go 的 net/http 不校验 query 里的 [ ]，且 go-zero httpx.GetFormValues
+  #       明确支持方括号数组记法；Tomcat 默认拒绝 ⇒ 400 + HTML 错误页（不是业务信封）
+  #    ② max-parameter-count：Go = go-zero httpx/util.go:15 maxFormParamCount=2048（应用层判）
+  #    ③ max-http-request-header-size：Go 的**真实**上限 = DefaultMaxHeaderBytes(1<<20)
+  #       + 4096（net/http/server.go:941 `return int64(s.maxHeaderBytes()) + 4096 // bufio slop`）
+  #       ⇒ 1 MiB + 4 KiB = **1028KB**；Boot 默认 8KB
+  # ⚠️ **② 是「写了但被共享层覆盖」的值（B 侧同样如此，不是 C 侧漂移）**：
+  #    共享层 `common/.../WebAutoConfiguration#seaTomcatParameterLimitCustomizer`
+  #    **无条件**把 Tomcat 的 maxParameterCount 抬到 **10001**
+  #    （= Go `net/url` 的段数上限 10000 + 1）⇒ 判定权交还应用层
+  #    （本域 `interceptor/QueryLimitInterceptor` 按 Go 的「非空值 2048」口径判定）。
+  #    ⚠️ B 侧 favorite-api 的 yaml 也写 2048、也被同一份共享层覆盖 ⇒ **两侧同形** ⇒ 照抄。
+  tomcat:
+    relaxed-query-chars: ["[", "]"]
+    max-parameter-count: 2048
+  max-http-request-header-size: 1028KB
 
 grpc:
   server:
@@ -27,8 +137,204 @@ grpc:
     address: 0.0.0.0
     reflection-service-enabled: false
   client:
+    # ⚠️ **本域没有 favorite-rpc 客户端**：D2 域内直连（api 直接注入 domain service）⇒
+    #    只有下面这两个**出向**依赖。
     # ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而上游 zrpc 是明文 gRPC。
     #    不写会静默变 TLS —— 见《完全spring化的文件树》§9.1 断言 A4。
+    #
+    # ⚠️ **地址必须是三斜杠 `discovery:///<service>`**，不是两斜杠：
+    #    devh 的 `DiscoveryClientResolverFactory#newNameResolver` 判定 uri.getPath()
+    #    必须非空、长度 > 1、以 "/" 开头 ⇒ 两斜杠写法会直接抛 IllegalArgumentException
+    #    ⇒ 校验发生在任何网络调用之前 ⇒ **与 Nacos 在不在线无关**
+    #    ⇒ 炸点在 gRPC client bean 后处理 ⇒ **连 Flyway 都跑不到** ⇒ 真 fat jar 起不来。
+    #    ⚠️ 三斜杠**不改变服务发现名**：devh 取 path.substring(1) = "user-rpc" / "article-rpc"。
+    #
+    # **B 出处**：B 侧 favorite-rpc 的 yaml:252-289
+    #   （Go etc/favorite.yaml:37-41 UserRpc.Etcd.Key: user.rpc
+    #      · Go etc/favorite.yaml:43-47 ArticleRpc.Etcd.Key: article.rpc）。
+    user-rpc:
+      address: discovery:///user-rpc
+      enable-keep-alive: true
+      keep-alive-time: 30s
+      negotiation-type: plaintext
+    article-rpc:
+      address: discovery:///article-rpc
+      enable-keep-alive: true
+      keep-alive-time: 30s
+      negotiation-type: plaintext
+
+# =============================================================================
+# 🔴 业务配置（对齐 Go 端 UserAuth.*）
+# -----------------------------------------------------------------------------
+# 对应 Go: UserAuth.AccessSecret / UserAuth.AccessExpire
+#          （service/favorite/api/etc/favorite.yaml:10-12）
+# **B 出处**：B 侧 favorite-api 的 yaml:159-175
+# =============================================================================
+favorite-api:
+  user-auth:
+    # 🔴 2026-10-29（B 侧 G3 阶段 1 · P0 #8）：**「yaml 不给默认值」只挡得住一半**
+    #    ⇒ 另一半必须由**代码守卫**挡
+    #    ⇒ 守卫 = `FavoriteApiProperties#verifyAccessSecret()`（@PostConstruct）
+    #      ⇒ 下面的 `access-secret: ${FAVORITE_JWT_SECRET}` **没有默认值**
+    #      ⇒ ⚠️ **单靠 yaml，缺变量时并不会炸**：Spring 的 `@ConfigurationProperties` 绑定器
+    #        遇到**解析不出来**的占位符**不报错**，而是把**占位符原文**当成值绑上去
+    #        ⇒ ⇒ 应用**照常启动** ⇒ ⇒ 而那是**仓里公开可知的一串字符**
+    #        ⇒ ⇒ 🔴 **比空密钥更危险**（HMAC 密钥公开 ⇒ 谁都能伪造 token）。
+    #      ⇒ ⚠️ 同理，**变量存在但值为空串**时，Spring 的 PropertyPlaceholderHelper
+    #        把**空串当合法值**（不走默认值、也不报错）⇒ 属性绑成 "" ⇒ 空签名密钥 ⇒ token 可伪造。
+    #      ⇒ ⇒ 「未解析占位符」与「空串」**两条都**由 `verifyAccessSecret()` 显式拒
+    #      ⇒ ⇒ **缺变量 / 空串 / 占位符原文 三条路都 fail-closed**。
+    access-secret: ${FAVORITE_JWT_SECRET}
+    access-expire: ${FAVORITE_JWT_EXPIRE:2592000}   # 30 天，与 Go 端 favorite.yaml:12 一致
+
+# =============================================================================
+# 🔴🔴 `rag.protection.outbound-deadline` —— **缺这一行 = 出向 gRPC 零期限**
+# -----------------------------------------------------------------------------
+# ⚠️⚠️ **这是「配置里没写」≠「没开」的活教材（AGENTS.md §3.3.1）**：
+#   共享层 `ProtectionProperties.OutboundDeadline#capMillis` **默认 0 = 不启用**
+#   ⇒ ⇒ **不写下面这 3 行 ⇒ 出向 gRPC 调用【没有任何 deadline】**
+#   ⇒ ⇒ 而 B 侧 zrpc 客户端是**无条件**装 `TimeoutInterceptor`（2000ms）
+#   ⇒ ⇒ C 侧会比 B 侧**松到无穷** ⇒ 下游不可达时请求**永久挂起**（不是超时，是挂死）。
+#
+# **B 出处（两个面都有 ⇒ 合并后仍必须有）**：
+#   · B 侧 api 侧：service/favorite/favorite-api/src/main/resources/application.yml:194-197
+#       rag:
+#         protection:
+#           outbound-deadline:
+#             cap-millis: ${FAVORITE_API_OUTBOUND_DEADLINE_CAP_MILLIS:2000}
+#   · B 侧 rpc 侧：service/favorite/favorite-rpc/src/main/resources/application.yml:219-221
+#       rag:
+#         side: rpc
+#         protection:
+#           outbound-deadline:
+#             cap-millis: 2000
+#   ⇒ 两个面**都是 2000** ⇒ 合并成一个进程后取 2000（无歧义）。
+#
+# **Go 出处（消费点，不是声明点）**：
+#   go-zero@v1.10.2/zrpc/config.go:31           `Timeout int64 \`json:",default=2000"\``
+#   go-zero@v1.10.2/zrpc/internal/config.go:15  `Timeout bool \`json:",default=true"\``
+#   go-zero@v1.10.2/zrpc/internal/client.go:113-117（**无条件**装 TimeoutInterceptor）
+#   ⇒ 本域 Go 侧 `etc/favorite.yaml` 的 `UserRpc:` / `ArticleRpc:` 两段**都没写 Timeout**
+#   ⇒ ⇒ 恒 2000ms。
+#
+# ⚠️ **本域只配参数**：封顶逻辑由共享层 `OutboundDeadlineInterceptor`
+#   （`@GrpcGlobalClientInterceptor` ⇒ 装在**每个**出向 devh 调用上）**唯一**承担
+#   ⇒ 域侧不得再造私有副本（副本数 = 漂移面）。
+# ⚠️ **不要**改用空配的 `grpc.client.*.deadline`（那是调用点自带 deadline，
+#   与「客户端硬上界」不是一回事 ⇒ min 语义下会漏掉组件级上界）。
+# ⚠️ **不写 `rag.side`**：B 侧 rpc 面写 `side: rpc`（让 api 侧 web Bean 不进容器）
+#   ⇒ 但 C 侧是 **api + rpc 合并进程**（D1 + D7）⇒ 共享层默认 `side=api`
+#   ⇒ api 侧 web Bean **必须**在容器里 ⇒ ⇒ 写 `side: rpc` 会**关掉本域需要的 web 面**。
+#   ⇒ 该差异属「合并进程」的必然结果，不是配置漂移。
+rag:
+  protection:
+    outbound-deadline:
+      cap-millis: ${FAVORITE_OUTBOUND_DEADLINE_CAP_MILLIS:2000}
+
+# =============================================================================
+# observability —— **两个**超时预算（D1 合并 ⇒ 两个键都要写）
+# =============================================================================
+# ⚠️⚠️ **这两个键缺失 = 机制静默不生效**（AGENTS.md §3.3.1 ·「配置里没写」≠「没开」）：
+#   共享层 `ObservabilityProperties` 的两个 timeout **没有 env 兜底**，
+#   缺省即 `Duration.ZERO`（不限时）⇒ ⇒ **不写这两行 ⇒ 3s HTTP 预算与 2s gRPC 超时都不存在**
+#   ⇒ ⇒ 慢请求**不会**返回 503 / `Request Timeout`，gRPC 调用也**不会**被服务端超时打断。
+#
+# 取值依据（两侧各一段）：
+#   · HTTP 侧 3s：B 侧 favorite-api 的 yaml **未配置** Timeout ⇒ 实际生效值来自
+#     go-zero v1.10.2 `rest/config.go:55` `Timeout int64 \`json:",default=3000"\`` ⇒ 3000ms。
+#     **B 出处**：service/favorite/favorite-api/src/main/resources/application.yml:243-246
+#   · gRPC 侧 2s：B 侧 favorite-rpc 的 yaml **未配置** Timeout ⇒ 走
+#     go-zero v1.10.2 `zrpc/config.go:31` 的 `default=2000` ⇒ 2000ms。
+#     **B 出处**：service/favorite/favorite-rpc/src/main/resources/application.yml:374-376
+#     （Go 侧 favorite.go:40 `observability.DisableNativeRpcTimeout(&c.RpcServerConf)`）
+observability:
+  http-timeout: 3s
+  rpc-timeout: 2s
+
+# =============================================================================
+# otel —— 链路导出
+# =============================================================================
+# **B 出处**：
+#   · B 侧 api 侧：service/favorite/favorite-api/src/main/resources/application.yml:221-230
+#       otel.service.name=favorite-api · endpoint=http://${OTEL_ADDR}:${OTLP_PORT} · protocol=grpc
+#       · traces.sampler=parentbased_always_on
+#   · B 侧 rpc 侧：service/favorite/favorite-rpc/src/main/resources/application.yml:352-362
+#       otel.service.name=favorite-rpc · endpoint=${OTEL_EXPORTER_OTLP_ENDPOINT}（**不带 scheme**）
+#       · traces.exporter=otlp · traces.sampler=parentbased_always_on
+# ⇒ **合并裁决**（与 article / follow / like 三域同款）：
+#   · scheme：api 侧带 `http://`、rpc 侧裸 `host:port` ⇒ 共享层两种都认 ⇒ 取**带 scheme** 的
+#     那一侧（显式优于隐式）· protocol=grpc 同取 api 侧写法。
+#   · service.name：两侧分别是 `favorite-api` / `favorite-rpc` ⇒ C 侧是**合并进程**
+#     ⇒ 取 `favorite-service`（= 本模块 `spring.application.name`），
+#     与 article / follow 的合并裁决同形。
+#   · sampler：两侧**都**是 `parentbased_always_on` ⇒ 无歧义。
+#     （共享层 `GoStyleOtelConfig#toRatio` 把 `always_on` / `parentbased_always_on`
+#     都映射成 ratio = 1.0。）
+otel:
+  service:
+    name: favorite-service
+  exporter:
+    otlp:
+      endpoint: http://${OTEL_ADDR:jaeger}:${OTLP_PORT:4317}
+      protocol: grpc
+  resource:
+    attributes:
+      service.name: favorite-service
+  traces:
+    sampler: parentbased_always_on
+
+# =============================================================================
+# favorite —— B 侧 rpc 面的域专属配置（D1 合并 ⇒ 从 rpc 侧搬过来）
+# =============================================================================
+# **B 出处**：service/favorite/favorite-rpc/src/main/resources/application.yml:288-332
+# ⚠️ **为什么必须显式写出来**（默认值本身是对的）：
+#   `FavoriteRpcProperties` 的字段默认值与 B 侧**逐条一致**
+#   （subject-ref-v2-facts=false · dispatch.enabled=false · dc-timeout=8s · once=false
+#     · authority.enabled=false · legacy-preflight.enabled=false），
+#   **但 B 侧 yaml 里有三处 env 占位符**：
+#     dc-endpoint: ${DC_PLATFORM_EVENT_URL:} · dc-token: ${DC_PLATFORM_SERVICE_TOKEN:}
+#     authority.token: ${FAVORITE_AUTHORITY_TOKEN:}
+#   ⇒ ⇒ C 侧**不写** ⇒ 这三个环境变量在 C 侧**完全无效**（properties 默认值是空串，
+#   不读 env）⇒ ⇒ **env 绑定这一层就是漂移** ⇒ ⇒ 显式写出来才能对齐。
+favorite:
+  # ---------- subject_ref 版本（对应 Go config.go:17-18）----------
+  # Go: SubjectRefV2Facts bool `json:",optional"`，注释明写 "Omitted is v1"。
+  # ★ **默认必须是 false（v1）**：Go 侧省略即为 v1，而 v2 是尚未放开的候选形态。
+  subject-ref-v2-facts: false
+
+  fact:
+    # ---------- 事实投递（对应 Go cmd/fact-dispatch/main.go）----------
+    # Go :35-40 要求三个环境变量齐全，任一缺失即 return error → 进程退出。
+    # Java 侧是单 JVM 合并进程，**不能因为缺 DC 配置就让整个 favorite 起不来**
+    # ⇒ 改为「默认关闭 + 启动时显式告警」；关闭时该功能完全不参与运行。
+    dispatch:
+      enabled: false
+      # Go :56 `http.Client{Timeout: 8 * time.Second}`
+      dc-endpoint: ${DC_PLATFORM_EVENT_URL:}
+      dc-token: ${DC_PLATFORM_SERVICE_TOKEN:}
+      dc-timeout: 8s
+      # Go :23 的 -once flag（单次模式，适合 cron / CronJob）。
+      once: false
+
+    # ---------- 权威读（对应 Go cmd/fact-authority/main.go + internal/authority/http.go）----------
+    # Go :35 要求 FAVORITE_AUTHORITY_LISTEN 非空 + FAVORITE_AUTHORITY_TOKEN ≥32 字节。
+    # ⚠️ 本端点默认关闭 ⇒ 不新增任何对外 wire 面。
+    authority:
+      enabled: false
+      token: ${FAVORITE_AUTHORITY_TOKEN:}
+
+    # ---------- legacy 预检（对应 Go cmd/fact-legacy-preflight/main.go）----------
+    # Spring 进程内**没有退出码语义** ⇒ 改为「结构化报表 + 由人工/CI 判读日志」。
+    # ✅ **C 侧已实现**（决策 **P6-c** 拍板 = **① Actuator 自定义端点** · 2026-11-05）：
+    #   · 报表计算 = service/FavoriteLegacyPreflightService.java（照抄 Go 的逐字段判定）
+    #   · 触发入口 = wiring/FavoriteLegacyPreflightEndpoint.java
+    #     （@WebEndpoint("favorite-legacy-preflight") ⇒ /actuator/favorite-legacy-preflight）
+    #   · 替代信号 = **HTTP 状态码**（200 = clear / 409 = 未裁决 / 500 = 读取失败）
+    #     ＋ **结构化日志**（outcome=succeeded|not_reconciled|failed）
+    # ⚠️ 本开关 = 域语义开关（报表能力是否可用）；**端点本身还要** management.endpoint.favorite-legacy-preflight.enabled
+    #   ⇒ **两个都开**才暴露 ⇒ ⇒ 默认（都是 false）⇒ 端点**不注册** ⇒ 访问得 404。
+    legacy-preflight:
+      enabled: false
 
 mybatis-plus:
   configuration:
@@ -38,51 +344,60 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        # 🔴 **合并裁决**：B 侧 api 写 `health,info,prometheus`；
+        #    B 侧 rpc 写 `health,info,prometheus,metrics` ⇒ 取**并集**（like 域同款）。
+        # ➕ **C 侧独有**：`favorite-legacy-preflight`（legacy 只读预检的 Actuator 端点 ·
+        #    决策 P6-c 拍板①）⇒ ⚠️ **它在下面的 `management.endpoint.*.enabled` 闸着**，
+        #    默认 false ⇒ **默认状态下这个 id 只是清单里的一条，访问得到 404** ⇒
+        #    ⇒ 「列进清单」≠「暴露了」（AGENTS.md §3.3.1：配置里写了 ≠ 生效了）。
+        include: health,info,prometheus,metrics,favorite-legacy-preflight
+    enabled-by-default: false
   endpoint:
     health:
-      show-details: always
-
-# =============================================================================
-# OpenTelemetry OTLP exporter（对齐 B 侧 Telemetry.*）
-# =============================================================================
-# ⚠️ **2026-11-05 补齐（`global` 收口域统一处置 · 5 域一起补）**：本段此前**整段缺失**
-#    ⇒ 共享层 `GoStyleOtelConfig` 读到的 `otel.exporter.otlp.endpoint` = null
-#    ⇒ ⇒ 按 B 侧的 `if len(c.Endpoint) > 0` 口径**不装 exporter**
-#    ⇒ ⇒ 本域的 span **一条都导不出去**（跨域链路在 Jaeger 侧断链）。
-#    ⇒ 同款缺失共 **6 个域**：hot（hot 域已补）＋ comment / favorite / message / task / user-service
-#    ⇒ ⇒ 由收口域**统一补齐**（避免各域各补各的再漂）⇒ 形状与 like / hot **逐条同构**。
-# ⚠️ 共享层 `GoStyleOtelConfig` 读的是 **B 侧那套键名**：
-#    `otel.service.name` / `otel.resource.attributes.service.name`（两套拼法都认）·
-#    `otel.exporter.otlp.endpoint` / `otel.exporter.otlp.protocol` /
-#    `otel.traces.sampler` / `otel.traces.sampler.arg`
-# ⇒ 端点**没有 scheme** 时共享层会补 `http://`（= B 的 WithInsecure() 明文）。
-otel:
-  # B 侧 rpc 侧的拼法（Go: Telemetry.Name = favorite-rpc）—— D1 合并后只能填**一个**值
-  service:
-    name: favorite-service
-  exporter:
-    otlp:
-      # 🔴 **合并裁决（scheme）**：B 侧 api 写 `http://${OTEL_ADDR}:${OTLP_PORT}`（带 scheme）、
-      #    B 侧 rpc 写裸 `${OTEL_EXPORTER_OTLP_ENDPOINT:jaeger:4317}`（不带 scheme）
-      #    ⇒ 共享层两种都认 ⇒ 取**带 scheme** 的那一侧（显式优于隐式）。
-      #    protocol=grpc 同样取 api 侧写法。
-      endpoint: http://${OTEL_ADDR:jaeger}:${OTLP_PORT:4317}
-      protocol: grpc
-  resource:
-    attributes:
-      # B 侧 api 侧的拼法（Go: Telemetry.Name = favorite-api）
-      # ⚠️ **D1 合并的连带偏离**：B 侧 api 填 `favorite-api`、rpc 填 `favorite-rpc`（两个值）
-      #    ⇒ 合并成一个进程后只能填**一个** ⇒ 取 `favorite-service`（= `spring.application.name`）
-      #    ⇒ **登记为 D1 连带偏离**（值侧；键名与形状逐条对齐 B 侧）。
-      service.name: favorite-service
-  traces:
-    # B 侧 api 写 `always_on`（favorite 的 api 侧写 `parentbased_always_on`）· rpc 侧写 `parentbased_always_on`
-    # ⇒ 共享层 `GoStyleOtelConfig#toRatio` 把 `always_on` 与 `parentbased_always_on`
-    #    **都**映射成 ratio = 1.0 ⇒ ⇒ **行为等价**
-    # ⇒ ⇒ 取 C 侧既有的统一写法 `always_on`（article / follow / like / hot 同款）。
-    sampler: always_on
+      enabled: true
+      # 🔴 **合并裁决**：B 侧 api **未写** show-details（Boot 默认 `never`）、
+      #    B 侧 rpc 写 `when_authorized` ⇒ 取**更严**的一侧 ⇒ 合并后不泄露组件明细。
+      show-details: when_authorized
+    info:
+      enabled: true
+    prometheus:
+      enabled: true
+    metrics:
+      enabled: true
+    # 🔴 **legacy 只读预检端点**（P6-c 拍板① · Actuator 形态）
+    # ⚠️ **默认 false ⇒ 端点不注册 ⇒ 访问 /actuator/favorite-legacy-preflight 得 404**
+    #   ⇒ ⇒ 健康检查 / K8s 探针**不会**误触发一次预检。
+    # ⚠️ 打开它要**两个**开关（少一个都打不开）：
+    #   ① 本项 management.endpoint.favorite-legacy-preflight.enabled=true
+    #      （因为上面写了 management.endpoints.enabled-by-default: false）
+    #   ② favorite.fact.legacy-preflight.enabled=true（域语义开关 · 见下方 fact 段）
+    # ⇒ 两个开关都能用 Spring 的宽松绑定从环境变量给：
+    #   MANAGEMENT_ENDPOINT_FAVORITE_LEGACY_PREFLIGHT_ENABLED=true
+    #   FAVORITE_FACT_LEGACY_PREFLIGHT_ENABLED=true
+    favorite-legacy-preflight:
+      enabled: false
+  metrics:
+    enable:
+      prometheus: true
+    tags:
+      # 🔴 **公共标签 `application` 是 B 侧的可观察面的一部分（有测试守着）**：
+      #    B 侧 favorite-rpc 的 `FavoriteRpcPrometheusCarrierGateTest:232-233` 断言
+      #    抓到的指标体里**必须**含 `application="favorite-rpc"` ⇒
+      #    「抓取侧按标签过滤」是真实用法 ⇒ ⇒ 不配这个标签 ⇒ 过滤侧一条都匹配不到。
+      #    **B 出处**：service/favorite/favorite-rpc/src/main/resources/application.yml:341-344
+      #      （`application: favorite-rpc`）· B 侧 api 侧同款（`:216-217`
+      #        `application: ${spring.application.name}` = `favorite-api`）
+      # ⇒ **合并裁决**：C 侧是单一进程 ⇒ 取合并后的服务名 `favorite-service`
+      #   （与 article 域同款：`application: article-service`）。
+      application: favorite-service
 
 logging:
   level:
+    # 🔴 **合并裁决**：B 侧 api 写 `root: INFO` + `com.rag.favorite.favorite.api: INFO`
+    #    + `com.rag.common: INFO`；B 侧 rpc 写 `root: INFO` + `com.rag: INFO`
+    #    + `io.grpc: WARN` ⇒ 取并集（article / follow / like 三域同款）。
+    #    ⚠️ `com.rag` 覆盖 B 侧 api 的 `com.rag.favorite.favorite.api` ⇒ 粒度更粗但等价
+    #    （C 侧包名已压平，D7）。
+    root: INFO
     com.rag: INFO
+    io.grpc: WARN

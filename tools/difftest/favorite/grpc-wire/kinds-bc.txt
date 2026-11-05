@@ -1,0 +1,68 @@
+# ============================================================================
+# favorite 域 gRPC 级可观测契约 · **「Java ↔ Java」档位表**（B 侧活体 ↔ C 侧活体）
+# ----------------------------------------------------------------------------
+# 配套文件：
+#   · 第三方锚（Go 真源冻结值）= grpc-wire/expected.txt
+#     ⇒ 它的 kind 列是「**Go ↔ Java**」的档位（由 B 侧仓录，本仓只读副本）。
+#   · 本文件 = 「**Java ↔ Java**」的档位（**本仓自撰**）⇒ 判「B 侧活体 == C 侧活体」。
+#
+# 🔴 **为什么必须分两张表（不能一张表判三方）**：
+#   同一个 kind 在两段里的**含义不同**：
+#     · 锚里的 OBS = 「Go ≠ Java」⇒ **已登记的库级差异**（两边都是 Java 时，这一条
+#       反而应该**相等**）⇒ 拿锚的 OBS 去判 B↔C 会**判反**；
+#     · 本表的 OBS = 「B ≠ C」⇒ **已登记的 C 侧偏离**。
+#   ⇒ ⇒ 两段判据分开写，才能既不放过「Go 变了」也不放过「C 漂了」。
+#
+# ⚠️ **本表的档位不是「期望值」** —— 期望值在锚里；本表只说「B 与 C 该怎么比」。
+#
+# 2026-11-05 实测结论：**36 / 36 条 SAME**（B 侧活体与 C 侧活体**逐字节全等**）
+#   ⇒ C 侧 favorite-service 的 gRPC 可观测契约与 B 侧 favorite-rpc **完全一致**。
+# ============================================================================
+
+# ─────────── 1. CreateFavoriteFolder（Go: create_favorite_folder_logic.go:37-118）───────────
+c01_create_folder_uid0	SAME	入参校验：userId<=0 ⇒ INVALID_ARGUMENT / 5003 / 参数错误
+c02_create_folder_name_empty	SAME	name 规范化后为空 ⇒ INVALID_ARGUMENT / 5202 / 收藏夹名称不能为空
+c03_create_folder_name_blank	SAME	纯空白同样规范化成空（TrimSpace）⇒ 与 c02 同款
+c04_create_folder_user_rpc_absent	SAME	下游缺席 ⇒ INTERNAL / 5001 / 系统内部错误（两侧都故意不接 user-rpc）
+# ─────────── 2. CreateFavorite（Go: create_favorite_logic.go:38-169）───────────
+c05_create_item_uid0	SAME	入参校验：userId<=0 ⇒ INVALID_ARGUMENT / 5003
+c06_create_item_folder0	SAME	入参校验：folderId<=0 ⇒ INVALID_ARGUMENT / 5003
+c07_create_item_target_empty	SAME	target_id 空 ⇒ INVALID_ARGUMENT / 5303 / 收藏目标不能为空
+c08_create_item_target_type_blank	SAME	target_type 规范化后为空 ⇒ 与 c07 同款
+c09_create_item_user_rpc_absent	SAME	下游缺席 ⇒ INTERNAL / 5001
+# ─────────── 3. GetFavoriteFolders（Go: get_favorite_folders_logic.go:34-69）───────────
+c10_list_folders_uid0	SAME	入参校验：userId<=0 ⇒ INVALID_ARGUMENT / 5003
+c11_list_folders_ok	SAME	正常读：响应 protobuf 字节逐字节相同（含 created_at/updated_at 毫秒 + **列表顺序**）
+c12_list_folders_empty	SAME	空集合：响应体为空字节（hex:）⇒ 两侧同款
+# ─────────── 4. GetFavoritesByFolder（Go: get_favorites_by_folder_logic.go:36-97）───────────
+c13_list_items_uid0	SAME	入参校验：userId<=0 ⇒ INVALID_ARGUMENT / 5003
+c14_list_items_folder0	SAME	入参校验：folderId<=0 ⇒ INVALID_ARGUMENT / 5003
+c15_list_items_notfound	SAME	收藏夹不存在 ⇒ NOT_FOUND / 5201 / 收藏夹不存在
+c16_list_items_forbidden	SAME	归属不符 ⇒ PERMISSION_DENIED / 5005 / 无权限操作
+c17_list_items_ok	SAME	正常读：响应 protobuf 字节逐字节相同（含条目顺序）
+c18_list_items_empty	SAME	收藏夹存在但无条目 ⇒ 空响应 ⇒ 两侧同款
+# ─────────── 5. DeleteFavoriteFolder（Go: delete_favorite_folder_logic.go:36-95）───────────
+c19_delete_folder_uid0	SAME	入参校验 ⇒ INVALID_ARGUMENT / 5003
+c20_delete_folder_notfound	SAME	不存在 ⇒ NOT_FOUND / 5201
+c21_delete_folder_forbidden	SAME	归属不符 ⇒ PERMISSION_DENIED / 5005
+# ─────────── 6. DeleteFavorite（Go: delete_favorite_logic.go:36-95）───────────
+c22_delete_item_uid0	SAME	入参校验 ⇒ INVALID_ARGUMENT / 5003
+c23_delete_item_notfound	SAME	不存在 ⇒ NOT_FOUND / 5301 / 收藏记录不存在
+c24_delete_item_forbidden	SAME	归属不符 ⇒ PERMISSION_DENIED / 5005
+# ─────────── 7. UpdateFavoriteFolderName（Go: update_favorite_folder_name_logic.go:36-126）───────────
+c25_update_folder_uid0	SAME	入参校验 ⇒ INVALID_ARGUMENT / 5003
+c26_update_folder_name_empty	SAME	name 空 ⇒ INVALID_ARGUMENT / 5202
+c27_update_folder_notfound	SAME	不存在 ⇒ NOT_FOUND / 5201
+c28_update_folder_forbidden	SAME	归属不符 ⇒ PERMISSION_DENIED / 5005
+c29_update_folder_same_name	SAME	同名 ⇒ 直接成功、**不写库** ⇒ updated_at 不推进 ⇒ 响应 success=true
+# ─────────── 8. 写入组（顺序即契约：只读全在前、写入全在后）───────────
+# 🔴 **c30 必须排在 c33 之前**：c33 会改名 folder 9001 ⇒ 推后 updated_at
+#    ⇒ c30 读到的字节每次都不同 ⇒ 冻结值失效 ⇒ 假红。
+c30_response_header_surface	SAME	🔴 **完整**响应头 key 集合（不过滤 grpc-*）⇒ **两侧都是 Java ⇒ 必须相同**；与 Go 不同是**已登记的库级差异**（锚里的 OBS 段：Java 多 grpc-accept-encoding / grpc-encoding）
+c31_delete_folder_ok	SAME	正常删 ⇒ OK / success=true（响应体 hex:0801）
+c32_delete_item_ok	SAME	删收藏被规则拦（收藏暂不可撤回）⇒ FAILED_PRECONDITION / 5304 / 收藏暂不可撤回
+c33_update_folder_ok	SAME	改名 ⇒ OK / success=true
+# ─────────── 9. 服务面（框架层，非本域行为）───────────
+c34_health_check	SAME	grpc.health.v1.Health/Check ⇒ 两侧都注册了 health 服务 ⇒ OK / SERVING（hex:0801）
+c35_unknown_method	SAME	未注册的方法 ⇒ 两侧都是 grpc-java ⇒ 措辞**相同**（`Method not found: favorite.FavoriteService/DoesNotExist`）；与 Go 措辞不同属锚里的 SAME_CODE 段
+c36_unknown_service	SAME	未注册的服务 ⇒ 同上（grpc-java 不区分「方法 vs 服务」⇒ 两句措辞同款）

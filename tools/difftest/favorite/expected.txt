@@ -1,0 +1,104 @@
+# ============================================================================
+# 📌 本文件是 **B 侧仓**（/Users/pr/Documents/java&golang/RAG）的**逐字节副本**：
+#     源：tools/api-full-parity-probe/favorite/expected.txt
+#     sha256 = 422ac8052ce17c4cdf1e78c238273b3094c46b5e92a0b889676de2985f637f97
+#     冻结列 = **Go 真源** favorite-api 的活体渲染值（B 侧仓 2026-10-30 录）
+# ⚠️ **副本会漂** ⇒ 探针每次运行前核对上面这个 sha256（见 run.sh）⇒
+#    漂了就退出 ⇒ ⇒ 不会拿一份陈旧的冻结值判「三方一致」。
+# ⚠️ B 侧仓是**只读**的（AGENTS.md §五.4）⇒ ⇒ 副本住在 C 侧 ⇒ 真源仍在 B 侧。
+# ============================================================================
+# ============================================================================
+# api 整域双侧活体对拍 · 冻结期望值 · favorite 域
+# ----------------------------------------------------------------------------
+# 本文件是**两侧共用的唯一真源**：Go 侧的值来自真源 favorite-api 的活体实测，
+# RAG 侧的值由 run.sh 在每次运行时与本文件逐条比对 ⇒ 不会「各说一半」。
+#
+# 🔴 冻结的列是 **Go 侧**的完整渲染值 ⇒ 真源的行为一变，探针立刻 exit 1
+#    （⇒ 「Go 真源的 api 契约变了」，不是 RAG 回归）。
+#
+# 渲染格式：status=<HTTP 状态码>|ct=<Content-Type（已做 OWS 归一）>
+#           |body=<响应体逐字节（控制字符已转义 \n \r \t）>
+#           |biz=<body 里的业务码，取不到为 ->
+#           （hkeys=… 只在响应头面那个 OBS 用例里出现）
+#
+# 五档语义：
+#   SAME        —— status + Content-Type + body **全等**
+#   SAME_CODE   —— status 全等 **且** 业务码全等（两侧 body 里都取得到码）
+#   SAME_BODY   —— status 全等 **且** body 全等（**Content-Type 允许不同**）
+#   SAME_STATUS —— **只**要求 status 全等（body 与 Content-Type 允许不同）
+#   OBS         —— 两侧**必须不同**（已登记的框架层差异）⇒ 变成一样反而是回归
+#   SKIP        —— 显式跳过，理由必须写在本文件里
+#
+# ⚠️ 为什么有 SAME_STATUS 这一档：Go 的鉴权失败是 **401 + 空 body**
+#    （go-zero rest/handler/authhandler.go:106-122 的 unauthorized() 只 WriteHeader(401)）
+#    ⇒ Go 侧 body 里**没有业务码** ⇒ 只能断言状态码。
+#    两侧 body 的形态差异是**已签字**的有意偏离（DEV-FAV-API-001）⇒ 不算缺陷。
+#    Go 侧的精确形态由**冻结值**钉死（status=401|ct=-|body=|biz=-）。
+#
+# ⚠️ 为什么有 SAME_BODY 这一档：405 的 **Content-Type** 两侧不同 ——
+#    Go 是**裸状态码**（go-zero router/patrouter.go:79-82 只 WriteHeader(405)，
+#    既无 body 也无 Content-Type）；
+#    RAG 侧 `GoStyleRouterErrorResponses.methodNotAllowed` 返回 `ResponseEntity<Void>`，
+#    其 javadoc 明写「容器不会补 Content-Type」⇒ **实测被证伪**：
+#    Spring 仍会选出一个 MediaType 并写进响应头 ⇒ RAG 多一项 Content-Type。
+#    ⇒ 这是**新发现的跨域漂移**，落点在 **service/common** ⇒ 本域**只登记不修**，
+#      收口在 `global`（见 docs/DRIFT/favorite/rpc.md §22.4）。
+#    ⇒ 405 的 **status 与 body 两侧全等** ⇒ 用这一档把「Content-Type 之外」都纳入比较。
+#
+# ⚠️ OBS 那一条（h01）：Go 的响应**多一个 W3C `traceparent` 响应头**
+#    （go-zero 的 otelhttp 注入 ⇒ 响应回显活动 trace context）；
+#    RAG 侧没有 ⇒ **框架/可观测层**差异 ⇒ 单独量化，不混进业务用例。
+#
+# 🔴🔴 **2026-10-30 活体对拍轮订正 —— 这段说明已经陈旧，档位已改**：
+#    「RAG 侧没有 `traceparent`」**不再是事实** ⇒ 根因是**共享层 T-8 已于
+#    2026-10-25 第十九轮落地**（`service/common` 新增 `GoStyleTraceparentFilter`
+#    ⇒ 10 个 api 全生效）⇒ **两侧现在都有 `traceparent`**。
+#    ⇒ 实测（2026-10-30 03:22 `bash tools/api-full-parity-probe/favorite/run.sh`）
+#       探针报「**OBS 段期望两侧不同，但变成一样了 ⇒ 请重评台账**」⇒ **活体证据**
+#       证明该差异**已闭合**。
+#    ⇒ 档位由 `OBS`（要求两侧**必须不同**）改为 `SAME`（要求**全等**）——
+#       **不改成 SAME 就等于把这个已闭合的差异继续钉成「必须存在」**
+#       ⇒ 那会让任何「RAG 侧少发 traceparent」的回归**静默通过**。
+#    ⇒ 改档后本用例从「量化差异」变成「**守住闭合态**」：RAG 侧一旦不再发
+#       `traceparent` ⇒ 本用例立刻转红。
+#    ⇒ 台账侧对应订正：`docs/DRIFT/favorite/rpc.md`（跨域收口项「Go 多一个
+#       `traceparent`」）/ `docs/DRIFT/favorite/api.md`（1 条 OBS 的描述）。
+#    ⇒ ⚠️ 证据边界：`frozen` 列仍是 **Go 侧**的值且**未变**（Go 侧一直有
+#       `traceparent`）⇒ 本次改的是**比较档位**，不是**冻结值**。
+#
+# ⚠️ 用例顺序 = 副作用顺序：写入类用例（w01/w02/w03）在只读用例之后，
+#    最后 z01 验证「写入确实生效」⇒ 顺序本身就是被冻结的契约的一部分。
+# ============================================================================
+
+a01_no_auth_header	SAME_STATUS	status=401|ct=-|body=|biz=-
+a02_bad_signature	SAME_STATUS	status=401|ct=-|body=|biz=-
+a03_expired_token	SAME_STATUS	status=401|ct=-|body=|biz=-
+a04_bearer_prefix_only	SAME_STATUS	status=401|ct=-|body=|biz=-
+a05_lowercase_bearer	SAME	status=200|ct=application/json;charset=utf-8|body={"code":200,"msg":"OK","data":{"folders":[{"folderId":"9002","name":"Beta","createdAt":1767294246789,"updatedAt":1767294246789},{"folderId":"9001","name":"Alpha","createdAt":1767294245678,"updatedAt":1767294245678}]}}|biz=200
+a06_blacklisted_token	SAME_CODE	status=401|ct=application/json;charset=utf-8|body={"code":5004,"msg":"未登录或登录已失效"}|biz=5004
+r01_unknown_path	SAME	status=404|ct=text/plain;charset=utf-8|body=404 page not found\n|biz=-
+r02_method_not_allowed_post	SAME_BODY	status=405|ct=-|body=|biz=-
+r03_method_not_allowed_get	SAME_BODY	status=405|ct=-|body=|biz=-
+p01_invalid_json_body	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5003,"msg":"参数错误","data":null}|biz=5003
+p02_missing_required_name	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5003,"msg":"参数错误","data":null}|biz=5003
+p03_wrong_type_name	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5003,"msg":"参数错误","data":null}|biz=5003
+p04_item_list_missing_folder_id	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5003,"msg":"参数错误","data":null}|biz=5003
+p05_item_list_non_numeric_folder_id	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5003,"msg":"参数错误","data":null}|biz=5003
+p06_json_body_without_content_type	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5003,"msg":"参数错误","data":null}|biz=5003
+p07_delete_folder_missing_id	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5003,"msg":"参数错误","data":null}|biz=5003
+b01_create_folder_downstream_absent	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5001,"msg":"系统内部错误","data":null}|biz=5001
+b02_create_item_downstream_absent	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5001,"msg":"系统内部错误","data":null}|biz=5001
+b03_delete_folder_not_found	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5201,"msg":"收藏夹不存在","data":null}|biz=5201
+b04_delete_item_not_found	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5301,"msg":"收藏记录不存在","data":null}|biz=5301
+b05_update_folder_not_found	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5201,"msg":"收藏夹不存在","data":null}|biz=5201
+b06_delete_folder_forbidden	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5005,"msg":"无权限操作","data":null}|biz=5005
+b07_list_items_forbidden	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5005,"msg":"无权限操作","data":null}|biz=5005
+s01_list_folders	SAME	status=200|ct=application/json;charset=utf-8|body={"code":200,"msg":"OK","data":{"folders":[{"folderId":"9002","name":"Beta","createdAt":1767294246789,"updatedAt":1767294246789},{"folderId":"9001","name":"Alpha","createdAt":1767294245678,"updatedAt":1767294245678}]}}|biz=200
+s02_list_items_of_9001	SAME	status=200|ct=application/json;charset=utf-8|body={"code":200,"msg":"OK","data":{"favorites":[{"favoriteId":"7002","folderId":"9001","targetId":"t-2","targetType":"article","title":"T2","cover":"c2","createdAt":1767294306000},{"favoriteId":"7001","folderId":"9001","targetId":"t-1","targetType":"post","title":"T1","cover":"c1","createdAt":1767294305000}]}}|biz=200
+s03_list_items_of_empty_folder	SAME	status=200|ct=application/json;charset=utf-8|body={"code":200,"msg":"OK","data":{"favorites":[]}}|biz=200
+s04_list_folders_empty_user	SAME	status=200|ct=application/json;charset=utf-8|body={"code":200,"msg":"OK","data":{"folders":[{"folderId":"9003","name":"Gamma","createdAt":1767294247890,"updatedAt":1767294247890}]}}|biz=200
+h01_response_header_surface	SAME	status=200|ct=application/json;charset=utf-8|body={"code":200,"msg":"OK","data":{"folders":[{"folderId":"9002","name":"Beta","createdAt":1767294246789,"updatedAt":1767294246789},{"folderId":"9001","name":"Alpha","createdAt":1767294245678,"updatedAt":1767294245678}]}}|biz=200|hkeys=content-length,content-type,date,traceparent
+w01_update_folder_name	SAME	status=200|ct=application/json;charset=utf-8|body={"code":200,"msg":"OK","data":{"success":true}}|biz=200
+w02_delete_item	SAME	status=200|ct=application/json;charset=utf-8|body={"code":5304,"msg":"收藏暂不可撤回","data":null}|biz=5304
+w03_delete_folder	SAME	status=200|ct=application/json;charset=utf-8|body={"code":200,"msg":"OK","data":{"success":true}}|biz=200
+z01_list_folders_after_writes	SAME	status=200|ct=application/json;charset=utf-8|body={"code":200,"msg":"OK","data":{"folders":[{"folderId":"9001","name":"Alpha","createdAt":1767294245678,"updatedAt":1767294245678}]}}|biz=200

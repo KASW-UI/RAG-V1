@@ -65,10 +65,38 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+            🔴🔴🔴 **scope 必须是 runtime，不能是 test**（2026-11-04 · 抄 B 侧
+            `service/favorite/favorite-rpc/pom.xml:327-353` 的警告块）
+
+            【B 侧已经踩过并写进注释的同一个坑 · 逐字照抄其根因】
+              1) net.devh:grpc-client-spring-boot-starter:3.1.0.RELEASE **自身就传递依赖**
+                 io.grpc:grpc-inprocess（compile scope）⇒ 它带 net.devh:grpc-client
+                 → `InProcessChannelFactory`，而那个类的常量池里**硬引用**
+                 `io.grpc.inprocess.InProcessChannelBuilder`；
+              2) 本模块**又**显式声明了 grpc-inprocess ⇒ **直接声明永远压过传递声明**
+                 ⇒ scope 一旦写成 test ⇒ **运行时 classpath 上 grpc-inprocess 整个消失**
+                 （fat jar 的 `BOOT-INF/lib` 里也没有它）；
+              3) devh 的 `GrpcClientAutoConfiguration.shadedNettyGrpcChannelFactory`
+                 （grpc-client-spring-boot-starter 3.1.0.RELEASE:160）在创建 channel 时要链接
+                 `InProcessChannelFactory` ⇒ 运行期抛
+                 `NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`
+                 ⇒ **整个服务起不来**（硬失败，不是静默失效）。
+
+            ⚠️ 这个缺陷被 `@SpringBootTest` **完全掩盖**了：测试上下文的 classpath
+            含 test scope ⇒ 永远走不到这条分支 ⇒
+            「测试全绿」与「jar 能跑」是**两件事**。
+            ⇒ ⇒ 2026-11-04 起 favorite 域**必须能以 `java -jar` 真起一次**
+            （见 `src/test/java/com/rag/favorite/wiring/FavoriteRuntimeClasspathTest.java`）。
+
+            ⚠️ **B 侧要显式写 `<version>`** 是因为 B 的根 pom **没管** grpc-inprocess
+            （漏写会让整个 reactor 在读 POM 阶段就失败）⇒ **C 侧根 pom 已管**
+            （`pom.xml` 的 `<dependencyManagement>` 含 grpc-inprocess）⇒ **不写**（D14 口径）。
+        -->
         <dependency>
             <groupId>io.grpc</groupId>
             <artifactId>grpc-inprocess</artifactId>
-            <scope>test</scope>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
