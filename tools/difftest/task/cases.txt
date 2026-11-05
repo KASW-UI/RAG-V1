@@ -1,0 +1,64 @@
+# task 域 **双侧活体对拍**用例表（B 侧 task-api ↔ C 侧 task-service）
+#
+# 格式（**制表符分隔**，5 列）：
+#     <名称> <TAB> <METHOD> <TAB> <PATH> <TAB> <Content-Type> <TAB> <body>
+#
+# · Content-Type 列：`-` ⇒ **不发** Content-Type 头（其它列照常）；
+# · body 列：字面量 `@none` ⇒ **完全不发 body**（连 Content-Length 都不给）；
+#              其余 ⇒ 原样发送（**空串**表示「发一个零长度 body」）。
+#
+# ⚠️ **为什么用裸 socket 而不是 curl**：curl 的 `-w '%{http_code}'` 只给状态码，
+#    不给**状态行**（reason phrase）⇒ 而本域要逐字节比的就是状态行本身。
+#    见 `http_probe.py` 的模块 docstring。
+#
+# ⚠️ **用例顺序有意义**：`ok-pg-fallback` 会让两侧**回填** Redis 缓存
+#    （`task:progress:1002`）⇒ 它后面的用例必须看到回填后的状态。
+#    `ok-redis-hit`（uid=1001）刻意排在**最前**，保证它测的是「纯 Redis 命中、
+#    不碰 PG」的那条路径。
+#
+# ── 用例与判据的对应（B 出处）────────────────────────────────────────────────
+# ok-redis-hit        Redis 命中（HGETALL task:progress:1001）⇒ 直接用缓存
+# ok-pg-fallback      Redis 未命中 ⇒ 回源 task_progress ⇒ 回填缓存
+# ok-empty            两侧都无 ⇒ progress 缺省 0（Go get_task_logic.go:85）
+# ok-numeric-id       id 是 JSON 数字（不是字符串）⇒ Go UnmarshalJSON 先试 json.Number
+# ok-text-plain       Content-Type 非 JSON ⇒ **仍要读 body**（Go 是裸 decoder）
+# ok-no-content-type  完全不写 Content-Type ⇒ 仍要读 body
+# ok-trim             id 前后空格被 TrimSpace
+# ok-unknown-field    未知字段被忽略（Go encoding/json 默认行为）
+# ok-malformed-cache  缓存里的打包值**第二段非法** ⇒ 该条 progress 回落 0
+#                     （Go unpackProgress：ParseInt 失败 ⇒ 0；同条另一条仍取到真值）
+# ok-malformed-count  缓存里的打包值**不是 3 段** ⇒ 该条 progress 回落 0
+#                     （Go unpackProgress：段数≠3 ⇒ 0）
+# err-bool            {"id":true} ⇒ 400 + 「id must be a string or integer」
+# err-fraction        {"id":1.5} ⇒ 400 + 「user_id invalid」（字面量保留 ⇒ ParseInt 失败）
+# err-float-zero      {"id":1.0} ⇒ 400 + 「user_id invalid」
+# err-missing-id      {} ⇒ 400 + 「user_id invalid」
+# err-empty-id        {"id":""} ⇒ 400 + 「user_id invalid」
+# err-zero            {"id":"0"} ⇒ 400 + 「user_id invalid」
+# err-neg             {"id":"-1"} ⇒ 400 + 「user_id invalid」
+# err-null            {"id":null} ⇒ 400 + 「user_id invalid」
+# err-empty-body      零长度 body ⇒ 400（Go 是 io.EOF ⇒ 解析失败）
+# route-405           GET 同一路径 ⇒ 405 + Allow 头 + **无 body**
+# route-404           路径不存在 ⇒ 404 + 「404 page not found\n」
+
+ok-redis-hit	POST	/taskcenter/v1/task/get	application/json	{"id":"1001"}
+ok-pg-fallback	POST	/taskcenter/v1/task/get	application/json	{"id":"1002"}
+ok-empty	POST	/taskcenter/v1/task/get	application/json	{"id":"1003"}
+ok-numeric-id	POST	/taskcenter/v1/task/get	application/json	{"id":1004}
+ok-text-plain	POST	/taskcenter/v1/task/get	text/plain	{"id":"1001"}
+ok-no-content-type	POST	/taskcenter/v1/task/get	-	{"id":"1001"}
+ok-trim	POST	/taskcenter/v1/task/get	application/json	{"id":"  1001  "}
+ok-unknown-field	POST	/taskcenter/v1/task/get	application/json	{"id":"1001","zzz":{"a":1}}
+ok-malformed-cache	POST	/taskcenter/v1/task/get	application/json	{"id":"1005"}
+ok-malformed-count	POST	/taskcenter/v1/task/get	application/json	{"id":"1006"}
+err-bool	POST	/taskcenter/v1/task/get	application/json	{"id":true}
+err-fraction	POST	/taskcenter/v1/task/get	application/json	{"id":1.5}
+err-float-zero	POST	/taskcenter/v1/task/get	application/json	{"id":1.0}
+err-missing-id	POST	/taskcenter/v1/task/get	application/json	{}
+err-empty-id	POST	/taskcenter/v1/task/get	application/json	{"id":""}
+err-zero	POST	/taskcenter/v1/task/get	application/json	{"id":"0"}
+err-neg	POST	/taskcenter/v1/task/get	application/json	{"id":"-1"}
+err-null	POST	/taskcenter/v1/task/get	application/json	{"id":null}
+err-empty-body	POST	/taskcenter/v1/task/get	application/json	
+route-405	GET	/taskcenter/v1/task/get	-	@none
+route-404	POST	/taskcenter/v1/task/nope	application/json	{"id":"1001"}

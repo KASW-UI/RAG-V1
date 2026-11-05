@@ -1,0 +1,7 @@
+ok-redis-hit	status=OK|description=|task_count=2|t0=190|文章获赞任务|有一篇文章点赞大于3|2|3|t1=1902|点赞任务|给文章点赞5次|4|5
+ok-pg-fallback	status=OK|description=|task_count=2|t0=190|文章获赞任务|有一篇文章点赞大于3|7|3|t1=1902|点赞任务|给文章点赞5次|9|5
+ok-empty	status=OK|description=|task_count=2|t0=190|文章获赞任务|有一篇文章点赞大于3|0|3|t1=1902|点赞任务|给文章点赞5次|0|5
+ok-malformed-cache	status=OK|description=|task_count=2|t0=190|文章获赞任务|有一篇文章点赞大于3|2|3|t1=1902|点赞任务|给文章点赞5次|0|5
+ok-malformed-count	status=OK|description=|task_count=2|t0=190|文章获赞任务|有一篇文章点赞大于3|0|3|t1=1902|点赞任务|给文章点赞5次|4|5
+err-zero	status=INVALID_ARGUMENT|description=user_id invalid
+err-neg	status=INVALID_ARGUMENT|description=user_id invalid

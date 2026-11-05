@@ -47,7 +47,7 @@
 | **无对应物**（由 `task-proto` 的 protoc 插件生成） | **无对应物**（由根级 `proto/` 模块的 protoc 插件生成） | 1:1 | 生成物，不手写、不逐行对照 |
 | **无对应物**（`task-proto` 模块产出） | **无对应物**（根级 `proto/` 模块产出） | 1:1 | 生成物 |
 | — | **无 contract 模块 / 无 `contract` 包** —— 本域无错误码空间；`.proto` 集中在根级 `proto/src/main/proto/task.proto` | 1:1 | ⚠️ **刻意为空** —— 详见 §1.3 |
-| — | `service/task/`（**39 个 `.java`**，全部空壳） | C 新增 | C 的实体模块 |
+| — | `service/task/`（**40 个 `.java`**，**2026-11-03 全部落地 · 零空壳**） | C 新增 | C 的实体模块 |
 
 > ⚠️ **task 域没有 `-common`**：B 侧 `service/task/pom.xml` 的 `<modules>` 只有 3 项（`task-api`/`task-rpc`/`task-proto`，**无 `task-common`**），C 侧 `service/task/pom.xml` 只有 `task-service` 一项（proto 走根级 `proto/` 模块） ⇒ **两侧一致，不是遗漏**。
 
@@ -73,7 +73,7 @@
 | `task/rpc/config/` | `config/` + `messaging/` | Kafka topic 落到 `messaging/`（`TaskKafkaTopics`）|
 | `task/rpc/domain/` | `domain/entity/` | 直接压平（`UserLikeCountEntity` 与 `TaskProgressEntity` **同包**）|
 | `task/rpc/mapper/` | `mapper/` | 直接压平 |
-| `task/rpc/mq/`（11 类） | `messaging/`（**仅 2 类**）| ⚠️ **消费侧整体缺失**：`TaskKafkaTopics` + `TaskRewardPublisher` 已落位，但 **`TaskUserCountConsumer` / `TaskArticleCountConsumer` 等 9 个消费者无落点**，全仓 `@KafkaListener` **零命中** |
+| `task/rpc/mq/`（11 类） | `messaging/`（**12 类 · 2026-11-03 全部落地**）| ✅ **消费侧已接住**：`TaskUserLikeProgressSink` / `TaskArticleLikeProgressSink`（消费 + 1s 定时 flush）· `TaskUserCountConsumer` / `TaskArticleCountConsumer` / `TaskRawDiagnosticConsumer` · `TaskRawLogRouter` / `TaskCountStore` / `TaskLogEvent` / `TaskArticleProgressEvent` / `TaskGoCompatibleJson` / `TaskTraceAttributes`（**B 侧包级静态类 → C 侧独立类**，见 §1.2 #R-19）⇒ **全仓 `@KafkaListener` 在 task 域命中 6 处** |
 | `task/rpc/service/` | `service/` + `domain/service/` + `messaging/` | 领域服务另出 `domain/service/`；`TaskRewardPublisher` 落 `messaging/` |
 | `task/rpc/service/impl/` | `grpc/` | 压平 + 类改名 `TaskServiceGrpcImpl` → `TaskGrpcService` |
 | `task-proto/` | 根级 `proto/`（pb 包名 `com.rag.proto.task`）| **集中化**（D7）|
@@ -85,17 +85,17 @@
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
 |---|---|---|
 | `task-api/.../TaskApiApplication.java` | `service/task/src/main/java/com/rag/task/TaskServiceApplication.java` | 1:N | C 把 api 的 main 与 rpc 的 main **合并成唯一入口**（D1）；`@SpringBootApplication` + `@EnableDiscoveryClient`；**C 的这一个类同时承载 HTTP 端口与 gRPC 端口** |
-| `task-api/src/main/resources/application.yml`（**无 `Properties` 类**） | `service/task/src/main/java/com/rag/task/config/TaskApiProperties.java` + `application.yml` | 1:N | C 显式建 `@ConfigurationProperties` 类（**B 侧 `task-api` 没有任何 `Properties` 类**，配置全在 yml）。⚠️ B 侧 `Auth` 段**零消费点**（`grep` 全 `api/` 只命中结构体与 yaml 4 行）⇒ **不迁**；`TaskRpc` → `grpc.client.*`、`Telemetry` → `otel.*` |
+| `task-api/src/main/resources/application.yml`（**无 `Properties` 类**） | `service/task/src/main/java/com/rag/task/config/TaskRewardProperties.java` + `application.yml` | 1:N | C 显式建 `@ConfigurationProperties` 类（**B 侧 `task-api` 没有任何 `Properties` 类**，配置全在 yml）。⚠️ B 侧 `Auth` 段**零消费点**（`grep` 全 `api/` 只命中结构体与 yaml 4 行）⇒ **不迁**；`TaskRpc` → `grpc.client.*`、`Telemetry` → `otel.*`<br>⚠️ **2026-11-03 改名**：原 `TaskApiProperties.java`（prefix `task.api`）在 api+rpc 合并后**零消费点（哑弹）** ⇒ 改名为 **`TaskRewardProperties.java`**（prefix `task.reward`，**键名逐字不变**）—— 它是本域唯一「**B 侧有配置 ＋ C 侧有真实消费点 ＋ B 侧无 Properties 类**」的块 |
 | `task-api/.../controller/TaskController.java` | `service/task/src/main/java/com/rag/task/controller/TaskController.java` | 1:1 | ⚠️ **前缀是 `/taskcenter/v1`，不是 `/task/v1`**；**B 侧无任何 JWT 依赖、无 `interceptor/` 包** ⇒ 本域端点**零鉴权** |
 | `task-api/.../controller/TaskController.java` + `config/TaskApiRawBodyConfig.java` + `config/GoStyleRawBodyArgumentProcessor.java` + `config/TaskApiJsonBodyConfig.java` | `service/task/src/main/java/com/rag/task/controller/TaskController.java` + `service/task/src/main/java/com/rag/task/config/TaskApiRawBodyConfig.java` + `service/task/src/main/java/com/rag/task/config/GoStyleRawBodyArgumentProcessor.java` + `service/task/src/main/java/com/rag/task/config/TaskApiJsonBodyConfig.java` | 1:N | C 的三件 raw-body 配置**都在**（因为 B 侧不看 `Content-Type` ⇒ 必须换掉 Spring 默认的 `RequestResponseBodyMethodProcessor`）；⚠️ **不得注册 `common/src/main/java/com/rag/common/web/JsonBodyConverter`**（它复刻 `httpx.Parse` 的 `withJsonBody` 判据，会**丢弃**非 JSON body） |
 | `task-api/.../service/TaskGetService.java` | `service/task/src/main/java/com/rag/task/service/TaskApiService.java` + `service/task/src/main/java/com/rag/task/service/TaskApiSupport.java` | 1:N | C 按「用例内聚」判据拆成 Service + Support；⚠️ B 侧 `out := make([]types.TaskInfo, 0, len(...))` ⇒ **空列表输出 `[]` 绝不输出 `null`** |
 | `task-api/.../dto/GetTaskReq.java` + `dto/GetTaskResp.java` + `dto/TaskInfo.java` | `service/task/src/main/java/com/rag/task/dto/task/GetTaskReq.java` + `service/task/src/main/java/com/rag/task/dto/task/GetTaskResp.java` + `service/task/src/main/java/com/rag/task/dto/task/TaskInfo.java` | 1:N | C 改 **immutable record**（D5）；JSON key 契约不变（`id` / `tasks` / `name`/`desc`/`taskId`/`completionProgress`/`requiredProgress`） |
 | `task-api/.../client/TaskRpcClient.java`（`@GrpcClient`） | **无对应文件** | 1:1 | ⚠️ api+rpc 合并后**域内 gRPC 调用不再跨进程** ⇒ C 的 `api/` 下**没有 `client/` 包**；`TaskApiService` 直落 `rpc/service/TaskDomainService` |
 | `task-api/.../advice/GlobalExceptionHandler.java` | `service/task/src/main/java/com/rag/task/advice/TaskApiExceptionHandler.java` | 1:1 | ⚠️ B 侧 `GlobalExceptionHandler` **没有** 200 + `{code,msg}` 信封 ⇒ 失败响应**不是** `{code,msg}` 信封，是裸 text/plain（真实 HTTP 状态码 400 / 413 / 404 / 405 / 500） |
-| **无对应物**（B 侧无 ResponseAdvice） | `service/task/src/main/java/com/rag/task/advice/TaskApiResponseAdvice.java` | C 新增 | ⚠️ **职责待拍板**：**B 侧 `task-api` 没有 ResponseAdvice** ⇒ 成功体就是 `{"tasks":[...]}`。C 有这个位置，但它的职责（是否加 `{code,msg,data}` 信封）必须回 B 侧确认后再填 |
+| **无对应物**（B 侧无 ResponseAdvice） | `service/task/src/main/java/com/rag/task/advice/TaskApiResponseAdvice.java` | C 新增 | ✅ **职责已定（2026-11-03）**：**保留类，`beforeBodyWrite` 原样返回 body** ⇒ 与「B 侧没有这个类」**逐字节相同**（成功响应 = `{"tasks":[…]}`，**无信封**）。⚠️ **不做**「加 `{code,msg,data}` 信封」—— 那会**新增一层 wire 差异**；真证据 = `TaskApiWireContractRealTomcatTest`（13 例，断言成功体**无信封**） |
 | `service/common/.../spring/HttpMiddlewareFilter.java` | `common/src/main/java/com/rag/common/observability/`（`ObservabilityProperties` + `ObservabilityCustomizer`） | 1:1 | C 的 `common/` 是**真 starter**（`common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java`），不再是普通 jar |
 | 同上 | `common/src/main/java/com/rag/common/observability/ObservabilityProperties.java` | 1:1 | — |
-| `application.yml` 的 `observability.http-timeout: 3s` | `application.yml`（待补 `observability.http-timeout: 3s`） | 1:1 | ⚠️ B 侧**显式写在 yaml 里**（`observability.http-timeout: 3s`，不是隐式默认）⇒ Java 侧必须显式写出来 |
+| `application.yml` 的 `observability.http-timeout: 3s` | `application.yml`（**已补** `observability.http-timeout: 3s` ＋ `observability.rpc-timeout: 2s`） | 1:1 | ⚠️ B 侧**显式写在 yaml 里**（`observability.http-timeout: 3s`，不是隐式默认）⇒ Java 侧必须显式写出来 |
 | `common/protection/GoStyleMaxBytesFilter` | `common/src/main/java/com/rag/common/protection/MaxBytesFilter.java` | 1:1 | B 侧同样由 `common/protection/GoStyleMaxBytesFilter` 承担 ⇒ 413 裸状态码、无 body |
 
 ### 1.2 rpc 侧（`wiring + config + domain/entity + domain/service + grpc + mapper + messaging + service`）
@@ -115,7 +115,7 @@
 | `task-rpc/.../mq/UserLikeProgressSink.java`（`@KafkaListener` + `@Scheduled`） | `service/task/src/main/java/com/rag/task/messaging/TaskUserLikeProgressSink.java` | 1:1 | ✅ **已落地（2026-11-01）**：⚠️ **B 侧 `mq/` 的消费者不是独立进程** —— 是 `task-rpc` 这一个 Spring Boot 进程里的 `@KafkaListener` 容器（`docs/第二轮深挖-契约盘点.md:316`）⇒ C 侧落点是容器内的 listener，不是新 app |
 | `task-rpc/.../mq/ArticleLikeProgressSink.java` | `service/task/src/main/java/com/rag/task/messaging/TaskArticleLikeProgressSink.java` | 1:1 | ✅ **已落地（2026-11-01）**；同上游（**Group=GroupKafkaFilter**，不是 `GroupFilterArticle`） |
 | `task-rpc/.../mq/TaskRawDiagnosticConsumer.java` | `service/task/src/main/java/com/rag/task/messaging/TaskRawDiagnosticConsumer.java` | 1:1 | ✅ **已落地（2026-11-01）**：「什么都不做但不能删」（有真实 consumer group 与外部依赖） |
-| `task-rpc/.../mq/TaskTraceAttributes.java` | `service/task/src/main/java/com/rag/task/messaging/TaskUserLikeProgressSink.java` + `service/task/src/main/java/com/rag/task/messaging/TaskArticleLikeProgressSink.java` | 1:N | 两个 sink 的 **OTEL span 属性**（`messaging.system=kafka` / `messaging.destination` / `messaging.operation=consume\\|flush` / `messaging.message.key` / `batch.size`）。⚠️ B 侧是**包级静态工具类**（`final class` + 私有构造）；C 侧**不建独立类** ⇒ 属性表落在两个 sink 内部（⚠️ `messaging.destination` 传的是逻辑名 `user_like_sink` / `article_like_sink`，**不是 topic 名**） |
+| `task-rpc/.../mq/TaskTraceAttributes.java` | `service/task/src/main/java/com/rag/task/messaging/TaskTraceAttributes.java`（**独立类**）＋ `TaskUserLikeProgressSink.java` ＋ `TaskArticleLikeProgressSink.java` | 1:N | 两个 sink 的 **OTEL span 属性**（`messaging.system=kafka` / `messaging.destination` / `messaging.operation=consume\|flush` / `messaging.message.key` / `batch.size`）。⚠️ B 侧是**包级静态工具类**（`final class` + 私有构造）；**C 侧建了同名独立类**（`public final class`）⇒ **可见性放宽、行为零变化**（4 个 attribute 的名字 / 取值 / 写入顺序逐条照抄）；⚠️ `messaging.destination` 传的是逻辑名 `user_like_sink` / `article_like_sink`，**不是 topic 名** |
 | `task-rpc/.../mq/TaskRawLogRouter.java` + `mq/TaskUserCountConsumer.java` + `mq/TaskArticleCountConsumer.java` + `mq/TaskCountStore.java` + `mq/TaskLogEvent.java` + `mq/TaskArticleProgressEvent.java` + `mq/GoJson.java` | `service/task/src/main/java/com/rag/task/messaging/TaskRawLogRouter.java` + `service/task/src/main/java/com/rag/task/messaging/TaskUserCountConsumer.java` + `service/task/src/main/java/com/rag/task/messaging/TaskArticleCountConsumer.java` + `service/task/src/main/java/com/rag/task/messaging/TaskCountStore.java` + `service/task/src/main/java/com/rag/task/messaging/TaskLogEvent.java` + `service/task/src/main/java/com/rag/task/messaging/TaskArticleProgressEvent.java` + `service/task/src/main/java/com/rag/task/messaging/TaskGoCompatibleJson.java` | 1:1 | ✅ **已落地（2026-11-01）**：C 侧新建 `messaging/` 包落这 7 类（B 侧 `GoJson` → C 侧 **`TaskGoCompatibleJson`**，**去掉原前缀**）；⚠️ B 侧 `TaskCountStore` 已用 **Redis `INCR` + group 命名空间**（`redis.opsForValue().increment(keyOf(group, key))`）落地「按 group 分目录的本地 KV 表」的等价物 ⇒ **选型已由 B 侧定案**（不再是待拍板项），C 侧照抄该落法 |
 | **无对应物** | **无对应物** | 1:1 | **B 侧同样没有这个文件** ⇒ **不迁移**（不是「待补」） |
 | `task-rpc/.../service/TaskRewardPublisher.java` | `service/task/src/main/java/com/rag/task/messaging/TaskRewardPublisher.java` | 1:1 | 幂等 ID 的加法语义**原样保留**（含天然碰撞） |
@@ -151,11 +151,11 @@
 | ORM | MyBatis-Plus：`@TableName` + `@TableId` + `Mapper extends BaseMapper<E>` | 同 B，落 `service/task/src/main/java/com/rag/task/domain/entity` + `service/task/src/main/java/com/rag/task/mapper` | — |
 | **同一张表的结构体重复** | 已收敛为 **1** 个 `TaskProgressEntity` | 收敛为 **1** 个 `service/task/src/main/java/com/rag/task/domain/entity/TaskProgressEntity.java` | 两张表（`task_progress` / `user_like_count`）各 1 个 Entity；历史的多份重复结构体已在 B 侧消解 |
 | `user_like_count.user_id` 类型 | `String`（`UserLikeCountEntity.userId`） | `String` | ⚠️ 与 `task_progress.user_id`（`Long`）**类型不同** |
-| 建表机制 | Flyway `V1__create_task_progress.sql` + `V2__create_user_like_count.sql` | `src/main/resources/db/migration/` **只有 `.gitkeep`** ⇒ ⚠️ **待补** | B 侧列类型 / 索引 / 默认值已由迁移脚本固定 ⇒ C 侧照抄 |
-| Flyway 账本表名 | `spring.flyway.table: flyway_schema_history_task`（**独立账本**，避免与 message/like/article 同库撞号） | `application.yml` **无 `flyway` 段** ⇒ ⚠️ **待补** | 同库 `first_db` / `public` schema，`flyway_schema_history` 是 schema 级账本 |
-| MyBatis-Plus 主键策略 | `id-type: INPUT`（**不用雪花**，复合主键 `(user_id, task_id)` 由业务给值） | `application.yml` **未写 `id-type`** ⇒ ⚠️ **待补** | 本域无雪花 ID 调用 |
+| 建表机制 | Flyway `V1__create_task_progress.sql` + `V2__create_user_like_count.sql` | `src/main/resources/db/migration/` **V1 + V2 已落地（2026-11-03）** | ✅ **逐字复制**（`diff -r` 与 B 侧 `task-rpc/src/main/resources/db/migration/` **零差异**）⇒ B 侧列类型 / 索引 / 默认值由迁移脚本固定 |
+| Flyway 账本表名 | `spring.flyway.table: flyway_schema_history_task`（**独立账本**，避免与 message/like/article 同库撞号） | `application.yml` **已补 `spring.flyway` 段**（`table: flyway_schema_history_task` ＋ `baseline-on-migrate: true` ＋ `baseline-version: 0`） | ✅ 与 B 侧逐字一致 ⇒ 同库 `first_db` / `public` schema 下**不撞号**；真证据 = `TaskServiceApplicationTests`（断言账本里有 V1/V2 且 `success=true`） |
+| MyBatis-Plus 主键策略 | `id-type: INPUT`（**不用雪花**，复合主键 `(user_id, task_id)` 由业务给值） | `application.yml` **已补 `id-type: INPUT`** | ✅ 与 B 侧一致 ⇒ 本域无雪花 ID 调用 |
 | jsonb / typeHandler | 本域两表**无 jsonb 列** | 不需要 | — |
-| 连接池 | Hikari `maximum-pool-size: 50` / `minimum-idle: 50` / `max-lifetime: 1800000`（B 侧 yml 已自标【有意偏离 · 不做 1:1】：Hikari 硬拒 `< 30s`，照抄都做不到） | `application.yml` **无 `hikari` 段** ⇒ ⚠️ **待补** | ⚠️ B 侧连接串带 `TimeZone=Asia/Shanghai` ⇒ C 侧连接串**必须保留同一时区参数** |
+| 连接池 | Hikari `maximum-pool-size: 50` / `minimum-idle: 50` / `max-lifetime: 1800000`（B 侧 yml 已自标【有意偏离 · 不做 1:1】：Hikari 硬拒 `< 30s`，照抄都做不到） | `application.yml` **已补 `hikari` 段**（同三个旋钮 ＋ **保留 `TimeZone=Asia/Shanghai` 连接串参数**） | ⚠️ B 侧连接串带 `TimeZone=Asia/Shanghai` ⇒ C 侧**已保留同一时区参数** |
 | 事务边界 | sink 的 upsert 是**逐条** `Create` + `OnConflict{Columns, DoUpdates}`，**无显式事务** | 同（逐条） | ⭐ DB 级不变量在 SQL 里：`GREATEST`（单调）+ `CASE WHEN status='done' THEN status`（done 不可回退）+ `done_at = COALESCE(done_at, now())`（只写一次） |
 | **`TaskDef` 配置载体** | `service/TaskDefs.java`（常量表；**不存在 `task_def` 表**） | `service/task/src/main/java/com/rag/task/service/TaskDefs.java`（常量表） | **不是 Entity、不是 Mapper、不是表** ⇒ 落点是「常量/配置载体」 |
 | 常量重复 | `TaskDefs` 收口（`ALL_TASK_DEFS` 两条字面量） | `service/task/src/main/java/com/rag/task/service/TaskDefs.java` 收口 | C 侧落点与 B 同 |
@@ -171,14 +171,14 @@
 |---|---|---|---|
 | 路由注册 | `@RequestMapping("/taskcenter/v1")` + `@PostMapping("/task/get")` | 同 B（`service/task/src/main/java/com/rag/task/controller/TaskController.java`） | ⚠️ **前缀不是 `/task/v1`**（L1 契约，与其它域的 `/user/v1`、`/message/v1` 全不同） |
 | 端点数 / method | **1** 个：`POST` | 1 个 `@PostMapping` | — |
-| **鉴权** | **无 `interceptor/` 包**（B 侧 `task-api` 零 JWT 依赖）；`Auth` 段是**死配置** | ⚠️ 有 `service/task/src/main/java/com/rag/task/config/WebMvcConfig.java`，其 javadoc 写「注册 JwtAuthInterceptor + public 路径白名单」 | ⚠️ **职责对不上**：本域**不该有** `*JwtAuthInterceptor`（`docs/第二轮深挖-契约盘点.md` §三 T-4 已明确「hot / task 全部端点免鉴权」）⇒ 该 javadoc 需改写 |
+| **鉴权** | **无 `interceptor/` 包**（B 侧 `task-api` 零 JWT 依赖）；`Auth` 段是**死配置** | `service/task/src/main/java/com/rag/task/config/WebMvcConfig.java`（**已改写为否定式声明**：零拦截器 ＋ 零 CORS） | ✅ **职责已对齐（2026-11-03）**：本域**不建** `*JwtAuthInterceptor`、**不建** `interceptor/` 包 ⇒ 端点**零鉴权**；真证据 = 真 Tomcat **GET → 405**（若装了拦截器则是 401） |
 | 身份来源 | 请求体 `{"id": …}`（`GetTaskReq.id`，接受 string \| number）⇒ **水平越权面**（任何调用方可查任意 uid） | 同（`service/task/src/main/java/com/rag/task/dto/task/GetTaskReq.java`） | B 侧既定行为，本表按原样记录 |
-| 成功响应形状 | Controller 直接返回（**不包信封**）⇒ **`{"tasks":[…]}`，无 `{code,msg,data}`** | ⚠️ 有 `service/task/src/main/java/com/rag/task/advice/TaskApiResponseAdvice.java` | ⚠️ **职责待拍板**（同 §1.1） |
+| 成功响应形状 | Controller 直接返回（**不包信封**）⇒ **`{"tasks":[…]}`，无 `{code,msg,data}`** | `service/task/src/main/java/com/rag/task/advice/TaskApiResponseAdvice.java`（**原样透传**，不加信封） | ✅ **职责已定（2026-11-03）** ⇒ 与 B 侧**逐字节相同**（真 Tomcat 断言成功体无信封） |
 | 失败响应形状 | `advice/GlobalExceptionHandler` ⇒ **text/plain + `X-Content-Type-Options: nosniff` + 尾 `\n`**；状态码 400 / 413 / 404 / 405 / 500 各有来源 | `service/task/src/main/java/com/rag/task/advice/TaskApiExceptionHandler.java` + `common/src/main/java/com/rag/common/web/PlainTextErrors.java` / `RouterErrorResponses.java` | ⚠️ **B 侧不是 200 + `{code,msg}` 信封** |
 | 请求体读取 | `TaskApiRawBodyConfig` + `GoStyleRawBodyArgumentProcessor` + `TaskApiJsonBodyConfig` ⇒ **不看 `Content-Type`** | 同 B（三件都在） | ⚠️ **不得注册 `common/src/main/java/com/rag/common/web/JsonBodyConverter`**（会丢弃非 JSON body ⇒ 新增行为） |
 | 未知字段 | 默认 Jackson 行为（B 侧未开 `FAIL_ON_UNKNOWN_PROPERTIES`） | 同 | — |
 |请求体上限|`common/protection/GoStyleMaxBytesFilter`（`MaxBytes = 1 MiB`）⇒ 413 裸状态码|`common/src/main/java/com/rag/common/protection/MaxBytesFilter.java`|—|
-| 请求超时 | `observability.http-timeout: 3s`（**显式写在 yaml 里**） | `application.yml`（待补） | ⚠️ **B 侧是显式配置，不是隐式默认** |
+| 请求超时 | `observability.http-timeout: 3s`（**显式写在 yaml 里**） | `application.yml`（**已补**） | ⚠️ **B 侧是显式配置，不是隐式默认** |
 
 ### 3.2 DI 与进程拓扑
 
@@ -188,10 +188,10 @@
 | 依赖持有 | Spring 容器构造注入（**无 `ServiceContext` 类**） | 同 B | — |
 | 域内 gRPC 调用 | `@GrpcClient("task-rpc")` → `TaskRpcClient`（跨进程） | **域内直调** `service/task/src/main/java/com/rag/task/domain/service/TaskDomainService.java` ⇒ **无 `service/task/src/main/java/com/rag/task/{advice,config,controller,dto,service}/client/` 包** | ⚠️ C 的 `grpc-client-spring-boot-starter` 依赖目前**没有使用方**（本域唯一的下游是本域自己） |
 | 服务发现 | Nacos（`task-api` / `task-rpc` 各自注册） | Nacos（`application.yml` 有 `spring.cloud.nacos.discovery`） | — |
-| **后台任务落点** | `@KafkaListener` 容器 + `@Scheduled`（**B 侧 `mq/` 的消费者都在 `task-rpc` 这一个进程内**） | ✅ **已关闭（2026-11-01）** —— C 侧 `messaging/` 包 12 类全部就位 | ⚠️ **不是独立进程** ⇒ C 侧落点是**容器内的 listener**，**不是新 app**（D1 对本域成立，无例外） |
-| gRPC 服务端拦截器 | `common/spring/RpcServerInterceptorFactory` + **显式** `GrpcServerConfigurer.intercept(...)` | ⚠️ RAG-V1 的 `common/` **无** `RpcServerInterceptorFactory` ⇒ **待补** | ⚠️ `@Component` ≠ 自动注册；必须显式 `intercept()` 接线，否则**静默失效** |
-| gRPC 超时 | `observability.rpc-timeout: 2s` | `application.yml`（待补） | — |
-| 配置绑定 | 无 `Properties` 类，全在 `application.yml` | `service/task/src/main/java/com/rag/task/config/TaskApiProperties.java`（`@ConfigurationProperties`） | RAG-V1 的 [`docs/第二轮深挖-契约盘点.md` §4.3](../../第二轮深挖-契约盘点.md#43-落地的缺口) 要求「按配置块拆成多个 `*Properties`」⇒ 本域待细化 |
+| **后台任务落点** | `@KafkaListener` 容器 + `@Scheduled`（**B 侧 `mq/` 的消费者都在 `task-rpc` 这一个进程内**） | ✅ **已关闭（2026-11-03）** —— C 侧 `messaging/` 包 **12 类全部落地**（**6 个 `@KafkaListener` 真进 registry**） | ⚠️ **不是独立进程** ⇒ C 侧落点是**容器内的 listener**，**不是新 app**（D1 对本域成立，无例外） |
+| gRPC 服务端拦截器 | `common/spring/RpcServerInterceptorFactory` + **显式** `GrpcServerConfigurer.intercept(...)` | ✅ **已由共享层承担** —— `common/autoconfigure/ProtectionAutoConfiguration.java:231-240` 的 `seaGrpcServerConfigurer` 调 `server.intercept(...)` | ✅ **守门 A3 PASS**（`check-arch-invariants.py`：「`common/` 声明了 `GrpcServerConfigurer` 且真调 `server.intercept(...)`；域内 0 重复」）⇒ **域内不写 `rpcInterceptorConfigurer`** |
+| gRPC 超时 | `observability.rpc-timeout: 2s` | `application.yml`（**已补**） | — |
+| 配置绑定 | 无 `Properties` 类，全在 `application.yml` | `service/task/src/main/java/com/rag/task/config/TaskRewardProperties.java`（prefix `task.reward`）<br>＋ `messaging/TaskKafkaTopics.java`（prefix `task.kafka`）<br>＋ `config/TaskSinkProperties.java`（prefix `task.definitions`） | ✅ **已按配置块拆成 3 个 `*Properties`**（`docs/第二轮深挖-契约盘点.md` §4.3 的要求）⇒ 原 `TaskApiProperties`（prefix `task.api`）在合并后**零消费点** ⇒ **已改名**为 `TaskRewardProperties`（键名逐字不变） |
 | 死配置 | `Auth`（api 侧）—— **零消费点** | 不迁 | — |
 
 ---
@@ -217,7 +217,7 @@
 ## 5. 决策锁
 
 **合并 api + rpc 为单 app（D1）6 处同时改**：
-1. `service/task/task-api/` 的 11 个 `.java` + `service/task/task-rpc/` 的 28 个 `.java`（合计 39，2026-11-01 实测）⇒ 合并进 `service/task/`（C 列现有 **39** 个 `.java`）；
+1. `service/task/task-api/` 的 11 个 `.java` + `service/task/task-rpc/` 的 28 个 `.java`（合计 39，2026-11-03 实测）⇒ 合并进 `service/task/`（C 列现有 **40** 个 `.java` —— 39 个 B 侧类 **＋** `messaging/TaskTraceAttributes.java`（B 侧包级静态类 → C 侧独立类）；⚠️ **2026-11-01 的 39 是空壳期数字**，已过时）；
 2. 两个 `Application.java`（`TaskApiApplication` / `TaskRpcApplication`）⇒ **合成 1 个** `TaskServiceApplication`（`@SpringBootApplication` + `@EnableDiscoveryClient`）；
 3. 两个 `application.yml` ⇒ **合成 1 份**（端口：HTTP `8890` + gRPC `9006`）；
 4. api → rpc 的调用从「跨进程 `@GrpcClient`」改为「**域内直调** `domain/service/TaskDomainService.java`」⇒ **删 `{advice,config,controller,dto,service}/client/` 包**；
@@ -302,7 +302,7 @@
 | 3 | `service/task/src/main/java/com/rag/task/advice/TaskApiResponseAdvice.java` | §1.1（⚠️ 职责待拍板）|
 | 4 | `service/task/src/main/java/com/rag/task/config/GoStyleRawBodyArgumentProcessor.java` | §1.1 / §5|
 | 5 | `service/task/src/main/java/com/rag/task/config/TaskApiJsonBodyConfig.java` | §1.1 / §5|
-| 6 | `service/task/src/main/java/com/rag/task/config/TaskApiProperties.java` | §1.1|
+| 6 | `service/task/src/main/java/com/rag/task/config/TaskRewardProperties.java` | §1.1 / §3.2（⚠️ 2026-11-03 由 `TaskApiProperties` 改名）|
 | 7 | `service/task/src/main/java/com/rag/task/config/TaskApiRawBodyConfig.java` | §1.1 / §5|
 | 8 | `service/task/src/main/java/com/rag/task/config/WebMvcConfig.java` | §1.1 / §3.1 / §5（⚠️ 职责对不上）|
 | 9 | `service/task/src/main/java/com/rag/task/controller/TaskController.java` | §1.1|
@@ -336,9 +336,11 @@
 | 37 | `service/task/src/main/java/com/rag/task/service/TaskRedisKeys.java` | §1.2|
 | 38 | `service/task/src/main/java/com/rag/task/messaging/TaskRewardPublisher.java` | §1.2|
 | 39 | `service/task/src/main/java/com/rag/task/grpc/TaskGrpcService.java` | §1.2 |
+| 40 | `service/task/src/main/java/com/rag/task/messaging/TaskTraceAttributes.java` | §1.2（**C 新增的独立类** · B 侧是包级静态类）|
 
-> ✅ **C 列 39 个 `.java` 全部出现，覆盖率 39/39 = 100%**（task 域**零 Java 契约类**，故不在 C 列计数内 —— 见 §1.3）。
-> 📌 **实测命令输出**：`find service/task -name '*.java' -not -path '*/src/test/*' -not -path '*/target/*' | xargs -n1 basename | sort -u | wc -l` ⇒ **39**。
+> ✅ **C 列 40 个 `.java` 全部出现，覆盖率 40/40 = 100%**（task 域**零 Java 契约类**，故不在 C 列计数内 —— 见 §1.3）。
+> 📌 **实测命令输出**：`find service/task -name '*.java' -not -path '*/src/test/*' -not -path '*/target/*' | xargs -n1 basename | sort -u | wc -l` ⇒ **40**（2026-11-03 实测）。
+> 📌 **C 列 39 → 40 的由来**：① `TaskApiProperties.java` **改名**为 `TaskRewardProperties.java`（**数量不变**）；② **新增** `messaging/TaskTraceAttributes.java`（B 侧 `mq/TaskTraceAttributes.java` 是**包级静态类**，C 侧提为独立 `public final class` ⇒ **可见性放宽、行为零变化**）。
 >
 > 📌 **原 §7.2「第三列不遗漏职责（26 个源文件）」整段已随第三列移除**（D16 · 判定基准改为 B 侧）——
 > 该清单列举的全是第三列的文件，B 侧无对应物 ⇒ **无独立价值，整段删除**（不留悬空引用）。
@@ -374,21 +376,26 @@
 
 | # | 缺口 | 涉及 | 说明 |
 |---|---|---|---|
-| **1** | ✅ **已关闭（2026-11-01）—— Kafka 消费侧整体缺失** | B：`task-rpc/.../mq/`（**11 个** `mq/*.java`） | B 侧有 **11 个** `mq/*.java` ⇒ ✅ **C 侧已新建 `service/task/src/main/java/com/rag/task/messaging/`（12 类）**：`TaskUserLikeProgressSink` / `TaskArticleLikeProgressSink`（消费 + 1s 定时 flush）· `TaskUserCountConsumer` / `TaskArticleCountConsumer` / `TaskRawDiagnosticConsumer` · `TaskRawLogRouter` / `TaskCountStore` / `TaskLogEvent` / `TaskArticleProgressEvent` / `TaskGoCompatibleJson` ⇒ **sink 的「消费 + 1s 定时 flush」职责已有 C 落点**；⚠️ `TaskCountStore` 的存储后端**在 C 侧尚未落地**（见本表 #2） |
-| **2** | 🟠 **`TaskCountStore` 的存储后端在 C 侧尚未落地** | B：`task-rpc/.../mq/TaskCountStore.java` | ⚠️ B 侧已用 **Redis `INCR` + group 命名空间**（`redis.opsForValue().increment(keyOf(group, key))`）落地「按 group 分目录的 KV 表」等价物 ⇒ **选型已由 B 侧定案**（不再是待拍板项）；C 侧 `TaskCountStore` 仍是空壳 ⇒ 需按 B 侧落法实现 |
-| **3** | 🔴 **`WebMvcConfig` 的 javadoc 与本域事实冲突** | C：`api/config/WebMvcConfig.java` | javadoc 写「注册 JwtAuthInterceptor + public 路径白名单」，但 **B 侧 `task-api` 零 JWT 依赖、无 `interceptor/` 包** ⇒ 本域**零鉴权** ⇒ 该类的职责描述需改写（否则会照抄出别的域的鉴权层） |
-| **4** | 🔴 **`TaskApiResponseAdvice` 的职责未定** | C：`api/advice/TaskApiResponseAdvice.java` | **B 侧 `task-api` 没有 ResponseAdvice** ⇒ 成功响应**无信封**；C 有这个位置但「是否加 `{code,msg,data}`」必须回 B 侧确认后再填（**填错 = 新增一层 wire 差异**） |
-| **5** | 🟠 **持久层落地位缺口** | C：`db/migration/`（**只有 `.gitkeep`**）、`application.yml`（无 `flyway` 段 / 无 `hikari` 段 / 无 `id-type: INPUT`） | B 侧已有 `V1__create_task_progress.sql` + `V2__create_user_like_count.sql` + `flyway_schema_history_task` + Hikari 50/50 ⇒ C 侧**这些位都还空着** |
-| **6** | 🟠 **gRPC 服务端拦截器无 C 落点** | B：`common/spring/RpcServerInterceptorFactory` + **显式** `GrpcServerConfigurer.intercept(...)` | RAG-V1 的 `common/` **无** `RpcServerInterceptorFactory` ⇒ 需新建（且必须显式 `GrpcServerConfigurer.intercept(...)` 接线，否则**静默失效**） |
-| **7** | ✅ **已关闭（2026-11-01）—— MQ 载荷契约在 C 侧只有一份** | B：`task-rpc/.../mq/TaskArticleProgressEvent.java` | C 侧 `service/like/src/main/java/com/rag/like/contract/TaskArticleProgressMsg.java` 有；**`task/` 侧现已补上** `service/task/src/main/java/com/rag/task/messaging/TaskArticleProgressEvent.java` ⇒ **跨域 MQ 载荷在 C 侧是两份**（task 域 + like 域）⇒ ⚠️ 两份的**字段名与 topic 必须逐字对齐**（L1 契约层） |
-| **8** | 🟠 **`grpc-client-spring-boot-starter` 无使用方** | C：`service/task/pom.xml` | api/rpc 合并后本域**没有跨域 gRPC 下游** ⇒ 该依赖目前无调用点 |
-| **9** | 🟡 **`api/config/TaskApiProperties` 的聚合边界未定** | C：`api/config/TaskApiProperties.java` | RAG-V1 [`docs/第二轮深挖-契约盘点.md` §4.3](../../第二轮深挖-契约盘点.md#43-落地的缺口) 要求「按配置块拆成多个 `*Properties`」；**B 侧 `task-api` 没有任何 `Properties` 类**（配置全在 yml，`Auth` 是死配置不迁）⇒ 本域实际只有 1 个块 ⇒ 「聚合」还是「拆分」需拍板 |
+| **1** | ✅ **已关闭（2026-11-03）—— Kafka 消费侧整体缺失** | B：`task-rpc/.../mq/`（**11 个** `mq/*.java`） | B 侧有 **11 个** `mq/*.java` ⇒ ✅ **C 侧 `messaging/` 包 12 类全部落地**：`TaskUserLikeProgressSink` / `TaskArticleLikeProgressSink`（消费 + 1s 定时 flush）· `TaskUserCountConsumer` / `TaskArticleCountConsumer` / `TaskRawDiagnosticConsumer` · `TaskRawLogRouter` / `TaskCountStore` / `TaskLogEvent` / `TaskArticleProgressEvent` / `TaskGoCompatibleJson` / `TaskTraceAttributes` ⇒ **6 个 `@KafkaListener` 真进 `KafkaListenerEndpointRegistry`**（真证据 = `TaskKafkaListenerAssemblyTest`） |
+| **2** | ✅ **已关闭（2026-11-03）—— `TaskCountStore` 的存储后端** | B：`task-rpc/.../mq/TaskCountStore.java` | ⚠️ B 侧已用 **Redis `INCR` + group 命名空间**（`redis.opsForValue().increment(keyOf(group, key))`）落地「按 group 分目录的 KV 表」等价物 ⇒ **选型已由 B 侧定案**；✅ **C 侧已按 B 侧落法实现**（`messaging/TaskCountStore.java`：`COUNTER_KEY_PREFIX="task:goka:count:"` ＋ `increment` ＋ `keyOf(group, key)`）⇒ 真证据 = `TaskRedisPipelineRealRedisTest`（真 Redis 验 group 命名空间隔离） |
+| **3** | ✅ **已关闭（2026-11-03）—— `WebMvcConfig` 的 javadoc 与本域事实冲突** | C：`config/WebMvcConfig.java` | 原 javadoc 写「注册 JwtAuthInterceptor + public 路径白名单」，但 **B 侧 `task-api` 零 JWT 依赖、无 `interceptor/` 包** ⇒ ✅ **C 侧已改写为否定式声明**（零拦截器 ＋ 零 CORS）；真证据 = 真 Tomcat **GET → 405**（若装了拦截器则是 401） |
+| **4** | ✅ **已关闭（2026-11-03）—— `TaskApiResponseAdvice` 的职责** | C：`advice/TaskApiResponseAdvice.java` | **B 侧 `task-api` 没有 ResponseAdvice** ⇒ 成功响应**无信封**；✅ **C 侧保留该类但 `beforeBodyWrite` 原样返回 body** ⇒ 与「B 侧没有这个类」**逐字节相同**；真证据 = `TaskApiWireContractRealTomcatTest`（成功体无信封） |
+| **5** | ✅ **已关闭（2026-11-03）—— 持久层落地位缺口** | C：`db/migration/`、`application.yml` | ✅ **V1 + V2 迁移脚本逐字复制**（`diff -r` 零差异）＋ **`spring.flyway` 段已补**（`table: flyway_schema_history_task` ＋ `baseline-on-migrate: true` ＋ `baseline-version: 0`）＋ **`hikari` 段已补**（50/50/1800000 ＋ `TimeZone=Asia/Shanghai`）＋ **`id-type: INPUT` 已补**；真证据 = `TaskServiceApplicationTests`（Flyway 账本有 V1/V2 且 `success=true` ＋ 两张表存在） |
+| **6** | ✅ **已关闭（2026-11-03）—— gRPC 服务端拦截器无 C 落点** | B：`common/spring/RpcServerInterceptorFactory` + **显式** `GrpcServerConfigurer.intercept(...)` | ✅ **已由共享层承担**：`common/autoconfigure/ProtectionAutoConfiguration.java:231-240` 的 `seaGrpcServerConfigurer` 真调 `server.intercept(...)` ⇒ **域内不写 `rpcInterceptorConfigurer`**；真证据 = **守门 A3 PASS**（`check-arch-invariants.py`：「`common/` 声明了 `GrpcServerConfigurer` 且真调 `server.intercept(...)`；域内 0 重复」） |
+| **7** | ✅ **已关闭（2026-11-03）—— MQ 载荷契约在 C 侧只有一份** | B：`task-rpc/.../mq/TaskArticleProgressEvent.java` | C 侧 `service/like/src/main/java/com/rag/like/contract/TaskArticleProgressMsg.java` 有；**`task/` 侧现已补上** `service/task/src/main/java/com/rag/task/messaging/TaskArticleProgressEvent.java` ⇒ **跨域 MQ 载荷在 C 侧是两份**（task 域 + like 域）⇒ ⚠️ 两份的**字段名与 topic 必须逐字对齐**（L1 契约层） |
+| **8** | 🟠 **`grpc-client-spring-boot-starter` 无使用方**（**但不能随便裁**） | C：`service/task/pom.xml` | api/rpc 合并后本域**没有跨域 gRPC 下游** ⇒ 该依赖**没有调用点**（**与 B 侧同源** —— B 侧 `task-api` 也有 `@GrpcClient` 但只连自己）⇒ 登记为「可裁剪的冗余依赖」<br>🔴 **2026-11-04 补记（双侧活体对拍实测）**：**保留它就等于必须保留 `io.grpc:grpc-inprocess` 的 runtime scope** —— devh 的 `GrpcClientAutoConfiguration#shadedNettyGrpcChannelFactory` 在**运行期**就要 `io.grpc.inprocess.InProcessChannelBuilder` ⇒ **只留 starter、把 `grpc-inprocess` 写成 `test` scope ⇒ C 侧 fat jar 启动即挂**（`NoClassDefFoundError`）⇒ ⇒ 本仓两条可行路径：**① 保留 starter ＋ `grpc-inprocess` 用 compile scope**（**本域采用** —— 与 `service/users/user` · `service/article` · `service/follow` · `service/like` 同款）**② 删掉 starter**（`service/users/admin` 用的是它 —— 本域 D2 零 `@GrpcClient` ⇒ 技术上可行，但会牵动 `common/` 的出向拦截器装配 ⇒ **本轮不动**） |
+| **9** | ✅ **已关闭（2026-11-03）—— `TaskApiProperties` 的聚合边界** | C：`config/TaskRewardProperties.java` | [`docs/第二轮深挖-契约盘点.md` §4.3](../../第二轮深挖-契约盘点.md#43-落地的缺口) 要求「按配置块拆成多个 `*Properties`」；✅ **C 侧已拆成 3 个**：`TaskRewardProperties`（prefix `task.reward`）· `TaskKafkaTopics`（prefix `task.kafka`）· `TaskSinkProperties`（prefix `task.definitions`）⇒ 原 `TaskApiProperties`（prefix `task.api`）在合并后**零消费点（哑弹）** ⇒ **已改名**为 `TaskRewardProperties`（**键名逐字不变**） |
+| **10** | ✅ **已关闭（2026-11-04）—— 「消费面真跑」与「双侧活体对拍」两条覆盖缺口** | C：`service/task/src/test/**/messaging/TaskKafkaConsumeRealTest.java` ＋ `tools/difftest/task/**` | ① **消费面**：`TaskKafkaConsumeRealTest`（3 例 · `@Tag("external-env")`）⇒ 真 broker ⇒ 真消费 ⇒ 真 flush ⇒ **真 Redis + 真 PG 落库** ⇒ **6 个 listener 位点都真提交**<br>② **双侧活体对拍**：`tools/difftest/task/`（**9 个文件**）⇒ B 侧 `task-api`+`task-rpc` 与 C 侧 `task-service` **同时活** ⇒ **21 条用例逐字节**（状态行 / Content-Type / nosniff / Allow / body）＋ **Redis 状态面** ＋ **PG 状态面** ＋ **冻结锚面**<br>⇒ 读数：**20 条逐字节一致 ＋ 1 条已登记表达层差异（DRIFT-TASK-016）＋ 0 真差异** ⇒ **EXIT=0**<br>⇒ ⚠️ **对拍第一次跑就抓到**：`grpc-inprocess` 的 `test` scope ⇒ **C 侧 fat jar 启动即挂**（**52 例测试全绿也看不出来**）⇒ **已修**（见 §7.3 #8） |
+| **11** | ✅ **已关闭（2026-11-04）—— 「gRPC wire 层零覆盖」** | C：`service/task/src/test/**/grpc/TaskGrpcNettyServerRealTest.java` ＋ `support/GrpcServerPortCapture.java` | ✅ **已补真 netty 收发用例（6 例）**：**真 netty server**（`grpc.server.port=0` ⇒ OS 分配 ⇒ 取 `event.getServer().getPort()` —— ⚠️ **不是** `event.getPort()`，那在 port=0 时返回 0）＋ **真 netty client**（🔴 **必须** `forAddress(new InetSocketAddress(...))` ⇒ 免疫 devh `DiscoveryClientResolverFactory` 对「不带 scheme 的目标」的**全局劫持** ⇒ 否则报极具迷惑性的 `UNAVAILABLE: No servers found for 127.0.0.1:port`）＋ **真 proto 编解码** ＋ **真 Redis / 真 PG**<br>⇒ 覆盖：**服务全名 `task.TaskService/GetTask`（L1 契约）** · 两条任务定义逐字段（190/3 ＋ 1902/5）· Redis 命中路径 · PG 回源路径 · 错误出口（`INVALID_ARGUMENT` ＋ `"user_id invalid"` ＋ **trailer 非空**）<br>⇒ 读数：**6 例 · 0/0/0**（13.65 s）⇒ **默认回归 52 → 58 例**<br>⇒ **变异 M-6**（把 `StatusRuntimeException` 透传抹成 UNKNOWN）⇒ **目标红 ＋ 对照绿 ＋ 还原绿** ⇒ 判据有牙齿<br>⚠️ **这条用例是 E-3（C 侧单侧真触发）** ⇒ **它不冒充 E-4** ⇒ ✅ **但「gRPC 面」的整体强度已由 §7.3 #12 提到 E-4** |
+| **12** | ✅ **已关闭（2026-11-04）—— 「gRPC 面尚未双侧活体对拍」** | C：`service/task/src/test/**/grpc/TaskGrpcNettyServerRealTest.java` ＋ `tools/difftest/task/grpc_probe/**` | ✅ **新增 M5 gRPC 字节面**：**真 netty client**（`grpc_probe/GrpcProbe.java`）打 **B 侧 :18242** ＋ **C 侧 :18248** ⇒ 比 **status code ＋ description ＋ 响应的每条任务字段与顺序**（id / name / desc / progress / required）<br>⇒ **7 条用例 · B↔C 逐字节全等 · 真差异 0 条** ⇒ **EXIT=0**；**非冻结复跑同样 EXIT=0**（⇒ **锚跨轮稳定**）⇒ **判定强度 = E-4**<br>⇒ ⚠️ **两面 uid 物理错开**（HTTP 面 `1001~1006` · gRPC 面 `2001~2006`）⇒ ⇒ `ok-pg-fallback` 的**回填**不会替对方做完 ⇒ **HTTP 面的 M2 状态面判据不被吃掉**<br>⇒ **变异 M-P4**（只动 `TaskGrpcService#invoke` 的 `StatusRuntimeException` 透传 ⇒ 抹成 `UNKNOWN`）⇒ **gRPC 面目标红 ＋ 对照绿 ＋ HTTP 面 DIFF 条数不变 ⇒ HTTP 面完全看不见 ＋ 还原绿** ⇒ ⇒ **证明 gRPC 面不是 HTTP 面的重复，是新增覆盖**<br>⇒ ⚠️ **零白名单** ⇒ ⇒ 「**服务全名 / status code / description / 响应字段与顺序**」在真线路上**两侧完全一致** ⇒ ⇒ **DRIFT-TASK-016 那类「报文内嵌类全限定名」的差异在 gRPC 面没有对应物** |
 
 ---
 
 ## 8. 一句话总结
 
 **B 列 RAG** = 两个进程（`task-api` HTTP 18886 / `task-rpc` gRPC 9005）+ MyBatis-Plus + Flyway（独立账本 `flyway_schema_history_task`）+ 全 Spring Bean + `mq/` 包 **11 个类**承载 Kafka 侧 + **零鉴权 + 零业务码 + 零指标**；
-**C 列 RAG-V1** = **单 app**（HTTP 8890 + gRPC 9006）+ **10 个子包** + **39 个空壳**（含 `messaging/` 包 **12 类** —— Kafka 消费侧已接住）+ task 域**刻意无错误契约类**。
+**C 列 RAG-V1** = **单 app**（HTTP 8890 + gRPC 9006）+ **10 个子包** + **40 个已落地类**（**零空壳**；含 `messaging/` 包 **12 类** —— Kafka 消费侧 6 个 `@KafkaListener` 已装配）+ task 域**刻意无错误契约类**。
 ⇒ **文件名与职责逐条对应；行为以 B 侧源码为准。**
-⇒ ⚠️ **C 侧剩下的缺口**：`TaskCountStore` 的 Redis `INCR` 落法未实现 · 持久层迁移脚本 / `flyway` 段 / `hikari` 段 / `id-type` 未补 · `common/` 缺 `RpcServerInterceptorFactory` —— 本表只标出落点，不预设方案。
+⇒ ✅ **C 侧原列出的 5 处缺口（2026-11-02 口径）已全部闭合（2026-11-03）**：`TaskCountStore` 的 Redis `INCR` 落法已实现 · 持久层迁移脚本 / `flyway` 段 / `hikari` 段 / `id-type` 已补 · `common/` 的 gRPC 拦截链由 `ProtectionAutoConfiguration` 承担 ⇒ **仅余 1 条**（`grpc-client-spring-boot-starter` 无使用方 · **与 B 侧同源**，登记不删）。
+⇒ ✅ **覆盖度缺口又连开三条（2026-11-04）**：**U-1** 消费面真跑（真 Kafka ⇒ 真消费 ⇒ 真 flush ⇒ 真落 Redis ＋ 真 PG）· **U-2** 双侧活体对拍（HTTP 面 **21 条用例逐字节**）· **U-3** gRPC wire 真 netty 收发（**6 例**）· **U-6** **gRPC 面双侧活体对拍**（**M5 gRPC 字节面 · 7 条用例逐字节全等 ⇒ E-4**）⇒ ⇒ **默认回归 52 → 58 例**（全仓 **299**）· **变异 10 组**（M-1~M-6 单元测试层 ＋ M-P1~M-P4 探针层）全部「目标红 ＋ 对照绿 ＋ 还原绿」。
+⇒ 📌 **对齐证据**：[`docs/DRIFT/task/verification-task-service-2026-11-03.md`](../../DRIFT/task/verification-task-service-2026-11-03.md)（迁移审核报告）＋ [`docs/DRIFT/task/vs-common.md`](../../DRIFT/task/vs-common.md)（跨层对账）。
