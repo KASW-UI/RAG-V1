@@ -1,5 +1,15 @@
 # =============================================================================
-# Hot 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程）
+# Hot 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程 · D1）
+#
+# ⚠️ **D1 合并 ⇒ B 侧两份 yml 的内容全部落到这一份**：
+#   B 侧 hot-api（Go: service/hot/api/etc/hotcenter.yaml）
+#   B 侧 hot-rpc（Go: service/hot/rpc/etc/hot.yaml）
+#   ⇒ 两侧的键名**逐字保留**（配置键属 L1）⇒ 合并只是**把两段并成一段**。
+#
+# 📌 **B 出处索引**
+#   · hot-api 段：B 侧 service/hot/hot-api/src/main/resources/application.yml
+#   · hot-rpc 段：B 侧 service/hot/hot-rpc/src/main/resources/application.yml
+#   · Go 真源：   service/hot/api/etc/hotcenter.yaml + service/hot/rpc/etc/hot.yaml
 # =============================================================================
 spring:
   application:
@@ -9,40 +19,347 @@ spring:
     username: ${POSTGRES_USER:admin}
     password: ${POSTGRES_PASSWORD:password}
     driver-class-name: org.postgresql.Driver
+
+  # ============== Redis（B 侧 hot-rpc 的 RedisConf{Host,Pass}）==============
+  # ⚠️ B 侧 RedisConf.Type 是**死配置**（service_context.go:17-20 只用 Addr + Password）
+  #    ⇒ 这里不配 cluster 相关项：Lettuce 默认即单节点直连。
   data:
     redis:
       host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      # ⚠️ connect-timeout（**TCP 连接**超时）必须显式写 5s：
+      #    B 侧 go-redis 只设了 Addr + Password ⇒ DialTimeout 未设 ⇒ 落库默认 5s；
+      #    不配 ⇒ 走 Lettuce SocketOptions.DEFAULT_CONNECT_TIMEOUT = 10s ⇒ **漂移 2 倍**。
+      # ⚠️ spring.data.redis.timeout 只管**命令**超时；Boot 3.5 起它**不再**兼管连接超时。
+      timeout: 3s
+      connect-timeout: 5s
+      # ⚠️ 连接池（与 B 侧**形态**对齐）：
+      #    · max-active: 64  ↔ B 侧 go-redis 的 PoolSize（本机 100）⇒ **性能面**数值差异（已登记）
+      #    · min-idle: 0     ↔ B 侧 MinIdleConns（无 default ⇒ 0）⇒ **精确对齐**
+      #    · max-idle: 16    ↔ B 侧 MaxIdleConns（无 default ⇒ 0 = 无上限）⇒ C 侧**更严**（已登记）
+      #    · max-wait: 4s    ↔ B 侧 PoolTimeout（= ReadTimeout 3s + 1s）⇒ **不可省**：
+      #      不配 ⇒ commons-pool2 的 DEFAULT_MAX_WAIT = -1 = **无限等** ⇒ 池耗尽 ⇒ 无限挂起。
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 64
+          max-idle: 16
+          min-idle: 0
+          max-wait: 4s
+
+  # ============== Kafka（B 侧 hot-rpc 的 KqConsumerConf + sarama Config）==============
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:kafka:9092}
+    consumer:
+      group-id: article-hot-group        # B 侧 KqConsumerConf.Group
+      # ⚠️ L1 语义：B 侧是 sarama.OffsetNewest —— 新 group **从最新位点开始，不回放历史**。
+      auto-offset-reset: latest
+      # ⚠️ 关掉自动提交，改由容器在 listener 正常返回后提交（ack-mode: record）。
+      enable-auto-commit: false
+      # ⚠️ payload 用 String 接收：让 JSON 解析失败发生在 HotEventConsumer 内部（被吞），
+      #    而不是发生在 Kafka 反序列化器里（会触发容器重试，改变 B 侧的 drop 语义）。
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        # ⚠️ L1 语义：B 侧是 sarama.NewBalanceStrategyRoundRobin()。
+        #    Spring 默认是 RangeAssignor —— 会改变分区归属，进而改变 hkMap 布局与热榜分布。
+        partition.assignment.strategy: org.apache.kafka.clients.consumer.RoundRobinAssignor
+    listener:
+      # RECORD = listener 正常返回后提交位点。这是 drop 契约的实现载体
+      # （HotEventConsumer 保证永不外抛 ⇒ 任何坏消息的位点都照常推进）。
+      ack-mode: record
+
+  # ============== 定时任务调度器（对齐 B 侧 hot-rpc 的两条独立 goroutine）==============
+  # ⚠️ Boot 的调度器默认是**单线程** ⇒ 不配这一项，B 侧的两条 @Scheduled
+  #    （30s 快照 / 10s 合并）会**共用一个线程、互相排队** ⇒ 合并一次要 pipeline 读 N 个分片
+  #    + 写 shadow + 跑 Lua ⇒ 最坏情况占住调度线程数秒，把 30s 快照推迟。
+  #    B 侧是两条**独立 goroutine** ⇒ 这里给 2 个线程。
+  task:
+    scheduling:
+      pool:
+        size: 2
+
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:nacos:8848}
+        # ⚠️ **host 与 port 必须拆成两个变量**（R1-ENV-001 · 2026-11-01 收口轮）
+        #    `${NACOS_ADDR:nacos:8848}` 把端口**硬编码进默认值** ⇒ `NACOS_PORT` 被完全忽略
+        #    ⇒ 与 `.env.example` / `docker-compose.yaml` 的契约（NACOS_ADDR=host + NACOS_PORT=port）冲突。
+        server-addr: ${NACOS_ADDR:nacos}:${NACOS_PORT:8848}
+        # ⚠️ **namespace / group 与本仓已落地域对齐**（`service/article`）：
+        #    B 侧 hot-api / hot-rpc 写的是 `public` / `DEFAULT_GROUP`。
+        #    ⚠️ **但那不是行为事实**：B 侧 hot→article 的 gRPC 调用走
+        #    **etcd key `article.rpc`**（`zrpc.RpcClientConf{Etcd:{Key:"article.rpc"}}`），
+        #    **etcd 没有 namespace / group 概念** ⇒ ⇒ 那两个值在 B 侧**不承载任何行为**。
+        #    ⚠️ **C 侧必须对齐**：`grpc.client.article-rpc` 走 **Nacos discovery**
+        #    （`discovery:///article-rpc`）⇒ namespace / group **真的参与寻址**
+        #    ⇒ 若沿用 B 侧的 `public`，已落地的 article 域（注册名 `article-rpc`
+        #    · namespace `sea-rtw` · group `DEFAULT_GROUP`）**在本域的寻址空间里根本不存在**
+        #    ⇒ gRPC 链路直接断 ⇒ 业务码塌成 1015。
+        #    ⇒ 对齐到本仓已落地域的取值 ⇒ 跨域链路成立。
+        #    （本条登记为 hot 域的**签字偏离** —— 部署面 · 非行为面。）
+        namespace: ${NACOS_NAMESPACE:sea-rtw}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        # 🔴 **必须显式关掉自动注册**（P-17）。
+        #    `NacosAutoServiceRegistration` 监听 `WebServerInitializedEvent`
+        #    ⇒ **注册的是 web 容器端口**（8895）。
+        #    而本域的手写 `wiring/NacosRegistration` 注册的是 **gRPC 端口**（8083）。
+        #    ⇒ 自动注册一旦生效 ⇒ 同一个服务名下出现**两个端口的实例**
+        #    ⇒ 调用方按 Nacos 给出的地址连过来 ⇒ 连到一个只提供 HTTP 路由的端口
+        #    ⇒ **gRPC 链路直接断**。
+        #    ⇒ 与 B 侧语义一致：只保留显式的 gRPC 端口注册。
+        register-enabled: false
 
+# =============================================================================
+# observability —— 观测层的两个超时预算（L1 配置键名 · 逐字照抄 B 侧）
+# =============================================================================
+# B 出处（两侧各一段，因为 B 侧是**两个进程**）：
+#   B 侧 hot-api 的 observability.http-timeout: 3s
+#     （Go 侧 etc/hotcenter.yaml **未配置** Timeout，实际生效值来自
+#      go-zero v1.10.2 rest/config.go:55 的 `Timeout int64 json:",default=3000"`）
+#   B 侧 hot-rpc 的 observability.rpc-timeout: 2s
+#     （Go yaml 未配 Timeout ⇒ go-zero zrpc/config.go:46 默认 2000ms）
+#
+# ⚠️ **D1 合并 ⇒ 两个键都要写**（与 `service/users/user` 同款写法）。
+# ⚠️⚠️ **这两个键缺失 = 机制静默不生效**（AGENTS.md §3.3.1）：
+#    `ObservabilityProperties` 的两个 timeout **没有 env 兜底**，缺省即 `Duration.ZERO`（不限时）
+#    ⇒ 不写 ⇒ 3s HTTP 预算与 2s gRPC 超时**都不存在**。
+observability:
+  http-timeout: 3s
+  rpc-timeout: 2s
+
+# =============================================================================
+# HTTP server（B 侧 hot-api 的 Go: Hotcenter.yaml: Host=0.0.0.0 / Port=8893）
+# =============================================================================
 server:
+  # ⚠️ **端口是 D1 合并带来的 L1 差异**：B 侧 hot-api = 18897（hot-api 段）/ 8893（Go yaml），
+  #    本仓合并后取 8895 ⇒ 登记在 hot 域 DRIFT 台账。
   port: ${HOT_HTTP_PORT:8895}
+  address: 0.0.0.0
+  servlet:
+    context-path: /
+  tomcat:
+    # ⚠️ relaxed-query-chars：B 侧的 net/http 不校验 query 里的 [ ]，
+    #    且 go-zero httpx.GetFormValues 明确支持方括号数组记法；
+    #    Tomcat 默认拒绝 ⇒ 400 + HTML 错误页（**不是**业务信封）⇒ 可观察差异。
+    #    ⚠️ **本域的 Tomcat maxParameterCount 由共享层持有**
+    #    （`WebAutoConfiguration#seaTomcatParameterLimitCustomizer` ⇒ 10001）⇒ **此处不配**。
+    relaxed-query-chars: ["[", "]"]
+  # ⚠️ B 侧的**真实**上限 = DefaultMaxHeaderBytes(1<<20) + 4096（bufio slop）
+  #    ⇒ 1 MiB + 4 KiB = **1028KB**；Boot 默认 8KB ⇒ 不配 ⇒ 长 header 被 Tomcat 先拒。
+  max-http-request-header-size: 1028KB
 
+# =============================================================================
+# gRPC server + client
+# =============================================================================
 grpc:
   server:
-    port: ${HOT_GRPC_PORT:8083}
+    # B 侧 hot-rpc 的 Go ListenOn: 0.0.0.0:8083（三副本是 8083/8084/8085）。
+    # ⚠️ **env 名双名兼容**（2026-11-05）：B 侧这个键叫 `HOT_RPC_GRPC_PORT`（B 侧 hot-rpc yml:223）
+    #    ⇒ 按 B 侧契约部署的环境变量在 C 侧会**静默失效**、回落默认 8083
+    #    ⇒ 若集群里 8083 已占用 ⇒ 启动冲突 ⇒ ⇒ 老名字**优先**，新名字保留为兼容别名。
+    port: ${HOT_RPC_GRPC_PORT:${HOT_GRPC_PORT:8083}}
     address: 0.0.0.0
+    # ⚠️ B 端 reflection 仅在 DevMode/TestMode 注册（hot.go:38-40），
+    #    三份 yaml 均未写 Mode（默认 pro）⇒ **生产不暴露 reflection**。
     reflection-service-enabled: false
   client:
-    # ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而上游 zrpc 是明文 gRPC。
-    #    不写会静默变 TLS —— 见《完全spring化的文件树》§9.1 断言 A4。
+    # ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而 B 侧 zrpc 全仓无 TLS。
+    #    不写会静默变 TLS —— 断言 A4。
+    #
+    # ⚠️ **B 侧的 hot-rpc client 在本仓不存在**：D2 域内直连
+    #    （hot-api 直接注入 HotRankingQueryService ⇒ 不再有自我 gRPC 往返）
+    #    ⇒ ⇒ **本段只有 article-rpc 一个方向**。
+    article-rpc:
+      # 🔴 地址必须是**三斜杠**（devh 3.1.0.RELEASE 的 DiscoveryClientResolverFactory
+      #    要求 path 非 null、长度 > 1、以 "/" 开头 ⇒ 两斜杠会抛
+      #    IllegalArgumentException 且发生在任何网络调用之前）。
+      address: discovery:///article-rpc
+      negotiation-type: plaintext
+      enable-keep-alive: true
+      keep-alive-time: 30s
+      permit-keep-alive-without-calls: true
+
+# =============================================================================
+# hot-api.* —— HTTP 层的域侧配置（L1 配置键名）
+# =============================================================================
+# ⚠️ **只有一个键**：出向 article-rpc 的客户端单次调用上界。
+#   B 侧的值来源：zrpc `RpcClientConf.Timeout int64 json:",default=2000"`
+#   （B 侧 etc/hotcenter.yaml 的 HotRpcConf / ArticleRpcConf **都没写** Timeout
+#     ⇒ 生效值来自 struct tag ⇒ 2000ms）
+# ⚠️ **B 侧把这个数写在共享层的 `rag.protection.outbound-deadline.cap-millis`**；
+#    本仓改由域侧承载（`HotApiProperties`）⇒ **有效值同为 2000ms**，但**配置键位不同**
+#    ⇒ 登记在 hot 域 DRIFT 台账。
+# ⚠️ **不同时配共享层的 cap**：那会造出**第二个上界来源** ⇒ 违反「cap 单一来源」纪律
+#    ⇒ ⇒ 共享层的 `rag.protection.outbound-deadline.cap-millis` **保持未配置**
+#    （出厂默认 0 = 不启用）。
+hot-api:
+  # ⚠️ **域内查询方向（hot-api → hot-rpc 域内直连）的出向上界**（2026-11-05 新增）：
+  #    B 侧这条方向走 gRPC ⇒ 共享层按 `rag.protection.outbound-deadline.cap-millis = 2000` 封顶
+  #    ⇒ Redis 卡住时 2s 就失败 ⇒ **200 + 5001 业务信封**。
+  #    本仓 D2 域内直连 ⇒ 不经过 gRPC ⇒ 共享层那个封顶**管不到它**
+  #    ⇒ Redis 要等到自己的 socket timeout（3s）才抛，而 HTTP 请求预算也是 3s
+  #    ⇒ ⇒ 两者同时到点 ⇒ 落进共享层的「HTTP 预算 × 业务失败」竞态（F-15）
+  #    ⇒ ⇒ 客户端可能拿到 **503 + 纯文本**（不是业务信封）。
+  #    ⇒ ⇒ 本键把这条方向的失败**拉回 2s** ⇒ 失败形状与 B 侧**逐条一致**，且不再撞上那个竞态。
+  #    ⚠️ 与上面的 `article-rpc.timeout` 是**两个键**：B 侧只有**一个** cap-millis 统一管所有出向；
+  #    本仓两个方向的**传输形态**不同（gRPC / 同进程调用）⇒ 共享层拦截器管不到域内方向
+  #    ⇒ ⇒ 只能域内自持 ⇒ 拆成两个键，**值同为 2000**（= B 侧的同一个数）。
+  domain-query-timeout: ${HOT_API_DOMAIN_QUERY_TIMEOUT_MS:2000}
+  article-rpc:
+    # ⚠️ **env 名双名兼容**（2026-11-05）：B 侧同一个数写的是共享层的
+    #    `HOT_API_OUTBOUND_DEADLINE_CAP_MILLIS`（B 侧 hot-api yml:171）⇒ 同款理由：
+    #    老名字优先（保持与 B 侧的部署契约不断裂），新名字保留为别名。
+    timeout: ${HOT_API_OUTBOUND_DEADLINE_CAP_MILLIS:${HOT_API_ARTICLE_RPC_TIMEOUT_MS:2000}}
+
+# =============================================================================
+# hot-rpc.* —— 业务参数（L1 配置键名 · 逐字照抄 B 侧 hot-rpc 段）
+# =============================================================================
+hot-rpc:
+  kafka:
+    # B 侧 KqConsumerConf.Topic（三份 yaml 一致）。消费侧的 group 在 spring.kafka.consumer.group-id。
+    topic: article-hot-events
+  heavy-keeper:
+    # B 侧 HeavyKeeper{Width:1000, Depth:5, Decay:0.9, TopK:100}
+    width: 1000
+    depth: 5
+    decay: 0.9
+    top-k: 100
+  interaction:
+    # B 侧 Interaction{SyncEvery:100, TTL:3600, PartitionCount:3}
+    # ⚠️ sync-every 是**全局**事件计数器阈值 ⇒ 分区越多，单分区的快照越稀疏。
+    sync-every: 100
+    # ⚠️ ttl-seconds 只作用于合并后的大 key hot:articles；
+    #    分片 key hot:articles:p{i} 的 EXPIRE 是**硬编码 300s**（写死在 Lua 里），
+    #    两个过期时间不同，切勿统一。
+    ttl-seconds: 3600
+    # ⚠️ 必须等于 topic 的实际分区数：merge 只读 p0..p{N-1}。
+    #    分区数 > 该值时，多出的分片快照照写不合并，那些文章永远不出现在 hot:articles。
+    #    B 侧同样如此，此处按「不擅自修复 B 侧行为」原样保留。
+    partition-count: 3
+    weights:
+      - code: 1          # ⚠️ B 侧零读取，仅为保留配置结构而存在
+        name: like
+        weight: 1
+      - code: 2
+        name: comment
+        weight: 2
+      - code: 3
+        name: coin
+        weight: 3
+      - code: 4
+        name: share
+        weight: 4
+
+# =============================================================================
+# rag —— 请求保护层（B 侧 hot-api 的 rag.protection 四道闸门）
+# =============================================================================
+# ⚠️⚠️ 下面这些在 B 侧的 etc/hotcenter.yaml 里**一个字都没写**，但它们**是开启的**
+#    （依据在 go-zero 的 struct tag 里）：
+#      rest/config.go:12-22   MiddlewaresConf 九个开关**全部** `json:",default=true"`
+#      rest/config.go:52      MaxConns int      `json:",default=10000"`
+#      rest/config.go:53      MaxBytes int64    `json:",default=1048576"`
+#      rest/config.go:56      CpuThreshold int64 `json:",default=900,range=[0:1000)"`
+# ⚠️ max-bytes 用 tag 默认的 **1 MiB**（B 侧只有 article-api.yaml 覆盖成 10 MiB）。
+rag:
+  http:
+    # =============================================================================
+    # Go 风格 form 值上限闸门（共享层 · global 收口域）
+    # =============================================================================
+    # Go 出处：go-zero rest/httpx/util.go:15  maxFormParamCount = 2048（数**非空值**）
+    #          Go 1.25 net/url/url.go:1001  defaultMaxParams = 10000（数**段数**）
+    # mode = 本域的 form 超限时应该输出什么形状 —— 依据是「B 侧该 api 有没有注册
+    #        httpx.SetErrorHandler」（逐域取证）：
+    #   · raw      ⇒ 400 + text/plain; charset=utf-8 + nosniff + B 侧原文
+    #   · envelope ⇒ 200 + {"code":5001,"msg":"<该域自己的错误码表文案>","data":null}
+    # ⚠️ B 侧 hot/api/hotcenter.go:53 **注册了** httpx.SetErrorHandler
+    #    ⇒ 解析失败走业务信封 ⇒ mode: envelope
+    # ⚠️ hot 域的 5001 文案是 **"internal server error"**（英文 · 逐字照抄 B 侧码表）
+    go-form-limit:
+      mode: envelope
+  protection:
+    max-conns: 10000
+    max-bytes: 1048576
+    cpu-shedding:
+      enabled: true
+      cpu-threshold: 900      # 千分比，900 = 90% CPU
+      cpu-source: SYSTEM      # B 侧 core/load/adaptiveshedder.go:41-43 读整机 CPU（/proc/stat）
+    breaker:
+      enabled: true
+    # ⚠️ **outbound-deadline 刻意不配** ⇒ 客户端硬上界不启用（默认 0）。
+    #    本域的出向上界由 `hot-api.article-rpc.timeout`（2000ms）承担 ⇒ **单一来源**。
+    #    （B 侧把这个数写在共享层的 cap-millis；本仓改由域侧承载 ⇒ 键位差异已登记。）
+
+# =============================================================================
+# OpenTelemetry OTLP exporter（对齐 B 侧 Telemetry.*）
+# =============================================================================
+# ⚠️ **2026-11-05 补齐**：本段此前**整段缺失** ⇒ 共享层 `GoStyleOtelConfig` 读到的
+#    `otel.exporter.otlp.endpoint` = null ⇒ 按 B 侧的 `if len(c.Endpoint) > 0` 口径
+#    **不装 exporter** ⇒ ⇒ hot 域的 span **一条都导不出去**（跨域链路在 Jaeger 侧断链）。
+#    ⚠️ 同款缺失还有 **comment / favorite / message / task** 四域 ⇒ 共 5 个域 ⇒
+#    ⇒ 建议由**收口域统一处置**（避免各域各补各的再漂）；本域按 B 侧 hot-api 的写法补齐。
+# ⚠️ 共享层 `GoStyleOtelConfig` 读的是 **B 侧那套键名**：
+#    `otel.service.name` / `otel.resource.attributes.service.name`（两套拼法都认）·
+#    `otel.exporter.otlp.endpoint` / `otel.exporter.otlp.protocol` /
+#    `otel.traces.sampler` / `otel.traces.sampler.arg`
+# ⇒ 端点**没有 scheme** 时共享层会补 `http://`（= B 的 WithInsecure() 明文）。
+otel:
+  # B 侧 rpc 侧的拼法（Go: Name: hot.rpc）—— D1 合并后只能填**一个**值
+  service:
+    name: hot-service
+  exporter:
+    otlp:
+      # 🔴 **合并裁决（scheme）**：B 侧 api 写 `http://${OTEL_ADDR}:${OTLP_PORT}`（带 scheme）、
+      #    B 侧 rpc 写裸 `host:port`（不带 scheme）⇒ 共享层两种都认 ⇒ 取**带 scheme** 的
+      #    那一侧（显式优于隐式）。protocol=grpc 同样取 api 侧写法。
+      endpoint: http://${OTEL_ADDR:jaeger}:${OTLP_PORT:4317}
+      protocol: grpc
+  resource:
+    attributes:
+      # B 侧 api 侧的拼法（Go: Telemetry.Name = hot-api）
+      # ⚠️ **D1 合并的连带偏离**：B 侧 api 填 `hot-api`、rpc 填 `hot-rpc`（两个值）
+      #    ⇒ 合并成一个进程后只能填**一个** ⇒ 取 `hot-service`（= `spring.application.name`）
+      #    ⇒ **登记为 D1 连带偏离**（值侧；键名与形状逐条对齐 B 侧）。
+      service.name: hot-service
+  traces:
+    # B 侧 api 写 `always_on`、B 侧 rpc 写 `parentbased_always_on`
+    # ⇒ 共享层 `GoStyleOtelConfig#toRatio` 把两者都映射成 ratio = 1.0
+    # ⇒ 取 api 侧写法（follow / like 域同款）。
+    sampler: always_on
+
+# =============================================================================
+# Metrics / Actuator
+# =============================================================================
+# ⚠️ 这是与 B 侧的一处**有意单向增强**：B 侧的 5 个 hot_api_* 指标虽然注册进了
+#    默认 registry，但**没有任何端点暴露它们**（yaml 的 Prometheus 块没给 Host
+#    ⇒ StartAgent 提前返回；DevServer 块在 go-zero v1.10.2 里没有对应字段）。
+#    C 侧接 Actuator 后它们会真的出现在 /actuator/prometheus。
+management:
+  endpoints:
+    web:
+      exposure:
+        # ⚠️ **取并集**（2026-11-05）：B 侧 hot-api 暴露 `health,info,prometheus`、
+        #    B 侧 hot-rpc 暴露 `health,info,prometheus,metrics` ⇒ D1 合并后取**并集**
+        #    ⇒ `/actuator/metrics` 不应从 200 变 404。
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      # ⚠️ **取严**（2026-11-05）：B 侧 hot-api **未配**（Boot 默认 `never` ⇒ 只回 {"status":"UP"}）·
+      #    B 侧 hot-rpc 配 `when_authorized` ⇒ **两侧都不是 `always`** ⇒ ⇒ 取 `when_authorized`
+      #    （与 B 侧 hot-rpc 一致）⇒ 避免无鉴权端点多吐内部信息。
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
 
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,prometheus
-  endpoint:
-    health:
-      show-details: always
-
 logging:
   level:
+    root: INFO
     com.rag: INFO
+    io.grpc: WARN
