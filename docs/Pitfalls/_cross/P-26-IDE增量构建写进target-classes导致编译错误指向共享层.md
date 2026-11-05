@@ -92,3 +92,18 @@ output="target/classes"
 ⇒ ⇒ **同族**：与「『容器起不来』类红属环境面」「『并行 reactor 污染时间敏感读数』」
 「『一次环境假红』的判定式」同源 —— 本条补的是「**IDE 与 Maven 抢同一个输出目录**」这一面，
 以及它特有的伪装：**错误信息指向共享层源码**。
+
+---
+
+## 七、⇒ 同源姊妹条：**P-27**（本条补的是「**覆盖**」那一面）
+
+> **2026-11-05 补记**：同一个根因（IDE 与 Maven 抢 `target/classes`）还有**另外两张脸** ⇒
+> ⇒ 见 [`P-27-IDE增量构建器擦除重写target-classes导致jar静默残缺.md`](P-27-IDE增量构建器擦除重写target-classes导致jar静默残缺.md)：
+> ⇒ ⇒ **脸②**：IDE **整体擦除并重写**输出目录 ⇒ 若擦在「编译完」与「jar 打包」之间 ⇒ ⇒
+> **jar 被静默打残**（实测 **221 / 760** 个 class · **0 个 `*Grpc.class`**）⇒ ⇒
+> 下游域报「找不到符号 `XxxServiceGrpc`」⇒ ⇒ **错误指向无辜的下游域**；
+> ⇒ ⇒ **脸③**：IDE 在 `target/` 内的活动让 **Maven 插件的临时目录清理失败** ⇒ ⇒
+> `protobuf-maven-plugin` 报「Unable to clean up temporary proto file directory」⇒ ⇒ **构建在 proto 模块夭折**。
+> ⇒ ⇒ **三张脸同源 ⇒ 一句话**：**产物的「完整性」不再由 Maven 独占保证** ⇒ ⇒
+> **凡取全量构建读数，先 `pgrep -fl jdtls|eclipse`**（用户的 Neovim `jdtls` 在用 ⇒ **杀不杀由用户定**）
+> ⇒ ⇒ **或**把构建放到**没有 IDE 配置的工作树**（`.classpath` 不进版本控制 ⇒ **新工作树天然隔离**）。
