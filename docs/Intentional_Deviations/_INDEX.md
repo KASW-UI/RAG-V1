@@ -30,15 +30,28 @@ docs/Intentional_Deviations/
 
 ## 当前条目
 
-| 域 | 条目数 | 备注 |
-|---|---|---|
-| `global`（共享层 `common/`） | **1** | [DEV-GLOBAL-SEC-001](global/common-bearer-token-extractor.md) |
-| `article` | **1** | [DEV-ARTICLE-AUDIT-001](article/content-audit-fail-loud.md) |
-| `like` | **2** | [DEV-LIKE-PROTO-001](like/_signed-deviations.md) · [DEV-LIKE-PROTO-002](like/_signed-deviations.md) |
-| `comment` | **2** | [DEV-COMMENT-PROTO-001](comment/_signed-deviations.md) · [DEV-COMMENT-PROTO-002](comment/_signed-deviations.md) |
-| 其余 7 域 | 0 | — |
+> ⚠️ **口径**：下表的**条目数与状态分布是机器复算的**（逐文件扫 `## DEV-*` 标题 ⇒ 抽取每条的 `| **状态** |` 行）
+> ⇒ **核对日期 2026-11-05**（合并 hot / task / comment / favorite 四域实现后重算；**此前本表自报 6 条 ⇒ 实为 47 条**）。
+> ⇒ **逐条明细以各域文件为权威副本**（下表「文件」列可直达）。
+
+| 域 | 条目数 | 文件 | 状态分布（机器复算 · 2026-11-05） |
+|---|---|---|---|
+| `global`（共享层 `common/`） | **1** | [common-bearer-token-extractor.md](global/common-bearer-token-extractor.md) | 候选建议签 1 |
+| `article` | **2** | [content-audit-fail-loud.md](article/content-audit-fail-loud.md) · [http-404-extra-vary-headers.md](article/http-404-extra-vary-headers.md) | 候选建议签 2 |
+| `like` | **2** | [_signed-deviations.md](like/_signed-deviations.md) | 已签字 1 · 已落地待确认 1 |
+| `comment` | **2** | [_signed-deviations.md](comment/_signed-deviations.md) | 已签字 1 · 已落地待确认 1 |
+| `favorite` | **12** | [_signed-deviations.md](favorite/_signed-deviations.md) | 已签字 9 · C 侧专属 3 |
+| `follow` | **8** | [_signed-deviations.md](follow/_signed-deviations.md) | 候选建议签 7 · **已撤销 1**（`DEV-FOLLOW-007` · 登记前提被运行时证据证伪） |
+| `hot` | **6** | [_signed-deviations.md](hot/_signed-deviations.md) | 已登记 4 · 已修复 1 · 已落地待确认 1 |
+| `users`（`users-user` 子域） | **10** | [_signed-deviations.md](users/_signed-deviations.md) | 候选建议签 8 · 已登记 1 · 全仓统一决策 1 |
+| `admin` | **4** | [_signed-deviations.md](admin/_signed-deviations.md) | 候选建议签 3 · 状态栏未写 1 |
+| `message` · `task` | **0** | — | — |
+| **合计** | **47** | — | 候选建议签 20 · 已签字 11 · 已登记 5 · 已落地待确认 3 · C 侧专属 3 · 已修复 1 · 已撤销 1 · 全仓统一决策 1 · 状态栏未写 2 |
 
 ### 已登记条目一览
+
+> ⚠️ **本表只逐条列出「proto 集中化 / 共享层」这 6 条** —— 它们是**跨域**条目 ⇒ 需在索引层**逐条可见**
+> ⇒ ⇒ **其余 41 条按域归口**（**各域文件是权威副本**）⇒ 逐条状态见上表「文件」列。
 
 | 条目 ID | 域 | 层 | 状态 | 一句话 |
 |---|---|---|---|---|
@@ -57,5 +70,11 @@ docs/Intentional_Deviations/
 
 - 🏷 **`DEV-ARTICLE-AUDIT-001` 建议签** —— 「两侧确实不同」的前提已逐行核对（B 侧 `UnavailableContentSecurityClient` 恒抛 + `docs/DRIFT/article/rpc.md` §12.1「`S-5` 改判范围外」· B 侧确实**没有** `security` 域对端）；登记本身是交付物，**不打包推给用户逐条拍板**。
 - ⬜ **002 两条待签字确认** —— 改动已实施（`java_package` 实测为 `com.rag.proto.<域>`），只需使用者确认登记内容与实际一致。
-- ⬜ **其余 8 域的 `java_package` 登记** —— 集中化是全 10 域动作（D7 已全部改完），其余 8 域的同类条目**待登记**（本档现只登记了 like / comment 两域）。
+- ⬜ **其余 8 域的 `java_package` 登记** —— 集中化是全 10 域动作（D7 已全部改完），**proto 包名类**条目现登记了 **like / comment / users** 三域（`DEV-LIKE-PROTO-00{1,2}` · `DEV-COMMENT-PROTO-00{1,2}` · `DEV-USER-007`）⇒ ⇒ **其余 7 域的同类条目待登记**（2026-11-05 机器复算）。
 - 🏷 **`DEV-GLOBAL-SEC-001` 建议签** —— 两侧实现已逐行核对（`BearerTokenExtractor.java` B 侧 `:75` vs C 侧 `:81`）⇒ **两侧确实不同**；⚠️ **B 侧自己的 javadoc 与 B 侧自己的代码不一致**（注释写 `> 6`、代码是 `> 7`）⇒ 属 B 侧移植偏差 ⇒ C 侧保持 `> 6`（上游口径）**不是移植错误** ⇒ 但**改回 `> 7` 属安全语义收紧**，不由迁移任务顺手决定 ⇒ 登记待确认。
+
+> ✅ **2026-11-05（`global` 收口域 · 合并工作树轮）· 本索引重算** —— 合并 hot / task / comment / favorite 四域实现后，
+> **各域的签字偏离台账随之进入主干** ⇒ ⇒ **本索引的「当前条目」表此前自报 6 条 ⇒ 机器复算实为 47 条**（`favorite` 12 · `users` 10 · `follow` 8 · `hot` 6 · `admin` 4 · `article` 2 · `comment` 2 · `like` 2 · `global` 1 · `message`/`task` 0）
+> ⇒ ⇒ **已按实测重写**（口径 = 逐文件扫 `## DEV-*` 标题 ⇒ 抽 `| **状态** |` 行 ⇒ 逐条计状态分布）⇒ ⇒ **未新增 / 未删除任何一条偏离条目**（**只改索引**）
+> ⇒ ⇒ ⚠️ **登记类事项**按纪律「**登记完就躺着**」⇒ **不打包推给用户逐条拍板**。
+

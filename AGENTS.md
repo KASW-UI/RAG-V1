@@ -10,24 +10,24 @@
 >
 > ⚠️ **本文件由 RAG 仓库的 AGENTS.md 改写而来**（2026-10-25）。带 **📦** 标记的段落是 **RAG 仓库的历史存档**（参考，不描述 RAG-V1 现状）；**RAG-V1 自身状态一律以 §0 为准。**
 
-## 〇、当前状态（2026-11-02）
+## 〇、当前状态（2026-11-05）
 
-**形态：共享层 `common/` 已落地 104/104 类；10 个业务域仍全为空壳**。
+**形态：共享层 `common/` 已落地 112/112 类；10 个业务域全部落地（域内空壳 0）**。
 
 > **📌 往哪写** —— 只放**政策与索引**，**全文可进上下文（预算 32 KB）**：逐条漂移 ⇒ `docs/DRIFT/<域>/<组件>.md`；踩坑 ⇒ `docs/Pitfalls/`；签字偏离 ⇒ `docs/Intentional_Deviations/`。**只留结论 + 一行指针；超预算 = 没走这条约定。**
 
-> **核对日期 2026-11-02**（`find` 实测）—— **全量状态速查表 ⇒ [`docs/README.md`](docs/README.md) §四**（文件树 / 两方对照 / 实现内容 / 编译 / 工具链 / 台账 六项）。
+> **核对日期 2026-11-05**（机器复算）—— **全量状态速查表 ⇒ [`docs/README.md`](docs/README.md) §四**（文件树 / 两方对照 / 实现内容 / 编译 / 工具链 / 台账 六项）。
 
 | 项 | 数 |
 |---|---|
-| Java 文件 | **670**（624 主代码 + 46 测试）—— `service/` **520 仍全为空壳** + `common/` **104（0 空壳）** |
+| Java 文件 | **921**（**645** 主代码 + **276** 测试）—— `service/` **533 主代码 + 234 测试**（**10 域全部落地 · 0 空壳**）+ `common/` **112 主代码 + 42 测试**（**0 空壳**） |
 | Maven 模块 | **16** pom = **13 叶子** + **2 聚合**（`service`/`users`）+ 1 根 —— **D7 打平**：每域**一个** jar 模块（`service/<域>/`）；artifactId 保持长名唯一（`<域>-service`/`users-common`/`proto`/`common`） |
 | proto / `application.yml` | **10 / 10**（10 个 `.proto` 集中在**根级 `proto/` 模块**，pb 包名 `com.rag.proto.<域>`；内容与 B 侧逐字节一致，仅 `java_package` 属表达层） |
-| `AutoConfiguration.imports` | **1**（`common/`，14 个 auto-config） |
-| `docs/File_Tree/` · 两方对照 | **14 份 + `_INDEX.md`** 文件树 · **13 份**域文档（C **624/624**、B **735/752** 覆盖 **97.9%**；**90 条落点缺口** 🔴11） |
-| 三档台账 | DRIFT **10 域未建立**（common **已建立**）· Intentional_Deviations **4 条**（like/comment 各 2）· Pitfalls **P-01~P-18** |
+| `AutoConfiguration.imports` | **2**（`common/` 14 个 auto-config ＋ `service/article/` **1 个域内 auto-config** · **与 B 侧同款** —— B 侧 article-rpc 亦有一份域内 `.imports`） |
+| `docs/File_Tree/` · 两方对照 | **13 份 + `_INDEX.md`** 文件树 · **13 份**域文档（C **645/645**、B **752/752** 覆盖 **100%**；**90 条落点缺口** 🔴11） |
+| 三档台账 | DRIFT **10 域全部建立** · Intentional_Deviations **47 条** · Pitfalls **P-01~P-26**（`_cross/`）＋ 域内 **35** 条（users 18 · hot 13 · follow 4） |
 
-**已完成**：树结构、pom、proto、application.yml、断言清单、两方对照、**GitHub 仓**、**工具链（Jackson 2 + Boot 3.5）**、**共享层 `common/`**。**未完成**：10 个业务域的实现（⇒ §1.0c）。
+**已完成**：树结构、pom、proto、application.yml、断言清单（**A1–A16**）、两方对照、**GitHub 仓**、**工具链（Jackson 2 + Boot 3.5）**、**共享层 `common/`**、**10 个业务域的实现**。**当前读数（2026-11-05）**：**串行全仓回归 BUILD SUCCESS · 16/16 模块 · 1605 例 · 0/0/0** · 三道守门 **EXIT=0**。**未完成**：各域台账里仍标 `NOT_VERIFIED` 的条目（⇒ §1.0c）。
 ✅ **决策时间线**：**2026-10-26 · D7/D10/D11**（proto 集中/模块打平/包压平 · `bootstrap`→`wiring` · `dto/` 拆子包）· **2026-11-01 · D13**（L2 以 RAG 为基准）· **2026-11-02 · D14**（工具链 = Jackson 2 + Boot 3.5）· **2026-11-02 · D16**（判定基准 = B 侧）· **2026-11-02 · D17**（users 不用 Flyway）· **2026-11-02 · D18**（**Lombok 允许 + 鼓励 · 展开注释强制**）⇒ 全文见 [`docs/决策记录.md`](docs/决策记录.md)。
 
 > 📌 **B 侧的 158 份台账留在 B 仓** ⇒ 本仓 `docs/DRIFT/` 从零填；其**「证据强度」分级方法论可借鉴**（§1.0c 约束 3）；教训见 [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)。
@@ -64,7 +64,7 @@ RAG-V1 仓库路径：`/Users/pr/Documents/GitHub/RAG-V1`。
 
 ### 1.0c B 侧实现复用：Mapping_Table 的 B↔C 对应就是抄写路线图（2026-10-26 用户定 · D16 改写）
 
-> 📌 **B 侧只读参考**：B 侧有 **951 文件 / 157,377 行**已实现代码（本仓 559 个**空壳**）⇒ **从零重写既慢又不如抄**。
+> 📌 **B 侧只读参考**：B 侧有 **951 文件 / 157,377 行**已实现代码（**本仓 10 域已全部落地 · 空壳 0**）⇒ **从零重写既慢又不如抄**。
 > ⇒ **[`docs/Mapping_Table/`](docs/Mapping_Table/_INDEX.md) 的 B 列 ↔ C 列 = 逐类抄写路线图**；各域 **§0.5** 给出「B 的哪个包 → 本仓的哪个包」。
 
 **抄写三档**（按 §3.1 分层）—— **① L4 机制层**（Jackson 强转 / Redis key / 雪花 ID / 错误码工厂 / 响应信封）可**近乎直抄**，§3.2 标注 **B 出处**（**注释级**，不回 B 跑）· **② L2 业务语义层**（Lua / 事务边界 / outbox 双信封 / 事实投递）**以 B 侧为基准整段抄**（D13），⚠️ 继承 B 侧已知漂移 ⇒ 登记为签字偏离，**B 侧自身就是基准，不再回溯** · **③ L1 契约层**（proto / 错误码值 / HTTP path / JWT claims / 表结构 / Kafka topic / 端口 / 注册名 / 配置键名）**以 B 侧为准**（D16），B 侧即为契约的**唯一权威副本**。
@@ -113,7 +113,7 @@ RAG-V1 的目标架构（落地以 `docs/File_Tree/` 为准）：
 
 ### 2.3 `common/` 的准入（实测 · 归属已裁决）
 
-`common/` 共 **104** 个主代码类 / **12 个包**（**104 已落地 · 0 空壳**）—— 包级明细 ⇒ [`docs/README.md`](docs/README.md) §四。
+`common/` 共 **112** 个主代码类 / **12 个包**（**112 已落地 · 0 空壳** · 核对日期 2026-11-05）—— 包级明细 ⇒ [`docs/README.md`](docs/README.md) §四。
 
 ✅ **已裁决（2026-11-03 · 用户定）**：`communityfact/` 13 类 = **7 个协议 DTO** ＋ **6 个行为类**（`Dispatcher`/`EventDispatcher`/`EventSender`/`AuthorityHandler`/`ProcessLogger`/`Wire`）。行为类**带域归属**（comment·favorite·like 共享）⇒ 与 §五.3 R1「`common/` 只放无域归属能力」**有张力**；10 个 app 全依赖 `common/` ⇒ 改一行锁住 10 域。⇒ ⇒ **裁决：行为侧 C ≡ B（实测 favorite 两侧都走共享层）⇒ 不是漂移 ⇒ 归属不动** ⇒ `common/communityfact/` **维持现状** ⇒ ⇒ **本条不再阻塞任何后续工作**（治理原则 R1 继续保留，将来若要动归属走映射表 §7.4 #1 的治理流程，**不是漂移修复**）。⇒ 台账：[`docs/DRIFT/common/verification-common-2026-11-02.md`](docs/DRIFT/common/verification-common-2026-11-02.md) **DRIFT-COMMON-V11**（另：G-2 `CanonicalHash` 在此 —— JCS 指纹不一致 ⇒ 幂等失效）
 ## 三、语义对齐纪律（Spring idiomatization 的唯一防线）
@@ -234,7 +234,7 @@ B 侧 RAG 仓路径见 §1.0b（**只读**，不接受写入）。RAG-V1 不是�
 | **[`docs/Worktree.md`](docs/Worktree.md)** —— 并发工作树方法论 | 并行开工前 |
 | **[`docs/Lombok-使用规范.md`](docs/Lombok-使用规范.md)** —— **D18** 展开注释强制 | 写实体 / 用 Lombok 时 |
 
-**三档台账**（§五.3）：[`docs/DRIFT/`](docs/DRIFT/_INDEX.md) · [`docs/Pitfalls/`](docs/Pitfalls/_INDEX.md)（P-01~P-18）· [`docs/Intentional_Deviations/`](docs/Intentional_Deviations/_INDEX.md)
+**三档台账**（§五.3）：[`docs/DRIFT/`](docs/DRIFT/_INDEX.md) · [`docs/Pitfalls/`](docs/Pitfalls/_INDEX.md)（P-01~P-26 ＋ 域内 35 条）· [`docs/Intentional_Deviations/`](docs/Intentional_Deviations/_INDEX.md)
 **结构产物**：[`docs/File_Tree/`](docs/File_Tree/_INDEX.md) · [`docs/L3-降级清单.md`](docs/L3-降级清单.md) · [`docs/第二轮深挖-契约盘点.md`](docs/第二轮深挖-契约盘点.md)（G-1~G-4）
 
 ### 7.3 工具与孤儿

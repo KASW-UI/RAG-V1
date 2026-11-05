@@ -62,6 +62,13 @@
 > ⇒ ⇒ **验收**：新 `ProtectionLayerSwitchWiringTest`（**4 例 · 真 Spring 装配 + 真 in-process gRPC 调用**）⇒ 4/4 绿；**变异两轮**：抽「配置→层」接线 ⇒ **2 红**（对照维仍绿）· 只抽「上报线程门」⇒ **1 红且红在 `reporterStarted()`** ⇒ 还原 4/4 绿
 > ⇒ ⇒ **🔴 新增机器守门 A15**（保护层每个 `enabled` 开关都必须有消费点）⇒ 脚本**自己从属性类解析开关清单** ⇒ **将来新增的开关自动进清单**；⚠️ **判据先剥注释** ⇒ 本仓 javadoc 里大量引用 B 侧源码 ⇒ 不剥会**假绿**（fixture 里故意放了一句注释里的引用，自检仍判红 ⇒ 证明没被骗到）⇒ ⇒ **self-test 15/15 · 真仓变异实测**
 > ⇒ ⇒ **全仓**：串行 `mvn -o test` ⇒ **BUILD SUCCESS · 16/16 模块 · 931 例 · 0/0/0**（common **247 → 251**）· 三道守门 **EXIT=0**（A15 已计入，共 15 条）· §11.2 状态表机器复算 **91 行 / 91 标记 / PASS 89 / INTENTIONALLY_CHANGED 2**（未变）
+>
+> ✅ **2026-11-05（`global` 收口域 · 本轮）· 合并所有工作树（hot / task 分支 ＋ comment / favorite 工作树里从未提交的整域实现）**：🔴 **「未合并」有两种形态，只看其中一种会漏** ⇒ ① **分支未合并**（`align/hot` · `align/task`）② **分支已合并、但实现从未提交**（comment / favorite 两个工作树里**整域实现躺在未跟踪文件里** ⇒ ⇒ Git 看不见 ⇒ ⇒ **`git branch --merged` 查不出来**）⇒ ⇒ **判据 = `git worktree list` ＋ 逐树 `git status` 两步并做** ⇒ ⇒ 处置 = 先在**各自工作树**落盘（⇒ 保持**每域一个可审提交**）⇒ 再 `--no-ff` 合入 `main`（⇒ 合并记录留在历史里）⇒ ⇒ **合并后 13 个工作树全 clean · `git branch --no-merged main` 为空**
+> ⇒ ⇒ **合并暴露并修掉了一个真缺陷**：**YAML 顶层重复键**（comment / task / favorite 三域各留下一份重复 `otel:` 段 ⇒ 详见 **DRIFT-COMMON-V22**）⇒ ⇒ 配套**新增机器守门 A16**
+> ⇒ ⇒ **本轮读数**（串行 `mvn -o test` ⇒ **BUILD SUCCESS · 16/16 模块 SUCCESS · 1605 例 · Failures 0 · Errors 0 · Skipped 0**；**模块级汇总**（⚠️ 计数只取**回归日志的模块级汇总** · AGENTS.md §五.8 规则 ①）：common **251** · article **157** · comment **301** · favorite **215** · follow **72** · hot **100** · like **110** · message **103** · task **58** · users-common **46** · user **40** · admin **152**）⇒ ⇒ 较合并前那轮（931 例）**净增 674 例**（comment **301** ＋ favorite **215** ＋ hot **100** ＋ task **58** 三个域的整域实现首次进入主干回归）
+> ⇒ ⇒ **三道守门 EXIT=0**：`check-arch-invariants.py` ⇒ **PASS 14 · FAIL 0 · N/A 2 · PENDING 0**（共 **16** 条 ⇒ ⇒ **A8 的 PENDING 因 comment / favorite 实现落地而归零**）；`--self-test` ⇒ **16/16 判据均能红**；`check-docs-vs-tree.py` ⇒ **EXIT=0**；`check-mapping-coverage.py` ⇒ **EXIT=0**（C **645/645** · B **752/752**）· §11.2 状态表机器复算 **91 行 / 91 标记 / PASS 89 / INTENTIONALLY_CHANGED 2**（**未变** · 本轮不改 §11.2 的任何一行）
+> ⇒ ⇒ ⚠️ **日志里有 4 条 `[ERROR]`**（`Surefire is going to kill self fork JVM. The exit has elapsed 30 seconds after System.exit(0).`）⇒ ⇒ **是 Surefire 关闭期的 fork-kill 警告，不是测试失败**（对应模块的模块级汇总仍是 `Failures 0, Errors 0, Skipped 0` ⇒ 整轮 `BUILD SUCCESS`）⇒ ⇒ **如实登记，不当绿灯抹掉**
+> ⇒ ⇒ ⚠️ **诚实边界**：① **未 push**（`main` 领先本地 `origin/main` 引用 **30 个提交** ⇒ 按纪律不推）；② 各域台账里仍标 `NOT_VERIFIED` 的条目**由各域 lane 自行重跑后给出**（**本轮只销了共享层那根** —— comment 域 D-15，根因已由 **DRIFT-COMMON-V20** 消除）；③ **本机环境面**：`common/target/classes` 曾被 Eclipse JDT 语言服务器覆盖（**IDE 输出目录 = Maven 输出目录**）⇒ ⇒ 踩坑入账 **P-26**（**「编译错误指向共享层」的真凶是构建产物被外部覆盖** ⇒ 判定式 = 先看源码 → `javap` 看产物 → `clean compile` 后单独复跑 ⇒ **别去改共享层源码**）
 
 ---
 

@@ -8,9 +8,10 @@
 ```
 docs/Pitfalls/
 ├── _INDEX.md
-├── _cross/            # 跨模块踩坑
+├── _cross/            # 跨模块踩坑（P-01 ~ P-26）
 ├── users/             # users 域专属（本域写权面）
-└── follow/            # follow 域专属（本域写权面）
+├── follow/            # follow 域专属（本域写权面）
+└── hot/               # hot 域专属（本域写权面）
 ```
 
 ## 已登记的坑（来自 RAG 形态的实测教训）
@@ -62,8 +63,14 @@ docs/Pitfalls/
 > [`_cross/P-19-JWT确定性导致黑名单串味到别的用例.md`](_cross/P-19-JWT确定性导致黑名单串味到别的用例.md)
 >
 > 📌 **域内踩坑（各域写权面 ⇒ 由收口域统一登记索引）** ⇒
-> [`users/_user-domain-pitfalls.md`](users/_user-domain-pitfalls.md)（P-USER-01~12 · `users-user` 子域）·
-> [`follow/_follow-domain-pitfalls.md`](follow/_follow-domain-pitfalls.md)（P-FOLLOW-01~04 · `follow` 域）
+> [`users/_user-domain-pitfalls.md`](users/_user-domain-pitfalls.md)（**P-USER-01~18** · `users-user` 子域）·
+> [`follow/_follow-domain-pitfalls.md`](follow/_follow-domain-pitfalls.md)（P-FOLLOW-01~04 · `follow` 域）·
+> [`hot/_hot-domain-pitfalls.md`](hot/_hot-domain-pitfalls.md)（**P-HOT-01~13** · `hot` 域 · **2026-11-05 随 hot 域实现合入主干 ⇒ 本索引补登**）
+
+> ✅ **2026-11-05（`global` 收口域 · 合并工作树轮）· 本索引补登** —— 合并 hot / task / comment / favorite 四域实现后，
+> **`hot/` 域内踩坑档（13 条）首次进入主干** ⇒ ⇒ **此前未登记进本索引** ⇒ **已补**（含「档位结构」段补 `hot/` 一行）
+> ⇒ ⇒ 另订正 `users` 域的条数（**P-USER-01~12 ⇒ 实为 P-USER-01~18**，按 `## P-USER-*` 标题机器复算）
+> ⇒ ⇒ **跨域坑 = P-01 ~ P-26**（`_cross/` 19 份文件 · **2026-11-05 新增 P-26**）· **域内坑 = users 18 · hot 13 · follow 4**。
 
 ## 纪律
 
