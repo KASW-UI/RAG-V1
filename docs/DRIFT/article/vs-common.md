@@ -76,7 +76,7 @@
 | query/form 取值真值表（`raw`/`first`/`bool`/`int32`/`text`） | `article-api/.../form/GoFormValues.java` | ✅ **共享层** `common/src/main/java/com/rag/common/web/FormValues.java` | `controller/ArticleController` · `dto/article/ListArticlesReq` · `dto/article/GetArticleReq` · `service/ArticleApiService` | ✅ **D-10 已收口（2026-11-03）** —— 域内副本 `web/ArticleQueryValues.java` **已删** |
 | jsonb TypeHandler（`List<String>` + `Map<String,String>`） | `article-rpc/.../mapper/JsonbTypeHandler.java` | ✅ **共享层** `common/src/main/java/com/rag/common/persistence/JsonbValueTypeHandler.java` | `domain/entity/ArticleEntity`（`secondary_tags` / `ext_info`）· `domain/entity/ArticleRevisionEntity` · `mapper/ArticleMapper` · `mapper/ArticleRevisionMapper` · 3 个 domain service | ✅ **D-11 已收口（2026-11-03）** —— 域内副本 `mapper/JsonbTypeHandler.java` **已删** |
 
-### 2.1 🔴 **待收口**（**属 `common/` 写权 · 不在本 lane**）
+### 2.1 ✅ **已全部收口**（**原「待收口」** —— **属 `common/` 写权 · 不在本 lane** ⇒ **2026-11-03 由 `global` 收口域执行** · `DRIFT-COMMON-V19`）<br>> ⚠️ **2026-11-09 订正**：本节标题此前仍写「🔴 **待收口**」⇒ **过期断言** —— 下面 2.1-1 / 2.1-2 / 2.1-3 三行的**处置列早已写「✅ 已收口（2026-11-03 · D-09 / D-10 / D-11）」** ⇒ ⇒ **标题与行内自相矛盾** ⇒ 现按**行内事实**订正。
 
 | # | 项 | 现象（实测证据） | 为什么现在不能收 | 收口建议 | 严重度 |
 |---|---|---|---|---|---|
@@ -84,7 +84,7 @@
 | **2.1-2** | **`common/web/GetFormValuesFilter` 只有「上限闸门」、无取值真值表** | `javap`/源码：公开面只有 `goParseViolation(String)` + `writeGoStyleBadRequest(resp,msg)` ⇒ **没有任何取值方法** ⇒ B 侧 `GoFormValues` 的 `raw`/`first`/`bool`/`int32`/`text` 五条真值表**无处安放** | ~~共享层**缺对应物** ⇒ 补能力属于 `common/` 写权~~ ⇒ ⇒ **2026-11-03 由 `global` 收口域执行** | ✅ **已收口（2026-11-03 · D-10）** —— 共享层**新增** `common/web/FormValues.java`（照抄 B 侧 `article-api/…/form/GoFormValues.java` **204 行**原类；**类名去 `Go` 前缀**；**异常类型换共享层 `BadRequestException`** ⇒ 两条错误文案**逐字未变**）⇒ **本域 `web/ArticleQueryValues.java` 已删** ⇒ 6 处改引用 ⇒ **副本数 1 → 0** | ✅ 已闭合 |
 | **2.1-3** | **`common/persistence/JsonbTypeHandler` 的**类型不兼容** ⇒ 顶不了本域的 jsonb | 共享层那版 = `public class JsonbTypeHandler extends BaseTypeHandler<String>`（**jsonb ↔ 文本**）⇒ 而本域要 `List<String>`（`secondary_tags`）**与** `Map<String,String>`（`ext_info`）**两种**形态 ⇒ ⇒ **类型不兼容** ⇒ 共享层另有一份 `JsonTextTypeHandler` = **text ↔ Map**（也不是 jsonb） | ~~共享层**无对应物** ⇒ 同 2.1-2~~ ⇒ ⇒ **2026-11-03 由 `global` 收口域执行** | ✅ **已收口（2026-11-03 · D-11）** —— 共享层**新增** `common/persistence/JsonbValueTypeHandler.java`（照抄 B 侧 `article-rpc/…/mapper/JsonbTypeHandler.java` **195 行**原类 ⇒ 代码体 **54 行逐行完全相同**）⚠️ **类名改**（共享层已有同名的「jsonb ↔ 文本」版 ⇒ 撞车 ⇒ 改名 `JsonbValueTypeHandler`）⚠️ **三处带 `"article"` 前缀的异常文案逐字保留**（L1 以 B 侧为准）⇒ **本域 `mapper/JsonbTypeHandler.java` 已删** ⇒ 10 处改引用 ⇒ **副本数 1 → 0** | ✅ 已闭合 |
 
-> 📌 **先例**：message 域的 `JsonbMapTypeHandler` 是**完全同型**的账单（共享层无对应物 ⇒ 域内副本 ⇒ 待收口）⇒ **两域的同一笔账** ⇒ 建议收口任务**一次处理两个域**。
+> 📌 **先例（已一并结清）**：message 域的 `JsonbMapTypeHandler` 是**完全同型**的账单（共享层无对应物 ⇒ 域内副本 ⇒ 待收口）⇒ **两域的同一笔账** ⇒ ⇒ ✅ **已与本域同一次收口**（**2026-11-03 · `DRIFT-COMMON-V19`** ⇒ 共享层**新增** `common/persistence/JsonbMapTypeHandler` ＋ message 域副本已删）⇒ ⇒ **本仓已无「共享层无对应物 ⇒ 域内副本」的残留**（⚠️ **2026-11-09 订正**：原写「⇒ 建议收口任务**一次处理两个域**」是**过期建议** —— 那次收口**已经一次处理了两个域**）。
 
 ### 2.2 ✅ **已上收到共享层的（B 侧域内副本 → `common/`，本域只消费）**
 
@@ -166,7 +166,7 @@
 | 域级审核报告 | [`docs/DRIFT/article/verification-article-service-2026-11-03.md`](verification-article-service-2026-11-03.md) | ✅ 已写 |
 | **本文件**（跨层对账） | `docs/DRIFT/article/vs-common.md` | ✅ 已写 |
 | 共享层能力消费面 | **15** 个 `com.rag.common.*` 类 · **零空壳** | ✅ 已核 |
-| 域内副本核对 | **3 份**（`web/ArticleStringFields` · `web/ArticleQueryValues` · `mapper/JsonbTypeHandler`）· 全部**待收口** | ✅ 已核 |
+| 域内副本核对 | **0 份**（`web/ArticleStringFields` · `web/ArticleQueryValues` · `mapper/JsonbTypeHandler` **均已删**）· 原 3 份已由 `DRIFT-COMMON-V19` 上收共享层 | ✅ 已核 |
 | 守门读数 | A1–A13 **PASS 10 · FAIL 0 · N/A 2 · PENDING 1**（PENDING 属 like/comment/favorite，**非本域**）· **EXIT=0** · `check-docs-vs-tree.py` **✅ 全部相符合 · EXIT=0** | ✅ 2026-11-03 |
 | 映射表读数 | article **C 列 63/63 = 100%** · **B 列 83/83 = 100%**（`tools/check-mapping-coverage.py`，ROOT 指向工作树）· 全仓 **C 642/642 · B 752/752** · `_INDEX.md` 自报数字对账 ✅ · **EXIT=0**<br>⚠️ **更正**：第一轮记的「脚本 EXIT=1 · 2 条报错全落 users 域」**已不成立** —— 根因是**主工作区**当时（users 域未收口）的映射表只列了 `CreateUserReq.java`；users 域收口后（主工作区 HEAD `85751b6`）**两个 ROOT 都 EXIT=0** ⇒ ⇒ 本轮**复跑确认**，不是「基线问题所以不管」 | ✅ 2026-11-03（复跑） |
 | 回归读数 | `mvn -o -pl service/article -am clean verify` ⇒ **BUILD SUCCESS**（**01:37** min · 日志 `/tmp/article-final-verify3.log`）· article **`Tests run: 157, Failures: 0, Errors: 0, Skipped: 0`**（默认回归 **32 类 / 157 例**）· common 同轮 `Tests run: 234, Failures: 0, Errors: 0, Skipped: 0`<br>⚠️ **默认回归不含** `external-env` 那 **2 类 / 3 例**（依赖宿主外部容器）⇒ 显式跑 `-Pexternal-env` ⇒ `Tests run: 3, Failures: 0, Errors: 0, Skipped: 0` | ✅ 2026-11-03（第三轮） |

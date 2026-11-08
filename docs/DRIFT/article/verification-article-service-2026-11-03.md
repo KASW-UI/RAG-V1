@@ -63,13 +63,13 @@
 | 20 | `article-api/…/dto/DeleteArticleResp.java` | 删除响应 | `dto/article/DeleteArticleResp` | record | 1:1 | ✅ | PASS | E-2（`success`） |
 | 21 | `article-api/…/dto/GetArticleReq.java` | 读单篇入参 | `dto/article/GetArticleReq` | record | 1:1 | ✅ | PASS | E-2（path + query 两处拼成，**非 JSON**） |
 | 22 | `article-api/…/dto/GetArticleResp.java` | 读单篇响应 | `dto/article/GetArticleResp` | record | 1:1 | ✅ | PASS | E-2（`article`） |
-| 23 | `article-api/…/dto/GoStyleStringFields.java` | JSON 字段类型判定 | `web/ArticleStringFields` | `parse` | 1:1 | ✅ | **NOT_VERIFIED**（**待收口** · 共享层 `StringFields` 包私有） | E-2（逐行副本；⚠️ **两份不得分叉**） |
+| 23 | `article-api/…/dto/GoStyleStringFields.java` | JSON 字段类型判定 | **`common/web/StringFields`**（共享层 · D-09 收口后落点 · 域内副本 `web/ArticleStringFields` **已删**） | `parse` | 1:1 | ✅ | **PASS**（✅ 已收口 · D-09 · **2026-11-09 订正**） | E-2（逐行副本；⚠️ **两份不得分叉**）<br>⇒ **2026-11-09 复算依据**：本行原判为「**待收口**（共享层 `StringFields` 包私有）」—— **该前提已被消除**（见 §11.5.2 · D-09「✅ 已收口」）⇒ 共享层已 `public final class` ＋ `public static parse`（**方法体一字未改**）＋ 域内副本已删 ⇒ **磁盘实测** `service/article/src/main/java` 下**无** `StringFields` ⇒ ⇒ 「两份不得分叉」的风险面随之消失（现只剩一份） |
 | 24 | `article-api/…/dto/ListArticlesReq.java` | 列表入参（8 个 query） | `dto/article/ListArticlesReq` | record + `of(...)` | 1:1 | ✅ | PASS | E-2（默认值 `page=1`/`page_size=20`/`sort_by=create_time`/`desc=true`） |
 | 25 | `article-api/…/dto/ListArticlesResp.java` | 列表响应 | `dto/article/ListArticlesResp` | record | 1:1 | ✅ | PASS | E-2（`articles` 空 ⇒ **`null`** 非 `[]`；顺序 `articles,total,page,page_size`） |
 | 26 | `article-api/…/dto/UpdateArticleReq.java` | 更新入参 | `dto/article/UpdateArticleReq` | record + `@JsonCreator` 次构造器 | 1:1 | ✅ | PASS | E-2（7 字段全 `,optional` ⇒ **不加 `@NotNull`**） |
 | 27 | `article-api/…/dto/UpdateArticleResp.java` | 更新响应 | `dto/article/UpdateArticleResp` | record | 1:1 | ✅ | PASS | E-2（`success`） |
 | 28 | `article-api/…/dto/UploadImageResp.java` | 上传响应 | `dto/upload/UploadImageResp` | record | 1:1 | ✅ | PASS | E-2（`image_url`） |
-| 29 | `article-api/…/form/GoFormValues.java` | query/form 取值真值表 | `web/ArticleQueryValues` | `raw` · `first` · `bool` · `int32` · `text` | 1:1 | ✅ | **NOT_VERIFIED**（**待收口** · 共享层只有上限闸门） | E-2（5 条真值表逐条照抄） |
+| 29 | `article-api/…/form/GoFormValues.java` | query/form 取值真值表 | **`common/web/FormValues`**（共享层 · D-10 收口后落点 · 域内副本 `web/ArticleQueryValues` **已删**） | `raw` · `first` · `bool` · `int32` · `text` | 1:1 | ✅ | **PASS**（✅ 已收口 · D-10 · **2026-11-09 订正**） | E-2（5 条真值表逐条照抄）<br>⇒ **2026-11-09 复算依据**：本行原判为「**待收口**（共享层只有上限闸门）」—— **该前提已被消除**（见 §11.5.2 · D-10「✅ 已收口」）⇒ 共享层**新增** `common/web/FormValues`（照抄 B 侧 204 行原类 ⇒ 方法体 32 行逐行相同）＋ 域内副本已删 ⇒ **磁盘实测** `service/article/src/main/java` 下**无** `FormValues` |
 | 30 | `article-api/…/http/GoStyleBadRequestException.java` | 400 + text/plain | `common/web/BadRequestException` | — | 1:N | ✅ | PASS | E-2（上收共享层） |
 | 31 | `article-api/…/http/GoStyleGrpcStatusMapper.java` | gRPC status → HTTP | `common/web/GrpcStatusMapper` | — | 1:N | ✅ | PASS | E-2（上收共享层） |
 | 32 | `article-api/…/http/GoStyleHttpErrorException.java` | 任意状态 + body | `common/web/HttpErrorException` | — | 1:N | ✅ | PASS | E-2（上收共享层） |
@@ -123,7 +123,7 @@
 | 70 | `article-rpc/…/mapper/ArticleRevisionMapper.java` | revision 表数据访问 | `mapper/ArticleRevisionMapper` | — | 1:1 | ✅ | PASS | E-3 |
 | 71 | `article-rpc/…/mapper/ArticleDomainOutboxMapper.java` | 发件箱数据访问 | `mapper/ArticleDomainOutboxMapper` | — | 1:1 | ✅ | PASS | E-3（`UNIQUE(aggregate_id, aggregate_version)` 是**事件顺序保证**，不可省） |
 | 72 | `article-rpc/…/mapper/ArticleSyncOutboxMapper.java` | 同步发件箱数据访问 | `mapper/ArticleSyncOutboxMapper` | — | 1:1 | ✅ | PASS | E-3（`event_key` 唯一键保留） |
-| 73 | `article-rpc/…/mapper/JsonbTypeHandler.java` | jsonb ↔ List/Map | `mapper/JsonbTypeHandler` | `StringListTypeHandler` · `StringMapTypeHandler` · `readList` · `readMap` | 1:1 | ✅ | **NOT_VERIFIED**（**待收口** · 共享层类型不兼容） | E-3（真 PG jsonb 往返） |
+| 73 | `article-rpc/…/mapper/JsonbTypeHandler.java` | jsonb ↔ List/Map | **`common/persistence/JsonbValueTypeHandler`**（共享层 · D-11 收口后落点 · 域内副本 `mapper/JsonbTypeHandler` **已删**） | `StringListTypeHandler` · `StringMapTypeHandler` · `readList` · `readMap` | 1:1 | ✅ | **PASS**（✅ 已收口 · D-11 · **2026-11-09 订正**） | E-3（真 PG jsonb 往返）<br>⇒ **2026-11-09 复算依据**：本行原判为「**待收口**（共享层类型不兼容）」—— **该前提已被消除**（见 §11.5.2 · D-11「✅ 已收口」）⇒ 共享层**新增** `common/persistence/JsonbValueTypeHandler`（照抄 B 侧 195 行原类 ⇒ 代码体 54 行逐行完全相同）＋ 域内副本已删 ⇒ **磁盘实测** `service/article/src/main/java` 下**无** `Jsonb*TypeHandler` |
 | 74 | `article-rpc/…/metrics/ArticleRpcMetrics.java` | 指标（**`NAMESPACE = "article_service"`**） | `metrics/ArticleRpcMetrics` | 各埋点 | 1:1 | ✅ | PASS | E-3（真 registry 抓完整名） |
 | 75 | `article-rpc/…/service/ArticleSpans.java` | span 名常量（从指标类拆出） | `metrics/ArticleRpcMetrics` | 内嵌常量 | 1:1 | ✅ | PASS | E-2（**并入** ⇒ C 侧无 `ArticleSpans` 类） |
 | 76 | `article-rpc/…/mq/ArticleReviewConsumer.java` | 审核消费者（四元组 + 幂等 + FOR UPDATE 写 outbox） | `messaging/ArticleReviewConsumer` | `@KafkaListener` | 1:1 | ✅ | PASS | E-3（真 Kafka） |
@@ -135,7 +135,7 @@
 | 82 | `article-rpc/…/service/ArticleAtomicService.java` | **多步写事务载体** | `domain/service/ArticleAtomicService` | `retractAndUpdate` · `retractAndDelete` · `queueSyncOutboxWithLock` · `acceptSyncResult` | 1:1 | ✅ | PASS | E-3（⚠️ **必须独立 Bean**，否则 `@Transactional` self-invocation 失效） |
 | 83 | `article-rpc/…/service/impl/ArticleServiceGrpcImpl.java` | gRPC 6 方法 thin wrapper | `grpc/ArticleGrpcService` | 6 个 `@Override` | 1:1 | ✅ | PASS | E-2（**proto 方法签名是 L1，一个字节都不改**） |
 
-> **承接表统计**：**83 / 83 行**，无遗漏；`✅ 已实现` **79** · `🟡 部分实现` **2**（#9 / #36，均因**无对端域**）· `⛔ 有意不建` **1**（#53）· `🟡 域内副本待收口` **3**（#23 / #29 / #73，**实现状态为 ✅ 但共享层收口状态为 NOT_VERIFIED**）。
+> **承接表统计**（**按「实现」列逐行重数**）：**83 / 83 行**，无遗漏；`✅ 已实现` **79** · `🟡 部分实现` **3**（#9 / #36 / #55）· `⛔ 有意不建` **1**（#53）⇒ **合计 83**。<br>⚠️ **2026-11-09 订正（机器复算）**：① 原写「`🟡 部分实现` **2**（#9 / #36）· `⛔ 有意不建` **1**（#53）· `🟡 域内副本待收口` **3**（#23 / #29 / #73）」⇒ ⇒ **两处错**：**#55 也是 🟡**（`client/UnavailableContentAuditClient` · **fail-loud 语义保留** ⇒ 恒抛）⇒ 部分实现 **2 → 3**；而 **#23 / #29 / #73 的「实现」列本来就是 ✅**（它们卡的是**验证**列 ⇒ 属**跨表口径**）⇒ ⇒ **把它们再加进「实现」分档 = 重复计数**（79 + 2 + 1 + 3 = **85** ≠ 83）⇒ ⇒ **该子项归零**（3 份域内副本已由 `DRIFT-COMMON-V19` 上收共享层）。
 
 ---
 
@@ -181,7 +181,7 @@
 | B 侧 `common/http/GoStyleRouterErrorResponses` | `common/web/RouterErrorResponses` | `advice/ArticleApiExceptionHandler` |
 | `article-rpc/…/config/Jackson2ObjectMapperConfiguration` | `common/autoconfigure/JsonBodyConverterAutoConfiguration` | 零直接引用 |
 
-> ⚠️ **反向账单（3 份域内副本）** ⇒ 见 [`vs-common.md`](vs-common.md) §2.1（`StringFields` 包私有 · `GetFormValuesFilter` 无取值真值表 · `JsonbTypeHandler` 类型不兼容）⇒ **待收口**。
+> ✅ **反向账单已结清（3 份域内副本 → 0）** —— **2026-11-03 · `global` 收口域 · `DRIFT-COMMON-V19`** ⇒ 共享层已补齐（`common/web/StringFields` 放开可见性 · `common/web/FormValues` **新增** · `common/persistence/JsonbValueTypeHandler` **新增**）＋ 域内 3 份副本**已删** ⇒ 对账见 [`vs-common.md`](vs-common.md) §2.1。<br>⚠️ **2026-11-09 订正**：原写「`StringFields` 包私有 · `GetFormValuesFilter` 无取值真值表 · `JsonbTypeHandler` 类型不兼容 ⇒ **待收口**」是**过期断言** —— 三项能力缺口早已消除。
 
 ### 11.3.5 Spring 接管
 
@@ -193,7 +193,7 @@
 | 手工 `@Import` 清单 | **`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`**（D3 starter 化） | ✅ 守门 **A5 PASS**（域内 **0 个** `@Import`） |
 | B 侧可变 struct DTO | **immutable record**（D5） | ✅ 守门 **A9 PASS**（138/138 DTO immutable） |
 | 手写必填校验 | **Bean Validation `@NotNull`**（A10） | ⚠️ **文案有差**（见 §11.5 · D-05） |
-| 手写 jsonb TypeHandler | MyBatis-Plus `BaseTypeHandler` | ✅ 域内副本（结构与 B 侧同构） |
+| 手写 jsonb TypeHandler | MyBatis-Plus `BaseTypeHandler` | ✅ 共享层 `common/persistence/JsonbValueTypeHandler`（结构与 B 侧同构 · **2026-11-03 · D-11 收口后落点**） |
 
 ### 11.3.6 独立进程合并
 
@@ -204,7 +204,7 @@
 ### 11.3.7 职责缺失
 
 **C 侧无缺失**：B 侧 **83 / 83** 全部有承接点（§11.2 逐行可查）。
-⇒ 但有 **3 处「实现存在、共享层收口未完成」**（`web/ArticleStringFields` · `web/ArticleQueryValues` · `mapper/JsonbTypeHandler`）⇒ 属**跨 lane 账单**，不是本域漏抄。
+⇒ ✅ **2026-11-09 订正**：原「**3 处「实现存在、共享层收口未完成」**（`web/ArticleStringFields` · `web/ArticleQueryValues` · `mapper/JsonbTypeHandler`）」是**过期断言** —— 该 3 处已由 `global` 收口域闭合（**2026-11-03 · `DRIFT-COMMON-V19`**）⇒ ⇒ **域内副本 0 份** ⇒ ⇒ **C 侧无缺失，且无「跨 lane 账单」残留**。
 
 ---
 
@@ -217,9 +217,9 @@
 | **F-3** | Boot 4 专有 artifact（`spring-boot-kafka` / `spring-boot-flyway` / `spring-boot-data-redis` / `spring-boot-tomcat`） | Boot 3.5 的对应物（`org.springframework.kafka:spring-kafka` 等） | 依赖坐标不同 | 容器装配 | ✅ **否** | 按 D14 换坐标 ⇒ **零排除项** | `mvn -o -pl service/article -am compile` = BUILD SUCCESS；容器能起 | ✅ **无行为影响** |
 | **F-4** | B 侧 **双进程**（api / rpc 分离） | C 侧 **单进程**（D1） | 同域 gRPC 调用消失；两个端口同进程 | 创建 / 读 / 更新 / 列表 / 上传 全链路 | ⚠️ **形态变** | D2 域内直连；**B 侧的「gRPC code → 业务码」映射仍在 API 层**（领域层抛 `ArticleExceptions.Rpc`/`Raw` 而非 `StatusRuntimeException`）⇒ C 侧用 `statusCodeOf()` **逐条复刻** `grpc/ArticleGrpcService` 的三条 catch 分支 | 错误码面真触发测试 | ✅ **行为等价**（**错误码逐条相同**） |
 | **F-5** | B 侧 `ArticleServiceGrpcImpl` 抛 `StatusRuntimeException` | C 侧领域层抛 `ArticleExceptions.Rpc` / `Raw` | 异常类型不同 ⇒ 映射点不同 | 错误响应面 | ⚠️ **可能** | `Rpc` ⇒ 取其 `Status.Code`；`StatusRuntimeException` ⇒ **原样透传**；`Raw` / 其它 ⇒ **UNKNOWN** | `ArticleExceptions` 契约测试 | ✅ **行为等价**（⚠️ **`Raw` ⇒ UNKNOWN ⇒ 业务码 1015 而非 5001**） |
-| **F-6** | B 侧 `GetFormValues` 自己的取值真值表 | C 侧共享层 `GetFormValuesFilter` **只有上限闸门** | 能力缺口 | query 参数解析（`page`/`page_size`/`sort_by`/`desc` + 4 个筛选） | ⚠️ **会** | 域内副本 `web/ArticleQueryValues`（**待收口**） | 真 Tomcat 查询契约测试 | ✅ **行为等价**（副本逐条照抄 B 侧 5 条真值表） |
-| **F-7** | B 侧 `GoStyleStringFields`（域内可见） | C 侧共享层 `StringFields` **包私有** | 可见性 | JSON 类型不符文案 | ⚠️ **会** | 域内副本 `web/ArticleStringFields`（**待收口**） | 真 Tomcat 400 文案断言 | ✅ **行为等价** |
-| **F-8** | B 侧 `article-rpc/.../mapper/JsonbTypeHandler`（jsonb↔List/Map） | C 侧共享层 `JsonbTypeHandler` 是 **jsonb↔String** | **类型不兼容** | `secondary_tags` / `ext_info` 持久化 | ⚠️ **会** | 域内副本 `mapper/JsonbTypeHandler`（结构与 B 侧同构） | 真 PG jsonb 往返 | ✅ **行为等价** |
+| **F-6** | B 侧 `GetFormValues` 自己的取值真值表 | C 侧共享层 `GetFormValuesFilter` **只有上限闸门**（⚠️ **2026-11-09 订正**：该缺口已由 **D-10** 消除 —— 共享层**新增** `common/web/FormValues`（取值真值表整体上收）） | 能力缺口 | query 参数解析（`page`/`page_size`/`sort_by`/`desc` + 4 个筛选） | ⚠️ **会** | ✅ **2026-11-09 订正**：原写「域内副本 `web/ArticleQueryValues`（**待收口**）」⇒ **已被 D-10 取代** —— 共享层**新增** `common/web/FormValues` ＋ 域内副本已删 ⇒ **落点 = 共享层**（**D-10 已收口**） | 真 Tomcat 查询契约测试 | ✅ **行为等价**（副本逐条照抄 B 侧 5 条真值表） |
+| **F-7** | B 侧 `GoStyleStringFields`（域内可见） | C 侧共享层 `StringFields` **包私有**（⚠️ **2026-11-09 订正**：该缺口已由 **D-09** 消除 —— 共享层已放开为 `public final class`） | 可见性 | JSON 类型不符文案 | ⚠️ **会** | ✅ **2026-11-09 订正**：原写「域内副本 `web/ArticleStringFields`（**待收口**）」⇒ **已被 D-09 取代** —— 共享层 `StringFields` 已放开为 `public`（**方法体一字未改**）＋ 域内副本已删 ⇒ **落点 = 共享层**（**D-09 已收口**） | 真 Tomcat 400 文案断言 | ✅ **行为等价** |
+| **F-8** | B 侧 `article-rpc/.../mapper/JsonbTypeHandler`（jsonb↔List/Map） | C 侧共享层 `JsonbTypeHandler` 是 **jsonb↔String**（⚠️ **2026-11-09 订正**：该缺口已由 **D-11** 消除 —— 共享层**新增** `common/persistence/JsonbValueTypeHandler`） | **类型不兼容** | `secondary_tags` / `ext_info` 持久化 | ⚠️ **会** | ✅ **2026-11-09 订正**：原写「域内副本 `mapper/JsonbTypeHandler`」⇒ **已被 D-11 取代** —— 共享层**新增** `common/persistence/JsonbValueTypeHandler` ＋ 域内副本已删 ⇒ **落点 = 共享层**（**D-11 已收口**） | 真 PG jsonb 往返 | ✅ **行为等价** |
 | **F-9** | B 侧 `article-api` 走 go-zero 的 `rest` 链（`WithCors()`） | C 侧 Spring MVC + 共享层 filter 链 | 框架级错误处理不同 | 解析失败 / 方法不匹配 / 上传失败 | ⚠️ **会** | 逐条复刻：解析失败 = **400 + text/plain + nosniff**（**不是 200+5001**）· 方法不匹配 = **404 空 body**（**不是 405**） | 真 Tomcat 契约测试 | ✅ **行为等价** |
 | **F-10** | B 侧 Flyway 账本表名（**schema 级**） | C 侧 `flyway_schema_history_article` + `baseline-on-migrate: true` + **`baseline-version: 0`** | 账本隔离 | 启动建表 | ⚠️ **会**（若沿用默认表名 ⇒ **共用 schema 时任一 app 先启动，其他 app 的表永远建不出来**） | 按 AGENTS.md §六 的**各域独立账本表名**口径 | 真 PG 上 Flyway 实跑（V8/V9/V10 建成） | ✅ **无行为影响** |
 | **F-11** | B 侧 `@EnabledIfDockerAvailable`（**10 个测试类**带） | C 侧**一律不抄** | 测试可选化 | CI 上「静默跳过」 | ⚠️ **会**（跳过 = 假绿） | **禁 `@EnabledIfDockerAvailable`**（AGENTS.md §五.8 硬规则 ③）⇒ Docker 不可用时**直接失败** | 真 PG 容器实测（全部真跑） | ✅ **无行为影响**（**且更严**） |
@@ -313,9 +313,9 @@
 
 | 状态 | 行数 | 说明 |
 |---|---:|---|
-| **PASS** | **77** | 职责已完整承接，行为一致且有证据（E-2 源码级对照 / E-3 真中间件） |
-| **INTENTIONALLY_CHANGED** | **3** | D-06 / D-07 / D-08（**无对端域** ⇒ 已签字偏离） |
-| **NOT_VERIFIED** | **3** | D-09 / D-10 / D-11（**域内副本 ⇒ 共享层收口未完成**） |
+| **PASS** | **79** | 职责已完整承接，行为一致且有证据（E-2 源码级对照 / E-3 真中间件）<br>⚠️ **2026-11-09 机器复算订正**：**76 → 79** —— ① **+3**：**D-09 / D-10 / D-11 三条已由 `global` 收口域闭合**（**2026-11-03 · `DRIFT-COMMON-V19`**：三份域内副本删除 ＋ 共享层补齐 `web/StringFields` / `web/FormValues` / `persistence/JsonbValueTypeHandler`）⇒ ⇒ **磁盘实测**：域内副本 **0 份**（`service/article/src/main/java` 下已无 `StringFields` / `FormValues` / `Jsonb*TypeHandler`）；② **订正前的明细真值是 76**（原汇总写 **77** ⇒ 错账 +1）⇒ ⇒ **本表口径 = 承接表「验证」列的行数**（**不是**漂移 ID 数）<br>⇒ ⇒ **本次只改汇总口径 + 3 个承接行的状态，未新增/未删除任何承接行**（合计仍 **83**） |
+| **INTENTIONALLY_CHANGED** | **4** | ⚠️ **2026-11-09 机器复算订正**：**3 → 4** —— 原写「D-06 / D-07 / D-08」是**漂移 ID 数**，而本表口径是**承接行数** ⇒ ⇒ **3 个漂移 ID 覆盖 4 个承接行**（**D-06 → #55** 内容安全客户端 · **D-07 → #9 + #36** 作者昵称补全（B 侧两个源文件合并到 C 侧一处）· **D-08 → #53** 图片广告检测（`security` 域不在迁移范围 ⇒ 无对应文件））⇒ ⇒ **D-05 / D-12 两条漂移 ID 不落在承接表**（前者是必填文案措辞、后者是 C 侧新增上传 DTO ⇒ 无对应 B 源文件 ⇒ 不计行） |
+| **NOT_VERIFIED** | **0** | ✅ **归零**（**2026-11-09 机器复算**）—— 唯一来源是 **D-09 / D-10 / D-11** 三条「域内副本 ⇒ 共享层收口未完成」⇒ ⇒ **该前提早已不成立**（**2026-11-03 · `DRIFT-COMMON-V19`** 已把三份副本上收共享层并删除域内副本）⇒ ⇒ **已改判 PASS**（见上一行）⇒ ⇒ **本域已无因共享层而未闭合的项**<br>⚠️ **口径提示**：§11.5.2 的 **D-14**（Nacos `namespace` 默认值）**仍是 `NOT_VERIFIED`** —— 但它**不落在承接表**（属跨域配置面，非承接行）⇒ ⇒ **不计入本表的 83 行**（见 §11.6.3 表外缺口） |
 | **FAIL** | **0** | — |
 | **NOT_IMPLEMENTED** | **0** | — |
 | **FRAMEWORK_DIFFERENCE** | **0** | F-1 ~ F-11 全部有适配 + 验证证据 |
@@ -326,13 +326,13 @@
 
 | 档 | 项 | 数量 | 依据 |
 |---|---|---:|---|
-| **已实现且已验证** | 承接行 | **77 / 83** | 逐行见 §11.2 |
-| **已实现但未验证** | 承接行（共享层收口未完成） | **3 / 83** | D-09 / D-10 / D-11 |
+| **已实现且已验证** | 承接行 | **79 / 83** | 逐行见 §11.2（**2026-11-09 机器复算**：77 → 79 —— 原 77 比明细真值 76 多 1（漂移 ID 数 vs 行数）＋ D-09 ~ D-11 收口 +3） |
+| **已实现但未验证** | 承接行 | **0 / 83** | ✅ **2026-11-09 归零** —— 原 3 / 83（D-09 / D-10 / D-11）已由 `DRIFT-COMMON-V19` 闭合 |
 | **尚未实现** | 承接行 | **0 / 83** | §11.3.7「C 侧无缺失」 |
 | **明确存在漂移** | C 侧引入的业务行为漂移 | **0** | 本轮修掉 **5** 条（D-01 ~ D-04 ＋ **D-13 = CORS 能力面缺失**）；**B 侧既有缺陷 10 条不计入**（非 C 侧引入） |
 | **框架差异待验证** | Boot 4→3.5 差异项 | **0 / 11** | F-1 ~ F-11 全部有适配 + 验证证据 + 最终结论<br>⇒ ⚠️ **另加 F-13**（Spring 版本副产物 ⇒ 404 多 2 条 `Vary`）—— **语义等价、字节面有差** ⇒ 已归 **D-15** 登记（只登记不改码）⇒ ⇒ **不计入「待验证」**（根因已到源码行） |
 | **被外部条件阻塞** | 承接行 | **0 / 83** | — |
-| **已批准的主动变更** | 承接行 | **3 / 83** | D-06 / D-07 / D-08 |
+| **已批准的主动变更** | 承接行 | **4 / 83** | ⚠️ **2026-11-09 机器复算**：3 → 4 —— D-06 / D-07 / D-08 三条漂移覆盖 **4** 个承接行（D-06 → #55 · D-07 → #9 + #36 · D-08 → #53） |
 
 ### 11.6.3 代码与测试规模（**仅供参考，不代表完成度**）
 
@@ -738,11 +738,11 @@
 >
 > ⚠️ **「表内归零」≠「命题闭合」** —— 本表是**台账自己**对自己 13 条的结算，**不是**「迁移已完美」的声明。仍然存在、且**故意不写进任何一行**的东西：
 > ① **U-2 那 3 例默认回归不含**（环境依赖）⇒ 「跑绿」**不代表**跨域链路被验过 ⇒ 必须显式 `-Pexternal-env`；
-> ② **§11.5.2 的 D-09 / D-10 / D-11** 是**共享层收口未完成**（`NOT_VERIFIED`）⇒ 它们**不是**本域能关的；
+> ② **§11.5.2 的 D-09 / D-10 / D-11** **已由 `global` 收口域闭合**（**2026-11-03 · `DRIFT-COMMON-V19`**）⇒ ⇒ **本域已无因共享层而未闭合的项**（⚠️ **2026-11-09 订正**：原写「共享层收口未完成」是**过期断言** —— 共享层早已收口，域内副本已清空）；
 > ③ **D-14**（Nacos `namespace` 默认值）是**跨域**漂移 ⇒ 归 `global` 收口域；
 > ④ **D-15**（404 多 2 条 `Vary`）是 **Spring 版本副产物**（框架限制）⇒ **已登记、只登记不改码** ⇒ 归 `global` 收口域（同一形态会出现在其它域）；
 > ⑤ **U-1 的不可比面**（gRPC 面 / `author_name` 的 RPC 成功支 / 写路径 / `/actuator/*`）**明确排除**，不是忘了；
 > ⑥ **B-01 ~ B-10** 是 B 侧既有缺陷 ⇒ 照抄不修（D16）；
 > ⑦ **U-3 的容器层分帧头**（`Content-Length` vs `Transfer-Encoding`）**刻意不钉具体是哪个** ⇒ 只钉「恰有一个」⇒ **分帧方式不是跨侧契约**（B 侧同为 Tomcat，且 B 侧测试自己就记载了 chunked）。
 >
-> 📌 **一句话口径**：本域 **83 行承接表全有据 · 13/13 条表外缺口已闭 · 2 条跨域待 `global` 收口（D-14 / D-15）· 3 条待共享层收口（D-09 ~ D-11）** ⇒ **可进 review**，**不等于**「无缺口」。
+> 📌 **一句话口径**（**2026-11-09 订正**）：本域 **83 行承接表全有据 · 13/13 条表外缺口已闭 · 2 条跨域待 `global` 收口（D-14 / D-15）** ⇒ ⇒ **「3 条待共享层收口（D-09 ~ D-11）」已结清（0 条）** —— `DRIFT-COMMON-V19` 已收口 ⇒ ⇒ **可进 review**，**不等于**「无缺口」。

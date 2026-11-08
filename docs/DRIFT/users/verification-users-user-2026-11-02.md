@@ -471,14 +471,18 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 > **2026-11-03 第四轮（PARITY-006 闭合 ⇒ 1 条 FAIL 转 PASS）后订正为 25/2/0/6。**）
 > ⚠️ **这些数字是脚本按行复算出来的，不是手数的** —— 手数第一次写成了 24 ⇒ **被机器复算当场纠正**
 > ⇒ ⇒ **复算命令（可复用 · 任何域的台账都能跑）**：
-> `python3 tools/recount-ledger-status.py docs/DRIFT/users/verification-users-user-2026-11-02.md --expect-total 33`
-> ⇒ ⇒ 机器输出逐字：
+> `python3 tools/recount-ledger-status.py docs/DRIFT/users/verification-users-user-2026-11-02.md --table-line 387 --compare-summary --expect-total 33`
+> ⇒ ⇒ 机器输出逐字（⚠️ **2026-11-09 重跑**：工具已重写 —— 状态列改为**按内容定位**、汇总表改为**与「行数相等」的明细组对照**、输出改为**完整普查（含 0 值）** ⇒ ⇒ **数字未变**（25 / 2 / 0 / 6 = 33）⇒ ⇒ **只有打印形态与命令变了**）：
 > ```
->    PASS                   25
+> —— 状态表复算（docs/DRIFT/users/verification-users-user-2026-11-02.md · 1 张明细表）——
+>    FAIL                   6
 >    INTENTIONALLY_CHANGED  2
 >    NOT_VERIFIED           0
->    FAIL                   6
+>    NOT_IMPLEMENTED        0
+>    PARTIAL                0
+>    PASS                   25
 >    合计                     33
+>    📋 自报汇总表（行 458）：{'PASS': 25, 'INTENTIONALLY_CHANGED': 2, 'NOT_VERIFIED': 0, 'FAIL': 6}
 >    ✅ 自报总数与复算一致（33）
 > ```
 > （同款教训见 [`P-08`](../../Pitfalls/_cross/P-08-落地证据未经机器复算.md)）。
