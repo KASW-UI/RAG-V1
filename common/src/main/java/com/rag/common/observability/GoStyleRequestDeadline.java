@@ -195,10 +195,20 @@ public final class GoStyleRequestDeadline {
  * <p><b>⚠️ K-03 保留项（映射表 §1.6 第 184 行 · 1:1）</b>：本类<b>不是</b> D4「生态吸收」的对象
  * —— Java 的 {@code Future.cancel(true)} 对阻塞 IO 无效 ⇒ 必须走服务端取消语义
  * ⇒ ⇒ 落点保留 {@code GoStyle*} 前缀（命名债 P4-④ 已登记：它是<b>语义标记</b>而非噪声）。
- * <p><b>⚠️ 落点差异</b>：RAG 侧 {@code GoStyleRequestDeadline} 引用
- * {@code RpcInterceptor.DeadlineState}（服务端 SQL 超时载体，批 3 才落）
- * ⇒ ⇒ 本仓该引用<b>暂缺</b>，已在 javadoc 中标注 ⇒ 批 3 落地 {@code ObservabilityCustomizer}
- * 时须把两者的「同一个绝对时刻」约束一并兑现。
+ * <p><b>⚠️ 落点差异（2026-11-05 实测订正 · 原「暂缺」说法已过期）</b>：RAG 侧 {@code GoStyleRequestDeadline}
+ * 引用 {@code RpcInterceptor.DeadlineState}（服务端 SQL 超时载体）
+ * ⇒ ⇒ ❌ <b>原写「本仓该引用暂缺」—— 该说法已过期</b>
+ * ⇒ ⇒ ✅ <b>现状</b>：本仓的 {@link DeadlineState} <b>早已落地</b>
+ * （批次 3 的 {@code ObservabilityCustomizer} ⇒ 今天的
+ * {@code ObservabilityAutoConfiguration.GrpcObservationInterceptor#withDeadline}）
+ * ⇒ ⇒ <b>B 出处 · {@code RpcInterceptor.java:516-522} 的「两个载体绑同一个绝对时刻」约束已兑现</b>：
+ * {@code withDeadline} 在 {@code onHalfClose} 里把 {@code DeadlineState} 与
+ * {@code GoStyleRequestDeadline} <b>绑同一个绝对时刻</b> ⇒ ⇒ <b>不会出现「SQL 已过期但出向还活着」</b>
+ * ⇒ ⇒ ⇒ <b>连带结论</b>：HTTP 面的「<b>慢 DB ⇒ 1015</b>」链<b>也已闭合</b>
+ * （{@code HttpMiddleware} 绑 {@code DeadlineState} ⇒ {@code DeadlineQueryTimeoutInjector}
+ * 设 queryTimeout ⇒ PG 取消 ⇒ {@code SqlTimeoutStatusTranslator} 把 57014 翻成 1015）
+ * ⇒ ⇒ ⚠️ <b>教训（本段即教训本体）</b>：这段「暂缺」文案<b>曾被下游台账当成现状引用</b>
+ * ⇒ ⇒ <b>注释不是现状</b>（AGENTS.md §3.1）⇒ ⇒ 判断现状一律以<b>代码 + 运行证据</b>为准。
  */
     public static <T extends AbstractStub<T>> T applyTo(T stub) {
         Long d = DEADLINE_NANOS.get();
