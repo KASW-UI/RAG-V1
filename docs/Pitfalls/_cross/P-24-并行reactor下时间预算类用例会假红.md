@@ -51,6 +51,10 @@
 - **判定实验 ①**：**HEAD 版（无 D-15）单独**跑 like 那条 ⇒ **4/4 绿** ⇒ ⇒ 「本来红」不成立。
 - **判定实验 ②**：**D-15 单独**跑同样两条 ⇒ like **4/4 绿** ＋ admin **1/1 绿**
   （机器读数 `code=DEADLINE_EXCEEDED description=rpc deadline exceeded elapsedMs=2022` ≈ 该域 2s 预算 ⇒ **正是设计行为**）
+  🔴 **2026-11-09 补注**：当时读到的 `description=rpc deadline exceeded` 是**共享层旧文案**；共享层已改为复用
+  `RpcHandleRunner.GO_DEADLINE_EXCEEDED_DESCRIPTION`（= `context deadline exceeded`，与 B 侧 `RpcInterceptor.java:179` 逐字一致）
+  ⇒ ⇒ **现在复跑同一条用例，description 会读作 `context deadline exceeded`** ⇒ ⇒ 但**本条的判据纪律不变**
+  （并行 reactor 下仍不得凭「到点断连类用例变红」判回归 ⇒ 必须单独串行复跑）
   ⇒ ⇒ **D-15 不是根因**。
 - **根因**：admin 那条用例**本身要跑 30s**（`Time elapsed: 30.40 s`），而它断言的预算只有 **2s**
   ⇒ ⇒ 并行时稍有 CPU/IO 争抢就超时 ⇒ ⇒ like 那条同理。

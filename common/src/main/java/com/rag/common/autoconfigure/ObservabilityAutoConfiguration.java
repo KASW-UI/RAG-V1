@@ -6,6 +6,7 @@ import com.rag.common.observability.HttpMiddleware;
 import com.rag.common.observability.ObservabilityCustomizer;
 import com.rag.common.observability.ObservabilityLifecycle;
 import com.rag.common.observability.ObservabilityRuntime;
+import com.rag.common.observability.RpcHandleRunner;
 import com.rag.common.protection.RpcLayer;
 import com.rag.common.observability.ObservabilityProperties;
 import io.grpc.ForwardingServerCall;
@@ -507,7 +508,15 @@ public class ObservabilityAutoConfiguration {
             }
             return timeoutScheduler().schedule(
                     () -> call.close(Status.DEADLINE_EXCEEDED
-                            .withDescription("rpc deadline exceeded"), new Metadata()),
+                            // 🔴 **2026-11-09（`global` 收口域）：文案改为复用共享层那一个常量**
+                            //    ⇒ 原为硬编码 `"rpc deadline exceeded"` ⇒ ⇒ 与 B 侧**不一致**（客户端可见）
+                            //    ⇒ B 出处 = `service/common/…/observability/RpcInterceptor.java:179`
+                            //      （`GO_DEADLINE_EXCEEDED_DESCRIPTION = "context deadline exceeded"`，
+                            //        同文件 `:362` 用它关 call —— 与本处**同一用途**）
+                            //    ⇒ ⚠️ 与域内那条「rpc deadline reached」**不是同一件事**
+                            //      （那是 users 域领域层自查 ⇒ 域内面 ⇒ 不在本条范围）
+                            .withDescription(RpcHandleRunner.GO_DEADLINE_EXCEEDED_DESCRIPTION),
+                            new Metadata()),
                     effectiveTimeoutNanos, TimeUnit.NANOSECONDS);
         }
 

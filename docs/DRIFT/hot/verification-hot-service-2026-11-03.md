@@ -515,18 +515,21 @@
 | 修复建议 | 不修（**明确登记为「有意单向增强」**，避免下一个人误以为 C 侧漏了指标暴露） |
 | 验证方法 | 指标名与标签取值域逐条核对（`HotApiMetrics` / `HotRpcMetrics`）；`HotEventConsumerRealKafkaTest` 真读到 `article_hot_kafka_consume_total{type}` 的计数 |
 
-### F-13 · 无表域的持久层模板残留（MyBatis-Plus / DataSource）
+### F-13 · ✅ **已修（2026-11-09 · global 收口域统一处置）** —— 无表域的持久层模板残留（MyBatis-Plus / DataSource）已删除
 
 | 项 | 内容 |
 |---|---|
-| 位置 | `service/hot/pom.xml`（MP + PG）＋ `application.yml`（`spring.datasource` ＋ `mybatis-plus` 段） |
-| B | hot-api / hot-rpc **均无** `domain/*Entity`、**无** `mapper/`、**无** DDL |
-| C | 同样**无表**，但**保留了**模板带来的 MP / PG 依赖与配置 |
-| 原因 | **全仓模板批量生成**的残留（映射表 §2 决策锁「3 处同时改」）⇒ 属**跨域统一决策**，不在本域写权内 |
-| 影响范围 | 装配面（多一个 DataSource ＋ 空 MP 扫描）—— **无业务行为**（本域零 SQL） |
+| 位置 | `service/hot/pom.xml`（MP + PG）＋ `application.yml`（`spring.datasource` ＋ `mybatis-plus` 段）⇒ ⇒ **本轮已删除** |
+| B | hot-api / hot-rpc **均无** `domain/*Entity`、**无** `mapper/`、**无** DDL；hot 的 pom 里**无** mybatis / gorm / datasource / postgres<br>⚠️ 全仓仅 `hot-rpc/src/test/probe/redis-disconnect/go.mod` 这个**一次性探针模块**带过 gorm/postgres ⇒ 不属于 hot 域运行时 |
+| C（修前） | 同样**无表**，但**保留了**模板带来的 MP / PG 依赖与配置 |
+| **🔴 一次统一决策（本条就是那个决策的结果）** | 台账原文写「10 个域同款 ⇒ 需一次统一决策」⇒ ⇒ **本轮实算的结果是：<b>只有 hot 该删</b>** —— 其余 9 域**都真有** `@TableName` 实体与 MP `BaseMapper`（article 11 · comment 14 · favorite 9 · follow 5 · like 10 · message 7 · task 4 · users-user 4 · users-admin 6 个持久层类）⇒ ⇒ 它们**保留** MP + PG ⇒ ⇒ **本次统一决策 = 「10 域里只有 hot 无表 ⇒ 只有 hot 删」**（不是「10 域一起删」，也不是「10 域都不删」） |
+| **删了什么** | ① `service/hot/pom.xml`：`com.baomidou:mybatis-plus-spring-boot3-starter` ＋ `org.postgresql:postgresql`（runtime）两条依赖；<br>② `service/hot/src/main/resources/application.yml`：`spring.datasource` 段（url/username/password/driver-class-name 四行）＋ `mybatis-plus:` 段（`map-underscore-to-camel-case`）；<br>③ **零共享层改动** —— `common/pom.xml` 里 `mybatis-plus-spring-boot3-starter` 已是 `<optional>true</optional>`（**不传递给下游**）⇒ ⇒ hot 删掉自己那条后，共享层 `PersistenceAutoConfiguration` 的 `@ConditionalOnClass(name = "org.apache.ibatis.plugin.Interceptor")` **自动不装配** ⇒ 不需要动共享层一行代码 |
+| **🔴 为什么删掉 `spring.datasource` 不会让 hot 启动炸（Boot 3.5.11 源码逐行核对）** | `DataSourceAutoConfiguration.PooledDataSourceConfiguration` 带 `@Conditional(PooledDataSourceCondition.class)`，后者 = 「配了 `spring.datasource.type`」**或**「classpath 上**有**可用的连接池实现」（`PooledDataSourceAvailableCondition`）⇒ ⇒ **Hikari（随 mybatis-plus starter 进来）被删 ⇒ 条件不匹配 ⇒ 整个池化配置不加载** ⇒ ⇒ 也**不需要** `spring.datasource.url` ⇒ ⇒ 两条是**成对**的：<br>⚠️ **变异实测（2026-11-09）**：只把 `mybatis-plus-spring-boot3-starter` 加回 hot 的 pom、而 `spring.datasource.url` 仍被删 ⇒ 上下文**直接起不来** ⇒ ⇒ 证明「依赖」与「datasource 配置」必须**同时**去/留 |
+| **⚠️ 仍然在 classpath 上的东西（诚实边界 · 不是残留）** | ① `org.mybatis:mybatis` ＋ `mybatis-spring` —— `common/pom.xml` 的**非 optional** compile 依赖（共享层超时拦截器 `DeadlineQueryTimeoutInjector` / `SqlTimeoutStatusTranslator` 要用）⇒ **全域都有** ⇒ 不能为 hot 摘掉；<br>② `org.postgresql:postgresql` —— 同理（`common/persistence/JsonbTypeHandler` 编译期就要 `org.postgresql.util.PGobject`）⇒ **全域都有**；<br>⇒ ⇒ 两者在 hot 里**完全惰性**：没有 Hikari ⇒ 没有 DataSource ⇒ 没有连接池 ⇒ **永不建立任何数据库连接** |
+| **影响范围** | 装配面：删掉一个**本域用不到**的 DataSource + 一套**零调用点**的 MP 扫描 ⇒ **零业务行为变化**（本域零 SQL）⇒ ⇒ 与 B 侧「hot 不碰数据库」一致 |
 | 严重程度 | 🟢 低 |
-| 修复建议 | **不在本域改**（10 个域同款 ⇒ 需一次统一决策）⇒ **NOT_IMPLEMENTED（无表 ⇒ 无职责可承接）** |
-| 验证方法 | 上下文真起（MP 自动配置装配成功 ＋ 无 mapper bean） |
+| **✅ 验证方法与机器读数** | ① **守门测试**（新增）：`service/hot/src/test/java/com/rag/hot/assembly/HotNoPersistenceResidueTest.java` —— 继承 `HotRealStackTestBase`（**真 Spring 上下文 + 真 Tomcat + 真 Redis 容器**）⇒ 两例：<br>　**类路径面**：`com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration` / `com.baomidou.mybatisplus.core.MybatisConfiguration` / `com.zaxxer.hikari.HikariDataSource` **全部缺席**；**上下文面**：**无 `DataSource` bean** ＋ **无 `SqlSessionFactory` bean** ＋ `spring.datasource.url` **未配置**；<br>② 机器读数：`mvn -o -pl service/hot -am test -Dtest='HotNoPersistenceResidueTest'` ⇒ **Tests run: 2 · Failures 0 · Errors 0 · Skipped 0**；<br>③ **变异红 / 还原绿（双向自证）**：把 `mybatis-plus-spring-boot3-starter` **加回** hot 的 pom ⇒ **2 例精确转红**（上下文起不来）⇒ 还原 ⇒ **2/2 绿** ⇒ ⇒ 证明这条守门**不是假绿** |
+| **证据强度** | **E-3**（真上下文 bean 实测 ＋ 类路径实测 ＋ 真 Tomcat）＋ **变异红/还原绿双向** |
 
 ### F-14 · 出向上界的**承载键位**从共享层搬到域侧 · 配置面
 
@@ -561,9 +564,9 @@
 
 | 分类 | 数量 | 明细 |
 |---|---|---|
-| **已实现且已验证（PASS）** | **48** | §二：**37**（C-01/02/03/**05** 共 5 · A-01~A-13+A-16 共 14 · R-01~R-09 共 9 · M-01~M-05 共 5 · X-01~X-04 共 4）<br>§五：**10**（F-04 · F-06 · F-07 · F-08 · **F-09**〔2026-11-04 更正：**原归因错误 ⇒ 实测两侧相同 ⇒ 非漂移**，见 §九·9.3 · 分类计数不变〕 · F-10 · F-11 · F-12 · F-14）<br>＋ **F-02 的「域内查询卡住」子路径**（2026-11-04 · §九·M5 实测 ⇒ 由 NOT_VERIFIED 转 PASS） |
+| **已实现且已验证（PASS）** | **49** | §二：**37**（C-01/02/03/**05** 共 5 · A-01~A-13+A-16 共 14 · R-01~R-09 共 9 · M-01~M-05 共 5 · X-01~X-04 共 4）<br>§五：**11**（F-04 · F-06 · F-07 · F-08 · **F-09**〔2026-11-04 更正：**原归因错误 ⇒ 实测两侧相同 ⇒ 非漂移**，见 §九·9.3 · 分类计数不变〕 · F-10 · F-11 · F-12 · **F-13**〔2026-11-09 由 NOT_IMPLEMENTED 转 PASS：**无表域的持久层模板残留已删除** ＋ 守门测试 ＋ 变异红/还原绿〕 · F-14）<br>＋ **F-02 的「域内查询卡住」子路径**（2026-11-04 · §九·M5 实测 ⇒ 由 NOT_VERIFIED 转 PASS） |
 | **已实现但未验证（NOT_VERIFIED）** | **0** | ✅ **本轮归零** —— 三条全部收口：① **C-04 / F-05**（`GrpcErrorMapper` 零调用点）⇒ **静态 ＋ 行为 ＋ 可执行守卫**三证（§五·F-05）② **F-02 的「域内查询卡住」子路径** ⇒ `CLIENT PAUSE` 注入慢 Redis ⇒ **双侧活体实测**（§九·M5） |
-| **尚未实现（NOT_IMPLEMENTED）** | **1** | F-13（无表域的持久层职责 ⇒ **无职责可承接**，非遗漏） |
+| **尚未实现（NOT_IMPLEMENTED）** | **0** | ✅ **本轮归零（2026-11-09 · global 收口域统一处置）** —— 唯一一条 **F-13** 已实修：hot 是**无表域** ⇒ 删掉 `service/hot/pom.xml` 的 MP + PG 与 `application.yml` 的 `spring.datasource` / `mybatis-plus` 段 ⇒ ⇒ 与 B 侧「hot 不碰数据库」一致 ⇒ ⇒ 守门测试 2/2 绿 ＋ 变异红/还原绿（§五·F-13） |
 | **明确存在漂移（FAIL）** | **0** | ✅ **本域无 FAIL** |
 | **框架差异待验证（FRAMEWORK_DIFFERENCE）** | **1** | A-15（form 解析口径 · 共享层判据已实测与 B 一致 ⇒ 最终行为 **PASS**，差异保留在 §四·4.6 清单内） |
 | **被外部条件阻塞（BLOCKED）** | **0** | ✅ |
@@ -573,7 +576,7 @@
 | **🔴 共享层缺陷（归属收口域 · 不计入本域 PASS/FAIL）** | **1** | **F-15**（共享层「HTTP 预算 × 业务失败」竞态 ⇒ **混血响应**）⇒ ⚠️ **两侧共享层代码同源** ⇒ **不是本域引入** ⇒ **修法属 `global`**（AGENTS.md §五.3 规则 3） |
 
 > 📌 **计数口径**：逐条承接条目共 **55 条** = §二 的 **40 行**（契约 5 ＋ HTTP 17 ＋ 领域 9 ＋ 消息 5 ＋ 装配 4）＋ §五 的 **15 条**（F-01~F-15）；
-> 另加 **1 个子项**（F-02 的「卡住」路径）⇒ 合计 **56 个归类单元** = 48 + 0 + 1 + 1 + 3 + 2 + 1。
+> 另加 **1 个子项**（F-02 的「卡住」路径）⇒ 合计 **56 个归类单元** = 49 + 0 + 0 + 1 + 3 + 2 + 1。
 > ⚠️ **§四 的 6 条框架差异不单列** —— 它们是 55 条条目**背后**的机制说明（每条都注明「最终行为结论 = PASS」）。
 > ⚠️ **不按文件数量、不按代码行数**统计完成度（§11.6 明文要求）。
 > ⚠️ **FRAMEWORK_DIFFERENCE / NOT_VERIFIED / NOT_IMPLEMENTED / BLOCKED 均不计入 PASS**（§十 明文）。
@@ -585,7 +588,7 @@
 
 | # | 问题 | 回答 |
 |---|---|---|
-| 1 | C 是否完整承接 B 的全部实际职责？ | **是** —— **29 个 C 类承接 30 个 B 类**（**28 条 1:1** ＋ **1 条 N:1**：两个入口合到 `HotServiceApplication`）＋ **4 个删除/上收**（`HotRpcClient`/D2 · `GoStyleGrpcCallDeadline`/落配置 · `GoFormValues`/上收 `common/` · `Jackson2ObjectMapperConfiguration`/上收共享层）＋ **2 个 C 新增**（`GrpcErrorMapper` · `WebMvcConfig`）⇒ **29 + 2 = 31 个 C 类**，B 侧 **34 = 30 承接 + 4 删除**，**零遗漏、零 FAIL**。⚠️ 残留：**F-02** 的「域内 rpc 2s 上界」是 D2 的**已批准连带后果**，**F-05/F-13** 是零调用点 / 无职责 ⇒ 非遗漏 |
+| 1 | C 是否完整承接 B 的全部实际职责？ | **是** —— **29 个 C 类承接 30 个 B 类**（**28 条 1:1** ＋ **1 条 N:1**：两个入口合到 `HotServiceApplication`）＋ **4 个删除/上收**（`HotRpcClient`/D2 · `GoStyleGrpcCallDeadline`/落配置 · `GoFormValues`/上收 `common/` · `Jackson2ObjectMapperConfiguration`/上收共享层）＋ **2 个 C 新增**（`GrpcErrorMapper` · `WebMvcConfig`）⇒ **29 + 2 = 31 个 C 类**，B 侧 **34 = 30 承接 + 4 删除**，**零遗漏、零 FAIL**。⚠️ 残留：**F-02** 的「域内 rpc 2s 上界」是 D2 的**已批准连带后果**，**F-05** 是零调用点 ⇒ 非遗漏；🔴 **F-13 已于 2026-11-09 实修**（无表域的持久层模板残留已删）⇒ **不再是「无职责可承接」** |
 | 2 | Mapping_Table 的 RAG → RAG-V1 映射是否与当前真实代码一致？ | **是** —— 守门 ① `check-mapping-coverage.py` ⇒ **EXIT=0**，**hot 行 C 31/31 · B 34/34 · 100%**。⚠️ 映射表 §1.2 把 `WebMvcConfig` 标为「🔴 待确认 / 疑似多余」⇒ **本轮已消解**（F-04：刻意保留空实现，把免鉴权显式化）⇒ **该行需在映射表侧更新措辞**（**本轮不写映射表**） |
 | 3 | File_Tree 规定的目标结构是否正确落地？ | **是** —— 31 个主类**全部在 `docs/File_Tree/hot.md` 列出的位置**（`contract/` 5 ＋ `dto/article/` 3 ＋ `advice/` 2 ＋ `config/` 5 ＋ `client/` 1 ＋ `controller/` 1 ＋ `domain/model/` 1 ＋ `grpc/` 1 ＋ `messaging/` 4 ＋ `metrics/` 2 ＋ `service/` 4 ＋ `wiring/` 1 ＋ 入口 1）；守门 ③ **EXIT=0**（双向覆盖 ＋ 幂等 ＋ 路径 ＋ 落点计数 ＋ 包名） |
 | 4 | 多文件合并是否造成职责、分支或异常路径遗漏？ | **否** —— §三·3.1 逐条核对了 B 侧两个入口的全部职责；§二·2.4 把 `mq/` 5 类的**每一条分支**（校验顺序、先计数后查分区、锁协议、TTL 硬编码、抢不到锁整轮跳过）对到了 C 侧；**fatal（hot-rpc 失败 ⇒ 整包 5001）vs best-effort（article-rpc 失败 ⇒ skip 该条）的不对称逐条保留** |
@@ -594,7 +597,7 @@
 | 7 | Common Starter 上收是否遗漏原有消费方？ | **否** —— §三·3.3 逐条列了 hot 域消费的 6 项共享能力（信封 / logger / observability+`MqConsumer` / RPC 拦截链 / form 闸门 / Jackson 补丁），**原消费方全部覆盖**。⚠️ 唯一缺口 = A-15：`GetFormValuesFilter` **没有** `int32` / `firstFormValue` ⇒ 域内自持（**F-03**） |
 | 8 | Spring Boot 4 → 3.5 是否引入业务可观察行为变化？ | **引入了 1 处**（2026-11-03 原写 2 处，其中 §4.3 那条已由 §九·9.3 **证伪**）：**§4.5 零重试**（Boot 默认重试 9 次 ⇄ B 侧永不重试）—— **已显式对齐 ＋ 变异验证**。⚠️ **§4.3 Tomcat 状态行**：**实测两侧逐字节相同**（B 侧也是 Tomcat 11.0.24，同样不发 reason phrase）⇒ **不是行为变化** ⇒ 原「框架限制、不可修」的判定**前提不成立**。其余（Kafka 坐标 / Jackson 3→2 / `@ConfigurationPropertiesScan` / Redis 客户端）**均已证明不影响业务行为** |
 | 9 | Tomcat、Jackson、Spring Framework 等底层版本变化是否产生实际漂移？ | **Tomcat**：**零** —— 404 / 405 的状态行、`Content-Type`、body **两侧逐字节相同**（**F-09 原判定已作废**，见 §九·9.3）。**Jackson**：**零**（本域只用三处两版同义注解）。**Spring Framework**：**零业务漂移**（装配差异见 §4.4，其唯一真实后果 **F-06** 已修）。**Kafka 客户端**：**零**（零重试已显式对齐） |
-| 10 | 哪些差异已经通过证据证明安全？ | **10 项**：§4.1 Kafka 坐标 · §4.2 Jackson 3→2 · §4.3 Tomcat 业务语义部分 · §4.4 装配差异 · §4.5 零重试 · §4.6 Redis 客户端 / Nacos / 生命周期 · **F-08** `rag.side` 无消费点 · **F-13** 模板残留无业务行为 · **F-07** B 侧死锁已消解 · **F-14** 出向键位差异（article-rpc 方向有效值相同） |
+| 10 | 哪些差异已经通过证据证明安全？ | **10 项**：§4.1 Kafka 坐标 · §4.2 Jackson 3→2 · §4.3 Tomcat 业务语义部分 · §4.4 装配差异 · §4.5 零重试 · §4.6 Redis 客户端 / Nacos / 生命周期 · **F-08** `rag.side` 无消费点 · **F-13** 模板残留（🔴 **2026-11-09 已直接删除**，不再是「证明无害」而是「不存在了」） · **F-07** B 侧死锁已消解 · **F-14** 出向键位差异（article-rpc 方向有效值相同） |
 | 11 | 哪些差异仍然无法确认？ | **1 项**（**2026-11-04 由 3 项收口到 1 项**）：**F-11 命名债**（`HotArticleItem` 与 proto message 同名 ⇒ 行为面已验，**命名面**待下一轮统一清理，`docs/命名债与包形状.md` 已登记 P4-④）。<br>⚠️ **本轮另外两条已收口**：**F-05 / C-04**（零调用点 ⇒ 静态＋行为＋可执行守卫三证）· **F-02 的「域内查询卡住」**（⇒ §九·M5 双侧活体实测）。<br>⚠️ **新增一条「尚未证伪」**（不是本域差异，是**共享层缺陷的边界**）：**F-15** 的混血响应**是否只有 hot 域会命中** —— 需**收口域**在别的域上复现 ⇒ **本域不作结论** |
 | 12 | 当前 C 是否具备可靠的行为对拍条件？ | **已具备（E-4）** —— ✅ **2026-11-04 补做双侧活体对拍**：`tools/difftest/hot/`（**31 条逐字节断言 ＋ 1 个超时面 · C == B**）：HTTP（真 Tomcat ＋ **裸 socket** 读原始状态行 + body hex · 18 条）· gRPC（**手构 proto3 字节 + `byte[]` marshaller** · 9 条）· Redis（真容器 · 成员 + 分数）· Kafka（三面：发同款事件 → 两侧消费 → HeavyKeeper → 合并 → 比 `hot:articles` ＋ 合并后 HTTP）· **M5 超时面**（`CLIENT PAUSE` 注入慢 Redis ⇒ 比**失败形状 + 失败时延**）⇒ 详见 **§九**。<br>✅ 另具备：HTTP（真 Tomcat ＋ 裸 socket 逐字节）· gRPC（**本域 5 个方法**走真进程内 gRPC ＋ **跨域**走真进程内 `ArticleServiceGrpc`）· Kafka（真 broker ＋ 真实 topic/group/分区）· Redis（真容器跑 Lua ＋ TTL）· 错误契约（11 码 ＋ 11 英文文案 ＋ 未知码回退，**逐条机器断言** ＋ 变异转红）· **gRPC 错误映射**（借 B 侧 `HotServiceGrpcImplErrorMappingTest` 的期望值 ⇒ 裸异常 ⇒ **UNKNOWN 非 INTERNAL** ＋ description = 原始错误文本）· HeavyKeeper（**BigInteger 独立重写的差分实现**（与生产实现不共用算式 ⇒ 抓「掩码/符号位」三类错法）＋ FNV-1a 32 **公开已知常量**（空串/a/foobar）＋ uint32 回绕与向零截断）。<br>⚠️ **仍不具备**：**Go 真源活体**（本机无 Sea-etcd 容器）⇒ ⇒ **本报告读作「与 B 侧逐字节一致（E-4）」，不读作「三方一致」** |
 
@@ -849,7 +852,7 @@
 > **F-02 的「域内查询卡住」** ⇒ `CLIENT PAUSE` 注入慢 Redis ⇒ **双侧活体实测**（§九·M5）⇒ ⇒ **并且实测推翻了 F-02 的原定性**：
 > 失败**形状**也不同（B `200`＋5001 信封 @2s ⇄ C `503`＋纯文本 @3s），且 **C 侧形状非确定**（三候选）⇒ ⇒ 由此**新增 F-15**（共享层的
 > 「HTTP 预算 × 业务失败」竞态 ⇒ **混血响应**）⇒ ⚠️ **归属收口域（`global`）⇒ 本域只登记、不改**（AGENTS.md §五.3 规则 3）。
-> ⚠️ **F-13** 是**无职责可承接**的 **NOT_IMPLEMENTED**；**F-11** 是唯一仍未确认的**命名面**债。
+> 🔴 **2026-11-09**（global 收口域统一处置）：**F-13 已实修** —— 无表域的持久层模板残留（MP + PG + `spring.datasource` + `mybatis-plus`）**已删除** ⇒ ⇒ 守门测试 2/2 绿 ＋ 变异红/还原绿 ⇒ ⇒ **NOT_IMPLEMENTED 归零**（**F-11** 仍是唯一未确认的**命名面**债）。
 > 📌 **本报告的 PASS 口径** = 「**与 B 侧逐字节一致（E-4）**」—— 但**不读作「三方一致」**（**无 Go 锚**，见 §九·9.1）。
 > ⚠️ **E-4 探针自己也踩过三个判据空洞**（§九·9.5：数据面空洞 ＋ `top_k` 边界空洞 ＋ **1xx 解析错位**）⇒ ⇒ **「全绿」≠「验到了东西」**——
 > 本轮已补**数据面闸门** ＋ **`top_k` 边界自检** ＋ **解析器自检**（`http_probe_selftest.py` · 挂在起服务之前），

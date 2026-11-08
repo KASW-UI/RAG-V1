@@ -57,8 +57,16 @@ public final class RpcHandleRunner {
      * B 侧: err := status.Error(codes.DeadlineExceeded, timeoutCtx.Err().Error())
      *     // timeoutCtx.Err() == context.DeadlineExceeded ⇒ .Error() == "context deadline exceeded"
      * </pre>
+     *
+     * <p>🔴 <b>2026-11-09（`global` 收口域）：本常量由 private 提升为 public</b> ——
+     * B 侧 <b>只有这一个常量</b>（{@code service/common/…/RpcInterceptor.java:179}），
+     * 服务端预算到点关 call 与 handler runner 中断 worker <b>两条路径共用</b>；
+     * 而 C 侧此前<b>散成两处</b>：本类（✅ 已是 B 侧文案）＋
+     * {@code common/autoconfigure/ObservabilityAutoConfiguration}（❌ 原为 {@code "rpc deadline exceeded"}）
+     * ⇒ ⇒ **同一机制、两种文案** ⇒ ⇒ 客户端可见的 gRPC status <b>description</b> 字段两侧不同
+     * ⇒ ⇒ 现在<b>统一复用本常量</b>（而不是再抄一份字面量 —— 那样下次又会漂）。
      */
-    private static final String GO_DEADLINE_EXCEEDED_DESCRIPTION = "context deadline exceeded";
+    public static final String GO_DEADLINE_EXCEEDED_DESCRIPTION = "context deadline exceeded";
 
     /** 本路径的观测名（对应 RAG 侧的 OTel tracer 名 {@code rpc-handler}）。 */
     public static final String HANDLER_OBSERVATION_NAME = "rpc.handler";

@@ -321,40 +321,40 @@
 
 ## 五 · 5.6 · 🟠 跨域共性漂移（**不归本域修** ⇒ 归 `global` 收口域）
 
-### 漂移 E · 🟠 生产形态上下文里**没有 PrometheusMeterRegistry** ⇒ `/actuator/prometheus` 不可用
+### 漂移 E · ✅ **已销账（2026-11-09 · global 收口域实测）** —— 现象**不成立**：生产形态**有** `PrometheusMeterRegistry`，`/actuator/prometheus` **200**
 
 | 项 | 内容 |
 |---|---|
-| **现象** | 在**生产形态**的 Spring 上下文里，`MeterRegistry` 类型的 bean 只有 **`simpleMeterRegistry`**（`io.micrometer.core.instrument.simple.SimpleMeterRegistry`）⇒ **没有** `PrometheusMeterRegistry` ⇒ Boot 的 Prometheus 端点（`/actuator/prometheus`）**不存在** ⇒ **本域的 Micrometer 指标无法以 Prometheus 文本被 scrape** |
-| **主代码的配置意图** | `application.yml` 已配 `management.endpoint.prometheus.enabled: true` ＋ `management.endpoints.web.exposure.include: health,info,prometheus` ⇒ **意图是暴露** ⇒ 实际暴露不出来 ⇒ **配置意图与实际行为不一致** |
-| **根因（已复核 Boot 3.5.11 字节码）** | `PrometheusMetricsExportAutoConfiguration` 带 `@AutoConfiguration(after = MetricsAutoConfiguration)`；`prometheusMeterRegistry` 方法的 `@ConditionalOnMissingBean` **无参数**（按返回类型 `PrometheusMeterRegistry` 推断）；而 `MetricsAutoConfiguration` 的 `simpleMeterRegistry` 先注册 ⇒ **装配顺序**决定了最终只有一个 registry |
-| **⚠️ 为什么不是 follow 域独有** | `service/users/user/.../metrics/UserApiMetrics.java:28` 的注释同样写着「暴露端点 = Spring Boot Actuator `/actuator/prometheus`」⇒ **users 域是同款假设** ⇒ **跨域共性** |
-| **归属** | 🔴 **`global` 收口域**（AGENTS.md §3.5：修法落共享层、或影响多域的搁置漂移全归它）⇒ **本域不擅自修** —— 擅自加一个 `@Bean PrometheusMeterRegistry` 会与 users 域的处理方式不一致 |
-| **本域的处置** | ① 桶边界**本身**的正确性由 `FollowMetricsContractTest` 在**注入 Prometheus registry 的测试上下文**里断言（被测对象是主代码那串 `serviceLevelObjectives`，registry 类型只决定文本格式）⇒ **不掩盖主代码的桶配置**；② 「暴露路径不可用」这条**不在 follow 域固化断言**（避免把疑似缺陷钉成期望行为） |
-| **证据强度** | **E-3**（真实 Spring 上下文的 bean 实测）＋ **E-2**（Boot 3.5.11 字节码复核） |
+| **原记录的现象** | 在**生产形态**的 Spring 上下文里，`MeterRegistry` 类型的 bean 只有 **`simpleMeterRegistry`** ⇒ **没有** `PrometheusMeterRegistry` ⇒ Boot 的 Prometheus 端点**不存在** ⇒ 本域的 Micrometer 指标无法以 Prometheus 文本被 scrape |
+| **🔴 现在的结论** | **原现象不成立** —— 生产形态下 `PrometheusMeterRegistry` **在**，`PrometheusScrapeEndpoint` **在**，`GET /actuator/prometheus` 返回 **200** 且 body 是标准 Prometheus 文本（`# HELP` / `# TYPE` 齐备）⇒ ⇒ **不是漂移** ⇒ ⇒ **本条销账**（跨域共性 ⇒ 由 `global` 收口域一次性处置，**零生产代码改动**） |
+| **🔴 原记录的两条根因描述**（均已被**证伪**） | ① 「`MetricsAutoConfiguration` 的 `simpleMeterRegistry` 先注册 ⇒ 装配顺序决定结果」⇒ **不成立**：Boot 3.5.11 的 `MetricsAutoConfiguration`（本地 sources jar 逐行读过）**没有** `simpleMeterRegistry` bean（只有 `micrometerClock` / `meterRegistryPostProcessor` / `propertiesMeterFilter` / `meterRegistryCloser`）；且 `prometheusMeterRegistry` 的 `@ConditionalOnMissingBean` **无参数** ⇒ 按**返回类型** `PrometheusMeterRegistry` 推断 ⇒ **`SimpleMeterRegistry`（另一个类型）挡不住它**。<br>② 「`@ConditionalOnEnabledMetricsExport` 不匹配」⇒ **方向对、但归因错**：不匹配的真因**不是**本仓配置把 export 关了，而是 **Boot 测试框架**干的（见下一行） |
+| **✅ 真根因（实测 · 逐行读源码 + 运行证据）** | Boot 3.5.11 的 `spring-boot-test-autoconfigure` 里 **`ObservabilityContextCustomizerFactory`** —— 其 javadoc 明写「**globally disables metrics export and tracing in tests**」⇒ ⇒ 它给**测试上下文**注入 `management.defaults.metrics.export.enabled=false`（property source 名 = `test`）⇒ ⇒ `PrometheusMetricsExportAutoConfiguration` 的 `@ConditionalOnEnabledMetricsExport` 不匹配 ⇒ ⇒ 容器里**没有** registry ⇒ ⇒ `/actuator/prometheus` **404**。<br>⇒ ⇒ **该 404 只在 `@SpringBootTest` 形态下出现**；**生产形态**（真启动的 app）里该属性**根本不存在** ⇒ 默认 `true` ⇒ registry 与端点**都在**。<br>⇒ ⇒ 本仓**配置无误**、**共享层无误** ⇒ ⇒ **不需要改任何生产代码** |
+| **证据（3 个探针 · 共享层 `common`）** | ① `common/src/test/java/com/rag/common/autoconfigure/PrometheusScrapeEndpointRealTomcatTest.java` —— **生产形态启动**（`SpringApplicationBuilder` 真起真 Tomcat，**不经过** `SpringBootTestContextBootstrapper` ⇒ 绕开上面的定制器）⇒ `GET /actuator/prometheus` = **200** ＋ `# HELP` ＋ `# TYPE`；<br>② `common/src/test/java/com/rag/common/autoconfigure/PrometheusTestContextExportDisabledAnchorTest.java` —— **反证锚点**：`@SpringBootTest` 形态下 `management.defaults.metrics.export.enabled` 断言 = `"false"` ＋ `PrometheusMeterRegistry` bean **为空** ⇒ ⇒ **把 404 的真因钉死**，下一个人不必再重新诊断；<br>③ `common/src/test/java/com/rag/common/autoconfigure/PrometheusMetricsRegistryWiringTest.java` —— 装配层 2 例（Boot 真的自动配置类 ⇒ registry 建得起来；`management.prometheus.metrics.export.enabled=false` ⇒ 不建）<br>⇒ 机器读数：`mvn -o -pl common -am test -Dtest='Prometheus*Test'` ⇒ **Tests run: 4 · Failures 0 · Errors 0 · Skipped 0** |
+| **🔴 变异自证（红 ⇒ 还原绿）** | ① 给生产形态探针加 `management.prometheus.metrics.export.enabled=false` ⇒ **404** ⇒ 该用例**精确转红**；② 把锚点断言从「registry 缺失」改成「registry 存在」⇒ **精确转红**；③ 还原后**全绿**（4/4）⇒ ⇒ 证明这 4 例**不是假绿** |
+| **⚠️ 效力边界（诚实）** | ① 本条证的是**共享层这条链路**（registry → 端点 → 文本格式）＋ **Boot 的测试框架行为**；**不证**「每个域的生产 yml 都开了暴露面」⇒ 那是各域的配置面（域内面）。<br>② **B 侧对照**：B 侧 go-zero 用 `prometheus.StartAgent` 起**独立端口**的 `/metrics`（路径与端口都不同）⇒ 本仓把抓取路径映射到 Actuator `/actuator/prometheus` 属**表达层映射**（各域 yml 注释已留痕）⇒ ⇒ **本条不声称「与 B 侧路径相同」**，只主张「C 侧自己的抓取面是通的」。<br>③ ⚠️ **本条同时推翻 follow 域既有的一处写法**：`FollowMetricsContractTest` 是在**注入 registry 的测试上下文**里断言桶边界的 ⇒ 那个上下文的 registry 是**测试自己注入的**，与生产形态**不是同一件事** ⇒ ⇒ 桶边界断言的效力**不变**（它测的是主代码那串 `serviceLevelObjectives`），但**不得**用它证明「生产形态的 registry 在」⇒ ⇒ 本条提供的是**缺的那一半证据** |
+| **证据强度** | **E-3+**（生产形态真启动 ＋ 真 HTTP ＋ **变异红/还原绿双向**）—— 高于原记录的 E-3 |
 
-### 漂移 H · 🟠 其余 9 个域的 pom 有**同款** `grpc-inprocess` test scope ⇒ **当前不咬人，但是潜在雷**
-
-| 项 | 内容 |
-|---|---|
-| **现象** | 漂移 F 的**同款 pom 形态**在**其余 9 个域**都有：`io.grpc:grpc-inprocess` 被声明成 `<scope>test</scope>` ⇒ 逐条行号 —— `service/like/pom.xml:70` · `service/comment/pom.xml:70` · `service/message/pom.xml:70` · `service/favorite/pom.xml:70` · `service/task/pom.xml:70` · `service/hot/pom.xml:56` · `service/article/pom.xml:79` · `service/users/admin/pom.xml:65` · `service/users/user/pom.xml:65` |
-| **⚠️ 但它们当前**起得来**（与 follow 的区别在别处）** | devh 的 `shadedNettyGrpcChannelFactory` 带 **`@Lazy`**（devh 源码 `GrpcClientAutoConfiguration.java:151`）⇒ **只有真正创建 `@GrpcClient` stub 时才会建它**；<br>⇒ 而**全仓真实使用 `@GrpcClient` 的只有 follow 一处**：`service/follow/src/main/java/com/rag/follow/client/UserRpcClient.java:70`（`service/users/user` 那处**只出现在 javadoc 注释里**，不是真实用法）<br>⇒ ⇒ 其余 9 域**不会**触发这个 `NoClassDefFoundError` ⇒ **当前不是缺陷，是潜在雷** |
-| **风险** | 哪天哪个域**新增一个 `@GrpcClient`** ⇒ 该域的**真实进程立刻起不来** ⇒ 而**单测仍会全绿**（test classpath 上 artifact 在）⇒ ⇒ 与漂移 F 同款的「跑绿 ≠ 本来就绿」坑，会在**别的域**复现 |
-| **归属** | 🔴 **`global` 收口域**（**9 个 pom 一处同款** ⇒ 一次改完成本极低；且**跨域** ⇒ 不归 follow lane）⇒ **本域不擅自改**（AGENTS.md §五.2「只写自己域」+ 用户口径「别顺手修别的域」） |
-| **建议修法** | 与漂移 F 完全同款：去掉 `<scope>test</scope>`（版本由根 pom 的 `dependencyManagement` 管 ⇒ **9 处都不必写版本**）⇒ 与 B 侧 `service/follow/follow-rpc/pom.xml:256-260` 的形态一致 |
-| **证据强度** | **E-2**（9 处 pom 逐条静态读取）＋ **E-3**（devh 源码 `@Lazy` 复核 + 全仓 `@GrpcClient` 真实用法逐个统计 ⇒ 注释里的匹配已剔除） |
-
-### 漂移 J · 🟠 共享层的 `DEADLINE_EXCEEDED` **description 文案**两侧不同（**不归本域修** ⇒ 归 `global`）
+### 漂移 H · ✅ **已销账（2026-11-09 · `global` 收口域实算）** —— 「其余 9 个域同款」是**过期断言**；真正要处理的只有 **message 一个域**
 
 | 项 | 内容 |
 |---|---|
-| **现象** | E-4 场景轮阶段1b 的**分层探测**（同一下游挂起场景，直接打两侧自己的 gRPC 端点）⇒ **状态码两侧相同**（`DEADLINE_EXCEEDED`）⇒ **但 description 不同**：<br>**B 侧 = `context deadline exceeded`**（grpc-go `context.DeadlineExceeded.Error()` 的文案）<br>**C 侧 = `rpc deadline exceeded`**（服务端 2s 超时调度器）／ 或 **grpc-java 的客户端侧文案**（形如 `CallOptions deadline exceeded after 1.999979000s. Name resolution delay …` ⇒ **带毫秒数 ⇒ 每次都不同**） |
-| **⚠️ 由此得到的一条判据纪律** | C 侧在**客户端侧 deadline 先赢**时，description 里带**变动的毫秒数** ⇒ ⇒ **超时场景的 gRPC wire 字节在 C 侧自己都对不上自己** ⇒ ⇒ **该场景不可作 wire 逐字节判据**（探针阶段1b 因此**只比状态码**） |
-| **根因（两侧坐标）** | B 侧 `service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java:179` 的 `GO_DEADLINE_EXCEEDED_DESCRIPTION = "context deadline exceeded"`（`:361-362` 用它关 call）<br>⇒ C 侧 `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java:299` **硬编码** `.withDescription("rpc deadline exceeded")` ⇒ **同一机制、两种文案** |
-| **⚠️ 为什么不咬本域** | ① **业务码还原不受影响**：本域的 5 类业务码（5201/5202/5101/5007/5008）靠**业务文案**反查，与超时文案无关；<br>② **HTTP 层不受影响**：api 层用**本地码表**取 msg（`ErrMsg.getMsg(code)`）⇒ 超时场景的 body 恒为 `{"code":1015,"msg":"service busy"}` ⇒ **两侧逐字节相同**（E-4 场景轮实测）；<br>③ 只在 **gRPC status 的 description 字段**上可见 ⇒ 属**框架原生文案**，不是 follow 域的业务契约 ⇒ ⇒ **不构成 L1 违约** |
-| **归属** | 🔴 **`global` 收口域**（落点在 `common/` ⇒ AGENTS.md §五.3「`common/**` 只有收口任务能写」）⇒ **本域不擅自改共享层** |
-| **建议修法** | C 侧 `ObservabilityAutoConfiguration` 的超时关 call 改用与 B 侧同款的 `GO_DEADLINE_EXCEEDED_DESCRIPTION = "context deadline exceeded"` ⇒ 一处常量 ⇒ 两侧 description 对齐 |
-| **证据强度** | **E-4**（双侧活体：同场景同端点的 status description 逐字对照） |
+| **原记录的现象** | 漂移 F 的**同款 pom 形态**在**其余 9 个域**都有：`io.grpc:grpc-inprocess` 被声明成 `<scope>test</scope>` ⇒ 逐条行号 —— `service/like/pom.xml:70` · `service/comment/pom.xml:70` · `service/message/pom.xml:70` · `service/favorite/pom.xml:70` · `service/task/pom.xml:70` · `service/hot/pom.xml:56` · `service/article/pom.xml:79` · `service/users/admin/pom.xml:65` · `service/users/user/pom.xml:65` |
+| **🔴 2026-11-09 实算：原记录已过期** | 逐个 pom **只数真正的 `<dependency>` 块**（不是注释里提到的名字）⇒ **10 个域的真实形态**是：<br>· **compile（默认）**：article · follow · hot · like · task · users-user（**6 个**）<br>· **未声明**：comment · users-admin（**2 个**）⇒ ⇒ 与 B 侧 `service/comment/comment-api/pom.xml:159-174` 的「**刻意不声明**」结论**同款**<br>· **runtime**：favorite（**1 个**）⇒ ⇒ 与 B 侧 `service/favorite/favorite-rpc/pom.xml:348-353` 的 `runtime` **逐字同款**（B 侧自己写明「scope 必须是 runtime，不能是 test」）<br>· **test**：message（**1 个**）⇒ ⇒ **B 侧 `service/message/message-rpc/pom.xml` 里根本没有这条声明** ⇒ ⇒ C 侧这条是**模板残留**<br>⇒ ⇒ **原记录「9 个域同款」已不成立** ⇒ ⇒ **真正要处理的只有 message 一个域**（其余 9 个域各自已按 B 侧处置完毕） |
+| **✅ 修法（已实施 · 2026-11-09 · `global` 收口域）** | **删掉 `service/message/pom.xml` 里那条 `io.grpc:grpc-inprocess`（`<scope>test</scope>`）的直接声明** ⇒ ⇒ devh 的 `grpc-client-spring-boot-starter` **传递依赖**（compile 作用域）顶上来 ⇒ ⇒ 满足「测试要 in-process server」与「运行期要 `InProcessChannelBuilder`」两个需求 ⇒ ⇒ 与 B 侧 message-rpc 的 pom **同款**、与本仓 comment / users-admin **同款**。<br>⚠️ **为什么不能改回 `runtime`**：B 侧 favorite 用 `runtime` 是 **favorite 域自己的结论**（它要显式钉住）⇒ ⇒ **逐域隔离，不跨域推论** ⇒ ⇒ favorite **保持 `runtime` 不动** |
+| **⚠️ 零副作用核对** | 删除的是 **test scope** 的直接声明 ⇒ devh 那份 **compile 传递依赖本来就在 runtime classpath 上** ⇒ ⇒ **fat jar 内容零变化**（不是「加了依赖」）⇒ ⇒ 无需重校 P-18 的 jar 读数 |
+| **⚠️ 潜在雷的定性（仍然成立）** | devh 的 `shadedNettyGrpcChannelFactory` 带 **`@Lazy`**（devh 源码 `GrpcClientAutoConfiguration.java:151`）⇒ **只有真正创建 `@GrpcClient` stub 时才会建它**；⇒ 而**全仓真实使用 `@GrpcClient` 的只有 follow 一处** ⇒ ⇒ 其余域**当时**不触发这个 `NoClassDefFoundError` ⇒ ⇒ **当前不是缺陷，是潜在雷** —— 本条修的是**把那颗雷拆掉**（message 域） |
+| **证据强度** | **E-2**（10 个 pom **只数真正的 dependency 块** ⇒ 逐域实测 scope）＋ **E-3**（B 侧 `favorite-rpc` / `comment-api` / `message-rpc` 三份 pom **逐行读原文** ⇒ 得出「逐域各自的结论」⇒ **不是套用漂移 F 的修法**） |
+
+### 漂移 J · ✅ **已修（2026-11-09 · `global` 收口域）** —— 共享层的 `DEADLINE_EXCEEDED` **description 文案**已与 B 侧逐字一致
+
+| 项 | 内容 |
+|---|---|
+| **原记录的现象** | E-4 场景轮阶段1b 的**分层探测**（同一下游挂起场景，直接打两侧自己的 gRPC 端点）⇒ **状态码两侧相同**（`DEADLINE_EXCEEDED`）⇒ **但 description 不同**：<br>**B 侧 = `context deadline exceeded`**（grpc-go `context.DeadlineExceeded.Error()` 的文案）<br>**C 侧 = `rpc deadline exceeded`**（服务端 2s 超时调度器）／ 或 **grpc-java 的客户端侧文案**（形如 `CallOptions deadline exceeded after 1.999979000s. Name resolution delay …` ⇒ **带毫秒数 ⇒ 每次都不同**） |
+| **🔴 根因（两侧坐标）** | B 侧 `service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java:179` 的 `GO_DEADLINE_EXCEEDED_DESCRIPTION = "context deadline exceeded"`（`:361-362` 用它关 call）<br>⇒ C 侧 `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java:509-510` **硬编码** `.withDescription("rpc deadline exceeded")` ⇒ **同一机制、两种文案**<br>⇒ ⇒ **2026-11-09 实算补充**：C 侧其实**已有**同款常量 —— `common/observability/RpcHandleRunner.java:61` 的 `GO_DEADLINE_EXCEEDED_DESCRIPTION = "context deadline exceeded"`（且 `common/src/test/java/com/rag/common/observability/RpcHandleRunnerTest.java:111` **已断言**这个文案）⇒ ⇒ 即：**C 侧两条路径里有一条已是 B 侧文案、另一条不是** ⇒ ⇒ 属**同一机制散成两处** |
+| **✅ 修法（已实施 · 2026-11-09 · `global` 收口域）** | ① `RpcHandleRunner.GO_DEADLINE_EXCEEDED_DESCRIPTION` 由 **private 提升为 public**（B 侧**只有一个**常量，服务端关 call 与 handler runner 中断 worker **两条路径共用** ⇒ ⇒ C 侧也该只有一个）；<br>② `ObservabilityAutoConfiguration.scheduleTimeout(...)` 改为**复用该常量**（不再硬编码字面量）⇒ ⇒ **两侧 description 逐字一致**；<br>③ **不是「再抄一份字面量」** —— 那样下次又会漂 ⇒ ⇒ 收敛成**一处常量**（与 B 侧结构同形） |
+| **⚠️ 为什么不咬本域（仍然成立）** | ① **业务码还原不受影响**：本域的 5 类业务码（5201/5202/5101/5007/5008）靠**业务文案**反查，与超时文案无关；<br>② **HTTP 层不受影响**：api 层用**本地码表**取 msg（`ErrMsg.getMsg(code)`）⇒ 超时场景的 body 恒为 `{"code":1015,"msg":"service busy"}` ⇒ **两侧逐字节相同**（E-4 场景轮实测）；<br>③ 只在 **gRPC status 的 description 字段**上可见 ⇒ 属**框架原生文案**，不是 follow 域的业务契约 ⇒ ⇒ **不构成 L1 违约** |
+| **⚠️ 效力边界（诚实）** | ① 本条修的是**服务端预算到点主动关 call**这条路径的 description；**客户端侧 deadline 先赢**时 description 仍是 grpc-java 的原生文案（`CallOptions deadline exceeded after 1.999979000s. …` ⇒ 带毫秒数 ⇒ 每次都不同）⇒ ⇒ **那条仍不可作 wire 逐字节判据**（见上方「判据纪律」）；<br>② 域内另一条**「rpc deadline reached」**（`service/users/user/…/UserDomainService.java:143` · `service/users/admin/…/AdminDomainService.java:213`）是**领域层自查**的路径 ⇒ **与本条不是同一件事** ⇒ ⇒ **不在本条范围**（属 users 域内面）；<br>③ 本条<b>只改文案</b>，**不改状态码、不改时机、不改预算算法** ⇒ ⇒ **业务可观察行为零变化**，变的只有 gRPC status 的 `description` 字段 |
+| **证据强度** | **E-2**（B 侧源码逐行：`RpcInterceptor.java:179` / `:362`）＋ **E-3**（C 侧同款常量已存在且已有测试断言：`RpcHandleRunnerTest.java:111`）⇒ ⇒ 修法是「**改成 B 侧已有的那个值**」，**不需要**双侧活体对拍即可判成立 |
 
 ---
 
@@ -419,9 +419,9 @@
 | 项 | 内容 | 归属 |
 |---|---|---|
 | ~~**🔴 双侧活体对拍（E-4）**~~ | ✅ **本轮已补齐**（2026-11-02 E-4 对拍轮）⇒ **C 侧 == B 侧 == 冻结的 Go 真源字节 · 21/21 逐字节一致** ⇒ 详见 **§八·六** 与 §11.6 ⇒ **本条已销账** | — |
-| **🟠 Prometheus 暴露路径** | 生产形态上下文**没有 `PrometheusMeterRegistry`** ⇒ `/actuator/prometheus` 不可用 | **`global` 收口域**（跨域共性 ⇒ 见 §5.6 漂移 E） |
-| **🟠 其余 9 域的 `grpc-inprocess` test scope** | 漂移 H：同款 pom 形态在 9 个域 ⇒ **当前不咬人**（无真实 `@GrpcClient` ⇒ devh 的 channel factory 是 `@Lazy` ⇒ 不创建）⇒ **潜在雷** | **`global` 收口域**（一次改 9 个 pom） |
-| **🟠 共享层的超时 description 文案** | 漂移 J：B 侧 `context deadline exceeded` vs C 侧 `rpc deadline exceeded`（`common/.../ObservabilityAutoConfiguration.java:299` 硬编码）⇒ 只在 gRPC status 的 description 字段可见 ⇒ **不构成 follow 域的 L1 违约** | **`global` 收口域**（落点在 `common/`） |
+| ~~**🟠 Prometheus 暴露路径**~~ | ✅ **已销账（2026-11-09 · global 收口域实测）** —— **原现象不成立**：生产形态（真启动的 app）里 `PrometheusMeterRegistry` **在**、`/actuator/prometheus` **200** ＋ 标准 Prometheus 文本 ⇒ 真因是 **Boot 测试框架**的 `ObservabilityContextCustomizerFactory`（只在 `@SpringBootTest` 形态下关掉 export）⇒ **零生产代码改动** ⇒ ⇒ 详见 **§5.6 漂移 E** | ~~`global` 收口域~~ → **已销账** |
+| ~~**🟠 其余 9 域的 `grpc-inprocess` test scope**~~ | ✅ **已销账（2026-11-09 · `global` 收口域实算）** —— 「9 个域同款」是**过期断言**：逐个 pom **只数真正的 `<dependency>` 块** ⇒ compile **6**（article/follow/hot/like/task/users-user）· 未声明 **2**（comment/users-admin ⇒ 与 B 侧同款）· runtime **1**（favorite ⇒ 与 B 侧 `favorite-rpc` **逐字同款**）· test **1**（message）⇒ ⇒ **只需删 message 那条** ⇒ ⇒ 详见 **§5.6 漂移 H** | ~~`global` 收口域~~ → **已销账** |
+| ~~**🟠 共享层的超时 description 文案**~~ | ✅ **已修（2026-11-09 · `global` 收口域）** —— 共享层 `ObservabilityAutoConfiguration` 的超时关 call 改为**复用** `RpcHandleRunner.GO_DEADLINE_EXCEEDED_DESCRIPTION`（该常量由 private 提升为 public）⇒ ⇒ **与 B 侧 `RpcInterceptor.java:179` 逐字一致**（`context deadline exceeded`）⇒ ⇒ 只改文案、**不改状态码/时机/预算算法** ⇒ ⇒ 详见 **§5.6 漂移 J** | ~~`global` 收口域~~ → **已修** |
 | **🟢 Mapping_Table 措辞订正** | `docs/Mapping_Table/follow/follow.md` §6.2 第 4 行写 `existsAnyDirection` ⇒ B 侧实测**全仓 grep 0 命中**，实际方法名是 **`countAnyBlock`** ⇒ **文档 owner** 订正（本域不擅自改共享文档） | 文档 owner |
 | ~~**🟡 §九「超时」场景**~~ | ✅ **本轮补齐**（E-4 场景轮阶段1：**下游 SIGSTOP** ⇒ 3/3 轮两侧都 **1015** 逐字节一致 ⇒ 并**捕获漂移 I**）⇒ **本条已销账** | — |
 | ~~**🟡 §九「恢复」场景**~~ | ✅ **本轮补齐**（E-4 场景轮阶段2/4：SIGCONT 后与重启下游后 ⇒ 两侧都回 200 逐字节一致）⇒ **本条已销账** | — |
@@ -490,23 +490,24 @@
 | **DRIFT-FOLLOW-C** | api 层 4 个写端点 | B 侧 8/8 都有 `requireRpcSuccess` | 缺失 ⇒ 领域层返非 200 会被当成功 | 抄写时漏了返回值处理 | 4 个写端点 | 🟠 中 | ✅ **已修**（§5.5 漂移 C） |
 | **DRIFT-FOLLOW-D** | `application.yml` 的 `flyway:` 段 | B 侧 `AutoMigrate` | 曾落在**顶层** ⇒ `spring.flyway.*` **4 项全失效** | 同 DRIFT-A 的落点错位 | 启动 + 账本撞号 | 🔴 高 | ✅ **已修**（§5.5 漂移 D）· 守门测试捕获 |
 | **DRIFT-FOLLOW-I** | 领域层 `FollowUserExistenceService` | B 侧折叠下游超时 ⇒ **但那层折叠在 B 侧不可观测**（api→rpc 的 2s 客户端预算先到 ⇒ 客户端拿 **1015**） | 曾照抄折叠 ⇒ 合并进程后**折叠首次变得可观测** ⇒ HTTP 层拿 **5001** | 「D1 合并后少了一跳 ⇒ 那层折叠没人抢先」 | 下游超时场景的**全部** 8 个端点 | 🔴 高 | ✅ **已修**（§5.5 漂移 I）· E-4 场景轮 3/3 轮逐字节一致 + 变异证据精确变红 |
-| **DRIFT-FOLLOW-E** | `MeterRegistry` 装配 | B 侧 Go prometheus client（观测端口 16065） | 生产上下文**无 `PrometheusMeterRegistry`** ⇒ `/actuator/prometheus` 不可用 | Boot 3.5 自动配置装配顺序（**跨域共性**） | 指标可观测性 | 🟠 中 | 🔴 **归 `global` 收口域**（§5.6）· 本域不擅自修 |
+| **DRIFT-FOLLOW-E** | `MeterRegistry` 装配 | B 侧 Go prometheus client（观测端口 16065） | ~~生产上下文**无 `PrometheusMeterRegistry`** ⇒ `/actuator/prometheus` 不可用~~ ⇒ ✅ **原现象不成立**（2026-11-09 实测：生产形态真启动 ⇒ registry **在** ⇒ `/actuator/prometheus` **200**） | ~~Boot 3.5 自动配置装配顺序~~ ⇒ **真因是 Boot 测试框架的 `ObservabilityContextCustomizerFactory`**（只在 `@SpringBootTest` 形态下关掉 export） | 指标可观测性 | 🟠 中 | ✅ **已销账**（§5.6 漂移 E）· **零生产代码改动** · 探针 4/4 绿 + 变异红/还原绿 |
 
 ### 11.6 完成度统计（**按 verification.md §11.6 分开统计**）
 
 | 分类 | 数量 | 说明 |
 |---|---|---|
 | **已实现且已验证** | **37 个 C 侧主代码类 / 10 个测试类 72 个测试 ＋ E-4 双侧活体对拍（HTTP 21/21 三方 ＋ gRPC wire 13/13 双边 ＋ 场景轮 6 类）** | 全部 `Failures 0 · Errors 0 · Skipped 0`；真 PG + 真 Tomcat + 真 gRPC + 真 Flyway + 真上下文装配 + **真并发**；<br>🔴 **收口读数（2026-11-03 02:10 · 定位轮定稿）**：**四道闸门全绿** —— ① 双侧活体对拍 `EXIT=0` ② 变异验证 **M1~M7** `EXIT=0`（含启动前残留自检 + 还原后绿）③ 三道守门**全 `EXIT=0`**（A1–A13 `PASS 10 · FAIL 0` · docs↔文件树相符合 · 两方覆盖 **C 631/631 · B 752/752**）④ 全仓 `mvn -o clean test -fae` **16/16 SUCCESS · 合计 420 例 · Failures 0 · Errors 0 · Skipped 0** ⇒ **逐条读数见 §8.6.9**；<br>🔴 **2026-11-03 定位轮新增**：**「恢复窗口过渡态 C=5001 / B=1015」已定位** ⇒ **码值由「下游失败形态」决定，不由错误码映射决定** ⇒ **两侧同形态必然同码** ⇒ **该项不构成漂移**（详见 §8.6.7 / §8.6.7.1）；<br>🔴 **E-4（2026-11-02 对拍轮）**：**C 侧 == B 侧 == 冻结的 Go 真源字节 · HTTP 21/21 逐字节一致** ⇒ **HTTP 契约层**（8 个端点 + 错误码 + 三种响应形状 + DTO 的 JSON 形态）**已达 E-4 三方** ⇒ 详见 §八·六；<br>🔴 **E-4 场景轮（8d）**：**超时 / 恢复 / 外部依赖失败 / 恢复 / 并发 / 事务回滚** 6 类**双侧**断言全部逐字节一致 ⇒ **并捕获漂移 I**（下游超时 C 侧 5001 vs B 侧 1015）⇒ 已修 |
-| **已实现但未验证（NOT_VERIFIED）** | **2 项残余** | ① **gRPC wire 层字节**：已达 **双边**逐字节一致（**13/13 · C == B**）⇒ 但**无第三方锚**（Go 真源的 wire 字节未冻结）⇒ 该层读作「**双侧一致**」而非「三方等价」；<br>② **Prometheus 抓取面**：生产形态上下文无 `PrometheusMeterRegistry`（漂移 E）⇒ 指标面**无活体证据**（桶边界本身由 `FollowMetricsContractTest` 在注入 registry 的上下文里断言） |
+| **已实现但未验证（NOT_VERIFIED）** | **1 项残余** | ① **gRPC wire 层字节**：已达 **双边**逐字节一致（**13/13 · C == B**）⇒ 但**无第三方锚**（Go 真源的 wire 字节未冻结）⇒ 该层读作「**双侧一致**」而非「三方等价」。<br>🔴 **2026-11-09 销账（§5.6 漂移 E）**：原残余②「**Prometheus 抓取面无活体证据**」**已消解** —— 生产形态真启动（`SpringApplicationBuilder` ＋ 真 Tomcat ＋ 真 HTTP）实测 `/actuator/prometheus` = **200** ＋ `# HELP` / `# TYPE` ⇒ 指标面**有活体证据**了 ⇒ ⇒ **NOT_VERIFIED 由 2 项降为 1 项** |
 | **尚未实现（NOT_IMPLEMENTED）** | **0** | 承接表 51/51 闭合 |
 | **明确存在漂移（FAIL）** | **0**（本轮 **7** 条已修） | DRIFT-FOLLOW-A~D（首轮自查）+ **F/G/I**（E-4 对拍轮）全部 ✅ 已修并有证据 |
 | **框架差异待验证（FRAMEWORK_DIFFERENCE）** | **0** | §11.4 的 6 条差异要么已判定不影响行为、要么已登记为签字偏离 |
-| **被外部条件阻塞（BLOCKED）** | **0** ✅ | **E-4 双侧活体对拍已补齐**（§八·六）⇒ **本域不再有 BLOCKED 项**<br>（另：**DRIFT-FOLLOW-E / H** 是**跨域共性** ⇒ 归 `global` 收口域，**不构成本域的 BLOCKED**） |
+| **被外部条件阻塞（BLOCKED）** | **0** ✅ | **E-4 双侧活体对拍已补齐**（§八·六）⇒ **本域不再有 BLOCKED 项**<br>（另：**DRIFT-FOLLOW-H** 是**跨域共性** ⇒ 归 `global` 收口域，**不构成本域的 BLOCKED**；⚠️ **DRIFT-FOLLOW-E 已于 2026-11-09 销账** ⇒ 不再归 `global`） |
 | **已批准的主动变更（INTENTIONALLY_CHANGED）** | **7** | DEV-FOLLOW-001~006 + 008（**DEV-FOLLOW-007 已撤销**） |
 
 > ⚠️ **按 verification.md §十的纪律**：`NOT_VERIFIED` / `BLOCKED` **不能计入 PASS** ⇒
 > **本域的「行为等价」结论现在可以在「**HTTP 契约层**」上表述为「已由 E-4 双侧活体对拍验证」**；
-> ⚠️ 但 **gRPC wire 层**与**指标抓取面**仍**不得**表述为已闭环（见上表 NOT_VERIFIED 两项）。
+> ⚠️ 但 **gRPC wire 层**仍**不得**表述为已闭环（见上表 NOT_VERIFIED 残余 1 项）。
+> 🔴 **2026-11-09 更新**：**指标抓取面**已**有**活体证据（生产形态真启动 ⇒ `/actuator/prometheus` 200）⇒ ⇒ 它**不再**是 NOT_VERIFIED 那一项的限定条件。
 
 ### 11.7 verification.md §九「对拍必须覆盖」的覆盖度核对（**C 侧单侧证据 ＋ E-4 双侧证据**）
 

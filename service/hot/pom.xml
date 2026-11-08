@@ -118,12 +118,30 @@
                 </exclusion>
             </exclusions>
         </dependency>
-        <dependency>
-            <groupId>com.baomidou</groupId><artifactId>mybatis-plus-spring-boot3-starter</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope>
-        </dependency>
+        <!--
+            🔴 **持久层依赖已移除（2026-11-09 · global 收口域统一处置 · 台账 F-13）**
+            ⇒ 此前这里有两条**模板残留**：
+            <pre>
+              com.baomidou:mybatis-plus-spring-boot3-starter
+              org.postgresql:postgresql（runtime）
+            </pre>
+            ⇒ ⇒ **hot 是无表域**：本域 `src/main` 里**零** `@TableName` / **零** MP `BaseMapper`
+            （唯一的 `*Mapper` 是 `contract/GrpcErrorMapper` —— 它做的是 **gRPC 错误码映射**，不是持久层）
+            ⇒ ⇒ `src/main/resources/db/migration/` **空目录**（只有 `.gitkeep`）⇒ 本域无 DDL。
+            ⇒ ⇒ **B 侧 hot 同款**：`service/hot/{hot-api,hot-rpc}` **零** `domain/*Entity`、
+            **零** `mapper/`、**零** DDL；hot 的 pom 里**无** mybatis / gorm / datasource / postgres
+            （全仓仅 `hot-rpc/src/test/probe/redis-disconnect/go.mod` 这个**一次性探针模块**带过 gorm，
+            不属于 hot 域运行时）。
+            ⇒ ⇒ **删除即回到 B 侧基准**（L1 契约层以 B 侧为准 · D16）⇒ 不是「改配置键名」。
+            ⚠️ **共享层不受影响**：`common/pom.xml` 里 `mybatis-plus-spring-boot3-starter` 是
+            **`<optional>true</optional>`** ⇒ **不传递给下游** ⇒ 本域删掉自己这条后，
+            共享层 `PersistenceAutoConfiguration` 的
+            `@ConditionalOnClass(name = "org.apache.ibatis.plugin.Interceptor")`
+            **自动不装配** ⇒ 不需要动共享层一行代码。
+            ⚠️ **其余 9 域保留**：article(11) / comment(14) / favorite(9) / follow(5) / like(10) /
+            message(7) / task(4) / users-user(4) / users-admin(6) —— 这 9 个域**都真有**
+            `@TableName` 实体与 MP `BaseMapper` ⇒ ⇒ 本次统一决策 = **「只有 hot 该删」**。
+        -->
         <dependency>
             <groupId>com.rag</groupId><artifactId>proto</artifactId><version>${project.version}</version>
         </dependency>

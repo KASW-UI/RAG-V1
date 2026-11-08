@@ -65,11 +65,29 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-inprocess</artifactId>
-            <scope>test</scope>
-        </dependency>
+        <!--
+            🔴🔴 **刻意不在这里声明 grpc-inprocess**（2026-11-09 · `global` 收口域统一处置 · follow 域台账「漂移 H」）
+            —— **B 出处 = B 侧 `service/message/message-rpc/pom.xml`（该 pom 里**根本没有**这条声明）**
+            ⇒ ⇒ 本域此前那条 `<scope>test</scope>` 声明是**模板残留**（2026-10-26 全仓模板批量生成时带进来的）⇒ ⇒ **已删除**。
+
+            【为什么「直接声明 ＋ test scope」是个雷（Maven「最近者优先」陷阱）】
+              1) `net.devh:grpc-client-spring-boot-starter:3.1.0.RELEASE` **自身就传递依赖**
+                 `io.grpc:grpc-inprocess`（**compile** 作用域）⇒ 运行期 classpath 上它**本来就在**；
+              2) 本模块**又**显式声明了 grpc-inprocess ⇒ **直接声明永远压过传递声明**
+                 ⇒ scope 一旦写成 `test` ⇒ **运行时 classpath 上 grpc-inprocess 整个消失**；
+              3) devh 的 `GrpcClientAutoConfiguration.shadedNettyGrpcChannelFactory` 在**运行期**
+                 要链接 `io.grpc.inprocess.InProcessChannelBuilder` ⇒ 运行期抛
+                 `NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`
+                 ⇒ **组件根本起不来**，而单元测试全绿（测试跑在 test classpath 上 ⇒ grpc-inprocess 在 ⇒ 缺陷看不见）
+                 ⇒ ⇒ AGENTS.md §3.3.3「跑绿 ≠ 本来就绿」的教科书形态。
+
+            【同款结论的现成旁证】
+              · **B 侧 `service/comment/comment-api/pom.xml:159-174`** —— **刻意不声明** grpc-inprocess，
+                并把上面这段推理逐字写进注释 ⇒ ⇒ 本仓 `service/comment/pom.xml` 与
+                `service/users/admin/pom.xml` **同样未声明** ⇒ ⇒ 本域现在与它们**同款**。
+              · ⚠️ **不要改回 `runtime`** —— B 侧 `service/favorite/favorite-rpc/pom.xml:348-353`
+                用的是 `runtime`，那是**另一个域**的结论（favorite 域确实要显式钉住）⇒ ⇒ 逐域隔离，**不跨域推论**。
+        -->
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>

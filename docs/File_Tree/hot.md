@@ -28,8 +28,6 @@
 - `io.grpc:grpc-core`
 - `net.devh:grpc-server-spring-boot-starter`
 - `net.devh:grpc-client-spring-boot-starter`
-- `com.baomidou:mybatis-plus-spring-boot3-starter`
-- `org.postgresql:postgresql`
 - `com.rag:proto`
 - `com.rag:common`
 - `org.springframework.boot:spring-boot-starter-data-redis`
@@ -102,6 +100,8 @@
 │           └── com/
 │               └── rag/
 │                   └── hot/
+│                       ├── assembly/
+│                       │   └── HotNoPersistenceResidueTest.java    # 🔴 hot 域「无表 ⇒ 无持久层」的守门 —— 钉死 2026-11-09（global 收口域统一处置 · 台账 F-13）
 │                       ├── contract/
 │                       │   └── HotErrorContractTest.java    # hot 域错误契约测试 —— 把 L1 的三张表钉死：
 │                       ├── domain/
@@ -145,5 +145,5 @@
 | 项 | 状态 |
 |---|---|
 | 目录结构 | ✅ 已落地（本文件由 `tools/gen-file-tree.py` **按磁盘实际生成** ⇒ 不与代码漂） |
-| 文件内容 | ✅ **无空壳** —— 本模块 **52** 个 `.java`（含测试源）· **待填空壳 0 个**（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**） |
+| 文件内容 | ✅ **无空壳** —— 本模块 **53** 个 `.java`（含测试源）· **待填空壳 0 个**（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**） |
 | B 侧 ↔ Java 逐文件对照 | 📄 [`../Mapping_Table/hot/hot.md`](../Mapping_Table/hot/hot.md) —— 逐文件对照的**唯一权威副本**；由 `tools/check-mapping-coverage.py` **机器双向核验**（B 列 ⇄ C 列 ⇄ 磁盘） |

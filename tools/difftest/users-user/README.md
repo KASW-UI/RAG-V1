@@ -86,7 +86,7 @@
 |---|---|---|
 | **超时**（PG 冻结 ⇒ HTTP 读路径挂住） | HTTP 出口形态 | ❌ **B = `200 + 信封 1015` @ 2.01s** ↔ **C = `503 + 裸文本 "Request Timeout"` @ 3.00s** ⇒ DRIFT-USER-PARITY-005 |
 | **gRPC deadline**（PG 仍冻结） | status | ✅ 两侧 `ERROR_DEADLINE_EXCEEDED`（B @ 2088ms · C @ 2096ms）⇒ **服务端 2s 预算两侧对称** |
-| 同上 | description | 🔶 文案形态不同：B `context deadline exceeded` ↔ C `rpc deadline exceeded` ⇒ 客户端可见（C 侧 `common/.../ObservabilityAutoConfiguration.java:299` 硬编码） |
+| 同上 | description | ✅ **2026-11-09 已对齐**：C 侧 `common/.../ObservabilityAutoConfiguration` 改用 `RpcHandleRunner.GO_DEADLINE_EXCEEDED_DESCRIPTION` ⇒ **B `context deadline exceeded` == C `context deadline exceeded`** ⇒ 复跑本探针时两侧 description 应逐字一致 |
 | **取消传播**（**对称注入** · 客户端 1s 取消 · 放行@+1200ms） | status | ✅ 两侧 `ERROR_CANCELLED` |
 | 同上 | **副作用** | ✅ **B = 1 行** ↔ **C = 1 行**（两侧一致）⇒ ⚠️ 两侧在客户端取消后**都仍提交了写副作用** ⇒ **继承自 B 侧** ⇒ ⇒ **DRIFT-USER-PARITY-006 闭合** |
 | **判别性变体**（取消推迟到 **5s**，必定晚于服务端 2s 预算） | 副作用 | ✅ **B = 0 行 · C = 0 行**（两侧一致）⇒ ⇒ 预算到点后**两侧都把在途写挡掉** |

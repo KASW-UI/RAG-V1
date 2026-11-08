@@ -14,11 +14,17 @@
 spring:
   application:
     name: hot-service
-  datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:first_db}
-    username: ${POSTGRES_USER:admin}
-    password: ${POSTGRES_PASSWORD:password}
-    driver-class-name: org.postgresql.Driver
+  # 🔴 **`spring.datasource` 段已移除（2026-11-09 · global 收口域统一处置 · 台账 F-13）**
+  #    ⇒ 此前这里是**模板残留**（`url` / `username` / `password` / `driver-class-name` 四行）。
+  #    ⇒ ⇒ **hot 是无表域**：本域 `src/main` 里零 `@TableName`、零 MP `BaseMapper`
+  #      （唯一的 `*Mapper` 是 `contract/GrpcErrorMapper` —— gRPC 错误码映射，不是持久层），
+  #      `src/main/resources/db/migration/` 是**空目录**（只有 `.gitkeep`）⇒ 本域无 DDL。
+  #    ⇒ ⇒ **B 侧 hot 同款**：hot-api / hot-rpc 均无 `domain/*Entity`、无 `mapper/`、无 DDL，
+  #      hot 的 pom 里无 mybatis / gorm / datasource / postgres ⇒ ⇒ 删除即回到 B 侧基准（D16）。
+  #    ⇒ ⇒ **不影响 Redis / Kafka / Nacos**（本域只用到这三样外部依赖）。
+  #    ⚠️ 「留着也没害处」是错的：留着会让 Boot 真的建出一个 **DataSource + Hikari 连接池**
+  #      （`driver-class-name` + url 齐全 ⇒ 池会被建起来）⇒ **装配面多一个本域用不到的组件**
+  #      ⇒ 与 B 侧「hot 不碰数据库」不一致 ⇒ ⇒ 删。
 
   # ============== Redis（B 侧 hot-rpc 的 RedisConf{Host,Pass}）==============
   # ⚠️ B 侧 RedisConf.Type 是**死配置**（service_context.go:17-20 只用 Addr + Password）
@@ -354,9 +360,11 @@ management:
     tags:
       application: ${spring.application.name}
 
-mybatis-plus:
-  configuration:
-    map-underscore-to-camel-case: true
+# 🔴 **`mybatis-plus:` 段已移除（2026-11-09 · global 收口域统一处置 · 台账 F-13）**
+#    ⇒ 此前这里是 `mybatis-plus.configuration.map-underscore-to-camel-case: true`
+#    ⇒ ⇒ 本域**零** `@TableName` / 零 MP Mapper ⇒ 这条配置**没有任何消费点**
+#    ⇒ ⇒ 且 `mybatis-plus-spring-boot3-starter` 已从 `service/hot/pom.xml` 一并移除
+#    ⇒ ⇒ 没有 MP ⇒ 共享层 `PersistenceAutoConfiguration` 自动不装配 ⇒ 本段留着只是**误导**。
 
 logging:
   level:

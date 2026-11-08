@@ -710,7 +710,7 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 |---|---|---|
 | **B 超时**（PG 冻结 ⇒ HTTP 读路径挂住） | HTTP 出口形态 | ❌ **B = `200 + 信封 1015「服务繁忙」` @ 2.01s** ↔ **C = `503 + 裸文本 "Request Timeout"` @ 3.00s** ⇒ **DRIFT-USER-PARITY-005** |
 | **C gRPC deadline**（PG 仍冻结 · 客户端 deadline 20s） | gRPC status | ✅ 两侧 `ERROR_DEADLINE_EXCEEDED`（B @ 2088ms · C @ 2096ms）⇒ **服务端 2s 预算两侧对称** |
-| **C gRPC deadline** | description | 🔶 文案形态不同：B `context deadline exceeded` ↔ C `rpc deadline exceeded` ⇒ 客户端可见 ⇒ 登记（**根因已在 follow 域台账取证**：C 侧 `common/.../ObservabilityAutoConfiguration.java:299` **硬编码** `.withDescription("rpc deadline exceeded")`；B 侧 `service/common/.../observability/RpcInterceptor.java` 的 `GO_DEADLINE_EXCEEDED_DESCRIPTION` ⇒ **同一机制、两种文案**） |
+| **C gRPC deadline** | description | ✅ **已对齐（2026-11-09 · `global` 收口域）** —— 原为 🔶「B `context deadline exceeded` ↔ C `rpc deadline exceeded`」⇒ ⇒ 共享层 `ObservabilityAutoConfiguration` 改为**复用** `RpcHandleRunner.GO_DEADLINE_EXCEEDED_DESCRIPTION`（private → **public**）⇒ ⇒ **两侧逐字一致**；⚠️ 仍**不构成** L1 违约（只在 gRPC status 的 description 字段可见）⇒ 详见 [`docs/DRIFT/follow/verification-follow-2026-11-02.md` §5.6 漂移 J](../follow/verification-follow-2026-11-02.md) |
 | **D 取消传播**（**对称注入** · 客户端 1s 取消 · 放行@+1200ms） | gRPC status | ✅ 两侧 `ERROR_CANCELLED` |
 | **D 取消传播** | **副作用** | ✅ **B = 1 行** ↔ **C = 1 行**（**两侧一致**）⇒ ⚠️ 两侧在客户端取消后**都仍提交了写副作用** ⇒ 「取消 ⇒ 服务端停手」在两侧**都不成立** ⇒ **继承自 B 侧** ⇒ ⇒ **DRIFT-USER-PARITY-006 闭合** |
 | **D 判别性变体**（cancel-after=**5s**，必定晚于服务端 2s 预算） | 副作用 | ✅ **B = 0 行 · C = 0 行**（两侧一致）⇒ ⇒ 服务端预算到点后**两侧都把在途写挡掉** ⇒ ⇒ **共享层修复（`702b46b`）在两侧对称生效** |
@@ -936,8 +936,8 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 | ~~**gRPC wire 逐字节对拍**（9 个方法）~~ | ✅ **已闭合**（2026-11-03 第二轮） | ⇒ **18 例真差异 0** · 7 条同侧自洽断言全绿 · **变异证据**：植入 presence 差异 ⇒ **只有**该维度变红 ⇒ 详见 §12.2.1 |
 | **B 侧 Go 真源第三方锚** | **不可得** | 本机无 `Sea-etcd` ⇒ Go 侧无法活体 ⇒ 本探针是**双侧**（C ↔ B），**不是** follow 域那种**三方** |
 | ~~**并发 / 超时 / 外部依赖失败 / 恢复**场景轮~~ | ✅ **已做**（2026-11-03 第三轮 · §12.2.2） | ⇒ **8 阶段** ⇒ 探针机器摘要「❌ 真差异 **3** ｜ ⚠️ 对称异常/已知现象 **2**」⇒ **3 条真差异归为 2 个根因**（第 3 条 = 第 2 条的**判别性变体**）⇒ ❌ 两条根因均已归因：一条＝签字偏离 **DEV-USER-010**、一条＝**共享层**跨域 |
-| **gRPC deadline 的 description 文案形态** | **🔶 已登记** | B `context deadline exceeded` ↔ C `rpc deadline exceeded` ⇒ **客户端可见** ⇒ 落点＝共享层的 gRPC 拦截器（C 侧 `common/.../ObservabilityAutoConfiguration.java:299` **硬编码**）⇒ 归收口域（**独立于** PARITY-006 —— 后者已闭合） |
-| **gRPC 的 deadline / 取消传播** | ✅ **已做**（2026-11-03 第三轮 · §12.2.2） | ⇒ **两侧 status 一致**（`DEADLINE_EXCEEDED` @ ~2.1s · `CANCELLED`）⇒ ⇒ **服务端 2s 预算两侧对称**；⚠️ **description 文案形态不同**（B `context deadline exceeded` ↔ C `rpc deadline exceeded`）⇒ 客户端可见 ⇒ 落点＝共享层 gRPC 拦截器 |
+| **gRPC deadline 的 description 文案形态** | **✅ 已对齐（2026-11-09 · `global` 收口域）** | 原为「B `context deadline exceeded` ↔ C `rpc deadline exceeded`」⇒ ⇒ 共享层 `ObservabilityAutoConfiguration` 改为复用 `RpcHandleRunner.GO_DEADLINE_EXCEEDED_DESCRIPTION` ⇒ ⇒ **两侧逐字一致** ⇒ ⇒ 本条**不再是待办**（独立于 PARITY-006 —— 后者早已闭合） |
+| **gRPC 的 deadline / 取消传播** | ✅ **已做**（2026-11-03 第三轮 · §12.2.2） | ⇒ **两侧 status 一致**（`DEADLINE_EXCEEDED` @ ~2.1s · `CANCELLED`）⇒ ⇒ **服务端 2s 预算两侧对称**；🔴 **2026-11-09：description 文案已对齐**（共享层 `ObservabilityAutoConfiguration` 改用 `RpcHandleRunner.GO_DEADLINE_EXCEEDED_DESCRIPTION` ⇒ **B `context deadline exceeded` == C `context deadline exceeded`**）⇒ ⇒ 那条客户端可见的差异**已消解** |
 | **「DB 完全不可响应」档的 HTTP 出口形态** | **🔶 已登记为签字偏离** | DRIFT-USER-PARITY-005 ⇒ DEV-USER-010 ⇒ 落点＝D1 合并的连带后果（与 DEV-USER-008 同族）⇒ ⚠️ **与下一行同源**：C 侧 gRPC 边界那套「主动关 call ＋ 把 deadline 绑给 SQL」在 HTTP 路径上**整层缺位**（`ObservabilityProperties.java:124-126` 自述） |
 | **取消后在途写是否落库** | **✅ 已闭合**（2026-11-03） | DRIFT-USER-PARITY-006 ⇒ 共享层已补 `onHalfClose` 的 `DeadlineState.bindAbsoluteNanos(...)`（`702b46b`）⇒ ⇒ **对称注入扫描**：+1200/+1800 ⇒ B=1·C=1 · +2400/+3000 ⇒ B=0·C=0 · **翻转点两侧重合（=2400）** ⇒ ⇒ **两侧行为等价**（**旧读数「B=0·C=1」= 探针顺序注入的时序假差**）⇒ ⇒ 落点已清（共享层 `ObservabilityAutoConfiguration.java`） |
 

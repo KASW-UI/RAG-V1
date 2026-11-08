@@ -212,6 +212,9 @@
 │                       │   ├── LoggerAutoConfigurationTest.java    # §3.3「机制可证」守门：共享日志门面真的被 auto-config 装配出来（不需要域侧任何代码）。
 │                       │   ├── ObservabilityAutoConfigurationTest.java    # §3.3「机制可证」守门：观测的判定顺序真的按 B 侧口径。
 │                       │   ├── PersistenceAutoConfigurationTest.java    # §3.3「机制可证」守门：SQL 超时链路真的挂上了（DRIFT-COMMON-V02 的修法验证）。
+│                       │   ├── PrometheusMetricsRegistryWiringTest.java    # 🔴 共享层「Prometheus registry 真装配」的守门 —— 用来判一件被写错了的事：
+│                       │   ├── PrometheusScrapeEndpointRealTomcatTest.java    # 🔴 共享层「Prometheus 抓取面」的守门 —— 真 Tomcat ＋ 真 HTTP 打
+│                       │   ├── PrometheusTestContextExportDisabledAnchorTest.java    # 🔴 诊断锚点：把「测试形态下 {@code /actuator/prometheus} 404」的真因钉死。
 │                       │   ├── ProtectionAutoConfigurationWiringTest.java    # §3.3「机制可证」守门：gRPC 拦截链真的挂到了 server 上（A3 的运行时证据），
 │                       │   └── RouteIsolationFilterTest.java    # §3.3「机制可证」守门：熔断隔离 key 真的是 {@code METHOD://}，
 │                       ├── contract/
@@ -266,5 +269,5 @@
 | 项 | 状态 |
 |---|---|
 | 目录结构 | ✅ 已落地（本文件由 `tools/gen-file-tree.py` **按磁盘实际生成** ⇒ 不与代码漂） |
-| 文件内容 | ✅ **无空壳** —— 本模块 **154** 个 `.java`（含测试源）· **待填空壳 0 个**（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**） |
+| 文件内容 | ✅ **无空壳** —— 本模块 **157** 个 `.java`（含测试源）· **待填空壳 0 个**（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**） |
 | B 侧 ↔ Java 逐文件对照 | 📄 [`../Mapping_Table/common.md`](../Mapping_Table/common.md) —— 逐文件对照的**唯一权威副本**；由 `tools/check-mapping-coverage.py` **机器双向核验**（B 列 ⇄ C 列 ⇄ 磁盘） |

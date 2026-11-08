@@ -25,7 +25,6 @@
 - `org.springframework.boot:spring-boot-starter-test`
 - `org.junit.jupiter:junit-jupiter`
 - `org.mockito:mockito-core`
-- `io.grpc:grpc-inprocess`
 - `org.testcontainers:postgresql`
 - `org.testcontainers:junit-jupiter`
 - `io.grpc:grpc-core`
