@@ -177,7 +177,7 @@
 | **DRIFT-USER-IMPL-005** | **`docs/Mapping_Table/users/admin/admin.md:158` 的 C 列仍指向已被删除的 `service/users/user/src/main/java/com/rag/user/config/RedisDisconnectedBehaviorConfig.java`** | **admin lane** | ⚠️ 该行的备注本身就写着「B 已把域内 5 份副本全删 ⇒ **C 侧也要走共享层**」⇒ 本域的删除**正是该行的意图**；但**该表属 admin 子域** ⇒ ⇒ 本 lane **不代笔**（AGENTS.md §五.2「只写自己域」）⇒ 登记在此<br>✅ **已闭合（2026-11-02 · 主树收口）** —— `docs/Mapping_Table/users/admin/admin.md` 的 C 列已改指共享层真实落点 `common/src/main/java/com/rag/common/redis/ClientAutoConfiguration.java`（断连行为收口，`ClientOptions.DisconnectedBehavior.REJECT_COMMANDS`）⇒ 悬空指针消除（该表属 admin 子域，故由主树收口时统一改） |
 | **DRIFT-USER-IMPL-006** | **`docs/File_Tree/proto.md` 陈旧**：它声称 `proto/src/test/java/` 存在，实测**没有** | **收口域**（`proto/` 是跨域模块） | ⚠️ 本轮跑 `gen-file-tree.py` 时**实测到**（生成物与实际不符）⇒ 但 `proto/` **不是本域写权面** ⇒ ⇒ **本 lane 已把该文件的改动 `git checkout` 复原**，只登记不改 |
 | **DRIFT-USER-IMPL-007** | **B 侧 `user-rpc` 的 `spring.application.name = user-rpc` vs C 侧 `user-service`** | 结构性（D1 合并的必然结果） | ⚠️ 合并进程的 app 名只能是**一个** ⇒ C 侧用 `user-service`；⚠️ **Nacos 注册名**刻意**不**跟着改（仍 `user-rpc`，DEV-USER-004）⇒ ⇒ 两者**不是同一件事**，勿混 |
-| **DRIFT-USER-IMPL-008** | **`docs/File_Tree/users/user.md` 的 §五「状态」块仍写着「⬜ 全部待填（每个 Java 文件只有 package + 空类型 + TODO javadoc）」** —— 而本域 **48 个文件已全部有实现** | **收口域**（`tools/gen-file-tree.py` 是跨域工具） | ⚠️ **根因在脚本**：`gen-file-tree.py` 的 §五 状态块是**写死的全局占位**（不按域分派）⇒ ⇒ 任何域实现完都会撞这句 ⇒ ⇒ **手改生成物 = 下次 regen 就被覆写**（「生成物当落点」反模式）⇒ ⇒ 本 lane **不手改**、**不改共享脚本** ⇒ 只登记 |
+| **DRIFT-USER-IMPL-008** | **`docs/File_Tree/users/user.md` 的 §五「状态」块仍写着「⬜ 全部待填（每个 Java 文件只有 package + 空类型 + TODO javadoc）」** —— 而本域 **48 个文件已全部有实现** | **收口域**（`tools/gen-file-tree.py` 是跨域工具） | ⚠️ **根因在脚本**：`gen-file-tree.py` 的 §五 状态块是**写死的全局占位**（不按域分派）⇒ ⇒ 任何域实现完都会撞这句 ⇒ ⇒ **手改生成物 = 下次 regen 就被覆写**（「生成物当落点」反模式）⇒ ⇒ 本 lane **不手改**、**不改共享脚本** ⇒ 只登记<br>✅ **2026-11-09 已由 `global` 收口域销账** —— 生成器的 §五 改为**按磁盘实算**（`.java` 数 ＋ **待填空壳**数 ＋ 两方对照表指针）⇒ ⇒ **13 份文件树全部订正** ⇒ 各自「待填空壳 **0** 个」⇒ ⇒ **本条销账**（本 lane 无写权 ⇒ 由收口域执行） |
 | **DRIFT-USER-IMPL-009** | **全仓 `mvn -o -T1C clean verify` 在本域之外红**：`article` / `comment` / `favorite` / `follow` / `hot` / `like` / `message` / `task` **8 个域**的 `spring-boot-maven-plugin:repackage` 报 `Unable to find main class` | **各域 lane**（结构性） | ⚠️ **基线自带，非本轮引入**：实测 `git show 07ff14a:service/<域>/.../*ServiceApplication.java` ⇒ **8 个域的 Application 全都没有 `main` 方法**（还是 8 行空壳）⇒ ⇒ repackage **必然**失败。⚠️ 本域**补上了 `main`** ⇒ ⇒ 本域的 repackage **通过** ⇒ ⇒ 全仓 verify 要等 10 个域都落地才会绿（AGENTS.md §4.2 的「全量收口」是**所有 lane 完成后**的动作，不是单域的验收门） |
 
 ---
@@ -410,15 +410,15 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 | **双侧活体对拍**（同一输入打 B 与 C 比对） | **PASS**（**HTTP 20 例 + gRPC wire 18 例 + DB 最终态**） | ⚠️ **2026-11-03 实跑**（`tools/difftest/users-user/run.sh`，两侧真进程：真 Tomcat + 真 gRPC + 真 PG + 真 Redis + 真 Nacos）：HTTP **真差异 0/20**（探针 **EXIT=0**）· **字节级 12/20**（8 例差异 = 🔶 键序 4 ＋ 文案形态 4，两者**均已归因登记**）· **gRPC wire 真差异 0/18**（9 个方法全覆盖 + 错误路径 + 成功路径；**只屏蔽易变值、不屏蔽 presence**；**变异证据**：植入 presence 差异 ⇒ **只有 gRPC 维度变红**）· DB `users_user` 与 `users_user_avatar_history` **逐字段一致** · 表清单一致（4 张）· 详见 §十二 / §12.2.1 |
 | C 侧 **fat jar 真能起得来**（生产类路径 ≠ 测试类路径） | **PASS**（本轮修） | 🔴 2026-11-03 对拍实测：`grpc-inprocess` 声明成 **test scope** ⇒ **生产 jar 缺类 ⇒ 启动即挂**（`NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder`）⇒ **39 例测试全绿却零告警**。已修（去 scope）＋ B 侧类路径取证 + 探针自检。详见 §十二.3 |
 | 🔴 400 的「报哪个字段」**确定性** | **PASS**（本轮修） | 原实现 `getFieldErrors().findFirst()` ⇒ Hibernate Validator 违规集合是 `HashSet` ⇒ **同一输入 6 次出 3 种文案** ⇒ C 侧 400 **不是确定性输出**。已改为**按 DTO 声明序取第一条**（与 B 侧 `GoStyleRequired` 判定序逐个一致 ⇒ **报同一字段**）+ 新增断言连打 8 次逐次相同。详见 §十二.3 |
-| 其余 9 域的 `grpc.client:` 空键 | **FAIL（跨域）** | DRIFT-USER-IMPL-004（那些域**一启动就挂**） |
-| `admin.md:158` 的 C 列悬空指针 | **FAIL（跨域）** | DRIFT-USER-IMPL-005 |
-| `docs/File_Tree/proto.md` 陈旧 | **FAIL（跨域）** | DRIFT-USER-IMPL-006 |
-| `docs/File_Tree/users/user.md` 的 §五 状态块陈旧 | **FAIL（跨域 · 工具层）** | DRIFT-USER-IMPL-008（根因在 `tools/gen-file-tree.py` 的写死占位） |
-| 🔴 **其余 7 个域的 fat jar 起不来**（`grpc-inprocess` 是 test scope） | **FAIL（跨域）** | DRIFT-USER-PARITY-002：`article`/`comment`/`favorite`/`hot`/`like`/`message`/`task` 七个域的 pom 把 `grpc-inprocess` 声明成 `<scope>test</scope>` ⇒ 生产 jar 缺类 ⇒ devh `GrpcClientAutoConfiguration:160` 抛 `NoClassDefFoundError` ⇒ **启动即挂**。⚠️ 当前被「Application 无 `main`」挡在前面（先挂 repackage）⇒ **各域补 `main` 的那一刻才会暴露** ⇒ 建议**先修这一条** |
+| 其余 9 域的 `grpc.client:` 空键 |**PASS**（**2026-11-09 已闭合**）| DRIFT-USER-IMPL-004（那些域**一启动就挂**） ⇒ **2026-11-09 复核** ① **全量 yml 用 YAML 语义解析**（`service/**/resources/**/*.yml`）⇒ **`grpc.client` 下缺 `address` 的条目 = 0 个**（article 1 · comment 2 · favorite 2 · follow 1 · hot 1 · like 1 · message 2 · task 0）⇒ 「一启动就挂」的前提已不成立 ||
+| `admin.md:158` 的 C 列悬空指针 |**PASS**（**2026-11-09 已闭合**）| DRIFT-USER-IMPL-005 ⇒ **2026-11-09 复核** ② 守门 `tools/check-mapping-coverage.py` **EXIT=0**（含 **B 列双向对账** + 「C 列悬空指针」检查）⇒ 已闭合 ||
+| `docs/File_Tree/proto.md` 陈旧 |**PASS**（**2026-11-09 已闭合**）| DRIFT-USER-IMPL-006 ⇒ **2026-11-09 复核** ③ 守门 `tools/difftest/check-docs-vs-tree.py` **EXIT=0**（含 File_Tree **双向覆盖** ＋ **幂等**）＋ `gen-file-tree.py` 连跑两次 diff 恒定 ⇒ 已闭合 ||
+| `docs/File_Tree/users/user.md` 的 §五 状态块陈旧 |**PASS**（**2026-11-09 已闭合**）| DRIFT-USER-IMPL-008（根因在 `tools/gen-file-tree.py` 的写死占位） ⇒ **2026-11-09 复核** ④ **2026-11-09 由 `global` 收口域闭合**：根因（`tools/gen-file-tree.py` 的 §五 状态块是**写死占位**）已修 —— §五 改为**按磁盘实算**（`.java` 数 ＋ **待填空壳**数 ＋ 两方对照表指针）⇒ ⇒ **13 份文件树全部订正** ⇒ 各自「待填空壳 **0** 个」⇒ ⇒ **本项销账** ||
+| 🔴 **其余 7 个域的 fat jar 起不来**（`grpc-inprocess` 是 test scope） |**PASS**（**2026-11-09 已闭合**）| DRIFT-USER-PARITY-002：`article`/`comment`/`favorite`/`hot`/`like`/`message`/`task` 七个域的 pom 把 `grpc-inprocess` 声明成 `<scope>test</scope>` ⇒ 生产 jar 缺类 ⇒ devh `GrpcClientAutoConfiguration:160` 抛 `NoClassDefFoundError` ⇒ **启动即挂**。⚠️ 当前被「Application 无 `main`」挡在前面（先挂 repackage）⇒ **各域补 `main` 的那一刻才会暴露** ⇒ 建议**先修这一条** ⇒ **2026-11-09 复核** ⑤ **P-18 已修**（`grpc-inprocess` 改为 `compile` scope）⇒ 本轮隔离构建 **11 个 fat jar** 全部产出 · jar 内 **760** 个 class · **10** 个 `*Grpc.class` ⇒ 已闭合 ||
 | 🔴 **「DB 完全不可响应」时的 HTTP 超时出口形态**（B `200+1015@2.01s` ↔ C `503@3.00s`） | **INTENTIONALLY_CHANGED**（签字偏离 · 待签） | DRIFT-USER-PARITY-005 ⇒ **DEV-USER-010**（与 DEV-USER-008 同族：D1/D2 进程合并 ⇒ B 侧 api 层那一跳的「超时出口」不可达）⇒ 共享层预算机制本身**两侧对称**（§12.2.2 阶段C：两侧服务端预算都 ~2.1s） |
 | 🔴 **客户端取消后，服务端在途写是否落库**（**两侧一致**） | **PASS**（2026-11-03 对拍闭合 · **探针假差已证伪**） | DRIFT-USER-PARITY-006 **已闭合**，两段证据：① **代码缺口已补**（共享层 `702b46b`）：C 侧 gRPC 拦截器补上 `onHalfClose` 里的 `DeadlineState.bindAbsoluteNanos(...)`（B 侧 `RpcInterceptor.java:516-517` 同款）⇒ ⇒ handler 线程有入向 deadline ⇒ ⇒ injector 给每条 SQL 设 `setQueryTimeout` ⇒ ⇒ 预算到点后**后续 SQL 被 57014 守卫挡掉** ⇒ ⇒ 两侧预算语义对齐；② **残留的「B=0 行 ↔ C=1 行」经对称注入扫描证伪为【探针顺序注入的时序假差】**（旧注入：先发 B 的调用、等它返回、再发 C 的调用 ⇒ **B 的调用比 C 早约 1 秒开始** ⇒ ⇒ 放行 PG 那一刻 **B 的 2s 预算已到、C 还剩约 1 秒**）⇒ ⇒ **对称注入**（同一 JVM 同时发两侧、同一时刻取消、等距放行）读数：**放行@+1200/+1800 ⇒ B=1·C=1 · +2400/+3000 ⇒ B=0·C=0 · 翻转点两侧重合（=2400）** ⇒ ⇒ **两侧行为等价**（**两侧在客户端取消后都仍会提交写副作用** ⇒ 属**继承自 B 侧**的行为） |
 | **场景轮**（超时 / deadline / 取消传播 / 恢复 / 外部依赖失败 / 恢复 / 并发） | **PASS**（探针摘要：❌ 真差异 1 · ⚠️ 已知现象 3 ⇒ **剩下的 1 条是已签字的偏离**） | §12.2.2：**9 阶段**（新增 **D2 对称注入扫描**）⇒ 机器摘要「❌ 真差异 **1** ｜ ⚠️ 对称异常/已知现象 **3**」⇒ ⇒ **1 条真差异 = PARITY-005（已签字 DEV-USER-010）**；⇒ ⚠️ 3 条 = **「两侧在客户端取消后都仍提交写副作用（继承自 B 侧）」** + 恢复轮 ×2 的 **JSON 键序**（PARITY-003，已登记）· **两侧对称判据全部通过**：gRPC deadline status · 取消 status（两侧 `CANCELLED`）· **副作用两侧逐点相同**（B=1·C=1 / B=0·C=0 · **翻转点重合 =2400**）· 恢复轮**连续 3 轮**回 200 ×2 · **PG 停两侧同为 `1015`**（独立交叉验证 admin lane）· 并发 register 响应集合同为 `{200/200, 200/5001}` + 恰好 1 行 |
-| 🔴 **JSON 响应键序**（Jackson 2 vs 3 的默认行为） | **FAIL（跨域 · 共享层）** | DRIFT-USER-PARITY-003：B（Boot 4 / Jackson 3）的 mapper 默认开 `SORT_PROPERTIES_ALPHABETICALLY` ⇒ 输出**字母序**；C（Boot 3.5 / Jackson 2.19.4）默认关 ⇒ 输出**声明序** ⇒ **10 个域全受影响** ⇒ 落点在共享层 `common/` 的 ObjectMapper 定制 ⇒ **本 lane 无写权面** |
+| 🔴 **JSON 响应键序**（Jackson 2 vs 3 的默认行为） | **FAIL（跨域 · 共享层）** | DRIFT-USER-PARITY-003：B（Boot 4 / Jackson 3）的 mapper 默认开 `SORT_PROPERTIES_ALPHABETICALLY` ⇒ 输出**字母序**；C（Boot 3.5 / Jackson 2.19.4）默认关 ⇒ 输出**声明序** ⇒ **10 个域全受影响** ⇒ 落点在共享层 `common/` 的 ObjectMapper 定制 ⇒ **本 lane 无写权面** ⚠️ **2026-11-09 复核：仍开** ⇒ 落点仍是**共享层 `common/` 的 ObjectMapper 定制**（⇒ **归 `global` 收口域**）⇒ ⇒ **另注**：`comment` 域已把**同型**差异单独登记为自己的 **D-14**（响应 JSON 的键序）⇒ ⇒ **同一根因、两种登记** ⇒ 收口时须**一次统一**（否则各域各签一遍） ||
 
 ### §十四 的 12 个问题 ＋ 最终审核标准（逐条回答）
 
@@ -457,13 +457,13 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 
 | 状态 | 项数 |
 |---|---|
-| **PASS** | **25** |
+| **PASS** | **30** |
 | **INTENTIONALLY_CHANGED**（L3 降级 D-01 ＋ **DEV-USER-010**） | **2** |
 | **NOT_VERIFIED** | **0** |
-| **FAIL（跨域 · 不在本 lane 写权面）** | **6** |
+| **FAIL（跨域 · 不在本 lane 写权面）** | **1** |
 | **合计** | **33** |
 
-> 📌 **口径**：本表 **33 行**逐行点过（**脚本按行复算**）⇒ 25 + 2 + 0 + 6 = **33**。
+> 📌 **口径**：本表 **33 行**逐行点过（**脚本按行复算**）⇒ 30 + 2 + 0 + 1 = **33**。
 > （**初稿此处写的是 17，自身少算了 1 ⇒ 2026-11-02 复核时按行重数并订正；**
 > **2026-11-03 对拍后订正为 22/1/2/6；**
 > **2026-11-03 第二轮（gRPC wire 维度 + 写路径形态闭合）后订正为 23/1/0/6；**
@@ -472,17 +472,31 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 > ⚠️ **这些数字是脚本按行复算出来的，不是手数的** —— 手数第一次写成了 24 ⇒ **被机器复算当场纠正**
 > ⇒ ⇒ **复算命令（可复用 · 任何域的台账都能跑）**：
 > `python3 tools/recount-ledger-status.py docs/DRIFT/users/verification-users-user-2026-11-02.md --table-line 387 --compare-summary --expect-total 33`
-> ⇒ ⇒ 机器输出逐字（⚠️ **2026-11-09 重跑**：工具已重写 —— 状态列改为**按内容定位**、汇总表改为**与「行数相等」的明细组对照**、输出改为**完整普查（含 0 值）** ⇒ ⇒ **数字未变**（25 / 2 / 0 / 6 = 33）⇒ ⇒ **只有打印形态与命令变了**）：
+> ⇒ ⇒ 机器输出逐字（⚠️ **2026-11-09 重跑**：工具已重写 —— 状态列改为**按内容定位**、汇总表改为**与「行数相等」的明细组对照**、输出改为**完整普查（含 0 值）**；
+> **且本表数字本轮变了**（25 / 2 / 0 / 6 ⇒ **30 / 2 / 0 / 1** —— 5 条跨域 FAIL 逐条复核后已闭合，详见各行的「2026-11-09 复核」证据）：
 > ```
 > —— 状态表复算（docs/DRIFT/users/verification-users-user-2026-11-02.md · 1 张明细表）——
->    FAIL                   6
+>    FAIL                   1
 >    INTENTIONALLY_CHANGED  2
 >    NOT_VERIFIED           0
 >    NOT_IMPLEMENTED        0
 >    PARTIAL                0
->    PASS                   25
+>    PASS                   30
+>    合计                     33
+>    📋 自报汇总表（行 458）：{'PASS': 30, 'INTENTIONALLY_CHANGED': 2, 'NOT_VERIFIED': 0, 'FAIL': 1}
+>    ✅ 自报总数与复算一致（33）
+> ```
+> —— 状态表复算（docs/DRIFT/users/verification-users-user-2026-11-02.md · 1 张明细表）——
+>    FAIL                   6
+>    FAIL                   1
+>    INTENTIONALLY_CHANGED  2
+>    NOT_VERIFIED           0
+>    NOT_IMPLEMENTED        0
+>    PARTIAL                0
+>    PASS                   30
 >    合计                     33
 >    📋 自报汇总表（行 458）：{'PASS': 25, 'INTENTIONALLY_CHANGED': 2, 'NOT_VERIFIED': 0, 'FAIL': 6}
+>    📋 自报汇总表（行 458）：{'PASS': 30, 'INTENTIONALLY_CHANGED': 2, 'NOT_VERIFIED': 0, 'FAIL': 1}
 >    ✅ 自报总数与复算一致（33）
 > ```
 > （同款教训见 [`P-08`](../../Pitfalls/_cross/P-08-落地证据未经机器复算.md)）。

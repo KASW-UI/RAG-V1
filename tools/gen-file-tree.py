@@ -20,7 +20,7 @@
 
 脚本幂等：每次运行先清掉不再产出的陈旧 `.md` 与空目录，再重新生成。
 """
-import pathlib, re, shutil
+import os, pathlib, re, shutil
 
 ROOT = pathlib.Path("/Users/pr/Documents/GitHub/RAG-V1")
 OUT  = ROOT / "docs/File_Tree"
@@ -199,6 +199,68 @@ def pom_artifact_id(pom):
     m = re.search(r"<artifactId>([^<]+)</artifactId>", txt)
     return m.group(1) if m else None
 
+def _is_empty_shell(src: str) -> bool:
+    """是不是**待填空壳**（只有类型声明、没有成员，**且**还留着 `TODO`）。
+
+    ⚠️ **口径对齐守门脚本**（`tools/difftest/check-arch-invariants.py#is_empty_shell`）：
+    同样「剥注释 ＋ 剥 package/import ⇒ 取类型体 ⇒ 为空即空壳」⇒ ⇒ 两处对「空壳」的理解**不会打架**。
+
+    ⚠️ **本函数比守门脚本多两条**（守门脚本只对具体断言目标用，不涉 DTO 与「有意为空」）：
+
+    ① **`record` 的组件列表（`(...)`）算成员** ⇒ A9/D5 的 immutable record DTO **不算空壳**
+       （⚠️ 实测：不补这条 ⇒ article 报「空壳 7 个」、users/user 报「19 个」⇒ **全是 record DTO**
+       ⇒ 与 AGENTS.md「域内空壳 0」直接冲突）；
+       ⚠️ **组件列表可以带泛型**（实测 `record RpcResult<RespT>(...)` ⇒ 不带泛型的正则匹配不上 ⇒ 又一批假阳性）。
+
+    ② **「有意为空」不算待填** —— 空 struct DTO（决策 D5）· MP 的 `BaseMapper` 接口
+       （方法由父接口继承 ⇒ 体为空是正常）· 无成员的 auto-config ⇒ 这些**不是**「还没写」。
+       ⇒ ⇒ 追加判据：**必须留有 `TODO` 标记**才算「待填」
+       （与原占位文案「每个 Java 文件只有 package + 空类型 + **TODO javadoc**」逐字对齐）。
+    """
+    if "TODO" not in src:
+        return False
+    s = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    s = re.sub(r"//[^\n]*", "", s)
+    s = re.sub(r"^\s*package\s+[^;]+;", "", s, flags=re.M)
+    s = re.sub(r"^\s*import\s+[^;]+;", "", s, flags=re.M)
+    i, j = s.find("{"), s.rfind("}")
+    if i == -1 or j <= i:
+        return False
+    if s[i + 1:j].strip():
+        return False
+    head = s[:i]
+    m = re.search(r"\brecord\s+\w+\s*(?:<[^>]*>)?\s*\(([^)]*)\)", head)
+    if m and m.group(1).strip():
+        return False
+    return True
+
+
+def java_stats(base):
+    """本模块的 `.java` 文件数 与 **空壳**数（只有类型声明、没有成员）。
+
+    ⚠️ 扫描范围与 §三 的目录树**同款**（排除 `target/` · `.git/` · IDE 垃圾）。
+    """
+    SKIP_DIRS = {"target", ".git", ".settings", ".idea"}
+    files = []
+    for f in base.rglob("*.java"):
+        if any(part in SKIP_DIRS for part in f.parts):
+            continue
+        files.append(f)
+    shells = sum(1 for f in files
+                 if _is_empty_shell(f.read_text(encoding="utf-8", errors="ignore")))
+    return len(files), shells
+
+
+def mapping_doc(key):
+    """本模块的两方对照表（`docs/Mapping_Table/**/<key>.md`）⇒ 找不到返回 None。
+
+    ⚠️ **按模块键 glob**（不写死路径）—— 域应用在 `<域>/<域>.md` · users 的两个子域在
+    `users/<子域>/<子域>.md` · 公共库在 `users/users-common.md` · 契约模块 `proto/` 没有对照表。
+    """
+    cands = sorted((ROOT / "docs" / "Mapping_Table").rglob(f"{key}.md"))
+    return cands[0] if cands else None
+
+
 def build(module, base, pkg_root, title, desc, b_src):
     base = pathlib.Path(base)
     lines = [f"# {title} —— 文件树", ""]
@@ -231,11 +293,34 @@ def build(module, base, pkg_root, title, desc, b_src):
             lines.append(f"- {s}")
         lines.append("")
 
+    # ── §五 状态块：**按磁盘实算**（2026-11-09 · global 收口域）──
+    # 🔴 **此前这里是「写死的全局占位」**（`⬜ 全部待填` + `⬜ 未开始`）⇒
+    #    ⇒ **13 份文件树一律写「文件内容全部待填」** ⇒ 而各域早已填完 ⇒
+    #    ⇒ **一句假话被 3 个域的台账分别登记为待收口**（users-user 的
+    #    DRIFT-USER-IMPL-008 · users-common 的 D-07 · hot 的 §一·1.6）
+    #    ⇒ ⇒ **根因在脚本 ⇒ 归 global 收口域**（AGENTS.md §五.3 规则 3）⇒
+    #    ⇒ 现在改成**按磁盘实算** ⇒ ⇒ **状态块不可能再腐烂**（它每次重生成都重算）。
+    n_java, n_shell = java_stats(base)
+    mdoc = mapping_doc(module)
+    if n_shell == 0:
+        content_row = (f"✅ **无空壳** —— 本模块 **{n_java}** 个 `.java`（含测试源）· **待填空壳 0 个**"
+                       f"（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· "
+                       f"MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**）")
+    else:
+        content_row = (f"🟡 **部分待填** —— 本模块 **{n_java}** 个 `.java`（含测试源）· **待填空壳 {n_shell} 个**"
+                       f"（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· "
+                       f"MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**）")
+    if mdoc is not None:
+        rel = os.path.relpath(mdoc, out_path(base).parent)
+        mapping_row = (f"📄 [`{rel}`]({rel}) —— 逐文件对照的**唯一权威副本**；"
+                       f"由 `tools/check-mapping-coverage.py` **机器双向核验**（B 列 ⇄ C 列 ⇄ 磁盘）")
+    else:
+        mapping_row = "— （本模块无两方对照表）"
     lines += ["## 五、状态", "",
               "| 项 | 状态 |", "|---|---|",
-              "| 目录结构 | ✅ 已落地 |",
-              "| 文件内容 | ⬜ **全部待填**（每个 Java 文件只有 package + 空类型 + TODO javadoc） |",
-              "| B 侧 ↔ Java 逐文件对照 | ⬜ 未开始（按 `docs/完全spring化的文件树.md` §6.2 的字段逐项填） |",
+              "| 目录结构 | ✅ 已落地（本文件由 `tools/gen-file-tree.py` **按磁盘实际生成** ⇒ 不与代码漂） |",
+              f"| 文件内容 | {content_row} |",
+              f"| B 侧 ↔ Java 逐文件对照 | {mapping_row} |",
               ""]
     return "\n".join(lines)
 
