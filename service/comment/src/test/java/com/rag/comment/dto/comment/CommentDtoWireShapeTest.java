@@ -18,8 +18,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>DTO 是 <b>L1 契约</b>（字段名 / 类型 / 顺序），是 comment 域对外的 HTTP 出入参形状。
  * 任何一处字段名改了（{@code user_id} → {@code userId}）、或顺序变了，
  * 线上就是「客户端解析不出来」；而 <b>JSON 语义仍然合法</b>，
- * 靠「能反序列化」这种断言<b>永远发现不了</b>（Jackson 默认按字母序输出，
- * 而 Go 的 {@code encoding/json} 按<b>结构体声明顺序</b>输出 ⇒ 顺序天然会分叉）。
+ * 靠「能反序列化」这种断言<b>永远发现不了</b>（<b>B 侧</b> Jackson 3 默认按字母序输出，
+ * 而 Go 的 {@code encoding/json} 按<b>结构体声明顺序</b>输出 ⇒ B 侧必须靠注解钉死；
+ * <b>C 侧</b> Jackson 2 对 record 默认即声明序 ⇒ 本类把顺序<b>显式断言</b>出来把它钉住）。
  *
  * <h2>抄写基准（B 侧 · 唯一 oracle）</h2>
  * <p>B 侧 {@code service/comment/comment-api/src/main/java/com/rag/comment/comment/api/dto/}

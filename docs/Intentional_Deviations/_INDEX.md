@@ -30,11 +30,13 @@ docs/Intentional_Deviations/
 
 ## 当前条目
 
-> ⚠️ **口径**：下表的**条目数与状态分布是机器复算的**（逐文件扫 `## DEV-*` 标题 ⇒ 抽取每条的 `| **状态** |` 行）
-> ⇒ **核对日期 2026-11-05**（合并 hot / task / comment / favorite 四域实现后重算；**此前本表自报 6 条 ⇒ 实为 47 条**）。
+> ⚠️ **口径**：下表的**条目数与状态分布是机器复算的**（逐文件扫 `^#{1,2} DEV-` 标题 ⇒ 抽取每条的 `| **状态** |` 行）
+> ⇒ **核对日期 2026-11-09**（`global` 收口域轮重算；**此前本表自报 47 条 ⇒ 实为 48 条 `## DEV-` ＋ global 的 1 条 = 49 条**）。
+> ⚠️ **⚠️ 口径订正（2026-11-09）**：**只扫 `## DEV-` 会漏算 1 条** —— `global/common-bearer-token-extractor.md` 的条目
+> `DEV-GLOBAL-SEC-001` 用的是 **H1**（`# DEV-…`）形态，且状态行是 `> **状态**：`（不是表格行）⇒ ⇒ 口径必须写成 `^#{1,2} DEV-` ＋ 两种状态行形态。
 > ⇒ **逐条明细以各域文件为权威副本**（下表「文件」列可直达）。
 
-| 域 | 条目数 | 文件 | 状态分布（机器复算 · 2026-11-05） |
+| 域 | 条目数 | 文件 | 状态分布（机器复算 · 2026-11-09） |
 |---|---|---|---|
 | `global`（共享层 `common/`） | **1** | [common-bearer-token-extractor.md](global/common-bearer-token-extractor.md) | 候选建议签 1 |
 | `article` | **2** | [content-audit-fail-loud.md](article/content-audit-fail-loud.md) · [http-404-extra-vary-headers.md](article/http-404-extra-vary-headers.md) | 候选建议签 2 |
@@ -42,11 +44,11 @@ docs/Intentional_Deviations/
 | `comment` | **2** | [_signed-deviations.md](comment/_signed-deviations.md) | 已签字 1 · 已落地待确认 1 |
 | `favorite` | **12** | [_signed-deviations.md](favorite/_signed-deviations.md) | 已签字 9 · C 侧专属 3 |
 | `follow` | **8** | [_signed-deviations.md](follow/_signed-deviations.md) | 候选建议签 7 · **已撤销 1**（`DEV-FOLLOW-007` · 登记前提被运行时证据证伪） |
-| `hot` | **6** | [_signed-deviations.md](hot/_signed-deviations.md) | 已登记 4 · 已修复 1 · 已落地待确认 1 |
-| `users`（`users-user` 子域） | **10** | [_signed-deviations.md](users/_signed-deviations.md) | 候选建议签 8 · 已登记 1 · 全仓统一决策 1 |
-| `admin` | **4** | [_signed-deviations.md](admin/_signed-deviations.md) | 候选建议签 3 · 状态栏未写 1 |
+| `hot` | **6** | [_signed-deviations.md](hot/_signed-deviations.md) | 已登记 4 · 已修复 1 · **已销账 1**（`DEV-HOT-005` · 2026-11-09 全仓统一 ⇒ 偏离取消） |
+| `users`（`users-user` 子域） | **11** | [_signed-deviations.md](users/_signed-deviations.md) | 候选建议签 9 · 已登记 1 · 全仓统一决策 1 |
+| `admin` | **5** | [_signed-deviations.md](admin/_signed-deviations.md) | 候选建议签 4 · 状态栏未写 1 |
 | `message` · `task` | **0** | — | — |
-| **合计** | **47** | — | 候选建议签 20 · 已签字 11 · 已登记 5 · 已落地待确认 3 · C 侧专属 3 · 已修复 1 · 已撤销 1 · 全仓统一决策 1 · 状态栏未写 2 |
+| **合计** | **49** | — | 候选建议签 23 · 已签字 11 · 已登记 5 · 已落地待确认 2 · C 侧专属 3 · 已修复 1 · 已撤销 1 · 全仓统一决策 1 · **已销账 1** · 状态栏未写 1 |
 
 ### 已登记条目一览
 
@@ -75,6 +77,8 @@ docs/Intentional_Deviations/
 
 > ✅ **2026-11-05（`global` 收口域 · 合并工作树轮）· 本索引重算** —— 合并 hot / task / comment / favorite 四域实现后，
 > **各域的签字偏离台账随之进入主干** ⇒ ⇒ **本索引的「当前条目」表此前自报 6 条 ⇒ 机器复算实为 47 条**（`favorite` 12 · `users` 10 · `follow` 8 · `hot` 6 · `admin` 4 · `article` 2 · `comment` 2 · `like` 2 · `global` 1 · `message`/`task` 0）
+> ⇒ 📌 **2026-11-09 重算**：**49 条**（`favorite` 12 · **`users` 11**（+`DEV-USER-011`）· `follow` 8 · `hot` 6 · **`admin` 5**（+`DEV-ADMIN-NACOS-004`）· `article` 2 · `comment` 2 · `like` 2 · `global` 1 · `message`/`task` 0）
+> ⇒ ⚠️ **上一行的 47 是按「只扫 `## DEV-`」算的** ⇒ ⇒ **漏了 global 那 1 条**（H1 形态）⇒ ⇒ 本次口径已订正为 `^#{1,2} DEV-`。
 > ⇒ ⇒ **已按实测重写**（口径 = 逐文件扫 `## DEV-*` 标题 ⇒ 抽 `| **状态** |` 行 ⇒ 逐条计状态分布）⇒ ⇒ **未新增 / 未删除任何一条偏离条目**（**只改索引**）
 > ⇒ ⇒ ⚠️ **登记类事项**按纪律「**登记完就躺着**」⇒ **不打包推给用户逐条拍板**。
 

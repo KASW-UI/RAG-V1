@@ -130,7 +130,12 @@ spring:
         # ⚠️ **必须是 `host` 与 `port` 分开两个变量**（R1-ENV-001 · 2026-11-01 收口轮）
         #    `${NACOS_ADDR:nacos:8848}` 把端口**硬编码进默认值** ⇒ `NACOS_PORT` 被完全忽略
         server-addr: ${NACOS_ADDR:nacos}:${NACOS_PORT:8848}
-        namespace: ${NACOS_NAMESPACE:sea-rtw}
+        # 🔴 **2026-11-09 全仓统一决策（`global` 收口域 · 用户拍板）**：namespace 统一为 **`public`**。
+        #    ⇒ **与 B 侧逐字一致**（B 侧 `article-api` / `article-rpc` 两份 yml 均为 `public` / `DEFAULT_GROUP`）
+        #    ⇒ ⇒ 本域的跨域 gRPC 寻址（`discovery:///message-rpc`）与对端落在**同一寻址空间**。
+        #    ⚠️ **此前写 `sea-rtw` 的理由已失效**（原理由是「C 侧 message 域也是 sea-rtw ⇒ 内部自洽」）——
+        #    现在**全仓统一为 `public`** ⇒ 内部自洽**仍然成立**（且不再依赖「谁先落地」）。
+        namespace: ${NACOS_NAMESPACE:public}
         group: ${NACOS_GROUP:DEFAULT_GROUP}
         # 🔴 **必须显式关掉自动注册**（照抄 B 侧 article-rpc 的同名行）。
         #    `NacosAutoServiceRegistration` 继承 `AbstractAutoServiceRegistration`

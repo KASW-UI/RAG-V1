@@ -78,12 +78,14 @@ import java.util.Enumeration;
  * <p><b>✅ yml 侧已配齐（2026-11-02 · 本域 yml owner 补）</b>：
  * 本仓 {@code service/message/src/main/resources/application.yml} 的 Nacos 段现有
  * {@code server-addr: ${NACOS_ADDR:nacos}:${NACOS_PORT:8848}} ·
- * {@code namespace: ${NACOS_NAMESPACE:sea-rtw}} · {@code group: ${NACOS_GROUP:USER_GROUP}} ·
+ * {@code namespace: ${NACOS_NAMESPACE:public}} · {@code group: ${NACOS_GROUP:DEFAULT_GROUP}} ·
  * {@code register-enabled: false} 四项 ⇒ ⇒ 本类读得到 group，且自动注册已关掉。
- * <p>⚠️ <b>namespace / group 的取值与 B 侧不同</b>（B 侧 message-rpc = {@code public} /
- * {@code DEFAULT_GROUP}）⇒ 那是<b>部署面</b>的对齐（etcd 无 namespace 概念 ⇒ B 侧那两个值
- * 不承载行为）⇒ 登记为 message 域签字偏离，详见
- * {@code docs/DRIFT/message/verification-message-service-2026-11-02.md}。
+ * <p>✅ <b>2026-11-09：namespace / group 已与 B 侧逐字一致</b>（全仓统一决策 · `global` 收口域 · 用户拍板）
+ * ⇒ 本仓 10 个域全部统一为 {@code public} / {@code DEFAULT_GROUP} ⇒ ⇒ 与 B 侧
+ * {@code service/message/message-rpc/…/application.yml:134,136} <b>同款</b>
+ * ⇒ ⇒ **本域原先那条「namespace / group 与 B 侧不同」的签字偏离已取消**
+ * （原偏离是 B 侧走 etcd ⇒ 无 namespace 概念 ⇒ 那两个值在 B 侧不承载行为 ⇒ 纯部署面取值）。
+ * ⇒ 详见 {@code docs/DRIFT/message/verification-message-service-2026-11-02.md}。
  */
 @Component("messageRpcNacosRegistration") // ← 显式命名，避开 NacosServiceRegistryAutoConfiguration 的同名 Bean
 public class NacosRegistration {
@@ -105,13 +107,15 @@ public class NacosRegistration {
      * <p><b>为什么这条也适用于本类</b>：message-rpc 的 {@code NacosRegistration} 与
      * follow-rpc 是<b>同一个形状</b>（group 写死成 {@code DEFAULT_GROUP}）⇒
      * {@code NACOS_GROUP} 环境变量对本域<b>完全无效</b> ⇒ 而本仓 yml 里写的是
-     * {@code group: ${NACOS_GROUP:USER_GROUP}}（<b>读配置</b>）⇒ ⇒ 部署一旦设
+     * {@code group: ${NACOS_GROUP:USER_GROUP}}（<b>读配置</b>；🔴 **2026-11-09 起本仓 yml 的默认值
+     * 已是 {@code DEFAULT_GROUP}** ⇒ 下面这句说的是「修前的 yml」）⇒ ⇒ 部署一旦设
      * {@code NACOS_GROUP=别的} ⇒ <b>注册到 A 组、调用方去 B 组找</b> ⇒ 恒「No servers found」。
      * <p><b>默认值零变化</b>：不设环境变量时解析结果仍是 {@code DEFAULT_GROUP}
      * （= B 侧写死的那个值）⇒ <b>默认行为与 B 侧逐字相同</b>。
-     * <p><b>与本仓已落地域一致</b>：{@code service/users/{user,admin}} 的
+     * <p><b>与本仓全仓一致</b>（2026-11-09 全仓统一决策后）：{@code service/users/{user,admin}} 的
      * {@code NacosRegistration} 用的是同款写法
-     * （{@code @Value("${spring.cloud.nacos.discovery.group:USER_GROUP}")}）。
+     * （{@code @Value("${spring.cloud.nacos.discovery.group:DEFAULT_GROUP}")}）⇒ ⇒ 本仓 10 个域
+     * 的 group 默认值<b>现已统一</b>为 {@code DEFAULT_GROUP}。
      */
     private final String groupName;
 

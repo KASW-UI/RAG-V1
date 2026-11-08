@@ -61,7 +61,10 @@ output="target/classes"
 
 ## 四、根治
 
-⇒ ⇒ **把 IDE 的输出目录与 Maven 的 `target/classes` 隔开**（改 `.classpath` 里的 `output=` 指向 `target/eclipse-classes` 之类）
+⇒ ⇒ **把 IDE 的输出目录与 Maven 的 `target/classes` 隔开**（改 `.classpath` 里的 `output=` 指向 **`.jdtls-build/classes`** 之类）
+> 📌 **2026-11-09 已根治**（`global` 收口域 · 用户拍板）⇒ **取值必须在 `target/` 之外** ⇒
+> ⚠️ **初版建议的 `target/eclipse-classes` 是错的**（仍在 `target/` 内 ⇒ `mvn clean` 照样擦 ⇒ 白改）⇒
+> ⇒ 落地脚本 `tools/ide/isolate-ide-output-dir.sh` ＋ 实测见 **P-27 §5**
 ⇒ ⇒ 两套编译器各写各的目录 ⇒ ⇒ 互不覆盖。
 
 ⚠️ **`.classpath` / `.project` / `.settings/` 是未跟踪的本地垃圾** ⇒ ⇒ **改它属于「本机环境动作」，不是仓库动作**

@@ -397,8 +397,10 @@
   2. 同一测试断言 `spring.application.name == admin-service` ⇒ ⇒ **「两者刻意分叉」被钉死**，防止再漂回去；
   3. `AdminRpcNacosGroupTest`（移植自 B 侧）：默认名 **== `admin-rpc`**（跨域寻址键的守门）
      ＋ **覆盖口真的被消费**（配了就跟着变，且**不再**注册默认名）。
-- **⚠️ 三轴核对**（跨域寻址的完整条件）：服务名 `admin-rpc` ＋ namespace `sea-rtw` ＋ group `USER_GROUP`
+- **⚠️ 三轴核对**（跨域寻址的完整条件）：服务名 `admin-rpc` ＋ namespace `public` ＋ group `DEFAULT_GROUP`
   ⇒ ⇒ **message ↔ admin 三轴全对齐**（原先只有后两轴）。
+  ⇒ 📌 **2026-11-09 更新**（`global` 收口域 · 用户拍板「全仓统一到 `public` / `DEFAULT_GROUP`」）⇒ namespace / group 已改为 **`public` / `DEFAULT_GROUP`**
+  ⇒ ⇒ **本域成为全仓唯一的偏离域** ⇒ ⇒ 已登记 **`DEV-ADMIN-NACOS-004`**（部署面 · 非行为面）⇒ **待签**。
 
 ---
 
@@ -1152,7 +1154,7 @@ B_BASE=http://127.0.0.1:18889 C_BASE=http://127.0.0.1:18890 \
 | 2 | `grpc/AdminRpcLogoutClientVisibleGrpcStatusTest` | `admin-rpc/…/rpc/AdminRpcLogoutClientVisibleGrpcStatusTest` + `AdminRpcRedisDisconnectedFastFailTest` | 1 | Redis 断连 ⇒ **客户端可见** status = INTERNAL「注销失败,Redis写入异常」 |
 | 3 | `grpc/AdminRpcLogoutClientVisibleGrpcStatusDefaultBehaviorTest` | `admin-rpc/…/rpc/AdminRpcLogoutClientVisibleGrpcStatusDefaultBehaviorTest` | 1 | 断连策略=DEFAULT ⇒ 命令排队 ⇒ **2s rpc 预算先到** ⇒ 客户端看到 DEADLINE_EXCEEDED(1015) |
 | 4 | `service/AdminSpanWiringTest` | `admin-rpc/…/rpc/AdminSpanWiringTest` | 3 | `resetUserPassword` 真导出 `Action-Admin-ResetUserPassword` + 2 个 audit 属性 · Go 没打 span 的方法 RAG 也不许凭空加 · Go 有 span 的 8 个方法与 `AdminSpans` 常量逐条对应 |
-| 5 | `wiring/AdminRpcNacosGroupTest` | `admin-rpc/…/rpc/AdminRpcNacosGroupTest` | **5** | **B 侧 3 例**：group **来自配置**（非写死）· 默认行为零变化（仍 `USER_GROUP`）· yml 里那行还在（删掉 ⇒ `NACOS_GROUP` 失效）<br>**C 侧另加 2 例**（§五·5-⑪ · 非移植）：注册名**默认**逐字 == `admin-rpc`（跨域寻址键的守门）· 注册名**覆盖口真的被消费**（配了就跟着变 ＋ 不再注册默认名 ⇒ 证明「配置项存在」≠「配置项被消费」的反面） |
+| 5 | `wiring/AdminRpcNacosGroupTest` | `admin-rpc/…/rpc/AdminRpcNacosGroupTest` | **5** | **B 侧 3 例**：group **来自配置**（非写死）· 默认行为零变化（B 侧写死值 `USER_GROUP` ⇒ C 侧兜底常量**保留逐字**，但 yml 默认已改为 `DEFAULT_GROUP`）· yml 里那行还在（删掉 ⇒ `NACOS_GROUP` 失效）<br>**C 侧另加 2 例**（§五·5-⑪ · 非移植）：注册名**默认**逐字 == `admin-rpc`（跨域寻址键的守门）· 注册名**覆盖口真的被消费**（配了就跟着变 ＋ 不再注册默认名 ⇒ 证明「配置项存在」≠「配置项被消费」的反面） |
 | 6 | `domain/service/AdminSemanticDriftRegressionTest` | `admin-rpc/…/rpc/service/AdminSemanticDriftRegressionTest` | 13 | seeder 密码 = `admin`（非 `default-password`）· seeder 不重复插入 · keyword 空白/前后空格/空串三态 · **GORM LIMIT/OFFSET 静默抑制**（`page=0` / `pageSize=-5` / `pageSize=0`）· `username` 空串不报 INVALID_ARGUMENT · `inviteCode` 空仍 PERMISSION_DENIED · `total` 来自独立 count |
 | 7 | `domain/service/AdminDomainServiceCatchStructureTest` | `admin-rpc/…/rpc/service/AdminDomainServiceCatchStructureTest` | 3 | 每个 `catch(Exception)` 前邻都有 `catch(StatusRuntimeException){throw e;}` · **守恒计数 29/29** · 自检 Range/Entry 的 equals 依赖 Label 的 hashCode |
 | 8 | `domain/service/AdminRpcColumnTypeParityTest` | `admin-rpc/…/rpc/AdminRpcColumnTypeParityTest` | 6 | `extra_info` 是 **text**、6 个时间列是 **timestamptz**（对齐 Go AutoMigrate）· 非 UTC 会话时区下重放 DDL 时刻不漂移 · jsonb 会拒收的 `\u0000` payload · invite 有效期按绝对时刻判定 · `users_user.extra_info` 逐字节落库（CAST 残留守门） |
@@ -1203,5 +1205,5 @@ B_BASE=http://127.0.0.1:18889 C_BASE=http://127.0.0.1:18890 \
 | N-5 | **真实超时触发** | ⚠️ **E-4 第二轮**已用「故意慢的下游」触发 ⇒ **但两侧响应面不一致**（B `200+1015 信封` ↔ C `503+裸文本`）⇒ ⇒ **不是「没验」，是「验出了差异」** | `DeadlineState` 消费点 ＋ 出向 deadline cap 装配 ＋ **E-4-R2 的复现命令与验收判据（§9.10.3）** | 🔴 **NOT_VERIFIED → 已判定为跨域差异**，根因在共享层 ⇒ 归 `global` 收口域（见 N-9） |
 | N-6 | **变异证据**（证「断言不是假绿」） | 本轮**随移植带进 2 条真实变异用例**（B 侧自带，已在 C 侧跑绿）：① `AdminRpcPaginationGormSemanticsTest#theOldSqlWouldIndeedFailOnRealPg` —— **手工执行修复前的拼法**（`LIMIT -5 OFFSET -10`）⇒ PG **必须**报 `OFFSET must not be negative`（22023）⇒ 否则「上面几条」就可能因「压根没查库」而假绿；② `AdminDomainServiceCatchStructureTest` 的**守恒计数 29/29** ＋ 邻接结构断言 ⇒ 摘掉任一放行分支即红。<br>⚠️ **但「本轮新修的 11 条漂移」仍无逐条变异记录**（变异必然要改 `src/main/**` ⇒ 需单独授权，改后必须还原） | 已有**一处**变异检验记录（§5-⑩：注释掉 `register-enabled` ⇒ 出现两次注册 ⇒ 判据能红）＋ 上述 **2 条移植带进的变异用例** | **NOT_VERIFIED**（**部分**） |
 | ~~N-7~~ | ~~B 侧活体对拍~~ | ~~B 侧是 Boot 4 + go-zero 服务链，起真环境需 etcd + Nacos + PG + Redis~~ | — | ✅ **已闭合（2026-11-02 · 另一条 lane）**：**E-4 双侧活体对拍两轮**（§九）—— ⚠️ **一条重要的口径订正**：**B 侧实现是 Java/Boot 4**（`admin-api` + `admin-rpc`），**go-zero 只是语义来源** ⇒ ⇒ 活体对拍已用**隔离的 PG 库 / Redis 容器 / Nacos**跑通，**探针已入库**（`tools/difftest/parity_admin.py` + `parity_admin_round2.py` + `GrpcParityProbe.java`）⇒ **可复现** |
-| N-8 | **跨域 gRPC 链路**（message → admin-rpc） | 真 Nacos + 真 message + 真 admin 三方同跑 | 🔴 **本轮已修**（§5-⑪：注册名回到 B 侧逐字值 `admin-rpc` ⇒ 与 message 的 `discovery:///admin-rpc` 对齐；namespace `sea-rtw` / group `USER_GROUP` 两侧一致）⇒ **三轴全对齐** ⇒ 但**三方活体未跑** | **NOT_VERIFIED**（缺陷已修 · 链路待活体验） |
+| N-8 | **跨域 gRPC 链路**（message → admin-rpc） | 真 Nacos + 真 message + 真 admin 三方同跑 | 🔴 **本轮已修**（§5-⑪：注册名回到 B 侧逐字值 `admin-rpc` ⇒ 与 message 的 `discovery:///admin-rpc` 对齐；namespace `public` / group `DEFAULT_GROUP` 两侧一致（**2026-11-09 全仓统一后**））⇒ **三轴全对齐** ⇒ 但**三方活体未跑** | **NOT_VERIFIED**（缺陷已修 · 链路待活体验） |
 | N-9 | 🔴 **PG 不可用 / 请求超时 ⇒ 两侧响应面不一致** | **不缺环境** —— E-4-R2 已实测出来：B `200+1015 信封` ↔ C `503+裸文本`，且 **C 侧超时后副作用已落库** | 根因在**共享层**：`DeadlineState` 在 C 侧**生产路径上零绑定点** ⇒ **HTTP 路径没绑 ⇒ SQL 不被取消** ⇒ 事务照常提交（⚠️ 口径订正：原写「只在 **gRPC 服务端路径**绑定（`RpcHandleRunner.java:121`）」⇒ 经全仓源码 ＋ git 历史核对为**假**：`RpcHandleRunner` 生产零引用；gRPC 服务端绑定点从未存在 ⇒ 见 common 台账 **DRIFT-COMMON-V17**） | ✅ **已修**（2026-11-03 · `global` 收口域 · **DRIFT-COMMON-V15**）⇒ 复现命令与验收判据见 §9.10.3；复测一致：S3b `200+1015` @ 2.05s · S4 `200+1015` @ 2.04s ＋ **副作用 0 行** |

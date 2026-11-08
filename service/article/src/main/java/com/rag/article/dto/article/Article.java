@@ -21,8 +21,13 @@ import java.util.Map;
  *   <li><b>语义还一样吗</b>：一样 ——
  *       <ul>
  *         <li><b>JSON key 名逐个不变</b>：见下方「JSON key 逐条对照」表；</li>
- *         <li><b>字段顺序不变</b>：{@code @JsonPropertyOrder} 保留（B 侧用它是<b>字节级契约</b>，
- *             Go 的 {@code encoding/json} 按 struct 声明序输出，Jackson 默认按字母序 ⇒ 必须钉住）；</li>
+ *         <li><b>字段顺序不变</b>：17 个键按 Go 的 {@code encoding/json} struct <b>声明序</b>
+ *             （B 出处：{@code types.go:6-24}）⇒ C 侧是 <b>immutable record</b>
+ *             ⇒ Jackson 2 默认即按<b>声明序</b>输出 ⇒ <b>天然与 Go 一致</b>
+ *             （<b>实测</b>：删掉本注解字节不变 ⇒ 见 {@code tools/difftest/jackson-key-order/}），
+ *             ⇒ ⇒ {@code @JsonPropertyOrder} <b>保留</b>，但它在 <b>C 侧</b>的作用<b>不是</b>
+ *             「修正默认字母序」（那是 B 侧 Jackson 3 + 可变 class 的形态），而是
+ *             <b>把顺序显式钉死</b> —— 组件一旦被重排，无注解时字节序会静默漂移；</li>
  *         <li><b>「缺席 vs null」不变</b>：{@code author_name} 仍用 {@code NON_EMPTY}（空 ⇒ key 消失），
  *             {@code secondary_tags} / {@code ext_info} 仍保持 {@code null}（<b>不</b>用 {@code NON_EMPTY}）；</li>
  *         <li>record 的<b>访问器名</b>（{@code id()} 而非 {@code getId()}）只影响 Java 侧调用，

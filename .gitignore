@@ -18,6 +18,11 @@ target/
 .settings
 .springBeans
 .sts4-cache
+# ⚠️ **IDE（jdtls）的输出目录** —— 与 Maven 的 `target/` **隔开**（P-27 根治）
+#    ⇒ 由 `tools/ide/isolate-ide-output-dir.sh` 把 `.classpath` 的输出目录指向这里
+#    ⇒ ⇒ IDE 与 Maven 各写各的目录 ⇒ 互不覆盖、互不擦除
+#    ⇒ **必须在 target/ 之外**：放回 target/ 内 ⇒ `mvn clean` 照样擦 ⇒ 等于没改
+.jdtls-build/
 
 ### NetBeans ###
 /nbproject/private/

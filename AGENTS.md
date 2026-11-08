@@ -25,10 +25,10 @@
 | proto / `application.yml` | **10 / 10**（10 个 `.proto` 集中在**根级 `proto/` 模块**，pb 包名 `com.rag.proto.<域>`；内容与 B 侧逐字节一致，仅 `java_package` 属表达层） |
 | `AutoConfiguration.imports` | **2**（`common/` 14 个 auto-config ＋ `service/article/` **1 个域内 auto-config** · **与 B 侧同款** —— B 侧 article-rpc 亦有一份域内 `.imports`） |
 | `docs/File_Tree/` · 两方对照 | **13 份 + `_INDEX.md`** 文件树 · **13 份**域文档（C **645/645**、B **752/752** 覆盖 **100%**；**90 条落点缺口** 🔴11） |
-| 三档台账 | DRIFT **10 域全部建立** · Intentional_Deviations **47 条** · Pitfalls **P-01~P-27**（`_cross/`）＋ 域内 **35** 条（users 18 · hot 13 · follow 4） |
+| 三档台账 | DRIFT **10 域全部建立** · Intentional_Deviations **49 条**（2026-11-09 机器复算）· Pitfalls **P-01~P-27**（`_cross/`）＋ 域内 **35** 条（users 18 · hot 13 · follow 4） |
 
-**已完成**：树结构、pom、proto、application.yml、断言清单（**A1–A16**）、两方对照、**GitHub 仓**、**工具链（Jackson 2 + Boot 3.5）**、**共享层 `common/`**、**10 个业务域的实现**。**当前读数（2026-11-05）**：**串行全仓回归 BUILD SUCCESS · 16/16 模块 · 1605 例 · 0/0/0** · 三道守门 **EXIT=0**。**未完成**：各域台账里仍标 `NOT_VERIFIED` 的条目（⇒ §1.0c）。
-✅ **决策时间线**：**2026-10-26 · D7/D10/D11**（proto 集中/模块打平/包压平 · `bootstrap`→`wiring` · `dto/` 拆子包）· **2026-11-01 · D13**（L2 以 RAG 为基准）· **2026-11-02 · D14**（工具链 = Jackson 2 + Boot 3.5）· **2026-11-02 · D16**（判定基准 = B 侧）· **2026-11-02 · D17**（users 不用 Flyway）· **2026-11-02 · D18**（**Lombok 允许 + 鼓励 · 展开注释强制**）⇒ 全文见 [`docs/决策记录.md`](docs/决策记录.md)。
+**已完成**：树结构、pom、proto、application.yml、断言清单（**A1–A17**）、两方对照、**GitHub 仓**、**工具链（Jackson 2 + Boot 3.5）**、**共享层 `common/`**、**10 个业务域的实现**。**当前读数（2026-11-09）**：**串行全仓回归 BUILD SUCCESS · 16/16 模块 · 1611 例 · 0/0/0**（耗时 **09:47** · 隔离工作树 `_probe`）· 三道守门 **EXIT=0**（断言 **PASS 15 · FAIL 0 · N/A 2 · PENDING 0**，共 **17** 条）。**未完成**：各域台账里仍标 `NOT_VERIFIED` 的条目（⇒ §1.0c）。
+✅ **决策时间线**：**2026-10-26 · D7/D10/D11**（proto 集中/模块打平/包压平 · `bootstrap`→`wiring` · `dto/` 拆子包）· **2026-11-01 · D13**（L2 以 RAG 为基准）· **2026-11-02 · D14**（工具链 = Jackson 2 + Boot 3.5）· **2026-11-02 · D16**（判定基准 = B 侧）· **2026-11-02 · D17**（users 不用 Flyway）· **2026-11-02 · D18**（**Lombok 允许 + 鼓励 · 展开注释强制**）· **2026-11-09 用户拍板 3 项**（① **Nacos namespace/group 全仓统一到 `public`/`DEFAULT_GROUP`** ⇒ 偏离面 9 域 → **1 域（users）** ② **JSON 响应键序「全用 jackson2」** ⇒ **不开字母序** ⇒ 新增守门 **A17** ＋ 运行时探针 `tools/difftest/jackson-key-order/` ③ **IDE 输出目录与 `target/` 隔开**（P-27 根治 · `tools/ide/isolate-ide-output-dir.sh`））⇒ 全文见 [`docs/决策记录.md`](docs/决策记录.md)。
 
 > 📌 **B 侧的 158 份台账留在 B 仓** ⇒ 本仓 `docs/DRIFT/` 从零填；其**「证据强度」分级方法论可借鉴**（§1.0c 约束 3）；教训见 [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)。
 > ⚠️ **「已落地」≠「已实现」；「源码级对照」≠「双侧活体对拍」** ⇒ 台账里的 ✅ 一律读作「**在该证据强度下一致**」，不是已闭环。**证据强度以该域台账的「证据强度」列为准**（见 `docs/DRIFT/_INDEX.md` 末节）。
@@ -188,7 +188,7 @@ RAG-V1 侧 10 个 `*.proto` **全部从 B 侧复制**，非翻译。改动**严�
 | 阶段 | 内容 | 完成信号 |
 |---|---|---|
 | **按域填实现** | 每域：**先按 Mapping_Table B↔C 抄 B 侧实现**（§1.0c 三档）→ 各层均以 B 侧为基准（D13 + D16）→ 填各技术角色包 → 建该域 DRIFT 台账 | 该域能**独立启动** + 关键路径有**真触发**测试（§3.3）+ 台账写回 |
-| **全量收口** | `mvn -o -T1C clean verify` + A1–A16 断言脚本绿 + 对拍脚本绿 | 绿且 `skipped=0`（§五.8 守门四规则） |
+| **全量收口** | `mvn -o -T1C clean verify` + A1–A17 断言脚本绿 + 对拍脚本绿 | 绿且 `skipped=0`（§五.8 守门四规则） |
 
 每域独立 stop point：跑绿后停下等用户 review，再决定继续。
 
@@ -229,7 +229,7 @@ B 侧 RAG 仓路径见 §1.0b（**只读**，不接受写入）。RAG-V1 不是�
 | **[`docs/决策记录.md`](docs/决策记录.md)** —— **D1–D18** + P1–P7 + 关系图 | 动结构前 |
 | **[`docs/Mapping_Table/`](docs/Mapping_Table/_INDEX.md)** —— **抄写路线图**（§1.0c） | 填实现前 |
 | **[`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)** —— B 侧的坑 → 本仓处置 | 填实现前 |
-| **[`docs/架构符合性断言.md`](docs/架构符合性断言.md)** —— A1–A16 | 写测试 / 接框架时 |
+| **[`docs/架构符合性断言.md`](docs/架构符合性断言.md)** —— A1–A17 | 写测试 / 接框架时 |
 | **[`docs/GORM-MP-语义对照.md`](docs/GORM-MP-语义对照.md)** —— B 侧持久层写法 → 本仓 MP 用法 | 写 Mapper / Entity / 事务时 |
 | **[`docs/Worktree.md`](docs/Worktree.md)** —— 并发工作树方法论 | 并行开工前 |
 | **[`docs/Lombok-使用规范.md`](docs/Lombok-使用规范.md)** —— **D18** 展开注释强制 | 写实体 / 用 Lombok 时 |
@@ -240,7 +240,7 @@ B 侧 RAG 仓路径见 §1.0b（**只读**，不接受写入）。RAG-V1 不是�
 ### 7.3 工具与孤儿
 
 完整工具清单见 [`tools/README.md`](tools/README.md) 与 [`tools/difftest/README.md`](tools/difftest/README.md)。**改完目录结构必跑** `python3 tools/gen-file-tree.py`（按实际文件系统生成 14 份文件树 ⇒ 不会与代码漂）。
-- **三道守门** —— `check-mapping-coverage.py`（两方对照八重校验）· `check-arch-invariants.py`（**A1–A16**，`--self-test` 自证判据能红，空壳类 `PENDING` **不算 PASS**）· `check-docs-vs-tree.py`（docs ↔ 文件树对账）· ⬜ 待实现 3 个
+- **三道守门** —— `check-mapping-coverage.py`（两方对照八重校验）· `check-arch-invariants.py`（**A1–A17**，`--self-test` 自证判据能红，空壳类 `PENDING` **不算 PASS**）· `check-docs-vs-tree.py`（docs ↔ 文件树对账）· ⬜ 待实现 3 个
 > ⚠️ **B 仓有 4 个已跑通的守门脚本本仓还没有**：`semantic-probe/` · `errmsg-probe/` · `check-plaintext400-headers.sh` · `check-{grpc-interceptor-wiring,jar-executable,tomcat-limits}.py` ⇒ 移植清单见 [`docs/RAG-困境反哺.md`](docs/RAG-困境反哺.md)。
 
 ## 八、新增组件检查清单
@@ -263,7 +263,7 @@ B 侧 RAG 仓路径见 §1.0b（**只读**，不接受写入）。RAG-V1 不是�
 - [ ] **写路径形态已知** —— `updateById(entity)` 还是 `update(null, wrapper)`？两者修法不同
 - [ ] **HTTP 断言走真 Tomcat** —— 断言 `Content-Type`/`nosniff`/状态行时不用 MockMvc
 - [ ] **守门脚本合规** —— 计数取回归日志汇总 + 断言 `skipped=0` + 排除项用前缀匹配（§五.8）
-- [ ] **断言仍绿** —— `check-arch-invariants.py`（A1–A16）+ `check-docs-vs-tree.py`（docs ↔ 文件树）
+- [ ] **断言仍绿** —— `check-arch-invariants.py`（A1–A17）+ `check-docs-vs-tree.py`（docs ↔ 文件树）
 - [ ] **工具链 = Jackson 2 + Boot 3.5**（D14）—— 只用 `com.fasterxml.jackson.*` · pom 里**零** Jackson 2 排除项 · **不引 Boot 4 专有 artifact**
 - [ ] **台账已写** —— 偏离写 Intentional_Deviations，踩坑写 Pitfalls，漂移写 DRIFT
 - [ ] **文档已更新** —— 「已修/未修」断言必须带**核对日期**，否则按 `UNKNOWN` 处理

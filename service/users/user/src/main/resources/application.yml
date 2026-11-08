@@ -28,8 +28,22 @@ spring:
     nacos:
       discovery:
         server-addr: ${NACOS_ADDR:nacos}:${NACOS_PORT:8848}
-        namespace: ${NACOS_NAMESPACE:sea-rtw}
-        group: ${NACOS_GROUP:USER_GROUP}
+        # 🔴 **2026-11-09 全仓统一决策（`global` 收口域 · 用户拍板）**：namespace / group 统一为
+        #    **`public` / `DEFAULT_GROUP`** ⇒ ⇒ **本域是全仓唯一的偏离域**：
+        #    ⚠️ **B 侧本域写的是 `sea-rtw` / `USER_GROUP`**
+        #    （B 出处：`service/users/user/user-api/src/main/resources/application.yml:52`）
+        #    ⇒ ⇒ **偏离已登记**（签字偏离 · **部署面 · 非行为面**）⇒ 见
+        #    `docs/Intentional_Deviations/users/_signed-deviations.md`。
+        #    ⇒ ⇒ **为什么仍这么改**：① **全仓一致性优先** —— C 侧其余 9 个域与 B 侧都是
+        #    `public` / `DEFAULT_GROUP` ⇒ 只让本域偏离 ⇒ 偏离面 = **1 个域**（不是 9 个）；
+        #    ② 跨域 gRPC 寻址（`discovery:///user-rpc` 的**对端**是 message 域）
+        #    **必须同 namespace + group** ⇒ 全仓统一 ⇒ 链路恒成立；
+        #    ③ `public` 是 Nacos **内建**命名空间 ⇒ 部署侧不需要额外建命名空间。
+        #    ⚠️ **注意**：B 侧 users 的 `sea-rtw` 在 B 侧**不承载任何行为**
+        #    （B 侧 message→user 的调用走 **etcd key `user.rpc`** ⇒ etcd 无 namespace/group 概念）⇒
+        #    ⇒ 这是一处**纯部署面**取值差异，**不是行为漂移**。
+        namespace: ${NACOS_NAMESPACE:public}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
         username: ${NACOS_USERNAME:}
         password: ${NACOS_PASSWORD:}
         # ⚠️ **必须关掉 Spring Cloud 的自动注册**（映射表锁决策「Nacos 注册项：2 个/子域 → 1 个/子域」）：

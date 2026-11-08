@@ -117,7 +117,16 @@ public class NacosRegistration {
      * ⇒ ⇒ 恒「No servers found ⇒ 所有业务码塌成 1015」。
      *
      * <p><b>修后</b>：group 从 {@code spring.cloud.nacos.discovery.group} 读
-     * ⇒ <b>默认值零变化</b>（yml 里写的就是 {@code ${NACOS_GROUP:USER_GROUP}}）
+     * ⇒ <b>默认值零变化</b>（B 侧当时的 yml 里写的就是 {@code ${NACOS_GROUP:USER_GROUP}}）
+ *     ⇒ 🔴 **2026-11-09（`global` 收口域 · 全仓统一决策 · 用户拍板）**：本域 yml 的 group 默认值
+ *     已从 {@code ${NACOS_GROUP:USER_GROUP}} 改为 {@code ${NACOS_GROUP:DEFAULT_GROUP}}
+ *     ⇒ ⇒ **本行的「yml 里写的就是 …」已不成立**（yml 现在写的是 {@code DEFAULT_GROUP}）⇒
+ *     ⇒ **代码里的兜底常量 {@code USER_GROUP} 逐字保留**（= **B 侧
+ *     {@code NacosRegistration.java:79} 的逐字值** ⇒ §3.1「与 B 侧逐字对照」）
+ *     ⇒ ⇒ 但它**已成死分支**（yml 永远提供该属性 ⇒ `@Value` 的默认值取不到）⇒
+ *     ⇒ **实际生效的 group = yml 的 {@code DEFAULT_GROUP}** ⇒
+ *     ⇒ **该偏离已登记**（签字偏离 · **部署面 · 非行为面**）⇒ 见
+ *     {@code docs/Intentional_Deviations/users/_signed-deviations.md}。
      * ⇒ 不设环境变量时解析结果与修前<b>逐字相同</b>（仍是 {@code USER_GROUP}）。
      */
     private final String groupName;

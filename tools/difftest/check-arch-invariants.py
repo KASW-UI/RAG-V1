@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""架构符合性守门（A1–A16）。
+"""架构符合性守门（A1–A17）。
 
 > 断言的完整定义 → [`../../docs/架构符合性断言.md`](../../docs/架构符合性断言.md)
 
@@ -21,8 +21,8 @@
 
 | 契约 | 形态 | 适用断言 |
 |---|---|---|
-| **A** | B 侧部署等价（api / rpc 分离） | A1 · A2 · A3 · A4–A16 |
-| **B** | Spring 惯用（api + rpc 合并）★ RAG-V1 | A4–A16 |
+| **A** | B 侧部署等价（api / rpc 分离） | A1 · A2 · A3 · A4–A17 |
+| **B** | Spring 惯用（api + rpc 合并）★ RAG-V1 | A4–A17 |
 
 ⚠️ **A1 / A2 / A3 是 api/rpc 分离的派生物**，合并形态下它们**自动消失**。
 ⇒ 在 `--contract B` 下它们报 **`N/A`**，**不得改成红灯**（AGENTS.md §二 D1 连带效应）。
@@ -1149,6 +1149,143 @@ def check_a16(root: pathlib.Path, contract: str) -> Result:
 
 
 # ---------------------------------------------------------------------------
+# A17 · 全用 Jackson 2（D14 · 2026-11-09「全用 jackson2」决策）
+# ---------------------------------------------------------------------------
+
+def _strip_java_comments(text: str) -> str:
+    """把 Java 源码里的注释（行/块/文本块内的内容）抹掉，**保留行数**。
+
+    ⚠️ **为什么必须抹注释再判**：本仓有**多处 javadoc 正面提到** Jackson 3 的字母序
+    （`CanonicalHash` · `HotArticleItem` · `RecommendUser` …）⇒ 不抹注释的判据
+    **必然假红** ⇒ ⇒ 那样这条断言就变成了「天天误报的噪音」⇒ 没有价值。
+    """
+    out, i, n = [], 0, len(text)
+    in_block = in_str = in_char = in_textblock = False
+    while i < n:
+        c = text[i]
+        nxt = text[i + 1] if i + 1 < n else ""
+        if in_textblock:
+            if text.startswith('"""', i):
+                in_textblock = False
+                out.append('"""')
+                i += 3
+                continue
+            out.append("\n" if c == "\n" else " ")
+            i += 1
+            continue
+        if in_block:
+            if c == "*" and nxt == "/":
+                in_block = False
+                i += 2
+                out.append("  ")
+                continue
+            out.append("\n" if c == "\n" else " ")
+            i += 1
+            continue
+        if in_str:
+            out.append(c)
+            if c == "\\" and nxt:
+                out.append(nxt)
+                i += 2
+                continue
+            if c == '"':
+                in_str = False
+            i += 1
+            continue
+        if in_char:
+            out.append(c)
+            if c == "\\" and nxt:
+                out.append(nxt)
+                i += 2
+                continue
+            if c == "'":
+                in_char = False
+            i += 1
+            continue
+        if text.startswith('"""', i):
+            in_textblock = True
+            out.append('"""')
+            i += 3
+            continue
+        if c == "/" and nxt == "*":
+            in_block = True
+            i += 2
+            out.append("  ")
+            continue
+        if c == "/" and nxt == "/":
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        if c == '"':
+            in_str = True
+            out.append(c)
+            i += 1
+            continue
+        if c == "'":
+            in_char = True
+            out.append(c)
+            i += 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def check_a17(root: pathlib.Path, contract: str) -> Result:
+    """A17 · 全用 Jackson 2 —— ① 无 Jackson 3 包名 ② 不开「属性字母序」。
+
+    🔴 **为什么要有这条**（2026-11-09 · 用户拍板「全用 jackson2」）：
+    - ① **Jackson 3 包名**（`tools.jackson.*`）：D14 已把全仓钉在 Jackson 2
+      ⇒ 一旦有人引了 `tools.jackson`，**编译期就能过**（Jackson 3 在 classpath 上），
+      而**序列化行为会变**（Jackson 3 默认**属性字母序**）⇒ ⇒ wire 字节静默变 ⇒ **零报错**。
+    - ② **`MapperFeature.SORT_PROPERTIES_ALPHABETICALLY`**：打开后 Jackson 2 也改成**字母序**
+      ⇒ ⇒ 本仓的键序契约（= Go 真源 `encoding/json` 的 struct **声明序**）**全线塌掉**
+      ⇒ ⇒ 而本仓绝大多数 DTO **没有** `@JsonPropertyOrder` ⇒ **没有任何注解能兜住**
+      ⇒ ⇒ 只能靠**全局不打开**这条纪律 + 这条守门。
+    ⚠️ **判定只针对 `src/main`**（`src/test` 里可以故意构造字母序样本做反证锚点）。
+    ⚠️ **注释里的提及不算违规**（本仓多处 javadoc 正面讨论 Jackson 3 的字母序）⇒ 先抹注释。
+    """
+    viol, checked_java, checked_yml = [], 0, 0
+    for java in sorted(root.glob("**/src/main/**/*.java")):
+        if "target" in java.parts:
+            continue
+        checked_java += 1
+        rel = java.relative_to(root).as_posix()
+        code = _strip_java_comments(java.read_text(encoding="utf-8"))
+        # ① Jackson 3 包名（import 或全限定名）
+        for i, line in enumerate(code.split("\n"), 1):
+            if "tools.jackson" in line:
+                viol.append(f"{rel}:{i} ⇒ 引用了 **Jackson 3** 包名 `tools.jackson`"
+                            f" ⇒ ⇒ D14 钉死全仓 Jackson 2 ⇒ ⇒ 换库会改序列化行为"
+                            f"（Jackson 3 默认**属性字母序**）⇒ wire 字节静默变")
+        # ② 开启「属性字母序」
+        for m in re.finditer(r"SORT_PROPERTIES_ALPHABETICALLY", code):
+            stmt_end = code.find(";", m.start())
+            stmt = code[m.start(): stmt_end if stmt_end != -1 else m.start() + 200]
+            if re.search(r"\bfalse\b", stmt):
+                continue      # 显式关掉 ⇒ 合规
+            viol.append(f"{rel} ⇒ **开启了** `MapperFeature.SORT_PROPERTIES_ALPHABETICALLY`"
+                        f" ⇒ ⇒ 键序从「声明序」变成**字母序**"
+                        f" ⇒ 与 Go 真源 `encoding/json` 的 struct 声明序**分叉**"
+                        f" ⇒ 且本仓多数 DTO 无 `@JsonPropertyOrder` ⇒ **无注解能兜住**")
+    for yml in sorted(root.glob("**/src/main/resources/*.yml")):
+        if "target" in yml.parts:
+            continue
+        checked_yml += 1
+        rel = yml.relative_to(root).as_posix()
+        text = yml.read_text(encoding="utf-8")
+        for i, line in enumerate(text.split("\n"), 1):
+            if re.search(r"sort-properties-alphabetically\s*:\s*(true|yes|on)\b", line, re.I):
+                viol.append(f"{rel}:{i} ⇒ yml 打开了 `spring.jackson.mapper.sort-properties-alphabetically`"
+                            f" ⇒ ⇒ 同上：键序变字母序 ⇒ 与 Go 声明序分叉")
+    if viol:
+        return Result(FAIL, f"{len(viol)} 处 Jackson 口径违规"
+                             f"（已核 {checked_java} 份 Java + {checked_yml} 份 yml）", viol)
+    return ok(f"{checked_java}/{checked_java} 份 Java + {checked_yml}/{checked_yml} 份 yml"
+              f" 均为纯 Jackson 2 且未开字母序")
+
+
+# ---------------------------------------------------------------------------
 # 断言注册表
 # ---------------------------------------------------------------------------
 CHECKS = [
@@ -1168,6 +1305,7 @@ CHECKS = [
     ("A14", "追踪导出配置（otel 段）齐备且服务名自洽", check_a14),
     ("A15", "保护层每个 enabled 开关都必须有消费点（接线守门）", check_a15),
     ("A16", "yml 顶层键不得重复（YAML 重复键）", check_a16),
+    ("A17", "全用 Jackson 2（无 Jackson 3 包名 · 不开属性字母序）", check_a17),
 ]
 
 
@@ -1191,6 +1329,7 @@ FIXTURE_VIOLATIONS = {
     "A14": "域的 application.yml 缺 `otel:` 段（追踪导出配置）",
     "A15": "保护层开关（ProtectionProperties 的 enabled）共享层零消费点",
     "A16": "yml 顶层键重复（YAML 重复键）",
+    "A17": "混入 Jackson 3 包名 / 开启了属性字母序",
 }
 
 
@@ -1309,6 +1448,20 @@ def build_fixture(base: pathlib.Path) -> pathlib.Path:
            "package com.rag.common.autoconfigure;\n"
            "public class ProtectionAutoConfiguration {\n"
            "  // if (props.getStat().isEnabled()) { ... }  <= **注释里的引用不算消费点**\n"
+           "}\n")
+    # A17 违规：① 引用 **Jackson 3** 包名 ② **开启**「属性字母序」
+    #   ⇒ 两者任一都会让键序从「声明序」变「字母序」⇒ 与 Go 真源分叉 ⇒ wire 字节静默变
+    # ⚠️ 注释里**故意**提一次 Jackson 3 与字母序 ⇒ 验证判据**不会**被注释骗到（必须抹注释再判）
+    _write(root / f"{j}/BadJacksonUsage.java",
+           "package com.rag.x;\n"
+           "/**\n"
+           " * <p>注释里提到 tools.jackson 与 SORT_PROPERTIES_ALPHABETICALLY **不算违规**。\n"
+           " */\n"
+           "import tools.jackson.databind.ObjectMapper;\n"
+           "import com.fasterxml.jackson.databind.MapperFeature;\n"
+           "public class BadJacksonUsage {\n"
+           "  public ObjectMapper m = new ObjectMapper()\n"
+           "      .enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY);\n"
            "}\n")
     return root
 
@@ -1454,7 +1607,7 @@ def self_test() -> int:
 # 主流程
 # ---------------------------------------------------------------------------
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="架构符合性守门（A1–A16）")
+    ap = argparse.ArgumentParser(description="架构符合性守门（A1–A17）")
     ap.add_argument("--contract", choices=["A", "B"], default="B",
                     help="断言绑定契约：A=api/rpc 分离（B 侧部署等价）· B=api+rpc 合并（RAG-V1，默认）")
     ap.add_argument("--only", nargs="+", metavar="A#", help="只跑指定断言，如 --only A4 A11")

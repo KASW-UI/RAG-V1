@@ -152,7 +152,10 @@ def tree_of(base, pkg_root):
         #    本脚本扫进文件树 ⇒ ⇒ 12 个域的文件树被污染（hot 模块尤其明显）。
         #    ⚠️ 判据依据 = **它们不在版本控制里** ⇒ 不是源码 ⇒ 不属于源码树。
         SKIP = {"target", ".DS_Store",
-                ".settings", ".idea", ".classpath", ".factorypath", ".project", ".git"}
+                ".settings", ".idea", ".classpath", ".factorypath", ".project", ".git",
+                # ⚠️ **IDE（jdtls）的输出目录**（P-27 根治 · `tools/ide/isolate-ide-output-dir.sh`）
+                #    ⇒ 它是**本机环境产物**（且已被 .gitignore 忽略）⇒ 不进文件树
+                ".jdtls-build"}
         entries = sorted((e for e in d.iterdir()
                           if e.name not in SKIP and e.suffix != ".iml"),
                          key=lambda p: (p.is_file(), p.name))
@@ -240,7 +243,7 @@ def java_stats(base):
 
     ⚠️ 扫描范围与 §三 的目录树**同款**（排除 `target/` · `.git/` · IDE 垃圾）。
     """
-    SKIP_DIRS = {"target", ".git", ".settings", ".idea"}
+    SKIP_DIRS = {"target", ".git", ".settings", ".idea", ".jdtls-build"}
     files = []
     for f in base.rglob("*.java"):
         if any(part in SKIP_DIRS for part in f.parts):

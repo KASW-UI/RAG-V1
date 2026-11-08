@@ -45,9 +45,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * 固定常量 / 字段顺序 / {@code subjectRef} 守卫）<b>逐条保留</b>，
  * 判据与期望值<b>逐字未改</b>。
  * <p>⚠️ <b>字段顺序这条在 C 侧是「声明序」而不是「字母序」</b>：
- * Go 的 {@code encoding/json} 按<b>结构体声明顺序</b>输出 ⇒ C 侧用
- * {@code @JsonPropertyOrder} 把 24 个字段钉成同一个顺序
- * （{@code domain/service/CommentDomainFactService.java:319-325}）。
+ * Go 的 {@code encoding/json} 按<b>结构体声明顺序</b>输出；C 侧是 immutable record
+ * ⇒ Jackson 2 默认即按<b>声明序</b>输出 ⇒ <b>两者天然一致</b>
+ * ⇒ 本类的 {@code @JsonPropertyOrder} 在 C 侧的作用是<b>显式钉死</b>（24 个字段的声明序，
+ * 组件被重排时字节序会静默漂移），<b>不是</b>「修正默认字母序」。
  * <b>不要</b>把断言改成字母序 —— B 侧 Java（Jackson 3 默认）跑出来是字母序，
  * 那是<b>它自己的默认值泄漏</b>，不是 Go 的形态（已登记为台账 D-14）。
  *

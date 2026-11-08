@@ -199,20 +199,26 @@ C 侧上收共享层后**拆成两处**：
 
 ---
 
-## DEV-HOT-005 · Nacos `namespace` / `group` 对齐**本仓已落地域**（部署面 · 非行为面）
+## DEV-HOT-005 · Nacos `namespace` / `group` 对齐**本仓已落地域**（部署面 · 非行为面）—— ✅ **2026-11-09 已销账（取消）**
+
+> ✅ **2026-11-09 已销账（`global` 收口域 · 用户拍板「全仓统一到 `public` / `DEFAULT_GROUP`」）**
+> ⇒ 本域 yml 已改回 **`public` / `DEFAULT_GROUP`** ⇒ ⇒ **与 B 侧逐字一致** ⇒ ⇒ **本条不再是偏离，予以取消**。
+> ⇒ 原先「必须对齐到本仓已落地域（`sea-rtw`）」那条推理**依然成立**，只是「已落地域」现在**统一就是 `public`** ⇒ ⇒ 跨域链路（`discovery:///article-rpc`）**恒成立**。
+> ⇒ ⚠️ **B 侧那两个值在 B 侧不承载行为**这条前提**不变**（B 侧 hot→article 走 **etcd key `article.rpc`** ⇒ etcd 无 namespace/group 概念）。
+> ⇒ 📌 **取代本条的偏离** = users 域两条（`DEV-USER-011` / `DEV-ADMIN-NACOS-004`）—— 全仓**只剩 users 域**偏离 B 侧 ⇒ **偏离面从 9 个域收缩为 1 个域**。
 
 | 项 | 内容 |
 |---|---|
-| **状态** | 🏷 **已登记**（B 侧那两个值**在 B 侧不承载行为** ⇒ C 侧对齐本仓已落地域才让跨域链路成立） |
+| **状态** | ✅ **已销账（取消）**（2026-11-09 全仓统一决策 ⇒ C 侧回到 B 侧逐字值 ⇒ 不再是偏离） |
 | **分域** | hot 域（`service/hot/`） |
 | **偏离类型** | **部署面差异**（**非行为面**） |
 | **提出 / 签字** | 本域 lane（2026-11-01 收口轮 · R1-ENV-001 同款口径） |
 
 ### 偏离内容
 
-| | **B 侧** | **RAG-V1（C）** |
-|---|---|---|
-| `namespace` | `public` | `${NACOS_NAMESPACE:sea-rtw}` |
+| | **B 侧** | **RAG-V1（C）· 改前** | **RAG-V1（C）· 改后（2026-11-09）** |
+|---|---|---|---|
+| `namespace` | `public` | `${NACOS_NAMESPACE:sea-rtw}` | `${NACOS_NAMESPACE:public}` ✅ **= B 侧逐字** |
 | `group` | `DEFAULT_GROUP` | `${NACOS_GROUP:DEFAULT_GROUP}`（**同值**） |
 | 服务注册名 | `hot-rpc` | `hot-rpc`（**逐字相同**） |
 

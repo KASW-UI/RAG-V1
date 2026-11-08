@@ -76,7 +76,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <h2>🔴 载荷的 11 个字段是 L1 契约（逐字段逐顺序钉住）</h2>
  * <p>{@link CommentKafkaMsg} 的 {@code @JsonPropertyOrder} 逐条照抄 B 侧
  * {@code kqtypes.CommentKafkaMsg} 的结构体声明顺序 ⇒ 本类用「原始 consumer 读回 broker 上的字节」
- * ＋ <b>{@code LinkedHashMap} 的 key 顺序</b>断言（Jackson 默认按字母序 ⇒ 不钉死就会漂）。
+ * ＋ <b>{@code LinkedHashMap} 的 key 顺序</b>断言（C 侧 Jackson 2 默认即声明序；
+ * 本条断言的作用是<b>把声明序钉成可执行的契约</b> —— 组件被重排时立刻变红）。
  *
  * <h2>🔴 broker 地址为什么是 {@code 127.0.0.1:49992}</h2>
  * <p>本机 Sea-kafka 的两个 listener：{@code PLAINTEXT://kafka:9092}（compose 网络内）与

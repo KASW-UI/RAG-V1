@@ -426,3 +426,77 @@ C 侧 HTTP 路径的内层 2s 预算**只能靠 SQL cancel 送达 PG** 才生效
 - 现象落点：`common/src/main/java/com/rag/common/observability/HttpMiddleware.java`（HTTP 3s 预算兜底面）
 - 与 B 侧对照：`service/common/src/main/java/com/rag/common/observability/RpcInterceptor.java`（gRPC 服务端预算**主动关 call**）
 - 复跑入口：`bash tools/difftest/users-user/run.sh`（场景轮阶段B）
+
+---
+
+## DEV-USER-011 · Nacos `namespace` / `group`：`sea-rtw` / `USER_GROUP` → **`public` / `DEFAULT_GROUP`**（部署面 · 全仓统一决策）
+
+| 项 | 内容 |
+|---|---|
+| **状态** | 🏷 **候选，建议签** |
+| **分域** | user 域（Nacos 服务发现面） |
+| **偏离类型** | **有意偏离**（L4 后果 · **部署面 · 非行为面**） |
+| **依据** | **2026-11-09 全仓统一决策（`global` 收口域 · 用户拍板）** |
+| **关联** | 与 `DEV-USER-004`（Nacos 注册项数量）**同族但不同面** —— 004 是「注册几项」，本条是「注册到哪个命名空间」 |
+
+### 偏离内容
+
+| 项 | B 侧 | C 侧（改后） |
+|---|---|---|
+| `spring.cloud.nacos.discovery.namespace` | `sea-rtw` | **`public`** |
+| `spring.cloud.nacos.discovery.group` | `USER_GROUP` | **`DEFAULT_GROUP`** |
+
+**B 出处**（逐份读取 B 侧 **17 份** yml，不靠推测）：
+
+| B 侧 yml | namespace | group |
+|---|---|---|
+| `service/users/user/user-api/…/application.yml:52` | `sea-rtw` | `USER_GROUP` |
+| `service/users/admin/admin-api/…/application.yml:55` | `sea-rtw` | `USER_GROUP` |
+| `service/users/admin/admin-rpc/…/application.yml:95` | `sea-rtw` | `USER_GROUP` |
+
+⇒ ⇒ **B 侧 15 份**都是 `public` / `DEFAULT_GROUP`，**只有 3 份在 users 域**用 `sea-rtw` / `USER_GROUP`
+（`users/admin/admin-api` · `users/admin/admin-rpc` · `users/user/user-api`）
+⇒ ⇒ **「users 域用 `sea-rtw`」是 B 侧的少数派布局**。
+
+### 为什么这**不是**行为漂移
+
+- B 侧 message→user 的 gRPC 调用走 **etcd key `user.rpc`**
+  （`zrpc.RpcClientConf{{Etcd:{{Key:"user.rpc"}}}}`）⇒ **etcd 没有 namespace / group 概念**
+  ⇒ ⇒ B 侧这两个值**不承载任何寻址行为** ⇒ 改它们**不改变 B 侧的可观察行为**。
+- C 侧走 **Nacos discovery**（`discovery:///user-rpc`）⇒ namespace / group **真的参与寻址**
+  ⇒ ⇒ 因此 C 侧必须**自洽**：调用方与被调方必须落在**同一寻址空间**。
+- ⇒ ⇒ **全仓统一到 `public` / `DEFAULT_GROUP`** ⇒ 与 B 侧其余 15 份 yml **逐字一致**
+  ⇒ ⇒ **偏离面从「9 个域」收缩为「1 个域」**（本域）。
+
+### 语义等价性论证
+
+1. **注册名不变** —— `user-rpc`（B 侧逐字）⇒ 寻址键 `discovery:///user-rpc` 不变。
+2. **namespace / group 只回答「在哪个命名空间里找」** —— 调用方与被调方**同时**切到
+   `public` / `DEFAULT_GROUP` ⇒ ⇒ 链路恒成立（**这正是本条的目的**）。
+3. **`public` 是 Nacos 内建命名空间** ⇒ 部署侧**无需预建命名空间** ⇒ 运维成本更低。
+4. **覆盖口子保留** —— 两个值仍写作 `${{NACOS_NAMESPACE:public}}` / `${{NACOS_GROUP:DEFAULT_GROUP}}`
+   ⇒ ⇒ 若需回到 B 侧布局，**只需环境变量覆盖**，无需改代码。
+
+### 本条落地后**取消**的既有偏离
+
+⇒ 全仓 namespace / group 统一 ⇒ ⇒ 以下三条**签字偏离取消**（不再偏离 B 侧）：
+
+| 域 | 原偏离编号 | 原内容 | 现状 |
+|---|---|---|---|
+| article | `D-14` | namespace `public` → `sea-rtw` | ✅ **取消**（C 侧回到 `public` = B 侧逐字） |
+| message | `6-4` / `F-7` | namespace + group → `sea-rtw` / `USER_GROUP` | ✅ **取消**（C 侧回到 B 侧逐字） |
+| hot | `F-01` | namespace `public` → `sea-rtw` | ✅ **取消**（C 侧回到 `public` = B 侧逐字） |
+
+### 部署注意
+
+- 需要 B 侧布局时 ⇒ 设 `NACOS_NAMESPACE=sea-rtw` + `NACOS_GROUP=USER_GROUP` ⇒ **零代码改动**。
+- ⚠️ **对拍探针不受影响** —— 探针用 `NACOS_NAMESPACE_B` / `NACOS_NAMESPACE_C`
+  **覆盖** namespace ⇒ ⇒ 探针两侧各自独立寻址空间，与本条的默认值无关。
+
+### RAG-V1 落点
+
+- `service/users/user/src/main/resources/application.yml`（`namespace` / `group` 两行）
+- 兜底常量**保留**（**逐字 = B 侧**）：`service/users/user/src/main/java/…/wiring/NacosRegistration.java`
+  ⇒ `@Value("${{spring.cloud.nacos.discovery.group:USER_GROUP}}")`
+  ⇒ ⚠️ yml 已恒为 `DEFAULT_GROUP` ⇒ 该兜底**已成死分支**
+  ⇒ ⇒ **仍然保留**（B 侧逐字 · 防未来改 yml 时静默改语义）。

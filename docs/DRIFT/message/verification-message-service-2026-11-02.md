@@ -280,7 +280,7 @@
 | `spring.flyway.*`（5 键） | `message-rpc/.../application.yml:83-124` | 同 | ✅ |
 | `grpc.server.port` | `${MESSAGE_RPC_PORT:8082}` | `${MESSAGE_GRPC_PORT:8084}` | ⚠️ **D1 合并带来的 L1 差异**（§六·6-1） |
 | `server.port` | `message-api` = 8892 | `${MESSAGE_HTTP_PORT:8883}` | ⚠️ 同上 |
-| `spring.cloud.nacos.discovery.namespace` / `.group` | `public` / `DEFAULT_GROUP` | `sea-rtw` / `USER_GROUP` | ⚠️ **部署面偏离**（§六·6-4） |
+| `spring.cloud.nacos.discovery.namespace` / `.group` | `public` / `DEFAULT_GROUP` | `public` / `DEFAULT_GROUP` | ✅ **2026-11-09 已销账**（全仓统一决策 ⇒ C 侧回到 B 侧逐字值 ⇒ §六·6-4 偏离**取消**） |
 | `spring.cloud.nacos.discovery.register-enabled` | `false` | `false` | ✅ |
 | `observability.http-timeout` | `message-api/.../application.yml:254` = `3s` | 同 = `3s` | 🔴 **曾缺失 ⇒ 3s 预算不存在**（已修 · §五·5-⑩） |
 | `observability.rpc-timeout` | `message-rpc/.../application.yml:355` = `2s` | 同 = `2s` | 🔴 **曾缺失 ⇒ 2s 超时不存在**（已修 · §五·5-⑩） |
@@ -314,7 +314,7 @@
 | F-4 | go-zero `http.NotFound` / `http.Error`（裸 404/405） | Spring `NoResourceFoundException` / `HttpRequestMethodNotSupportedException` | 默认会落进兜底 advice ⇒ **404 被改写成 200+5001** | 未知路径 / 方法不支持 | **是**（若不改） | 共享层 `common/web/RouterErrorResponses`（**逐字节复刻** B 侧 404 body `404 page not found\n` + `nosniff` + `Content-Type`；405 裸状态码 + `Allow`） | 共享层 `common` 224 例绿 | **一致** |
 | F-5 | devh `grpc.client.<X>` **是通道名 map**（不是属性名） | 同 | 在 `grpc.client:` 下写 `negotiation-type: plaintext` ⇒ **该配置进不了任何通道** ⇒ 静默 TLS | gRPC 出向调用 | **是**（链路不可用） | 每条通道各写一段 `negotiation-type: plaintext` | A4 守门 + 真启动测试 | **一致** |
 | F-6 | **Tomcat 11.x** | **Tomcat 10.1.52** | `Content-Type` 归一化（分号后无空格） | 裸响应头的字节形状 | **否**（RFC 9110 OWS 不显著） | 共享层按「解析后比对」而非「比原始字符串」断言 | 共享层既有前科 | **一致** |
-| F-7 | go-zero **etcd** 寻址（`user.rpc` / `admin.rpc`） | **Nacos discovery**（`discovery:///user-rpc`） | 注册中心换了 ⇒ namespace / group 变得**真的参与寻址** | 跨域 gRPC 寻址 | **是**（找错 namespace ⇒ 恒「No servers found」） | 对齐本仓已落地域（`sea-rtw` / `USER_GROUP`） | §六·6-4 | ⚠️ **部署面偏离**（已登记） |
+| F-7 | go-zero **etcd** 寻址（`user.rpc` / `admin.rpc`） | **Nacos discovery**（`discovery:///user-rpc`） | 注册中心换了 ⇒ namespace / group 变得**真的参与寻址** | 跨域 gRPC 寻址 | **是**（找错 namespace ⇒ 恒「No servers found」） | 对齐本仓已落地域 ⇒ **2026-11-09 全仓统一为 `public` / `DEFAULT_GROUP`** | §六·6-4 | ✅ **2026-11-09 已销账**（偏离取消 ⇒ C 侧 = B 侧逐字） |
 
 ---
 
@@ -374,7 +374,7 @@
 - **B 出处**：B 侧同形状的缺陷被 **B 侧自己**立为 🔴 条目 —— **`DRIFT-G1-001`**（「follow-rpc 的 group 写死」，
   记录在 `RAG/docs/DRIFT/follow/vs-common.md:40`）⇒ 修法 = **group 从配置读、默认值零变化**。
 - **现象**：B 侧 message-rpc 把 group 写死成 `DEFAULT_GROUP` ⇒ `NACOS_GROUP` 环境变量对本域**完全无效**
-  ⇒ 而本仓 yml 写的是 `group: ${NACOS_GROUP:USER_GROUP}`（读配置）⇒
+  ⇒ 而本仓 yml 写的是 `group: ${NACOS_GROUP:DEFAULT_GROUP}`（读配置；**2026-11-09 全仓统一后**）⇒
   ⇒ 部署一旦设 `NACOS_GROUP=别的` ⇒ **注册到 A 组、调用方去 B 组找** ⇒ 恒「No servers found」。
 - **修法**：`@Value("${spring.cloud.nacos.discovery.group:DEFAULT_GROUP}")` ⇒
   **默认值零变化**（不设环境变量时解析结果仍 = B 侧写死的 `DEFAULT_GROUP`）。
@@ -481,7 +481,7 @@
 | 6-1 | **端口**：B 侧 api = HTTP `8892` / rpc = gRPC `8082` ⇒ C 侧合并为 HTTP `8883` + gRPC `8084` | **部署面**（D1 合并的连带效应） | 决策锁 D1 | 端口发现 | 🏷 已登记 |
 | 6-2 | **DDL 建表来源**：**照抄 B 侧 Flyway**（独立账本 `flyway_schema_history_message` ＋ `baseline-version: 0`）⇒ **不**新增 `MessageSchemaInitializer` | **口径改判**（推翻映射表原「幂等 DDL 重放」决策锁） | 依据：message pom 本就带 Flyway 依赖 · 文件树**无** `MessageSchemaInitializer` · AGENTS.md §六 给出的其余 7 域候选就是「B 侧做法」· users 域弃用 Flyway 是因为 **B 侧 users 自己就用 `SchemaInitializer`**（D16 ⇒ message 抄 Flyway） | 建表 | 🏷 已登记 |
 | 6-3 | **admin secret 15 字节 ⇒ zero-pad 到 32 字节** | **安全面**（运行环境约束） | jjwt 0.12 强制 ≥256 bit · golang-jwt 不校验长度 | **B 侧签的 admin token 在 C 侧验不过**（两套部署各自闭环）；payload / claim / 过期语义**完全一致** | 🏷 已登记（B 侧已登记 · N-5） |
-| 6-4 | **Nacos `namespace` / `group`**：B 侧 message-rpc = `public` / `DEFAULT_GROUP` ⇒ C 侧 = `sea-rtw` / `USER_GROUP` | **部署面**（非行为面） | B 侧 message→user/admin 的 gRPC 调用走 **etcd key `user.rpc` / `admin.rpc`** ⇒ **etcd 没有 namespace / group 概念** ⇒ ⇒ B 侧那两个值**不承载任何行为**；而 C 侧走 **Nacos discovery** ⇒ namespace / group **真的参与寻址** ⇒ 不对齐 ⇒ 已落地的 `users/user`（注册名 `user-rpc` · group `USER_GROUP` · namespace `sea-rtw`）**在本域寻址空间里不存在** ⇒ 链路断 | 跨域寻址 | 🏷 已登记 |
+| 6-4 | ✅ **2026-11-09 已销账** —— **Nacos `namespace` / `group`**：B 侧 message-rpc = `public` / `DEFAULT_GROUP` ⇒ C 侧**已改为同值**（原 = `sea-rtw` / `USER_GROUP`） | **部署面**（非行为面） | B 侧 message→user/admin 的 gRPC 调用走 **etcd key `user.rpc` / `admin.rpc`** ⇒ **etcd 没有 namespace / group 概念** ⇒ ⇒ B 侧那两个值**不承载任何行为**；而 C 侧走 **Nacos discovery** ⇒ namespace / group **真的参与寻址** ⇒ 不对齐 ⇒ 已落地的 `users/user`（注册名 `user-rpc` · group `USER_GROUP` · namespace `sea-rtw`）**在本域寻址空间里不存在** ⇒ 链路断 | 跨域寻址 | ✅ **已销账**（2026-11-09 全仓统一 ⇒ 不再偏离 B 侧） |
 | 6-5 | **`JsonbMapTypeHandler` 留在域内**（共享层无对应物） | **归属待收口** | 共享层 `JsonbTypeHandler` = jsonb↔String · `JsonTextTypeHandler` = text↔Map ⇒ **类型都不兼容** | 收口任务应上收到 `common/` | 🏷 已登记 |
 | 6-6 | **验签只在 3s 预算之内执行一次**（B 侧**执行两次**：Filter 一次在预算**外** + interceptor 兜底一次在预算**内**） | **继承 B 侧漂移**（本轮**更正了原表述** ⇒ 见下方说明） | B 侧 `message-api/.../auth/MessageJwtAuthFilter.java:123-165`（`SOURCE_FILTER` / `SOURCE_INLINE` 两个常量 + `doFilter` **只记录不写响应**、无条件 `chain.doFilter` ⇒ **最终 401 由 interceptor 抛**）· B 侧台账 `DRIFT-MESSAGEAPI-009②` · 映射表 §1.6 记录的 **C 侧缺口**（C 侧无独立 Servlet Filter ⇒ 验签与 401 合在 `HandlerInterceptor` 内） | **验签耗时全部计入 3s 预算**（B 侧有一部分在预算外）；**响应形状逐条相同** | 🏷 已登记（**未闭环**） |
 
@@ -610,7 +610,7 @@
 
 | # | 项 | 归属 | 严重度 |
 |---|---|---|---|
-| U-1 | ~~**跨域注册名不一致**~~ —— 本域 `discovery:///admin-rpc` vs `service/users/admin` 注册名 `admin-service` ⇒ 寻址落空<br>✅ **2026-11-02 已由 users/admin lane 修正**：admin 的 Nacos 注册名改回 **B 侧逐字值 `admin-rpc`**（B 出处 `admin-rpc/.../NacosRegistration.java:88`）⇒ 本域的 `discovery:///admin-rpc` **寻址命中**；namespace `sea-rtw` / group `USER_GROUP` 两侧本就一致 ⇒ **三轴全对齐**<br>⚠️ 尚未做的只有**三方活体**（真 Nacos + 真 message + 真 admin 同跑） | **已修正**（users/admin lane · admin 台账 §五·5-⑪） | ✅ 已闭合 |
+| U-1 | ~~**跨域注册名不一致**~~ —— 本域 `discovery:///admin-rpc` vs `service/users/admin` 注册名 `admin-service` ⇒ 寻址落空<br>✅ **2026-11-02 已由 users/admin lane 修正**：admin 的 Nacos 注册名改回 **B 侧逐字值 `admin-rpc`**（B 出处 `admin-rpc/.../NacosRegistration.java:88`）⇒ 本域的 `discovery:///admin-rpc` **寻址命中**；namespace `public` / group `DEFAULT_GROUP` 两侧本就一致（**2026-11-09 全仓统一后**）⇒ **三轴全对齐**<br>⚠️ 尚未做的只有**三方活体**（真 Nacos + 真 message + 真 admin 同跑） | **已修正**（users/admin lane · admin 台账 §五·5-⑪） | ✅ 已闭合 |
 | U-2 | **`JsonbMapTypeHandler` 上收到 `common/`**（jsonb↔Map 无对应物） | **收口任务**（`common/` 写权） | 🟡 P2 |
 | U-3 | **§1.6 缺口**：验签耗时计入 3s 预算（B 侧在预算外） | 本域已登记 · 需独立 Filter 才能闭环 | 🟡 P2 |
 | U-4 | **双侧活体对拍 + 变异证据缺失** ⇒ §七·7.4 的诚实边界<br>🟡 **本轮已推进**：移植 **35 例 B 侧期望值**并在 C 侧跑绿（**期望值不再是本域自拟**）⇒ 但**仍未做「B 侧活体跑出同一读数」**（N-1） | 后续轮次（需在 B 侧起同条件探针） | 🟡 P2 |

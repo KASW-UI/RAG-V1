@@ -19,10 +19,12 @@ import java.util.List;
  *       <ul>
  *         <li><b>JSON key 名</b>：{@code articles} / {@code total} / {@code page} / {@code page_size}
  *             ⇒ 逐字相同；</li>
- *         <li><b>字段顺序</b>：{@link JsonPropertyOrder} 保留 —— Go 的 {@code encoding/json}
- *             按 struct <b>声明序</b>输出（{@code articles → total → page → page_size}），
- *             Jackson 默认按<b>字母序</b>（{@code articles → page → page_size → total}）
- *             ⇒ ⇒ 两侧<b>字节不同</b> ⇒ 必须钉住（B 侧 {@code ListArticlesResp.java:33-38}）。</li>
+ *         <li><b>字段顺序</b>：{@code articles → total → page → page_size} = Go 的
+ *             {@code encoding/json} struct <b>声明序</b>（B 侧 {@code ListArticlesResp.java:33-38}）。
+ *             ⇒ C 侧是 <b>immutable record</b> ⇒ Jackson 2 默认即按<b>声明序</b>输出 ⇒ <b>天然一致</b>
+ *             ⇒ ⇒ {@link JsonPropertyOrder} <b>保留</b>，作用是<b>显式钉死</b>
+ *             （组件被重排时字节序会静默漂移），<b>不是</b>「修正默认字母序」
+ *             —— 那是 B 侧 Jackson 3 + 可变 class 的形态。</li>
  *         <li>record 的访问器名<b>不进入 wire</b> ⇒ JSON 输出逐字节相同。</li>
  *       </ul></li>
  *   <li><b>B 出处</b>：见上方文件路径 + 行号。</li>

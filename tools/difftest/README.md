@@ -6,10 +6,28 @@
 
 | 脚本 | 作用 | 状态 |
 |---|---|---|
-| `check-arch-invariants.py` | **架构符合性 A1–A12** —— 校验包结构、starter 化、生态优先、immutable DTO 等约定 | ✅ **2026-10-25 已实现**（`--self-test` 自证 12/12 条判据能红） |
+| `check-arch-invariants.py` | **架构符合性 A1–A17** —— 校验包结构、starter 化、生态优先、immutable DTO、Jackson 口径等约定 | ✅ **2026-10-25 已实现**（`--self-test` 自证 **17/17** 条判据能红） |
+| `jackson-key-order/run.sh` | **JSON 键序运行时探针** —— 逐类实测「`@JsonPropertyOrder` 声明序」vs「Jackson 2 自然序」＋**序列化字节**是否一致 | ✅ **2026-11-09 已实现**（`global` 收口域「全用 jackson2」决策的**字节级证据**） |
 | `check-proto-static.sh` | proto 契约对照（字段号 / message 名 / RPC 签名） | ⬜ 待实现 |
 | `check-ddl-static.py` | DDL 列级对照（类型 / 长度 / 可空性 / DEFAULT / 索引） | ⬜ 待实现 |
 | `run-parity.sh` | 双侧语义探针（B 侧 ↔ RAG-V1 同请求矩阵） | ⬜ 待实现 |
+
+### `jackson-key-order/run.sh` 用法
+
+```bash
+mvn -o clean test-compile          # 前置：产出各模块 target/classes（探针不自动构建）
+bash tools/difftest/jackson-key-order/run.sh
+```
+
+⇒ 逐类打印「declared（注解声明序）/ natural（压制注解后的 Jackson 2 自然序）/ honored / bytes」四行
+⇒ 末尾给 `=== SUMMARY: total=N consistent=N inconsistent=N byteEq=N byteDiff=N ===`
+⇒ **退出码** 0 = 全部一致 · 1 = 有类型不一致 · 2 = 环境未就绪
+
+⚠️ **为什么要运行时而不是静态**：Jackson 对 record 的默认序是**框架行为**
+（`MapperFeature.SORT_CREATOR_PROPERTIES_FIRST` + 构造参数序）⇒ 源码上看不出来 ⇒ 只有跑真 Jackson 才算证据（AGENTS.md §3.3）。
+⚠️ **「字节一致」≠「注解该删」** —— 字节一致只证明「**今天**删不改字节」；
+注解在 C 侧的真正作用是**把顺序显式钉死**（record 组件被重排时，无注解的字节序会**静默漂移**）
+⇒ ⇒ 本仓**保留**注解；与 follow 域变异 M1「把注解改成**反序**」（而非「删注解」）的既有口径一致。
 
 ### `check-arch-invariants.py` 用法
 

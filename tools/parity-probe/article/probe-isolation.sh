@@ -26,7 +26,7 @@
 #         B 侧 `service/article/article-api/src/main/resources/application.yml:33`
 #              `namespace: ${NACOS_NAMESPACE:public}`
 #         C 侧 `service/article/src/main/resources/application.yml`（`spring.cloud.nacos.discovery.namespace`）
-#              `namespace: ${NACOS_NAMESPACE:sea-rtw}`
+#              `namespace: ${NACOS_NAMESPACE:public}`（2026-11-09 全仓统一决策后）
 #         ⇒ 设 env `NACOS_NAMESPACE=xxx` ⇒ 两侧进程**注册 / 发现**都落到 `xxx`。
 #       · 🔴 **为什么必须是两个命名空间（不能只用一个）**：
 #         **B 侧与 C 侧注册的服务名是同一个** —— `article-rpc`

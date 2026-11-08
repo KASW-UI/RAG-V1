@@ -73,7 +73,7 @@
 > ⇒ ⇒ ⇒ **根因坐实（直接观测，非推断）**：本机 **Eclipse JDT 语言服务器（Neovim 的 `jdtls`，PID 67845）** 的 `.classpath` 写着 **`output="target/classes"`** ⇒ ⇒ **它对输出目录做的是「先整体擦除、再整体重写」** ⇒ ⇒ 取证：① **Maven 不在场**时采样 `proto/target/classes` 的 class 数 ⇒ **恒定 760**（24 次采样无波动）⇒ 「不是 Maven 自己在改」② **构建中**每 0.4s 采样 ⇒ 抓到 **jar 打好之后数字掉到 0、随即又回到 760** ⇒ ⇒ 「Maven 不会在打包后删自己的输出目录」⇒ ⇒ **第三方写入者 = IDE**；⇒ ⇒ **控制变量**：`proto/` 的 pom / 根 pom / common pom **全未改**、proto 依赖集与 `origin/main` **逐行相同** ⇒ ⇒ **合并在依赖层不可能是根因**
 > ⇒ ⇒ ⇒ 🔴 **决定性对照（`origin/main` 上跑同一条命令）** ⇒ ⇒ proto **SUCCESS** ⇒ ⇒ 失败在**更靠后**的 `comment-service` ⇒ `spring-boot-maven-plugin:repackage` ⇒ **「Unable to find main class」** = **P-18**（域还是空壳 ⇒ 没有 `main`）⇒ ⇒ **本轮合并恰恰修好了 P-18 那一维** ⇒ ⇒ **proto 这条是更早发生、把后面的 P-18 挡住了** ⇒ ⇒ **与本轮合并无因果关系**
 > ⇒ ⇒ ⇒ ⇒ **登记**：**P-27**（新条 · IDE「擦除并重写」`target/classes` ⇒ **jar 静默残缺** ⇒ 报错指向无辜下游域）＋ **P-26** 补同源姊妹条指针 ⇒ ⇒ **操作面纪律**：**取全量读数前先 `pgrep -fl jdtls|eclipse`**（⚠️ 用户的 Neovim `jdtls` 在用 ⇒ **杀不杀由用户定**）⇒ **或**把构建放到**没有 IDE 配置的工作树**（`.classpath` 不进版本控制 ⇒ **新工作树天然隔离** ⇒ **「从零验收」本就该在隔离工作树里做**）⇒ ⇒ ⚠️ **「全绿的构建」≠「产物是完整的」** ⇒ **要断言产物完整性 ⇒ 必须单独量一次**（数 jar 里的 class 数 / 数 `*Grpc.class`）
-> ⇒ ⇒ ⚠️ **诚实边界**：① **未 push**（`main` 领先本地 `origin/main` 引用 **30 个提交** ⇒ 按纪律不推）；② 各域台账里仍标 `NOT_VERIFIED` 的条目**由各域 lane 自行重跑后给出**（**本轮只销了共享层那根** —— comment 域 D-15，根因已由 **DRIFT-COMMON-V20** 消除）；③ **本机环境面**：**IDE 与 Maven 抢同一输出目录** ⇒ 根因在**本机 IDE 配置**（`.classpath` 的 `output=`）⇒ ⇒ **本仓不为它提交文件、但已登记 P-26 / P-27**（⇒ **根治动作 = 把 IDE 输出目录与 `target/` 隔开** ⇒ 属**本机环境动作** ⇒ **需用户拍板是否现在做**）。
+> ⇒ ⇒ ⚠️ **诚实边界**：① **未 push**（`main` 领先本地 `origin/main` 引用 **30 个提交** ⇒ 按纪律不推）；② 各域台账里仍标 `NOT_VERIFIED` 的条目**由各域 lane 自行重跑后给出**（**本轮只销了共享层那根** —— comment 域 D-15，根因已由 **DRIFT-COMMON-V20** 消除）；③ **本机环境面**：**IDE 与 Maven 抢同一输出目录** ⇒ 根因在**本机 IDE 配置**（`.classpath` 的 `output=`）⇒ ⇒ **本仓不为它提交文件、但已登记 P-26 / P-27**（⇒ **根治动作 = 把 IDE 输出目录与 `target/` 隔开** ⇒ 属**本机环境动作**）⇒ ⇒ ✅ **2026-11-09 用户已拍板并落地**（脚本 `tools/ide/isolate-ide-output-dir.sh` ⇒ 输出目录改指 `.jdtls-build/classes` ⇒ **标记法实测 `mvn clean` 擦不到它**）⇒ 详见 **DRIFT-COMMON-V26**。
 > ✅ **2026-11-05（`global` 收口域 · 本轮）· 订正一处「过期注释被当成现状」的连带误判**：favorite 域台账把「**慢 DB（非慢下游）那一格两侧仍不等**」判为**待共享层收口** ⇒ ⇒ 经逐行复核，**该前提不成立** —— 共享层的 SQL 超时链**早已闭合**（**V15 · 2026-11-03**：`HttpMiddleware` 绑 `DeadlineState`（`resolveInnerBudget()` = **min(http-timeout, rpc-timeout)**）⇒ ⇒ `DeadlineQueryTimeoutInjector` 按 `DeadlineState.remainingMillis()` 设 queryTimeout ⇒ ⇒ PG 取消 ⇒ ⇒ `SqlTimeoutStatusTranslator` 把 **57014 翻成 1015**）⇒ ⇒ **根因 = 本仓 `common/.../observability/GoStyleRequestDeadline.java` 类头那句「本仓该引用**暂缺**」是批次 3 之前的过期文案** ⇒ ⇒ **该文案已就地订正**（改为实测现状 ＋ B 出处 `RpcInterceptor.java:516-522` 的「**两个载体绑同一个绝对时刻**」约束**已兑现**的证据：`ObservabilityAutoConfiguration` 的 `withDeadline` 在 `onHalfClose` 里把 `DeadlineState` 与 `GoStyleRequestDeadline` 绑同一绝对时刻）⇒ ⇒ ⇒ ⇒ **favorite 域台账的那处订正已由该域提交并合入主干** ⇒ ⇒ ⚠️ **教训**：**一段过期注释能让跨域台账整段判错** ⇒ ⇒ **判现状只认代码 + 运行证据**（AGENTS.md §3.1「不要拿代码注释当对照基准」）⇒ ⇒ **「本仓该引用暂缺」这类自述性文案，须在每次相关收口后重新核**
 
 ---
@@ -885,6 +885,38 @@ comment 域工作树里 `service/comment/src/test/java/com/rag/comment/grpc/Comm
 | **⚠️ 零副作用核对** | 删的是 **test scope** 的直接声明 ⇒ devh 那份 **compile 传递依赖本来就在 runtime classpath 上** ⇒ ⇒ **fat jar 内容零变化**（不是「加了依赖」）⇒ ⇒ 无需重校 P-18 的 jar 读数；⇒ 且 message 域的测试期 in-process 仍可用（该模块 **103 例全绿**实测） |
 | **机器读数** | ① 定向：`mvn -o -pl common,service/message -am test` ⇒ **common 255 例**（251 + 本轮新增 Prometheus 探针 4 例）· **message 103 例** ⇒ **Failures 0 · Errors 0 · Skipped 0** ⇒ **BUILD SUCCESS**；<br>② 全仓：见 [`docs/README.md`](../README.md) §四「编译」行（模块级汇总，**计数只取回归日志的模块级汇总**） |
 | **证据强度** | **E-2**（B 侧源码与 pom **逐行读原文**：`RpcInterceptor.java:179`/`:362` · `favorite-rpc/pom.xml:348-353` · `comment-api/pom.xml:159-174` · `message-rpc/pom.xml`（无此声明））＋ **E-3**（C 侧同款常量已存在且已有测试断言 ⇒ 修法是「改成 B 侧已有的那个值」） |
+
+### ✅ DRIFT-COMMON-V25｜**JSON 响应键序机制统一**（「全用 jackson2」决策）—— **已收口（2026-11-09 · `global` 收口域）**
+
+**状态**：**✅ 已收口**（2026-11-09 · `global` 收口域 · **用户拍板「全用 jackson2」**）
+
+| 项 | 内容 |
+|---|---|
+| **① 原记录（跨 10 个域 · 同一根因）** | **users-user 域台账 `DRIFT-USER-PARITY-003`**：「JSON 响应键序（Jackson 2 vs 3 的默认行为）」判 **FAIL（跨域 · 共享层）** —— B（Boot 4 / Jackson 3）的 mapper 默认开 `SORT_PROPERTIES_ALPHABETICALLY` ⇒ 输出**字母序**；C（Boot 3.5 / Jackson 2.19.4）默认关 ⇒ 输出**声明序** ⇒ **10 个域全受影响** ⇒ 原判「落点在共享层 `common/` 的 ObjectMapper 定制」⇒ **归 `global` 收口域**。<br>**另注**：`comment` 域把**同型**差异单独登记为自己的 **D-14**（响应 JSON 的键序）⇒ ⇒ **同一根因、两种登记** ⇒ 原判「收口时须一次统一（否则各域各签一遍）」 |
+| **🔴 2026-11-09 实测把原判的前提推翻了** | **共享层 `common/` 从来就没有开过字母序** ⇒ ⇒ 原判的「落点」**根本不存在**（那条只在「要改成 B 侧运行时那种字母序」时才需要动共享层）⇒ ⇒ **本条不是「待修的漂移」，而是「一次口径统一 + 防回归」** |
+| **✅ 决策与落地（用户拍板「全用 jackson2」）** | ① **判据 = 「键序机制全仓单一」**，**不是**「与 B 侧运行时字节一致」⇒ ⇒ **维持 C 侧 = 声明序**（= Go 真源 `encoding/json` 的 struct 声明序）；<br>② **新增机器守门 A17**（`tools/difftest/check-arch-invariants.py`）⇒ 判「全仓 `src/main` **不得**出现 Jackson 3 包名 `tools.jackson`」＋「**不得开启** `MapperFeature.SORT_PROPERTIES_ALPHABETICALLY`」＋「yml 不得开 `spring.jackson.mapper.sort-properties-alphabetically`」⇒ ⇒ **实测 PASS 645/645 份 Java + 10/10 份 yml** ⇒ `--self-test` **17/17 条判据均能红**（含 A17：造假树同时放 Jackson 3 import ＋ 开启字母序 ⇒ 报 **2 处**违规 ⇒ 且**注释里故意提一次这两个词** ⇒ 证明判据不会被注释骗到）；<br>③ **新增运行时探针**（`tools/difftest/jackson-key-order/run.sh`）⇒ 逐类实测「`@JsonPropertyOrder` 声明序」vs「Jackson 2 自然序（压制注解后）」＋**序列化字节**是否逐字节相同 ⇒ ⇒ **22/22 一致 · 22/22 BYTE-EQ · 0 不一致** ⇒ ⇒ **删掉任一注解今天都不改任何 wire 字节**；<br>④ ⇒ ⇒ **注解保留**（**不是**删）：它在 C 侧的作用**不是**「修正默认字母序」（那是 B 侧 Jackson 3 + 可变 class 的形态），而是**把顺序显式钉死** —— record 组件一旦被重排，无注解时字节序会**静默漂移**（零编译错误、零测试红灯）⇒ ⇒ 与 follow 域变异 M1「把注解改成**反序**」（而非「删注解」）的既有口径**一致**（B 侧能靠「删注解」转红，是因为 B 侧是**可变 class**） |
+| **🔴 顺带订正 7 处**C 侧 javadoc 里**对 Jackson 2 不成立**的断言 | 典型两处：① `service/article/…/ArticleHttpEnvelopeRealTomcatTest.java` 的变异清单写「去掉 `@JsonPropertyOrder` ⇒ `articleJsonKeyOrderMatchesGoDeclarationOrder` **立刻红**（Jackson 默认字母序）」⇒ ⇒ **C 侧去掉后仍绿**（Jackson 2 对 record 默认声明序）⇒ 改为「**本条变异不适用于 C 侧**；要让它红必须改**组件声明序**」；② `Article.java` / `ListArticlesResp.java` / `CommentKafkaMsg.java` 等的「Jackson 默认按**字母序** ⇒ 必须钉住」⇒ ⇒ 全部改成 C 侧真实口径。⚠️ **这类断言正是 AGENTS.md §3.3.2 点名的高危项**（以「B 侧: …」措辞写的断言，本身就可能是假的） |
+| **同根因的其他登记同步销账** | `users-user` 的 `DRIFT-USER-PARITY-003`（→ **PASS**）＋ `comment` 的 **D-14**（→ **已决策，不再待拍板**）⇒ ⇒ **一次统一，不再各域各签一遍** |
+| **机器读数** | ① 守门：`python3 tools/difftest/check-arch-invariants.py` ⇒ **PASS 15 · FAIL 0 · N/A 2 · PENDING 0**（共 17 条）· `--self-test` ⇒ **17/17** 能红；② 探针：`bash tools/difftest/jackson-key-order/run.sh` ⇒ **total=22 consistent=22 inconsistent=0 byteEq=22 byteDiff=0**；③ **变异实测**（证明探针不是假绿）：把 `service/follow/…/RecommendUser.java` 的注解**改成反序** ⇒ 探针 **EXIT=1**（`inconsistent=1 · byteDiff=1`）⇒ **还原后 EXIT=0 复绿** |
+| **证据强度** | **E-2**（B 侧 28 处 `@JsonPropertyOrder` 与 C 侧 22 处**逐条对照**）＋ **E-3**（C 侧 DTO 是 immutable record ⇒ Jackson 2 默认声明序 ⇒ 运行时探针实测）＋ **E-4**（**字节级**：同一实例在「带注解 / 压制注解」两个 mapper 下序列化**逐字节相同**） |
+
+---
+
+### ✅ DRIFT-COMMON-V26｜**IDE 增量构建器抢 `target/classes`** ⇒ jar 静默被打残 —— **已根治（2026-11-09 · `global` 收口域 · 用户拍板）**
+
+**状态**：**✅ 已根治**（2026-11-09 · `global` 收口域 · **用户拍板「改 IDE 输出目录，与 `target/` 隔开」**）
+
+| 项 | 内容 |
+|---|---|
+| **① 原记录（环境面）** | **P-26 / P-27**（`docs/Pitfalls/_cross/`）—— 本机 **jdtls** 的 `.classpath` 写着 `output="target/classes"` ⇒ ⇒ **IDE 与 Maven 抢同一个输出目录** ⇒ ⇒ 三张脸：① IDE 编出的 class **不跑 Lombok** ⇒ 覆盖掉 Maven 编好的 class（编译错误指向**共享层**）② **jar 只装进部分 class**（实测 **221 / 760**，**0 个 `*Grpc.class`**）⇒ **静默打残** ⇒ 编译错误指向**下游域** ③ `protobuf-maven-plugin` 报「Unable to clean up temporary proto file directory」⇒ 构建在 **proto** 模块夭折 |
+| **🔴 2026-11-09 实测定位（不是 jdtls 设置项）** | 真正的杠杆 = **13 份 `.classpath`**（`common` · `proto` · `service/{article,comment,favorite,follow,hot,like,message,task}` · `service/users/{common,user,admin}`）里的 `<classpathentry kind="output" path="…"/>` ＋ 源目录条目上的 `output="…"`；⇒ **不是** `java.project.outputPath`（它只管「**隐形工程**」）⇒ **不是** nvim 的 LSP 配置（`~/.config/nvim/lua/plugins/jdtls.lua` **无 `settings` 表**） |
+| **✅ 修法（已实施）** | 新增 **`tools/ide/isolate-ide-output-dir.sh`**（**进版本控制** ⇒ 别人也能用）：`--apply`（默认 · 幂等）· `--verify`（逐份体检）· `--revert`（还原）⇒ 取值 **`target/classes` → `.jdtls-build/classes`** · `target/test-classes` → `.jdtls-build/test-classes`（各模块目录下）⇒ ⚠️ **必须在 `target/` 之外**（初版建议的 `target/eclipse-classes` **仍在 `target/` 内 ⇒ `mvn clean` 照样擦 ⇒ 白改** ⇒ 已订正 P-26 / P-27 两处台账）<br>配套：`.gitignore` 加 `.jdtls-build/` · `tools/gen-file-tree.py` 的 `SKIP` / `SKIP_DIRS` 加 `.jdtls-build`（否则**文件树被本机环境产物污染** ⇒ `check-docs-vs-tree.py` 对不上） |
+| **✅ 效果实测（标记法 · 决定性）** | 往 `service/article/.jdtls-build/classes/` 放标记 ⇒ 跑 `mvn -o -q clean` ⇒ ⇒ `target/classes` **21 → 0** 个 class（Maven 照常清自己的目录）⇒ ⇒ `.jdtls-build/classes/_isolation_marker.class` **【存活】** ⇒ ⇒ **擦除机制被根除** |
+| **🟢 m2e 会不会改回去？—— 实测：不会** | 改完后 jdtls 触发了「Updated service / user-service / task-service / users-common / users」的一轮**重新导入** ⇒ ⇒ `.classpath` 里的输出目录**未被重置** ⇒ 根因 = `kind="output"` 条目**不带** `maven.pomderived` 标记 ⇒ **m2e 不接管它** ⇒ ⇒ 补丁能扛过「Update Maven Project」⇒ ⇒ **脚本仍做成幂等可重跑**（兜底） |
+| **⚠️ 诚实边界（尚未现场验证的一点）** | jdtls **下一次真正编译**时产物落到 `.jdtls-build/classes` —— 本轮只验证到「`.classpath` 已改 + `mvn clean` 不碰该目录 + m2e 不回改」⇒ ⇒ **触发条件是编辑器的 `didChange` 通知**（单纯 `touch` 文件**不触发** ⇒ 无编辑器在场时无法强制触发）⇒ ⇒ **等下一次 IDE 编译自然验证**。<br>**已知残留（刻意不修）**：`org.eclipse.jdt.apt.core.prefs` 的 `genSrcDir=target/generated-sources/annotations` 与 `.classpath` 里指向 `target/generated-sources/**` 的**源目录条目**仍在 `target/` 内 ⇒ ⇒ `mvn clean` 会删掉它们 ⇒ jdtls 会重新生成（APT 自己管）⇒ ⇒ **只影响 IDE 瞬时状态，不影响 Maven 产物** |
+| **⚠️ 纪律（本机环境动作 ≠ 仓库动作）** | `.classpath` / `.project` / `.settings/` **不进版本控制**（`.gitignore`）⇒ ⇒ 本仓**不为它提交任何文件**；**进版本控制的是「可重跑的脚本」** ⇒ ⇒ 别人 clone 后跑一次即可 ⇒ ⇒ **不重复踩坑** |
+
+---
 
 ## 11.6 完成度统计
 

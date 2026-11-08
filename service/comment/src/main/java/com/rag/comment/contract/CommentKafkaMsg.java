@@ -45,9 +45,13 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
  * <h2>⚠️ 三条把它变成「跨进程契约」而不是 DTO 的细节</h2>
  * <ol>
  *   <li><b>字段顺序是 {@link JsonPropertyOrder} 显式钉死的</b>。
- *       Go 的 {@code encoding/json} 按<b>结构体声明顺序</b>输出，
- *       而 Jackson 默认按字母序 ⇒ 不钉死就会产出
- *       {@code {"attribute":0,"comment_id":…}} 这种与 Go 不同的字节序列。
+ *       Go 的 {@code encoding/json} 按<b>结构体声明顺序</b>输出；
+ *       C 侧是 <b>immutable record</b> ⇒ Jackson 2 默认即<b>声明序</b> ⇒ 两者本就一致
+ *       ⇒ ⇒ 注解在 C 侧的作用是<b>显式钉死</b>（组件被重排时字节序会静默漂移），
+ *       <b>不是</b>「修正默认字母序」—— 那是 B 侧 Jackson 3 + 可变 class 的形态。
+ *       ⚠️ 若哪天真出现 {@code {"attribute":0,"comment_id":…}} 这种字母序字节序列，
+ *       说明全局特性 {@code MapperFeature.SORT_PROPERTIES_ALPHABETICALLY} 被打开了
+ *       ⇒ 由守门 A17 拦下。
  *       字节不同不影响 JSON 语义，但会让「按原始字节比对两侧消息」的排查手段失效。</li>
  *   <li><b>没有 {@code omitempty}</b>。Go 侧 11 个字段全部无条件输出，
  *       即使是空字符串的 {@code content}/{@code meta}（默认值）也会出现。

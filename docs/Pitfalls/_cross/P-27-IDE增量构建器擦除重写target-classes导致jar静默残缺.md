@@ -109,13 +109,58 @@ done
 
 ⚠️ **不要因为「报错说下游域 / proto 坏了」就去改那儿的代码** —— 那是 P-18 老毛病换马甲。
 
-## 五、根治
+## 五、根治（✅ **2026-11-09 已落地** · 用户拍板「改 IDE 输出目录，与 `target/` 隔开」）
 
-⇒ ⇒ **把 IDE 的输出目录与 `target/` 隔开**（改 `.classpath` 里的 `output=` 指向 `target/eclipse-classes` 之类）
-⇒ ⇒ 两套编译器各写各的目录 ⇒ ⇒ **互不覆盖、互不擦除**。
+⇒ ⇒ **把 IDE 的输出目录与 `target/` 隔开** ⇒ ⇒ 两套编译器各写各的目录 ⇒ ⇒ **互不覆盖、互不擦除**。
+
+### 5.1 ⚠️ **订正**：初版写的「`target/eclipse-classes`」是**错的**
+
+> 📌 **2026-11-09 订正**：本节初版建议把输出目录改成 **`target/eclipse-classes`** ⇒
+> ⇒ **那个值仍然在 `target/` 里面** ⇒ ⇒ **`mvn clean` 照样把它连根擦掉** ⇒ ⇒ **不满足「与 `target/` 隔开」** ⇒ ⇒ **白改**。
+> ⇒ ⇒ 正确取值必须**在 `target/` 之外**。
+
+### 5.2 输出目录到底由谁决定（**实测 · 不是 jdtls 设置项**）
+
+| 项 | 结论 |
+|---|---|
+| **真正的杠杆** | **各模块 `.classpath`** 里的 `<classpathentry kind="output" path="…"/>` ＋ 源目录条目上的 `output="…"`（**13 份**：`common` · `proto` · `service/{article,comment,favorite,follow,hot,like,message,task}` · `service/users/{common,user,admin}`） |
+| **不是** | **jdtls 的 `java.project.outputPath`** —— 它只管「**隐形工程**」（`jdt.ls-java-project`），管不到 Maven 工程 |
+| **不是** | **nvim 的 LSP 配置** —— `~/.config/nvim/lua/plugins/jdtls.lua` **无 `settings` 表** ⇒ 全默认 |
+| **m2e 会不会改回去？** | 🟢 **实测不会** —— 2026-11-09 改完后 jdtls 触发了「Updated service / user-service / task-service / users-common / users」的一轮**重新导入** ⇒ ⇒ **`.classpath` 里的输出目录未被重置**（`kind="output"` 条目**不带** `maven.pomderived` 标记 ⇒ m2e 不接管它） |
+
+### 5.3 ✅ 落地动作
+
+```bash
+bash tools/ide/isolate-ide-output-dir.sh            # 施加（幂等 · 13 份）
+bash tools/ide/isolate-ide-output-dir.sh --verify   # 只体检（逐份报 ✅/❌）
+bash tools/ide/isolate-ide-output-dir.sh --revert   # 还原回 target/classes
+```
+
+⇒ 取值：`target/classes` → **`.jdtls-build/classes`** · `target/test-classes` → **`.jdtls-build/test-classes`**（**各模块目录下**）
+⇒ 配套：`.gitignore` 加 `.jdtls-build/` · `tools/gen-file-tree.py` 的 `SKIP` / `SKIP_DIRS` 加 `.jdtls-build`（否则**文件树会被本机环境产物污染** ⇒ `check-docs-vs-tree.py` 对不上）
+
+### 5.4 ✅ 效果实测（**标记法** · 决定性）
+
+```bash
+mkdir -p service/article/.jdtls-build/classes
+echo MARKER > service/article/.jdtls-build/classes/_isolation_marker.class
+mvn -o -q clean
+# ⇒ target/classes：21 个 class → 0 个 class      （Maven 照常清理自己的目录）
+# ⇒ .jdtls-build/classes/_isolation_marker.class   【存活】  ← ⇒ mvn clean 不碰它
+```
+
+⇒ ⇒ **擦除机制被根除**：IDE 的产物与 Maven 的产物**物理分属两个目录** ⇒ ⇒ `mvn clean` **够不着**它。
+
+⚠️ **尚未现场验证的一点**：jdtls **下一次真正编译**时产物落到 `.jdtls-build/classes`
+（本次只验证到「`.classpath` 已改 + `mvn clean` 不碰该目录」）⇒
+⚠️ **触发条件是编辑器的 `didChange` 通知**（单纯 `touch` 文件**不触发** ⇒ 本轮无法在无编辑器在场时强制触发）⇒ ⇒ **等下一次 IDE 编译自然验证**。
+⇒ ⚠️ **已知残留（不修）**：`org.eclipse.jdt.apt.core.prefs` 的 `genSrcDir=target/generated-sources/annotations`
+与 `.classpath` 里指向 `target/generated-sources/**` 的**源目录条目**仍在 `target/` 内
+⇒ ⇒ `mvn clean` 会删掉它们 ⇒ jdtls 会重新生成（APT 自己管）⇒ **只影响 IDE 瞬时状态，不影响 Maven 产物**。
 
 ⚠️ **`.classpath` / `.project` / `.settings/` 是未跟踪的本地垃圾** ⇒ ⇒ **改它属于「本机环境动作」，不是仓库动作**
-⇒ ⇒ 本仓**不为它提交任何文件**；但**必须把它登记下来**（否则下一个人会重复踩）。
+⇒ ⇒ 本仓**不为它提交任何文件**；但**必须把它登记下来**（否则下一个人会重复踩）⇒ **本节即登记**，
+**可重跑的脚本** ⇒ `tools/ide/isolate-ide-output-dir.sh`（**进版本控制** ⇒ 别人也能用）。
 
 ## 六、⇒ 与 P-26 的关系（**同源三张脸**）
 

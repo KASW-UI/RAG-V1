@@ -94,19 +94,14 @@ spring:
         #    `${NACOS_ADDR:nacos:8848}` 把端口**硬编码进默认值** ⇒ `NACOS_PORT` 被完全忽略
         #    ⇒ 与 `.env.example` / `docker-compose.yaml` 的契约（NACOS_ADDR=host + NACOS_PORT=port）冲突。
         server-addr: ${NACOS_ADDR:nacos}:${NACOS_PORT:8848}
-        # ⚠️ **namespace / group 与本仓已落地域对齐**（`service/article`）：
-        #    B 侧 hot-api / hot-rpc 写的是 `public` / `DEFAULT_GROUP`。
-        #    ⚠️ **但那不是行为事实**：B 侧 hot→article 的 gRPC 调用走
-        #    **etcd key `article.rpc`**（`zrpc.RpcClientConf{Etcd:{Key:"article.rpc"}}`），
-        #    **etcd 没有 namespace / group 概念** ⇒ ⇒ 那两个值在 B 侧**不承载任何行为**。
-        #    ⚠️ **C 侧必须对齐**：`grpc.client.article-rpc` 走 **Nacos discovery**
-        #    （`discovery:///article-rpc`）⇒ namespace / group **真的参与寻址**
-        #    ⇒ 若沿用 B 侧的 `public`，已落地的 article 域（注册名 `article-rpc`
-        #    · namespace `sea-rtw` · group `DEFAULT_GROUP`）**在本域的寻址空间里根本不存在**
-        #    ⇒ gRPC 链路直接断 ⇒ 业务码塌成 1015。
-        #    ⇒ 对齐到本仓已落地域的取值 ⇒ 跨域链路成立。
-        #    （本条登记为 hot 域的**签字偏离** —— 部署面 · 非行为面。）
-        namespace: ${NACOS_NAMESPACE:sea-rtw}
+        # 🔴 **2026-11-09 全仓统一决策（`global` 收口域 · 用户拍板）**：namespace 统一为 **`public`**。
+        #    ⇒ **与 B 侧逐字一致**（B 侧 `hot-api` / `hot-rpc` 两份 yml 均为 `public` / `DEFAULT_GROUP`）
+        #    ⇒ ⇒ 本域的跨域 gRPC 寻址（`discovery:///article-rpc`）与对端落在**同一寻址空间**。
+        #    ⚠️ **此处原先那段「必须用 sea-rtw」的论证已随决策反转**（原论证是「B 侧的 public 不承载行为、
+        #    而 C 侧走 Nacos discovery ⇒ namespace 真参与寻址 ⇒ 必须与 C 侧已落地地域对齐」——
+        #    那条推理**依然成立**，只是「已落地地域」现在**统一就是 `public`**）⇒
+        #    ⇒ 故「hot 域的 namespace 偏离」这条**签字偏离取消**（不再偏离 B 侧）。
+        namespace: ${NACOS_NAMESPACE:public}
         group: ${NACOS_GROUP:DEFAULT_GROUP}
         # 🔴 **必须显式关掉自动注册**（P-17）。
         #    `NacosAutoServiceRegistration` 监听 `WebServerInitializedEvent`

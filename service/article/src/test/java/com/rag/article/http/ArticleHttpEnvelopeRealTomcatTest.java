@@ -96,8 +96,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       ⇒ 本类的业务错误用例与 {@code ArticleHttpAuthRealTomcatTest} 的 401 用例<b>同时红</b>；</li>
  *   <li>把「放行 2（已是 envelope）」删掉 ⇒ 业务错误会变成
  *       {@code {"code":200,"msg":"OK","data":{"code":1005,…}}} ⇒ <b>立刻红</b>；</li>
- *   <li>去掉 {@code Article} 上的 {@code @JsonPropertyOrder} ⇒
- *       {@code articleJsonKeyOrderMatchesGoDeclarationOrder} <b>立刻红</b>（Jackson 默认字母序）；</li>
+ *   <li>⚠️ <b>「删注解」这条变异【不适用】于 C 侧</b>：把 {@code Article} 上的
+ *       {@code @JsonPropertyOrder} 删掉 ⇒ {@code articleJsonKeyOrderMatchesGoDeclarationOrder}
+ *       <b>仍然绿</b>（C 侧是 immutable record ⇒ Jackson 2 默认按<b>声明序</b>输出 ⇒ 删注解字节不变；
+ *       <b>实测</b>见 {@code tools/difftest/jackson-key-order/}）
+ *       ⇒ ⇒ <b>要让它变红，必须改「组件声明序」而不是「删注解」</b>
+ *       （与 follow 域变异 M1「把注解改成反序」同款思路：变异要针对被测形态设计）；</li>
  *   <li>把 {@code cloneStringList} / {@code cloneStringMap} 改成「空 ⇒ 空集合」
  *       ⇒ {@code nullSecondaryTagsAndExtInfoKeepTheirKeys} <b>立刻红</b>
  *       （会变成 {@code "secondary_tags":[]} 而不是 {@code null}）；</li>
@@ -239,8 +243,8 @@ class ArticleHttpEnvelopeRealTomcatTest extends HttpRealTomcatTestBase {
         JsonNode article = articles.get(0);
         assertEquals(GO_ARTICLE_ORDER, keyOrder(article),
                 "🔴 Article 的 JSON 键序必须与 Go struct 声明序一致"
-                        + "（Jackson 默认字母序 ⇒ 只能靠 @JsonPropertyOrder 固定；"
-                        + "B: types.go:6-24 / dto/Article.java:88-92）；实际=" + keyOrder(article));
+                        + "（C 侧是 immutable record ⇒ Jackson 2 默认即声明序；"
+                        + "@JsonPropertyOrder 只是显式钉子；B: types.go:6-24 / dto/Article.java:88-92）；实际=" + keyOrder(article));
     }
 
     @Test
