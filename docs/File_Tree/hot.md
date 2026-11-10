@@ -69,7 +69,7 @@
 │   │   │               │       └── HeavyKeeper.java    # 带衰减的 Top-K sketch：FNV 指纹 + {@code depth × width} 桶表 + 最小堆。
 │   │   │               ├── dto/
 │   │   │               │   └── article/
-│   │   │               │       ├── HotArticleItem.java    # 热门文章卡片的 HTTP 层投影 —— 13 个字段，与 B 侧 {@code HotArticleCard} 逐条一致。
+│   │   │               │       ├── HotArticleCard.java    # 热门文章卡片的 HTTP 层投影 —— 13 个字段，与 B 侧 {@code HotArticleCard} 逐条一致。
 │   │   │               │       ├── HotArticlesReq.java    # 分页入参 —— 对应 B 侧 {@code service/hot/hot-api/.../api/dto/HotArticlesReq.java}。
 │   │   │               │       └── HotArticlesResp.java    # 热门文章列表响应 —— 对应 B 侧 {@code service/hot/hot-api/.../api/dto/HotArticlesResp.java}。
 │   │   │               ├── grpc/
@@ -102,6 +102,8 @@
 │                   └── hot/
 │                       ├── assembly/
 │                       │   └── HotNoPersistenceResidueTest.java    # 🔴 hot 域「无表 ⇒ 无持久层」的守门 —— 钉死 2026-11-09（global 收口域统一处置 · 台账 F-13）
+│                       ├── config/
+│                       │   └── HotKafkaErrorHandlerAssemblyGateTest.java    # 🔴 装配层门禁：容器上的 error handler 就是「零重试」的那个。
 │                       ├── contract/
 │                       │   └── HotErrorContractTest.java    # hot 域错误契约测试 —— 把 L1 的三张表钉死：
 │                       ├── domain/
@@ -145,5 +147,5 @@
 | 项 | 状态 |
 |---|---|
 | 目录结构 | ✅ 已落地（本文件由 `tools/gen-file-tree.py` **按磁盘实际生成** ⇒ 不与代码漂） |
-| 文件内容 | ✅ **无空壳** —— 本模块 **53** 个 `.java`（含测试源）· **待填空壳 0 个**（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**） |
+| 文件内容 | ✅ **无空壳** —— 本模块 **54** 个 `.java`（含测试源）· **待填空壳 0 个**（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**） |
 | B 侧 ↔ Java 逐文件对照 | 📄 [`../Mapping_Table/hot/hot.md`](../Mapping_Table/hot/hot.md) —— 逐文件对照的**唯一权威副本**；由 `tools/check-mapping-coverage.py` **机器双向核验**（B 列 ⇄ C 列 ⇄ 磁盘） |

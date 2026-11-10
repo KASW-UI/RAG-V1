@@ -17,11 +17,9 @@ import java.util.List;
  *
  * <p><b>L4 idiomatization（三段式 · AGENTS.md §3.2）</b>：
  * <ol>
- *   <li><b>比 B 侧多做了什么</b>：三处<b>纯表达层</b>改动 ——
+ *   <li><b>比 B 侧多做了什么</b>：两处<b>纯表达层</b>改动 ——
  *       ① <b>可变 POJO → immutable record</b>（D5 + A9）⇒ setter 全部消失；
- *       ② 包名 {@code com.rag.hot.hot.api.dto} → {@code com.rag.hot.dto.article}（D7 + D11）；
- *       ③ <b>类名 {@code HotArticleCard} → {@code HotArticleItem}</b>
- *       （映射表 hot.md §1.2 已登记：<b>命名债</b> —— 见下方「⚠️ 命名债」专段）。</li>
+ *       ② 包名 {@code com.rag.hot.hot.api.dto} → {@code com.rag.hot.dto.article}（D7 + D11）。</li>
  *   <li><b>语义还一样吗</b>：一样 ——
  *       ① 13 个字段的<b>名字</b>、<b>类型</b>、<b>JSON 键名</b>、<b>输出顺序</b>逐条未动
  *       （{@code @JsonPropertyOrder} 逐条照抄 B 侧 :84-87）；
@@ -31,16 +29,17 @@ import java.util.List;
  *   <li><b>B 出处</b>：同上（逐条行号）。</li>
  * </ol>
  *
- * <p><b>⚠️ 命名债（映射表 hot.md §1.2 登记 · 本类是其唯一载体）</b>：
- * B 侧刻意把 HTTP 层的卡片改名成 {@code HotArticleCard}，为的是<b>避开</b>与 proto message
+ * <p><b>✅ 命名债已消除（2026-11-10）</b>：
+ * B 侧刻意把 HTTP 层的卡片命名成 {@code HotArticleCard}，为的是<b>避开</b>与 proto message
  * {@code hot.HotArticleItem}（<b>只有 2 个字段</b>：{@code article_id} / {@code hot_score}）同名。
- * 本仓沿用了 {@code HotArticleItem} ⇒ <b>两个同名不同形的类型并存</b>：
+ * ⇒ ⇒ 本仓此前<b>沿用了</b> {@code HotArticleItem} ⇒ 两个同名不同形的类型并存：
  * <pre>
- *   com.rag.hot.dto.article.HotArticleItem      ← 本类（13 字段，HTTP 层投影）
- *   com.rag.proto.hot.HotArticleItem             ← proto 生成物（2 字段，gRPC 层投影）
+ *   com.rag.hot.dto.article.HotArticleCard   ← 本类（13 字段，HTTP 层投影）
+ *   com.rag.proto.hot.HotArticleItem         ← proto 生成物（2 字段，gRPC 层投影）
  * </pre>
- * ⇒ ⇒ <b>引用时必须写全限定名</b>，否则 IDE 自动 import 会引错 ⇒ 已在
- * {@code HotApiService} 与 {@code HotApiSupport} 的 import 处显式区分。
+ * ⇒ ⇒ **本类的类名与 B 侧逐字一致**（`HotArticleCard`）⇒ ⇒ **不再需要写全限定名**来区分两者
+ * ⇒ ⇒ 与 B 侧的类名差异**归零**（此前登记在映射表 hot.md §1.2 的「命名债」一行 ⇒ **已销账**）。
+ * ⚠️ **proto 侧那个 {@code HotArticleItem} 保持不动** —— 它是 proto 契约（L1）的一部分。
  *
  * <p><b>⚠️ {@code secondary_tags} 必须是 {@code null}（不是 {@code []}）</b>：
  * B 侧的 proto3 repeated 字段在无元素时是 nil slice ⇒ JSON 输出 {@code "secondary_tags":null}；
@@ -61,7 +60,7 @@ import java.util.List;
         "article_id", "rank", "hot_score", "title", "brief", "cover_image_url", "author_id",
         "create_time", "view_count", "like_count", "comment_count", "manual_type_tag", "secondary_tags"
 })
-public record HotArticleItem(
+public record HotArticleCard(
         @com.fasterxml.jackson.annotation.JsonProperty("article_id") String articleId,
         @com.fasterxml.jackson.annotation.JsonProperty("rank") int rank,
         @com.fasterxml.jackson.annotation.JsonProperty("hot_score") long hotScore,

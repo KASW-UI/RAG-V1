@@ -7,7 +7,7 @@ import com.rag.common.web.JsonBodyConverter;
 import com.rag.common.web.JsonBodyConverterConfig;
 import com.rag.hot.contract.ErrCodes;
 import com.rag.hot.contract.ErrMsg;
-import com.rag.hot.dto.article.HotArticleItem;
+import com.rag.hot.dto.article.HotArticleCard;
 import com.rag.hot.dto.article.HotArticlesReq;
 import com.rag.hot.dto.article.HotArticlesResp;
 import jakarta.servlet.http.HttpServletRequest;
@@ -340,9 +340,9 @@ public final class HotApiSupport {
      * @param hydrated 补全后的列表；元素为 {@code null} 表示该条被 skip
      * @return 稠密 rank 后的列表；入参全为 {@code null} 时返回<b>空列表</b>（不是 {@code null}）
      */
-    public static List<HotArticleItem> assignRanks(List<HotArticleItem> hydrated) {
-        List<HotArticleItem> result = new ArrayList<>(hydrated.size());
-        for (HotArticleItem item : hydrated) {
+    public static List<HotArticleCard> assignRanks(List<HotArticleCard> hydrated) {
+        List<HotArticleCard> result = new ArrayList<>(hydrated.size());
+        for (HotArticleCard item : hydrated) {
             if (item == null) {
                 continue;
             }
@@ -358,8 +358,8 @@ public final class HotApiSupport {
      * @param rank 新的稠密序号
      * @return 带指定 rank 的新卡片
      */
-    private static HotArticleItem withRank(HotArticleItem item, int rank) {
-        return new HotArticleItem(item.articleId(), rank, item.hotScore(), item.title(), item.brief(),
+    private static HotArticleCard withRank(HotArticleCard item, int rank) {
+        return new HotArticleCard(item.articleId(), rank, item.hotScore(), item.title(), item.brief(),
                 item.coverImageUrl(), item.authorId(), item.createTime(), item.viewCount(),
                 item.likeCount(), item.commentCount(), item.manualTypeTag(), item.secondaryTags());
     }
@@ -376,10 +376,10 @@ public final class HotApiSupport {
      * @param pageSize 每页条数
      * @return 组装好的响应
      */
-    public static HotArticlesResp slice(List<HotArticleItem> ranked, int page, int pageSize) {
+    public static HotArticlesResp slice(List<HotArticleCard> ranked, int page, int pageSize) {
         long total = ranked.size();
         int[] range = paginate(total, page, pageSize);
-        List<HotArticleItem> paged;
+        List<HotArticleCard> paged;
         if (range[0] == range[1]) {
             paged = Collections.emptyList();
         } else {

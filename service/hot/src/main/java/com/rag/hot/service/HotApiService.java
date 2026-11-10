@@ -12,7 +12,7 @@ import com.rag.hot.config.HotDomainQueryConfiguration;
 import com.rag.hot.contract.CodeError;
 import com.rag.hot.contract.ErrCodes;
 import com.rag.hot.contract.ErrMsg;
-import com.rag.hot.dto.article.HotArticleItem;
+import com.rag.hot.dto.article.HotArticleCard;
 import com.rag.hot.dto.article.HotArticlesReq;
 import com.rag.hot.dto.article.HotArticlesResp;
 import com.rag.hot.metrics.HotApiMetrics;
@@ -178,8 +178,8 @@ public class HotApiService {
 
             List<com.rag.proto.hot.HotArticleItem> hotItems = fetchTopK();
 
-            List<HotArticleItem> hydrated = hydrate(hotItems, deadlineNanos);
-            List<HotArticleItem> ranked = HotApiSupport.assignRanks(hydrated);
+            List<HotArticleCard> hydrated = hydrate(hotItems, deadlineNanos);
+            List<HotArticleCard> ranked = HotApiSupport.assignRanks(hydrated);
 
             HotArticlesResp resp = HotApiSupport.slice(ranked, page, pageSize);
             success = true;
@@ -297,13 +297,13 @@ public class HotApiService {
      * @return 与输入<b>等长</b>的列表，元素为 {@code null} 表示该条被 skip；
      *         rank <b>尚未</b>计算（由 {@link HotApiSupport#assignRanks} 统一做）
      */
-    public List<HotArticleItem> hydrate(List<com.rag.proto.hot.HotArticleItem> hotItems, long deadlineNanos) {
+    public List<HotArticleCard> hydrate(List<com.rag.proto.hot.HotArticleItem> hotItems, long deadlineNanos) {
         if (hotItems == null || hotItems.isEmpty()) {
             return new ArrayList<>();
         }
 
         int n = hotItems.size();
-        HotArticleItem[] hydrated = new HotArticleItem[n];
+        HotArticleCard[] hydrated = new HotArticleCard[n];
         Semaphore gate = new Semaphore(HYDRATION_CONCURRENCY);
 
         @SuppressWarnings("unchecked")
@@ -337,8 +337,8 @@ public class HotApiService {
             Thread.currentThread().interrupt();
         }
 
-        List<HotArticleItem> ordered = new ArrayList<>(n);
-        for (HotArticleItem card : hydrated) {
+        List<HotArticleCard> ordered = new ArrayList<>(n);
+        for (HotArticleCard card : hydrated) {
             ordered.add(card);
         }
         return ordered;
@@ -352,7 +352,7 @@ public class HotApiService {
      * @param deadlineNanos 请求的<b>绝对</b> deadline；{@code -1} = 无预算
      * @return 成功时的卡片；<b>任何</b> skip 分支都返回 {@code null}
      */
-    HotArticleItem buildHotArticleItem(com.rag.proto.hot.HotArticleItem hotItem, long deadlineNanos) {
+    HotArticleCard buildHotArticleItem(com.rag.proto.hot.HotArticleItem hotItem, long deadlineNanos) {
         // 分支 ①：B 侧 :127-130 —— nil item 或空 article_id
         if (hotItem == null || hotItem.getArticleId().isEmpty()) {
             metrics.observeArticleSkip(HotApiMetrics.SKIP_EMPTY_ARTICLE_ID);
@@ -408,7 +408,7 @@ public class HotApiService {
         List<String> secondaryTags = article.getSecondaryTagsCount() == 0
                 ? null
                 : new ArrayList<>(article.getSecondaryTagsList());
-        return new HotArticleItem(
+        return new HotArticleCard(
                 article.getId(),
                 0,
                 Integer.toUnsignedLong(hotItem.getHotScore()),

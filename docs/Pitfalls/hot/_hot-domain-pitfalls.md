@@ -381,3 +381,38 @@ C 侧按 **D2** 把这条自我往返改成**同进程方法直连** ⇒ ⇒ **�
 > 📌 **本轮实测**：两侧**都是定长**（`Transfer-Encoding = -` / `Content-Length = 6449`）⇒ 两侧一致 ✅。
 > 📌 **注意**：这与「两侧都是 chunked」的**预期相反** ⇒ ⇒ 又一次印证「**预期不能写进判据**」——
 > 判据只钉「两侧相等」，**绝不**钉「必须是哪一种」。
+
+---
+
+## P-HOT-14 · 🔴 「一个类初始化失败」会**连锁**成一堆 error ⇒ **先找第一个真因，别按错误数下结论**
+
+**形态**：一轮全量测试报了 **23 个 error**，逐条看全是
+`NoClassDefFoundError: Could not initialize class com.rag.hot.support.HotKafkaTestBase`
+（或同族的 `HotServiceApplicationTests` / `HotGrpcServiceRealGrpcTest`）
+⇒ ⇒ 看起来像「**一堆类都坏了**」。
+
+**真相**：**只有 1 个根因** —— `HotKafkaTestBase` 的 **static 初始化块**里
+`KAFKA.start()` 抛了 `ContainerLaunchException`（Kafka 容器起不来）
+⇒ ⇒ **该类的 static 初始化失败** ⇒ ⇒ 之后任何**引用它**的类都拿不到 class
+⇒ ⇒ 报 `NoClassDefFoundError: Could not initialize class X`
+⇒ ⇒ 继承它的测试类**全部连带报错**。
+
+**根因又分两层**：
+- 近因：Docker 守护进程**刚重启过**（批量容器 `Exited (255)`）⇒ 当时在跑的容器全被杀；
+- 诱因：**别的 lane 正在并行跑测试**（like 域 surefire ＋ follow 域 E-4 探针）⇒ ⇒ **抢 Docker 资源**
+  ⇒ ⇒ 本域的 Kafka 容器抢不到资源 ⇒ 启动失败。
+
+**判定式（三条）**：
+1. **看到 `NoClassDefFoundError: Could not initialize class X`** ⇒ **不是**「X 缺依赖」
+   ⇒ ⇒ 真实含义是「**X 的静态初始化块抛了**」⇒ ⇒ **顺 `Caused by` 往下找第一个真因**；
+2. ⇒ ⇒ **错误数会放大**：1 个 static 初始化失败 ⇒ N 个测试类连带 ⇒ ⇒
+   **「23 个 error」其实只有 1 个根因** ⇒ ⇒ **先按「Caused by 链的最底端」归并，再判断影响面**；
+3. ⇒ ⇒ 静态初始化块**放容器启动**（如 `static { KAFKA.start(); }`）⇒ ⇒
+   **一个环境问题会污染整轮读数** ⇒ ⇒ 环境恢复后**必须整轮重跑**（半轮读数不可用）。
+
+**⚠️ 另一半纪律（本轮也踩到）**：**两个 maven 进程并行写同一个 `target/` 会互相破坏产物**
+⇒ ⇒ 取消其中一个任务后**必须重跑**（被取消那轮读到的是被破坏的中间态）⇒ ⇒
+**「同一模块不并行跑」是硬约束**。
+
+> 📌 **同族**：与「『跑绿』≠『本来就绿』」「『脚本自报成功』≠『真做了』」同源 ——
+> 本条补的是「**一处的环境失败会被静态初始化放大成一堆看似代码坏了的 error**」这一面。

@@ -489,18 +489,19 @@
 | 修复建议 | 不修；**要落盘请用 `detach()`** |
 | 验证方法 | 静态（零调用点） |
 
-### F-11 · 命名债：`HotArticleItem` 与 proto message 同名 · 表达面
+### F-11 · 命名债：`HotArticleItem` 与 proto message 同名 · ✅ **2026-11-10 已销账（类名与 B 侧逐字一致）**
 
 | 项 | 内容 |
 |---|---|
-| 位置 | `dto/article/HotArticleItem.java` vs `com.rag.proto.hot.HotArticleItem` |
+| 位置 | `dto/article/HotArticleCard.java`（**原** `HotArticleItem.java`）vs `com.rag.proto.hot.HotArticleItem` |
 | B | B 侧**刻意改名** `HotArticleCard` 以避开与 proto message `hot.HotArticleItem`（**只有 2 字段**）同名 |
-| C | 沿用 `HotArticleItem` ⇒ 两个同名不同形的类型并存 |
+| C（**修复前**） | 沿用 `HotArticleItem` ⇒ 两个同名不同形的类型并存 |
 | 原因 | C 侧 DTO 命名沿用**端点语义**（`HotArticlesResp.items` 的元素）⇒ 与 proto 同名 |
 | 影响范围 | **零行为影响**（两个类型在不同包，无 import 冲突）⇒ 但**易误用** |
 | 严重程度 | 🟢 低（命名债） |
-| 修复建议 | 不在本轮改（改名会动 5 处 + JSON 契约面）。**建议下一轮命名债清理统一处理**（`docs/命名债与包形状.md` 已登记 P4-④ 余 6） |
-| 验证方法 | 真 Tomcat 响应体断言（13 分量） |
+| **修复落地（2026-11-10）** | DTO 类名改为 **`HotArticleCard`** ⇒ ⇒ **与 B 侧逐字一致** ⇒ ⇒ 两个同名类型**不再并存** ⇒ ⇒ 引用时不必再写全限定名区分；**proto 侧那个 `HotArticleItem` 保持不动**（L1 契约）<br>· 改动面：1 个文件改名 ＋ 4 个文件的类型引用（`HotApiService` / `HotApiSupport` / `HotArticlesResp` / `HotApiSupportContractTest`）⇒ **proto 引用点零改动**（`HotRankingQueryService` / `HotGrpcService` / 两个 gRPC 测试仍用 proto 的同名类型）<br>· ⚠️ **B 侧方法名 `buildHotArticleItem` 保持不变**（C 侧照抄 B 侧 ⇒ 不改）⇒ ⇒ **改的只有 DTO 类型名** |
+| 验证方法 | ✅ **PASS（2026-11-10）** —— 域级 **102 + 2 例全绿**（真 Tomcat 响应体 13 分量断言逐条未动 ⇒ **JSON 键名与字节序不变**）＋ 三道守门 EXIT=0 |
+| **⚠️ 边界** | 本条**只**销 hot 域这一个命名债；`docs/命名债与包形状.md` 里登记的**其余 5 条**（P4-④）**不在本域写权内** ⇒ 仍归收口域/各域 |
 
 ### F-12 · Java 侧 Actuator **单向增强**：B 侧注册的 5 个 api 指标**没有任何端点暴露**
 
@@ -861,7 +862,7 @@
 > 📌 **2026-11-05 追加 §十（M6 轮 · 守护网补齐与文档订正）**：**+18 条真触发用例**（95 例全绿 · skipped=0）⇒ **4 条变异**逐条转红（证明不是假绿）⇒
 > **3 处 javadoc 措辞订正**（`HotApiService` / `HotApiSupport` / `HotPartitionSketchRegistry`）⇒ **只动测试与注释，不动实现** ⇒ 域级行为读数不变。
 > 📌 **本域的两档台账已补齐**（2026-11-04）：[`docs/Intentional_Deviations/hot/_signed-deviations.md`](../../../Intentional_Deviations/hot/_signed-deviations.md)（**6 条编号** —— **5 条仍生效 ＋ 1 条已修复**，即 **DEV-HOT-002**，2026-11-05 域内方向补回 2s 上界 ⇒ 差异消除）·
-> [`docs/Pitfalls/hot/_hot-domain-pitfalls.md`](../../../Pitfalls/hot/_hot-domain-pitfalls.md)（**13 条** —— 2026-11-05 追加 **P-HOT-10**「变异没红有两种可能」＋ **P-HOT-11**「会被截断切掉的脆弱断言」＋ **P-HOT-12**「换掉调用方式 ⇒ 装在传输层上的出向上界一起消失」＋ **P-HOT-13**「传输编码面只能钉两侧相等、不能钉绝对值」）⇒ ⚠️ 两个 `_INDEX.md` **不归本 lane**（Worktree.md §三.1）⇒ **待主会话合并**。
+> [`docs/Pitfalls/hot/_hot-domain-pitfalls.md`](../../../Pitfalls/hot/_hot-domain-pitfalls.md)（**14 条** —— 2026-11-05 追加 **P-HOT-10**「变异没红有两种可能」＋ **P-HOT-11**「会被截断切掉的脆弱断言」＋ **P-HOT-12**「换掉调用方式 ⇒ 装在传输层上的出向上界一起消失」＋ **P-HOT-13**「传输编码面只能钉两侧相等、不能钉绝对值」；2026-11-10 追加 **P-HOT-14**「一个类初始化失败会**连锁**成一堆 error ⇒ 先找第一个真因」）⇒ ⚠️ 两个 `_INDEX.md` **不归本 lane**（Worktree.md §三.1）⇒ **待主会话合并**。
 
 ---
 
@@ -1040,3 +1041,68 @@
 | 三个 `_INDEX.md` 并入主干（`docs/DRIFT/_INDEX.md` hot 行 · `docs/Intentional_Deviations/_INDEX.md` · `docs/Pitfalls/_INDEX.md`）| **主会话** | 共享面（AGENTS.md §五.3 规则 3）|
 | **F-11** 命名债（`HotArticleItem` 与 proto message 同名）| 用户拍板 | 表达层债 · 改名的风险收益比不划算 |
 | 仓库根的 **env 契约文件**（`.env.example` / docker-compose）是否也用了新 env 名 | **主会话** | 本轮只核了 `service/hot/application.yml` |
+
+---
+
+## 十二、阶段 M8 · 命名债销账 ＋ 最后一条守护网 ＋ 文档订正（2026-11-10）
+
+> 📌 **本节对应**独立审核报告（`verification-hot-2026-11-05.md`）§十三 收口清单的**最后 3 项**：
+> **F-11 命名债** · **G-6 装配层断言** · **映射表 7 处陈旧断言**。
+> 📌 **写权面**：只碰 `service/hot/` ＋ `docs/DRIFT/hot/` ＋ `docs/Mapping_Table/hot/`（hot 域自己的那份）⇒ **未碰共享面**。
+
+### 12.1 F-11 命名债销账（DTO 类名 → **与 B 侧逐字一致**）
+
+| 项 | 内容 |
+|---|---|
+| **改前** | `com.rag.hot.dto.article.HotArticleItem`（13 字段，HTTP 层投影）**与** `com.rag.proto.hot.HotArticleItem`（2 字段，gRPC 层投影）**同名不同形并存** |
+| **改后** | DTO 改名 **`HotArticleCard`** ⇒ ⇒ **类名与 B 侧逐字一致**（B 侧当年就是刻意改名避开 proto 同名）⇒ ⇒ 两个同名类型**不再并存** ⇒ ⇒ 引用时**不必再写全限定名**区分 |
+| **改动面** | 1 个文件改名 ＋ **4 个文件**的类型引用（`HotApiService` / `HotApiSupport` / `HotArticlesResp` / `HotApiSupportContractTest`）|
+| **⚠️ proto 侧零改动** | `HotRankingQueryService` / `HotGrpcService` / 两个 gRPC 测试仍用 proto 的 `HotArticleItem` ⇒ ⇒ **L1 契约未动** |
+| **⚠️ B 侧方法名保持不变** | C 侧的 `buildHotArticleItem` 是**照抄 B 侧**的方法名 ⇒ **不改**（只改 DTO 类型名）⇒ 改的过程中**先把误改的 3 处方法名还原**（编译器驱动的整文件替换曾误伤）⇒ ⇒ **「只改类型名、不改方法名」这条边界已守住** |
+| **可观察行为** | **零影响** —— JSON 键名与字节序由 `@JsonPropertyOrder` ＋ `@JsonProperty` 显式钉住（与类名无关）⇒ ⇒ 真 Tomcat 的 13 分量响应体断言逐条未动、仍全绿 |
+
+### 12.2 G-6 · 容器 error handler 的**装配层**断言（补上最后一条守护网）
+
+| 项 | 内容 |
+|---|---|
+| **B 侧那条断言** | `HotKafkaConsumerGateTest#containerErrorHandlerIsZeroRetry`（:328-368）—— 读**工厂私有字段** `commonErrorHandler` ⇒ 再读 `failureTracker.noRetries` / `failureTracker.backOff` |
+| **C 侧为什么不能照抄** | ⚠️ B 侧是 **spring-kafka 4.0.7**，C 侧是 **spring-kafka 3.3.13**（Boot 3.5 管理的版本）⇒ ⇒ 内部字段**不能假设同名** ⇒ ⇒ 先用 `javap` 在 3.3.13 的 jar 上**逐条核实**四条反射路径（`AbstractKafkaListenerContainerFactory.commonErrorHandler` / `DefaultErrorHandler.isAckAfterHandle()` / `FailedRecordProcessor.failureTracker` / `FailedRecordTracker.noRetries` + `.backOff`）⇒ **四条全部存在** ⇒ ⇒ 断言可照 B 侧逐条落地 |
+| **落点** | 新增 `service/hot/src/test/java/com/rag/hot/config/HotKafkaErrorHandlerAssemblyGateTest.java`（**2 例**）<br>· ① `containerErrorHandlerIsZeroRetry` —— 读**生产 bean**（`hotKafkaListenerContainerFactory`）上**容器真正会用的那个 handler**：非空 ⇒ 是 `DefaultErrorHandler` ⇒ `ackAfterHandle=true` ⇒ `failureTracker.noRetries=true` ⇒ `backOff` 是 `FixedBackOff` 且 `maxAttempts=0`<br>· ② `containerHandlerComesFromProductionFactoryMethod` —— 装到容器上的那个 handler 与 `HotKafkaConfig.zeroRetryErrorHandler()` 产出的**逐项语义指纹一致** ⇒ ⇒ 钉住「**工厂方法对 ＋ 真的接上了**」两件事（只测「新建一个 handler」会漏掉「忘了 `setCommonErrorHandler`」）|
+| **⚠️ 与既有行为断言的关系** | 本域**已有**行为断言（真 broker 上「投递次数 = 1」）⇒ 那条钉**结果**，本条钉**机制** ⇒ ⇒ **互补、缺一不可** |
+| **⚠️ 断言自带「读不到就报明确错」** | 将来 Spring Kafka 升级改了内部结构 ⇒ ⇒ 用例**显式红**并提示「断言需重做」⇒ ⇒ **不会退化成假绿** |
+| **变异验证** | 把 `FixedBackOff(0L, 0L)` 改成 `FixedBackOff(0L, 9L)`（= Boot 默认重试 9 次）⇒ ⇒ **例①转红**（`noRetries` 期望 `true` 实得 `false`）⇒ 例②仍绿（它比的是「装上的」与「工厂产出的」**一致性**，两者一起变 ⇒ 仍一致 ⇒ **设计使然**）⇒ ⇒ **已还原**（`git diff` 为空）|
+
+### 12.3 映射表的 8 处陈旧断言订正（`docs/Mapping_Table/hot/hot.md`）
+
+| # | 陈旧内容 | 事实 |
+|---|---|---|
+| 1~3 | `WebMvcConfig`「🔴 待确认 / 疑似多余」＋「与免鉴权事实矛盾」 | ✅ 该类早已改成**显式的「零 interceptor」标记**（`addInterceptors` 刻意为空）⇒ ⇒ **实际注册的 interceptor 数 = 0** ⇒ 与 B 侧逐条一致 |
+| 4 | §3 决策锁「1 处，待拍板」 | ✅ **已销账**（同上）⇒ 并写清「**类仍保留**」的理由（文件树含它 ⇒ 删文件会与 `check-docs-vs-tree.py` 失配）|
+| 5 | 批次 5「1 处（待拍板）」 | ✅ 已销账 |
+| 6 | 缺口表第 10 行「§1.2（🔴 待确认）」 | ✅ 已消解 |
+| 7 | 术语表「`C 新增` …（🔴 疑似多余）」 | ✅ 已消解（行为影响为零）|
+| 8 | 结尾「rpc 侧 Kafka 消费链路 与 `WebMvcConfig` 两处仍需拍板」 | ✅ **两处均已消解**（Kafka 侧 = §12.2 的装配层门禁）|
+| 附 | §2 容器三旋钮「未见三旋钮 ⇒ 🔴 需补」 | ✅ **已对齐**：① `relaxed-query-chars` ✔ ② `max-http-request-header-size: 1028KB` ✔ ③ **参数个数上限刻意不配 Tomcat 的** ⇒ **由共享层统一持有**（⇒ 10001）⇒ ⇒ 与 B 侧的差异是**有意的承载搬迁**，**不是缺口** |
+| 附 | §1.2 DTO 行「⚠️ 命名债：C 沿用了 `HotArticleItem`」 | ✅ **已消解**（§12.1）⇒ C 列路径同步改为 `dto/article/HotArticleCard.java` |
+
+> ⚠️ **同源的 task 域同名类**（模板 javadoc）**不在 hot 域写权内** ⇒ 由 task lane 自己销账。
+
+### 12.4 本轮读数（**全部真跑**）
+
+| 项 | 读数 |
+|---|---|
+| 域级测试 | **104 例全绿**（改名前 102 ＋ 本轮 G-6 的 2 例），**skipped = 0**<br>⚠️ **读数口径（诚实标注）**：本轮 hot 域是**单独跑**的（`mvn -o -pl service/hot -am test -Dtest='com.rag.hot.**'`）⇒ ⇒ **common 域的测试本轮未计入** ⇒ ⇒ 原因是 common 的两个**时间预算敏感**用例在**机器被别的 lane 压满**时假红（详见下方「本轮的环境观察」）|
+| 变异验证 | **G-6 的 1 条按预期转红** ⇒ 还原后基线复跑全绿 |
+| 三道守门 | **EXIT = 0**（架构断言 A1–A17 · docs↔树对账 · 映射覆盖 C 列 100%）|
+| 文件树 | 已用生成器重生成（`HotArticleItem.java` → `HotArticleCard.java` ＋ 新测试类落点）|
+| 写权面 | 只碰 `service/hot/` ＋ `docs/DRIFT/hot/` ＋ `docs/Mapping_Table/hot/`（hot 域自己的那份）＋ `docs/Mapping_Table/_INDEX.md` 的 **hot 行**（自报数同步）⇒ **未碰共享层代码**（`common/**` **零改动** · 三个 `_INDEX.md` 未动）|
+
+> 📌 **本轮的环境观察（不是本域缺陷 · 但对任何人跑测试都成立）**：
+> ① 本轮机器上**同时有别的 lane 在跑测试**（like 域 surefire ＋ follow 域 E-4 探针）⇒ ⇒ **抢 Docker 资源**；
+> ② Docker 守护进程**中途重启过一次**（批量容器 `Exited (255)`）⇒ ⇒ 当时在跑的容器全被杀；
+> ③ 二者叠加 ⇒ ⇒ **Kafka 容器起不来** ⇒ ⇒ `HotKafkaTestBase` 的 **static 初始化块**抛异常
+> ⇒ ⇒ 报出 **23 个 `NoClassDefFoundError: Could not initialize class ...`** —— **看着像「一堆类坏了」，其实只有 1 个根因**
+> ⇒ ⇒ 详见 [`P-HOT-14`](../../../Pitfalls/hot/_hot-domain-pitfalls.md)；
+> ④ **common 的 2 个 failure 也是同一类**：在**主仓**（**本轮零改动**）**低负载单跑 ⇒ 10 例全绿**
+> ⇒ ⇒ 那 2 条是**时间预算敏感**的断言（`rowCountFollowsRemainingBudgetNotCancelTiming` 断言「放行时预算还剩」）
+> ⇒ ⇒ **机器压满 ⇒ 预算提前耗尽 ⇒ 断言翻转** ⇒ ⇒ **属「读数失败 ≠ 行为差异」**，**不是**代码缺陷。

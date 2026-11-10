@@ -126,7 +126,7 @@
 | `hot-api/.../service/HotArticleQueryService.java` + `HotArticleHydrator.java` + `HotRankPaginator.java` | `service/hot/src/main/java/com/rag/hot/service/HotApiService.java` + `HotApiSupport.java` | 1:N | B 侧 3 类（编排 `HotArticleQueryService` / 并发补全 `HotArticleHydrator` / 分页数值 `HotRankPaginator`）→ **C 2 类**（编排 + 辅助）。分页阈值 1/20/50/100、稠密跨页 rank、并发窗口 8 都在这两类里 |
 | `hot-api/.../dto/HotArticlesReq.java` | `service/hot/src/main/java/com/rag/hot/dto/article/HotArticlesReq.java` | 1:1 | form tag `page` / `page_size`（**下划线**）；两层默认值（form tag 默认 1/20 + logic 层 default 1/20）缺一不可 |
 | `hot-api/.../dto/HotArticlesResp.java` | `service/hot/src/main/java/com/rag/hot/dto/article/HotArticlesResp.java` | 1:1 | `items` / `total` / `page` / `page_size` / `scope`（`scope` 恒 `"rolling"`） |
-| `hot-api/.../dto/HotArticleCard.java` | `service/hot/src/main/java/com/rag/hot/dto/article/HotArticleItem.java` | 1:1 | ⚠️ **命名债**：B 刻意改名 `HotArticleCard` 以避开与 proto message `hot.HotArticleItem`（**只有 2 字段**）同名；C 沿用了 `HotArticleItem` ⇒ 两个同名不同形的类型并存，易误用 |
+| `hot-api/.../dto/HotArticleCard.java` | `service/hot/src/main/java/com/rag/hot/dto/article/HotArticleCard.java` | 1:1 | ✅ **命名债已消解（2026-11-10）** —— B 侧当年刻意改名 `HotArticleCard` 以避开与 proto message `hot.HotArticleItem`（**只有 2 字段**）同名；C 侧此前沿用了 `HotArticleItem` ⇒ 两个同名不同形的类型并存 ⇒ 现**类名与 B 侧逐字一致**（`HotArticleCard`）⇒ ⇒ 不再需要写全限定名来区分两者；**proto 侧那个 `HotArticleItem` 保持不动**（L1 契约） |
 | `hot-api/.../metrics/HotApiMetrics.java` | `service/hot/src/main/java/com/rag/hot/metrics/HotApiMetrics.java` | 1:1 | 5 个指标名 L1（§6）；⚠️ `observeReject`（B 侧 `hot-api/…/api/metrics/HotApiMetrics.java:196`）**零触发点**（全域 grep 只有定义行）⇒ 保留指标名、**不补触发点** |
 | **无对应类**（B 按 `FileTree/hot/api.md` §12.5「刻意不建」—— 字段全被 Spring 原生属性接管，hot 无专属阈值） | `service/hot/src/main/java/com/rag/hot/config/HotApiProperties.java` | 1:1 | ⚠️ C 建了但**职责待定**：B 侧 api 侧无任何专属阈值（`defaultPage` / `maxPageSize` / `maxHotArticles` / `hydrationConcurrency` 是**编译期常量**，不是配置） |
 | `hot-api/.../client/HotRpcClient.java` | **无对应物** | 1:1 | **D2**：同域调用改直连 ⇒ `HotApiService` 直接注入 `rpc/service/HotRankingQueryService`（不再自我 gRPC 往返） |
@@ -136,7 +136,7 @@
 | `hot-api/.../form/GoFormValues.java` | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java`（**跨域共享，不在 hot 域内**） | 1:N | **D5**：C 侧 DTO 改 immutable record + Bean Validation ⇒ ⚠️ **L3 降级**（错误文案从 B 侧的 form 解析文案改为 Bean Validation 文案） |
 | `hot-api/.../config/HotHydrationExecutorConfiguration.java` | `service/hot/src/main/java/com/rag/hot/config/HotHydrationExecutorConfiguration.java` | 1:1 | B 侧 `HotHydrationExecutorConfiguration`（`ThreadPoolTaskExecutor`，池 64 + 队列 64，`HotHydrationExecutorConfiguration.java:82-85`）⇒ C 侧同形态落成有界池 + 自带生命周期；**每请求并发窗口 8** 由 `HotArticleHydrator` 的 `Semaphore(8)` 施加（B 侧 `HotArticleHydrator.java:29,67`） |
 | **无对应类**（B 侧的 2s 出向封顶由**共享层** `rag.protection.outbound-deadline.cap-millis = 2000` 承担，装在 **gRPC 出向拦截器**上） | `service/hot/src/main/java/com/rag/hot/config/HotDomainQueryConfiguration.java` | **C 新增**（2026-11-05）| 🔴 **D2 域内直连的连带后果**：域内直连**不经 gRPC** ⇒ 共享层那个封顶**管不到它** ⇒ ⇒ C 侧**域内自持** 2s 上界（`hot-api.domain-query-timeout` = 2000 = **B 侧同一个数**）⇒ ⇒ 失败形状回到与 B 侧**逐条一致**（`200` + 5001 信封）。执行器用 Spring `SimpleAsyncTaskExecutor` 的**虚拟线程**模式 ⇒ **不排队**（与 gRPC「直发」同形）；**不能用** `hotHydrationExecutor`（CallerRuns ⇒ 超时等不到） |
-| **无对应类**（B 侧 `FileTree/hot/api.md` §12.5「刻意不建」） | `service/hot/src/main/java/com/rag/hot/config/WebMvcConfig.java` | C 新增 | 🔴 **待确认 / 疑似多余** —— C 的该类 javadoc 写「注册 JwtAuthInterceptor + public 路径白名单」，与「hot 域全部端点免鉴权」**直接矛盾**；且 `File_Tree/hot/hot-service.md` §四 自己也写「本域**不该有** `*JwtAuthInterceptor`」⇒ **C 树内部自相矛盾**，需拍板 |
+| **无对应类**（B 侧 `FileTree/hot/api.md` §12.5「刻意不建」） | `service/hot/src/main/java/com/rag/hot/config/WebMvcConfig.java` | C 新增 | ✅ **已消解（2026-11-10）** —— 该类曾沿用 10 域模板的 javadoc（「注册 JwtAuthInterceptor + public 路径白名单」）⇒ 与「hot 域全部端点免鉴权」**直接矛盾**；现已改为**显式的「零 interceptor」标记**（实现 `WebMvcConfigurer` 但 `addInterceptors` 刻意为空）⇒ ⇒ 「免鉴权」成为代码里**可见、可 review、可被断言锁住**的事实；**仍保留该文件**（文件树含它 ⇒ 删文件会与 `check-docs-vs-tree.py` 失配）⇒ **对可观察行为影响 = 零** |
 
 ### 1.3 `hot-service` · `wiring + client + config + domain/model + grpc + metrics + service` —— 领域 / 服务端能力层
 
@@ -220,7 +220,7 @@
 |---|---|---|
 | 路由注册 | `@RequestMapping("/hot/v1")` + `@GetMapping("/articles")`（`hot-api/…/api/controller/HotArticleController.java:54,77`） | 同 B（`HotArticleController`） |
 | 端点数 / method | 1 个端点，GET | 1 个 |
-| 鉴权 | ❌ 无 interceptor、无 `WebMvcConfig` ⇒ 全部端点免鉴权 | ⚠️ **有 `service/hot/src/main/java/com/rag/hot/config/WebMvcConfig.java`**（javadoc 写「注册 JwtAuthInterceptor」）⇒ 🔴 与免鉴权事实矛盾 |
+| 鉴权 | ❌ 无 interceptor、无 `WebMvcConfig` ⇒ 全部端点免鉴权 | ✅ **已对齐（2026-11-10）** —— C 侧**有** `config/WebMvcConfig.java`，但它是**显式的「零 interceptor」标记**（`addInterceptors` 刻意为空）⇒ ⇒ **实际注册的 interceptor 数 = 0** ⇒ 与 B 侧「零 interceptor」**逐条一致** |
 | Controller → Service | Controller → Service → gRPC client | Controller → `HotApiService` →（直连 `HotRankingQueryService` / `ArticleRpcClient`） |
 | 逻辑层分层 | 3 类（编排 `HotArticleQueryService` / 补全 `HotArticleHydrator` / 分页 `HotRankPaginator`） | 2 类（`HotApiService` / `HotApiSupport`） |
 | 响应信封 | `GlobalResponseAdvice`（B 侧 `hot-api/…/api/advice/GlobalResponseAdvice.java`） | `HotApiResponseAdvice` |
@@ -234,15 +234,19 @@
 | gRPC 传输 | 明文（`negotiation-type: plaintext`） | 明文（`application.yml` 已写 `negotiation-type: plaintext` + 断言 A4） |
 | 客户端 deadline | `GoStyleGrpcCallDeadline` 集中实现（B 侧 `hot-api/…/api/client/GoStyleGrpcCallDeadline.java`） | ⚠️ 无独立类 ⇒ 需在 `grpc.client.*` 显式配 |
 | 服务端 deadline | `RpcServerInterceptorFactory` | 依赖 `common/src/main/java/com/rag/common/observability/ObservabilityProperties.java` |
-| 容器三旋钮 | ✅ 已配（query-chars / param-count / header-size），守门 `tools/difftest/check-tomcat-limits.py` | ⚠️ **RAG-V1 `service/hot/src/main/resources/application.yml` 未见三旋钮** ⇒ 🔴 需补（B 侧 = `maxFormParamCount=2048` + `1MiB+4KiB` header 上限） |
+| 容器三旋钮 | ✅ 已配（query-chars / param-count / header-size），守门 `tools/difftest/check-tomcat-limits.py` | ✅ **已对齐（2026-11-10 复核）** —— ① `relaxed-query-chars: ["[", "]"]` ✔ ② `max-http-request-header-size: 1028KB` ✔（= Go `DefaultMaxHeaderBytes(1<<20)` + 4KiB slop）③ **参数个数上限刻意不配 Tomcat 的** ⇒ **由共享层统一持有**（`WebAutoConfiguration#seaTomcatParameterLimitCustomizer` ⇒ 10001）⇒ ⇒ 与 B 侧的差异是**有意的承载搬迁**（域内自持 → 共享层上收），**不是缺口** |
 | 并发模型 | `ThreadPoolTaskExecutor`（有界池 64 + 队列 64）+ 每请求 `Semaphore(8)` 窗口 | `HotHydrationExecutorConfiguration`（同 B） |
 | 定时任务 | `@Scheduled`（合并 tick 10s：`hot-rpc/…/mq/HotMergeScheduler.java:68,148`） | 🔴 **缺位**（G-3 / G-4） |
 
-**决策锁 · 免鉴权域的 `WebMvcConfig`（1 处，待拍板）**：
-1. `config/WebMvcConfig.java` —— 现状写「注册 JwtAuthInterceptor + public 路径白名单」。
-   **B 侧 `hot-api` 全模块零 interceptor、零 `WebMvcConfig`**（唯一的端点事实是 `hot-api/…/api/controller/HotArticleController.java:54,77`）⇒ 若该类注册了 interceptor，公开热门列表就会突然要 token（**行为变更**）；若它只是空壳占位，则无任何职责 ⇒ 属多余文件。
+**✅ 已消解 · 免鉴权域的 `WebMvcConfig`（1 处 · 2026-11-10 销账）**：
+1. `config/WebMvcConfig.java` —— 此前沿用 10 域模板的描述（「注册 JwtAuthInterceptor + public 路径白名单」）。
+   **B 侧 `hot-api` 全模块零 interceptor、零 `WebMvcConfig`**（唯一的端点事实是 `hot-api/…/api/controller/HotArticleController.java:54,77`）⇒ 若该类注册了 interceptor，公开热门列表就会突然要 token（**行为变更**）。
+   **⇒ 现已改为：实现 `WebMvcConfigurer` 但 `addInterceptors` 刻意为空** ⇒ ⇒ 「hot 域全部端点免鉴权」在代码里**可见、可 review、可被断言锁住**；
+   **类仍保留**（文件树含它 ⇒ 删文件会与 `check-docs-vs-tree.py` 失配）⇒ ⇒ **对可观察行为影响 = 零**。
+   **B 出处**：B 侧无对应类（B 侧靠「没有这个类」表达免鉴权）；C 侧靠「**有一个什么都不注册的类**」表达同一事实。
 
-**为什么换**：RAG-V1 的 `WebMvcConfig` 是**全 10 域模板**，其职责描述来自 message 域（有鉴权）。hot / task 两域**根本没有鉴权** ⇒ 该类必须按域裁剪，不能照抄模板的描述。
+**为什么曾要换**：RAG-V1 的 `WebMvcConfig` 是**全 10 域模板**，其职责描述来自 message 域（有鉴权）。hot / task 两域**根本没有鉴权** ⇒ 该类必须按域裁剪，不能照抄模板的描述。
+⚠️ **task 域的同名类**属同一模板问题 ⇒ 由 task lane 自己销账（**不在 hot 域写权内**）。
 
 ---
 
@@ -341,7 +345,7 @@ Spring 侧必须拆开才有可测的边界；但**当前 C 树里这一层根�
 
 **为什么换**：这三件都不是 hot 域的领域职责 —— form 解析是**全域共用的输入解释规则**，deadline 是**客户端基建**，Jackson 是**Boot 4 拆模块补丁** ⇒ 留在域内会造成 10 份重复。
 
-**批次 5 · 免鉴权域的 `WebMvcConfig` —— 1 处（待拍板）**：见 §3 决策锁。
+**批次 5 · 免鉴权域的 `WebMvcConfig` —— 1 处（✅ 2026-11-10 已销账）**：见 §3 决策锁。
 
 **为什么换**：模板职责描述来自有鉴权的域；hot 域照抄会**新增鉴权**（行为变更），照留空壳则文件无职责。
 
@@ -409,9 +413,9 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/hot" -name '*.java' \
 | 7 | `HotApiResponseAdvice.java` | §1.2 |
 | 8 | `HotApiProperties.java` | §1.2 |
 | 9 | `HotHydrationExecutorConfiguration.java` | §1.2 |
-| 10 | `WebMvcConfig.java` | §1.2（🔴 待确认 / 疑似多余） |
+| 10 | `WebMvcConfig.java` | §1.2（✅ 2026-11-10 已消解：改成显式「零 interceptor」标记） |
 | 11 | `HotArticleController.java` | §1.2 |
-| 12 | `HotArticleItem.java` | §1.2 |
+| 12 | `HotArticleCard.java` | §1.2 |
 | 13 | `HotArticlesReq.java` | §1.2 |
 | 14 | `HotArticlesResp.java` | §1.2 |
 | 15 | `HotApiMetrics.java` | §1.2 |
@@ -491,7 +495,7 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/hot" -name '*.java' \
 - `1:1` = 一个 B 文件对应一个 C 文件（绝大多数行）。
 - `1:N` = 一个 B 文件拆成 N 个 C 文件（如 `hot-common/…/errmsg/HotErrorCode.java` → 4 个契约类、`hot-api/…/service/` 3 类 → 2 个 C 类、`hot-rpc/…/mq/` 4 类 → `messaging/` 4 类 + `contract/ArticleHotEvent`）。
 - `N:1` = 多个 B 文件合到 1 个 C 文件（2 个入口 → 1 个 `HotServiceApplication`（§0）、4 个互动用例 → 1 个 `InteractionStubService`（§1.3）、B 侧 `service/common` → RAG-V1 根 `common/`（§0））。
-- `C 新增` = B 侧没有对应物、C 侧新增（`api/config/WebMvcConfig.java` —— 🔴 疑似多余）。
+- `C 新增` = B 侧没有对应物、C 侧新增（`api/config/WebMvcConfig.java` —— ✅ 2026-11-10 已消解：改成显式「零 interceptor」标记 ⇒ 行为影响为零）。
 
 > ⚠️ 类型只描述 **B ↔ C 的文件数关系**（定义见 §〇）。
 > 同一行里 B 列可能列出多个文件（如 4 个互动用例记为 1 行 `N:1`）。
@@ -516,5 +520,5 @@ find "/Users/pr/Documents/GitHub/RAG-V1/service/hot" -name '*.java' \
 
 **B 列 RAG** = `hot-api`（1 端点，免鉴权）+ `hot-rpc`（5 个 gRPC 方法 + Kafka 消费 + HeavyKeeper + Redis ZSET）+ `hot-common`（错误契约）+ `hot-proto`，**零数据库表**；
 **C 列 RAG-V1** = 合并成 `hot-service` 一个模块、错误契约进域内 `contract/` 包（proto 在根级 `proto/`）、`advice + config + controller + dto + metrics + service`+`wiring + client + config + domain/model + grpc + metrics + service` 两个子包 ——
-**但 rpc 侧的 Kafka 消费链路（`messaging/`）与免鉴权域的 `WebMvcConfig` 两处仍需拍板。**
+**✅ 2026-11-10 更新**：免鉴权域的 `WebMvcConfig` 已销账（见 §3）；rpc 侧的 Kafka 消费链路（`messaging/`）的**零重试语义已补装配层门禁**（`HotKafkaErrorHandlerAssemblyGateTest` —— 读**容器真正会用的那个 handler** 的 `ackAfterHandle` / `noRetries` / `maxAttempts`）⇒ ⇒ 本节原列的**两处待拍板均已消解**。
 ⇒ **文件名与职责逐条对应；行为以 B 侧源码为准。**
