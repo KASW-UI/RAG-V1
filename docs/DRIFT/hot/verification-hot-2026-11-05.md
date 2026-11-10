@@ -51,7 +51,7 @@
 | 6 | `api/client/HotRpcClient.java` | hot-rpc 出向 gRPC 客户端 | —— | —— | **删除（D2 域内直连）** | **INTENTIONALLY_CHANGED** | D2 已批准；连带后果 = 域内方向丢 2s 上界 ⇒ **F-02**（已签字，实测失败形状非确定）|
 | 7 | `api/config/HotHydrationExecutorConfiguration.java` | 补全线程池（core 64 / queue 64 / CallerRuns） | `config/HotHydrationExecutorConfiguration.java` | `hotHydrationExecutor` | 1:1 | **PASS** | 五项设置逐条一致；C 侧另建 `applicationTaskExecutor`（B 侧由 Boot 自动装配）|
 | 8 | `api/controller/HotArticleController.java` | `GET /hot/v1/articles` 入口 + form 解析调用 | `controller/HotArticleController.java` | `getHotArticles` | 1:1 | **PASS** | path/method 不变；薄适配层（值域校验在 logic 层）|
-| 9 | `api/dto/HotArticleCard.java` | 13 分量卡片 DTO | `dto/article/HotArticleItem.java` | record | 1:1 | **PASS** | 13 键名 + **顺序**逐条一致；`hot_score` 用 `long` |
+| 9 | `api/dto/HotArticleCard.java` | 13 分量卡片 DTO | `dto/article/HotArticleCard.java` | record | 1:1 | **PASS** | 13 键名 + **顺序**逐条一致；`hot_score` 用 `long` |
 | 10 | `api/dto/HotArticlesReq.java` | 分页入参 | `dto/article/HotArticlesReq.java` | record | 1:1 | **PASS** | —— |
 | 11 | `api/dto/HotArticlesResp.java` | 分页出参 | `dto/article/HotArticlesResp.java` | record | 1:1 | **PASS** | `{items,total,page,page_size,scope}` |
 | 12 | `api/exception/HotCodeError.java` | 业务异常（带 Go `Error()` 原文 + 纯文案） | `contract/CodeError.java` | —— | 1:1 | **PASS** | 纯文案与原文分离 |

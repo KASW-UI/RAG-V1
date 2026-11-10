@@ -1156,7 +1156,7 @@ def _strip_java_comments(text: str) -> str:
     """把 Java 源码里的注释（行/块/文本块内的内容）抹掉，**保留行数**。
 
     ⚠️ **为什么必须抹注释再判**：本仓有**多处 javadoc 正面提到** Jackson 3 的字母序
-    （`CanonicalHash` · `HotArticleItem` · `RecommendUser` …）⇒ 不抹注释的判据
+    （`CanonicalHash` · `HotArticleCard` · `RecommendUser` …）⇒ 不抹注释的判据
     **必然假红** ⇒ ⇒ 那样这条断言就变成了「天天误报的噪音」⇒ 没有价值。
     """
     out, i, n = [], 0, len(text)
