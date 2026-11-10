@@ -257,6 +257,17 @@ mvn -o clean verify -pl service/users/user -am
 #    （共享层 `6a3acb4` 带进来的 10 例新测试）⇒ 合计由 310 增至 **320**；**本域自身恒为 40 例**。
 # ⇒ repackage 成功 ⇒ 可执行 jar 的 Start-Class = com.rag.user.UserServiceApplication
 #
+# 🔴 **核对日期 2026-11-10 17:55（`main` 最新，复跑）**：**本命令 BUILD FAILURE** —— 失败在**上游 `common`**：
+#    common: Tests run: 255, Failures: 1 ⇒ `DeadlineBudgetPersistencePgTest.cancelledCursorQueryBecomesDeadlineExceeded`
+#    ⇒ 期望 `StatusRuntimeException(DEADLINE_EXCEEDED)`，实得 `PersistenceException`
+#       ← `SQLTransientConnectionException: HikariPool-1 - Connection is not available,
+#          request timed out after 2010ms (total=0, active=0, idle=0, waiting=0)`
+#    ⇒ ⇒ **池里 0 条连接** ⇒ **不是本域问题**；**单跑该测试类 ⇒ 6 例全绿** ⇒ ⇒ **全量跑时的顺序/隔离污染**（非确定性：一次报 1 Failure、一次报 1 Error）
+#    ⇒ ⇒ **reactor 在 common 处停 ⇒ `user-service` 根本没跑到** ⇒ ⇒ **「本域端到端 verify 全绿」当前不可复现**
+#    ⇒ ⇒ 绕过上游取本域读数：`mvn -o verify -pl service/users/user -am -Dmaven.test.failure.ignore=true`
+#       ⇒ **users-common 46 例全绿 · user-service 40 例全绿（Failures=0 · Errors=0 · Skipped=0）** ✔
+#       ⇒ **本域自身 40 例仍全绿**（与 2026-11-03 恒定）⇒ ⇒ **卡点纯在上游** ⇒ 归 `global` 收口域（见 §11.8 表内新增的跨域行）
+#
 # ⚠️ **不要用 `-T1C` 跑全仓**：其余 8 个域的 Application 还是空壳（没有 `main`）
 #    ⇒ `spring-boot-maven-plugin:repackage` 必然报 `Unable to find main class`
 #    ⇒ **基线自带，非本轮引入**（见 DRIFT-USER-IMPL-009）。
@@ -419,6 +430,7 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 | 🔴 **客户端取消后，服务端在途写是否落库**（**两侧一致**） | **PASS**（2026-11-03 对拍闭合 · **探针假差已证伪**） | DRIFT-USER-PARITY-006 **已闭合**，两段证据：① **代码缺口已补**（共享层 `702b46b`）：C 侧 gRPC 拦截器补上 `onHalfClose` 里的 `DeadlineState.bindAbsoluteNanos(...)`（B 侧 `RpcInterceptor.java:516-517` 同款）⇒ ⇒ handler 线程有入向 deadline ⇒ ⇒ injector 给每条 SQL 设 `setQueryTimeout` ⇒ ⇒ 预算到点后**后续 SQL 被 57014 守卫挡掉** ⇒ ⇒ 两侧预算语义对齐；② **残留的「B=0 行 ↔ C=1 行」经对称注入扫描证伪为【探针顺序注入的时序假差】**（旧注入：先发 B 的调用、等它返回、再发 C 的调用 ⇒ **B 的调用比 C 早约 1 秒开始** ⇒ ⇒ 放行 PG 那一刻 **B 的 2s 预算已到、C 还剩约 1 秒**）⇒ ⇒ **对称注入**（同一 JVM 同时发两侧、同一时刻取消、等距放行）读数：**放行@+1200/+1800 ⇒ B=1·C=1 · +2400/+3000 ⇒ B=0·C=0 · 翻转点两侧重合（=2400）** ⇒ ⇒ **两侧行为等价**（**两侧在客户端取消后都仍会提交写副作用** ⇒ 属**继承自 B 侧**的行为） |
 | **场景轮**（超时 / deadline / 取消传播 / 恢复 / 外部依赖失败 / 恢复 / 并发） | **PASS**（探针摘要：❌ 真差异 1 · ⚠️ 已知现象 3 ⇒ **剩下的 1 条是已签字的偏离**） | §12.2.2：**9 阶段**（新增 **D2 对称注入扫描**）⇒ 机器摘要「❌ 真差异 **1** ｜ ⚠️ 对称异常/已知现象 **3**」⇒ ⇒ **1 条真差异 = PARITY-005（已签字 DEV-USER-010）**；⇒ ⚠️ 3 条 = **「两侧在客户端取消后都仍提交写副作用（继承自 B 侧）」** + 恢复轮 ×2 的 **JSON 键序**（PARITY-003，已登记）· **两侧对称判据全部通过**：gRPC deadline status · 取消 status（两侧 `CANCELLED`）· **副作用两侧逐点相同**（B=1·C=1 / B=0·C=0 · **翻转点重合 =2400**）· 恢复轮**连续 3 轮**回 200 ×2 · **PG 停两侧同为 `1015`**（独立交叉验证 admin lane）· 并发 register 响应集合同为 `{200/200, 200/5001}` + 恰好 1 行 |
 | ✅ **JSON 响应键序**（Jackson 2 vs 3 的默认行为） | **PASS（2026-11-09 · `global` 收口域 销账）** | DRIFT-USER-PARITY-003 **已闭合**：🔴 **2026-11-09 用户拍板「全用 jackson2」** ⇒ ⇒ **判据 = 「键序机制全仓单一」**（不是「与 B 侧运行时字节一致」）⇒ ⇒ **实测**：① **共享层 `common/` 从未开过** `SORT_PROPERTIES_ALPHABETICALLY` ⇒ **无「落点」可改**（原判断的「落点在共享层 ObjectMapper 定制」**前提不成立** —— 那条只在「要改成字母序」时才需要动共享层）；② ⇒ 全仓 **0 处**开启字母序、**0 处** `tools.jackson` 引用 ⇒ ⇒ 由**新守门 A17** 锁死（`tools/difftest/check-arch-invariants.py` · 实测 **PASS 645/645 份 Java + 10/10 份 yml** · `--self-test` **17/17** 能红）；③ ⇒ **键序 = Go 真源 `encoding/json` 的 struct 声明序**（B 侧是 Jackson 3 + 可变 class ⇒ 默认字母序 ⇒ B 侧靠 `@JsonPropertyOrder` 钉回声明序；**C 侧是 Jackson 2 + immutable record ⇒ 默认即声明序**）⇒ ⇒ **两侧字节序一致** ⇒ ⇒ **不是漂移**；④ ⇒ 全仓 **22 处** `@JsonPropertyOrder` 经**运行时探针**实测（`tools/difftest/jackson-key-order/run.sh`）⇒ 「声明序 ≡ Jackson 2 自然序」且**序列化字节逐字节相同**（**22/22 BYTE-EQ**）⇒ ⇒ 注解在 C 侧是**显式钉子**（删掉今天不改字节，但组件被重排时会静默漂移）⇒ ⇒ **保留**（与 follow 域变异 M1「把注解改成**反序**」的既有口径一致）；⑤ ⇒ **`comment` 域的 D-14 同步销账**（同一根因、一次统一）⇒ ⇒ **不再各域各签一遍** ||
+| 🔴 **上游 `common` 模块的测试隔离 ⇒ 本域端到端 `verify` 被卡住**（2026-11-10 实测） | **FAIL（跨域 · 共享层）** | `mvn -o clean verify -pl service/users/user -am` ⇒ **BUILD FAILURE**，失败在**上游 `common`**：`common: Tests run: 255, Failures: 1` ⇒ `DeadlineBudgetPersistencePgTest.cancelledCursorQueryBecomesDeadlineExceeded`（期望 `StatusRuntimeException(DEADLINE_EXCEEDED)`，实得 `PersistenceException` ← `HikariPool-1 - Connection is not available ... (total=0, active=0, idle=0, waiting=0)` ⇒ **池里 0 条连接**）⇒ ⇒ **单跑该测试类 ⇒ 6 例全绿** ⇒ ⇒ **全量跑时的顺序/隔离污染**（非确定性：一次 1 Failure、一次 1 Error）⇒ ⇒ **reactor 在 `common` 处停 ⇒ `user-service` 根本没跑到** ⇒ ⇒ 「本域端到端 verify 全绿」**当前不可复现**；⚠️ 绕过上游取本域读数 ⇒ **user-service 40 例全绿（Failures=0 · Errors=0 · Skipped=0）** ✔ ⇒ ⇒ **本域自身无缺陷 ⇒ 落点在 `common/` 的测试隔离 ⇒ 归 `global` 收口域** |
 
 ### §十四 的 12 个问题 ＋ 最终审核标准（逐条回答）
 
@@ -447,11 +459,11 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 > **已于 2026-11-03 全部闭合**（每项都带变异证据或**判别性变体**）。
 > ⇒ ⇒ **剩下的缺口全在「表外」**：**B 侧 Go 真源第三方锚不可得**（本机无 `Sea-etcd`）·
 > **场景轮暴露的差异**：**PARITY-005** ⇒ 签字偏离 **DEV-USER-010**（已登记）；**PARITY-006** ⇒ ✅ **2026-11-03 已闭合**（共享层 `702b46b` 补上 `onHalfClose` 的 `DeadlineState.bindAbsoluteNanos(...)` ＋ **对称注入扫描**证伪旧读数为探针时序假差 ⇒ **两侧行为等价**）
-> · **gRPC deadline 的 description 文案形态**不同（客户端可见 ⇒ 落点共享层 gRPC 拦截器）（§12.5）。
 > ⇒ ⇒ **表内 `NOT_VERIFIED` 归零 ≠ 元命题闭合**（见 P-USER-14）。
 >
-> ⚠️ **另有 6 条跨域 `FAIL`**（DRIFT-USER-IMPL-004/005/006/008 ＋ **PARITY-002**〔7 域同型 jar 缺陷〕＋ **PARITY-003**〔JSON 键序 · 共享层〕）⇒ 归属收口域与各域 lane ⇒ ⇒ **PARITY-006 已从本表移出**（2026-11-03 闭合）⇒
-> **不在本 lane 的写权面**，已逐条登记。
+> ⚠️ **跨域 `FAIL`：2026-11-09 收口轮把原先 6 条逐条复核后归零**（DRIFT-USER-IMPL-004/005/006/008 ＋ **PARITY-002**〔7 域同型 jar 缺陷〕＋ **PARITY-003**〔JSON 键序 · 共享层〕）⇒ ⇒ **但 2026-11-10 复跑又新出现 1 条**：
+> 🔴 **上游 `common` 的测试隔离 ⇒ 本域 `verify` 被卡住**（`DeadlineBudgetPersistencePgTest` 全量跑时挂、单跑全绿 ⇒ 顺序/隔离污染）⇒ ⇒ **表内 FAIL = 1**（**本域自身 40 例仍全绿**，卡点纯在上游）⇒ 归 `global` 收口域。
+> ⚠️ **gRPC deadline 的 description 文案形态**已于 **2026-11-09** 对齐（共享层改用 `GO_DEADLINE_EXCEEDED_DESCRIPTION` ⇒ **两侧逐字一致**）⇒ ⇒ **不再是表外缺口**。
 
 ### 审核状态汇总
 
@@ -460,10 +472,11 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 | **PASS** | **31** |
 | **INTENTIONALLY_CHANGED**（L3 降级 D-01 ＋ **DEV-USER-010**） | **2** |
 | **NOT_VERIFIED** | **0** |
-| **FAIL（跨域 · 不在本 lane 写权面）** | **0** |
-| **合计** | **33** |
+| **FAIL（跨域 · 不在本 lane 写权面）** | **1**（上游 `common` 的测试隔离 ⇒ 本域端到端 `verify` 被卡） |
+| **合计** | **34** |
 
-> 📌 **口径**：本表 **33 行**逐行点过（**脚本按行复算**）⇒ 31 + 2 + 0 + 0 = **33**。
+> 📌 **口径**：本表 **34 行**逐行点过（**脚本按行复算**）⇒ 31 + 2 + 0 + 1 = **34**。
+> 📌 **2026-11-10 订正**：新增 1 条跨域 `FAIL`（上游 `common` 的测试隔离 ⇒ 本域端到端 `verify` 被卡）⇒ **33 行 → 34 行 · FAIL 0 → 1**；**本域自身 40 例仍全绿**（卡点纯在上游）。
 > 📌 **2026-11-09 订正（`global` 收口域轮）**：原先唯一的 **FAIL 1** 就是「🔴 JSON 响应键序」那一行（**`DRIFT-USER-PARITY-003`** ⇒ 当时判「跨域 · 共享层 · 不在本 lane 写权面」）⇒ ⇒ **本轮已销账并转 PASS**（用户拍板「全用 jackson2」⇒ 键序机制全仓单一 ⇒ 共享层**从未开过**字母序 ⇒ 原判的「落点」前提不成立 ⇒ 改判 **PASS**）⇒ ⇒ 故 **PASS 30 → 31 · FAIL 1 → 0**（合计仍 **33**）。
 > （**初稿此处写的是 17，自身少算了 1 ⇒ 2026-11-02 复核时按行重数并订正；**
 > **2026-11-03 对拍后订正为 22/1/2/6；**
@@ -473,8 +486,7 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 > ⚠️ **这些数字是脚本按行复算出来的，不是手数的** —— 手数第一次写成了 24 ⇒ **被机器复算当场纠正**
 > ⇒ ⇒ **复算命令（可复用 · 任何域的台账都能跑）**：
 > `python3 tools/recount-ledger-status.py docs/DRIFT/users/verification-users-user-2026-11-02.md --table-line 387 --compare-summary --expect-total 33`
-> ⇒ ⇒ 机器输出逐字（⚠️ **2026-11-09 重跑**：工具已重写 —— 状态列改为**按内容定位**、汇总表改为**与「行数相等」的明细组对照**、输出改为**完整普查（含 0 值）**；
-> **且本表数字本轮变了**（25 / 2 / 0 / 6 ⇒ **30 / 2 / 0 / 1** —— 5 条跨域 FAIL 逐条复核后已闭合，详见各行的「2026-11-09 复核」证据）：
+> ⇒ ⇒ 机器输出逐字（⚠️ **2026-11-10 重跑** —— ⚠️ **此前这里堆叠着两次不同时间的复算输出**（25/2/0/6 与 30/2/0/1 混排）⇒ **复核人无法判断哪个是当前值** ⇒ ⇒ 本轮**只保留当前一次**）：
 > ```
 > —— 状态表复算（docs/DRIFT/users/verification-users-user-2026-11-02.md · 1 张明细表）——
 >    FAIL                   1
@@ -482,33 +494,20 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 >    NOT_VERIFIED           0
 >    NOT_IMPLEMENTED        0
 >    PARTIAL                0
->    PASS                   30
->    合计                     33
->    📋 自报汇总表（行 458）：{'PASS': 30, 'INTENTIONALLY_CHANGED': 2, 'NOT_VERIFIED': 0, 'FAIL': 1}
->    ✅ 自报总数与复算一致（33）
+>    PASS                   31
+>    合计                     34
+>    📋 自报汇总表（行 470）：{'PASS': 31, 'INTENTIONALLY_CHANGED': 2, 'NOT_VERIFIED': 0, 'FAIL': 1}
+>    ✅ 自报总数与复算一致（34）
 > ```
-> —— 状态表复算（docs/DRIFT/users/verification-users-user-2026-11-02.md · 1 张明细表）——
->    FAIL                   6
->    FAIL                   1
->    INTENTIONALLY_CHANGED  2
->    NOT_VERIFIED           0
->    NOT_IMPLEMENTED        0
->    PARTIAL                0
->    PASS                   30
->    合计                     33
->    📋 自报汇总表（行 458）：{'PASS': 25, 'INTENTIONALLY_CHANGED': 2, 'NOT_VERIFIED': 0, 'FAIL': 6}
->    📋 自报汇总表（行 458）：{'PASS': 30, 'INTENTIONALLY_CHANGED': 2, 'NOT_VERIFIED': 0, 'FAIL': 1}
->    ✅ 自报总数与复算一致（33）
-> ```
+> ⇒ ⇒ **EXIT=0**（⚠️ **必须锁表**：本台账含多张明细表 ⇒ 全局跑是**混算** ⇒ `--table-line` 的行号会随表内增删漂移 ⇒ **每次改表后要重新 `grep -n "^| 审核项"` 取当前行号**（当前 = **398**））。
 > （同款教训见 [`P-08`](../../Pitfalls/_cross/P-08-落地证据未经机器复算.md)）。
 >
 > ⚠️ **「行为与 B 侧完全等价」这一命题本身**（§11.8 表**上方**那段结论文字）
 > **仍标 `NOT_VERIFIED`** —— 它是**元命题**，不是表里的一行 ⇒
 > ⇒ **不再有「表内 NOT_VERIFIED 项」**（已全部闭合或移交）⇒
-> ⇒ 但**元命题**仍未闭合，原因是**表外**的三类：
-> ① **B 侧 Go 真源第三方锚不可得**（本机无 `Sea-etcd`）⇒ 探针只能**双侧**（C ↔ B）；
-> ② **场景轮暴露的 1 条已归因差异**（**PARITY-005** 签字偏离 **DEV-USER-010**；⚠️ **PARITY-006 已闭合** —— 共享层补上 `onHalfClose` 的 `DeadlineState.bindAbsoluteNanos(...)` ＋ **对称注入扫描**证伪旧读数是**探针顺序注入的时序假差** ⇒ **两侧行为等价**）；
-> ③ **gRPC deadline 的 description 文案形态**不同（客户端可见 ⇒ 共享层 gRPC 拦截器）（§12.5）。
+> ⇒ 但**元命题**仍未闭合，原因是**表外**的**两类**（⚠️ 2026-11-10 复跑：原先三类里的 description 文案那条**已于 2026-11-09 对齐** ⇒ 移出）：
+> ① **B 侧 Go 真源第三方锚不可得**（本机无 `Sea-etcd`）⇒ 探针只能**双侧**（C ↔ B）⇒ ⇒ **环境不可得 ⇒ 本 lane 无论如何也合不上**；
+> ② **场景轮暴露的 1 条已归因差异**（**PARITY-005** 签字偏离 **DEV-USER-010** —— 属**已裁决**而非待闭合；⚠️ **PARITY-006 已闭合** —— 共享层补上 `onHalfClose` 的 `DeadlineState.bindAbsoluteNanos(...)` ＋ **对称注入扫描**证伪旧读数是**探针顺序注入的时序假差** ⇒ **两侧行为等价**）。
 >
 > 🔴 **不要把「表内 0 个 NOT_VERIFIED」读成「命题已闭合」** —— 那正是把**表**当**命题**。
 
@@ -550,14 +549,16 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 
 ## 11.10 一句话结论（本 lane 汇报口径）
 
-**user 子域 48 个主代码文件已全部落地并编译通过，40 例真触发测试（真 Tomcat + 真 gRPC + 真 PostgreSQL）全绿、`skipped=0`，映射表守门 EXIT=0（核对日期 2026-11-03：users 全域 C 列 111/111、B 列 145/145；合计 C 637/637 · B 752/752）；**
+**user 子域 48 个主代码文件已全部落地并编译通过，40 例真触发测试（真 Tomcat + 真 gRPC + 真 PostgreSQL）全绿、`skipped=0`，映射表守门 EXIT=0（核对日期 2026-11-10：users 全域 C 列 111/111、B 列 145/145；合计 C **645/645** · B 752/752）；⚠️ **2026-11-10 复跑：`mvn -o clean verify -pl service/users/user -am` 整体 BUILD FAILURE（卡在**上游 `common`** 的测试隔离）⇒ 绕过上游取本域读数 ⇒ `user-service` **40 例仍全绿**（Failures=0 · Errors=0 · Skipped=0）⇒ ⇒ 本域无缺陷，卡点在上游 ⇒ 归收口域；**
 **全仓 `mvn -o -fae clean verify` 的同条件对照：失败面由基线的 10 个域收敛到 9 个域，差额恰好是本域（基线 10 个 Application 全缺 `main` ⇒ `repackage` 必挂 ⇒ 基线自带，非本轮引入）；**
 **事务边界（D-005 / D-015）已由 `NOT_VERIFIED` 升为 `PASS` —— 用真 UNIQUE 约束冲突证明 W2 的 UPDATE 确实被回滚，并用变异测试证明该判据非空洞；**
 **2026-11-03 已完成**双侧活体对拍（**HTTP 20 例 + gRPC wire 18 例 + DB 最终态**）：HTTP 结构级 16/20 一致（4 例差异全是**已登记**的 400 文案形态）、字节级 12/20、**gRPC wire 真差异 0/18**（9 个方法全覆盖；**只屏蔽易变值、不屏蔽 presence**）、DB 两张表最终态逐字段一致；**
 **⇒ 写路径形态（`updateById` vs `update(null, wrapper)`）已由 `NOT_VERIFIED` 升为 `PASS` —— 两侧领域服务的可执行语句集逐行 diff（唯一差异 = 一处日志调用的换行折叠），13 个写路径调用点逐条一一对应，且**两侧都不是 `updateById`**；**
-**⇒ 场景轮（并发 / 超时 / 外部依赖失败 / 恢复 ×2 / gRPC deadline / 取消传播）已做**（**8 阶段**；探针机器摘要「❌ 真差异 **3** ｜ ⚠️ 已知现象 **2**」⇒ **3 条真差异归为 2 个根因**）：**两侧对称判据全部通过** —— 并发 register 两侧响应集合同为 `{200/200, 200/5001}` 且各恰好 1 行 · **PG 停两侧同为 `1015`**（独立交叉验证 admin lane）· 恢复轮两侧**连续 3 轮**回 200 · gRPC deadline / 取消的 **status 两侧一致**（`DEADLINE_EXCEEDED` / `CANCELLED`，服务端预算对称 ~2.1s）；**2 个根因** = ① DB 完全不可响应档的 HTTP 出口形态 ⇒ 签字偏离 **DEV-USER-010**；② 取消后在途写是否回滚 ⇒ **落点在共享层** ⇒ 本 lane 无写权面；**
-**⇒ 但「行为与 B 侧完全等价」这一命题本身仍是 `NOT_VERIFIED`** —— 剩下的缺口都在**表外**：**B 侧 Go 真源第三方锚不可得**（本机无 `Sea-etcd`）· **场景轮暴露的 2 条已归因差异**（PARITY-005 ⇒ 签字偏离 **DEV-USER-010**；**PARITY-006** ⇒ 落点在**共享层** ⇒ 本 lane 无写权面；⚠️ **其根因已定位到一行**：C 侧 gRPC 拦截器缺 `onHalfClose` 里的 `DeadlineState.bindAbsoluteNanos(...)` ⇒ handler 线程无 deadline ⇒ **不发 CancelRequest** ⇒ 在途写不被取消）· **gRPC deadline 的 description 文案形态**不同（客户端可见 ⇒ 共享层 gRPC 拦截器）；**
-**另有 6 条跨域 FAIL：DRIFT-USER-IMPL-004/005/006/008（收口域与 admin lane）＋ **DRIFT-USER-PARITY-002（其余 7 域 fat jar 起不来）＋ DRIFT-USER-PARITY-003（JSON 键序 · 共享层）** —— 本 lane 不越权代改，已逐条登记。（⚠️ **PARITY-006 已于 2026-11-03 闭合** ⇒ 不在本表。）**
+**⇒ 场景轮（并发 / 超时 / 外部依赖失败 / 恢复 ×2 / gRPC deadline / 取消传播）已做并收口**（**9 阶段**（新增 **D2 对称注入扫描**）；⚠️ **探针机器摘要随修复变过**：修复前「❌ 真差异 **3** ｜ ⚠️ 已知现象 **2**」⇒ **对称注入后「❌ 真差异 **1** ｜ ⚠️ 已知现象 **3**」** ⇒ ⇒ **3 → 1 ≠「修好两条漂移」，而是**假差被剔除**）：**两侧对称判据全部通过** —— 并发 register 两侧响应集合同为 `{200/200, 200/5001}` 且各恰好 1 行 · **PG 停两侧同为 `1015`**（独立交叉验证 admin lane）· 恢复轮两侧**连续 3 轮**回 200 · gRPC deadline / 取消的 **status 两侧一致**（`DEADLINE_EXCEEDED` / `CANCELLED`，服务端预算对称 ~2.1s）· **对称注入扫描翻转点两侧重合（=2400）⇒ 两侧预算语义等价**；**剩下的 1 条真差异 = DB 完全不可响应档的 HTTP 出口形态 ⇒ 签字偏离 DEV-USER-010（已裁决）**；⚠️ **PARITY-006 已闭合**（旧读数「B=0·C=1」= **探针顺序注入的时序假差**；两侧在客户端取消后**都**仍提交写副作用 ⇒ **继承自 B 侧**）；**
+**⇒ 但「行为与 B 侧完全等价」这一元命题本身仍是 `NOT_VERIFIED`** —— 剩下的缺口都在**表外**，且只剩**两类**（⚠️ 2026-11-10 复核：原先三类里的 **description 文案**那条**已于 2026-11-09 对齐** ⇒ 移出；**PARITY-006 已闭合** ⇒ 也移出）：
+> ① **B 侧 Go 真源第三方锚不可得**（本机无 `Sea-etcd`）⇒ 探针只能**双侧**（C ↔ B）⇒ ⇒ **环境不可得 ⇒ 本 lane 无论如何也合不上**；
+> ② **PARITY-005**（DB 完全不可响应档的 HTTP 出口形态 B `200+1015@2.01s` ↔ C `503@3.00s`）⇒ **已签字偏离 DEV-USER-010** ⇒ 属**已裁决**而非待闭合。
+**⇒ 跨域 FAIL：2026-11-09 归零（原 6 条）⇒ 2026-11-10 复跑新增 1 条（上游 `common` 测试隔离 ⇒ 本域端到端 verify 被卡）⇒ ⇒ 状态表见下表（机器复算）。**
 
 ---
 
@@ -936,7 +937,7 @@ mvn -o -pl service/users/user -am test -Dtest='AvatarTransactionWiringTest' -Dsu
 |---|---|---|
 | ~~**gRPC wire 逐字节对拍**（9 个方法）~~ | ✅ **已闭合**（2026-11-03 第二轮） | ⇒ **18 例真差异 0** · 7 条同侧自洽断言全绿 · **变异证据**：植入 presence 差异 ⇒ **只有**该维度变红 ⇒ 详见 §12.2.1 |
 | **B 侧 Go 真源第三方锚** | **不可得** | 本机无 `Sea-etcd` ⇒ Go 侧无法活体 ⇒ 本探针是**双侧**（C ↔ B），**不是** follow 域那种**三方** |
-| ~~**并发 / 超时 / 外部依赖失败 / 恢复**场景轮~~ | ✅ **已做**（2026-11-03 第三轮 · §12.2.2） | ⇒ **8 阶段** ⇒ 探针机器摘要「❌ 真差异 **3** ｜ ⚠️ 对称异常/已知现象 **2**」⇒ **3 条真差异归为 2 个根因**（第 3 条 = 第 2 条的**判别性变体**）⇒ ❌ 两条根因均已归因：一条＝签字偏离 **DEV-USER-010**、一条＝**共享层**跨域 |
+| ~~**并发 / 超时 / 外部依赖失败 / 恢复**场景轮~~ | ✅ **已做并收口**（2026-11-03 第三轮起 · §12.2.2） | ⇒ **9 阶段**（新增 **D2 对称注入扫描**）⇒ ⚠️ **探针机器摘要随修复变过**：修复前「❌ 真差异 **3** ｜ ⚠️ 已知现象 **2**」⇒ **对称注入后「❌ 真差异 **1** ｜ ⚠️ 已知现象 **3**」** ⇒ ⇒ **3 → 1 ≠「修好两条漂移」⇒ 是**假差被剔除**（旧读数「B=0·C=1」= **探针顺序注入的时序假差**）⇒ ✅ **两条根因均已闭合**：① 签字偏离 **DEV-USER-010**（已裁决）· ② **PARITY-006 已闭合**（共享层补 `onHalfClose` 绑定 ＋ **对称注入扫描**翻转点两侧重合 =2400 ⇒ 两侧预算语义等价 ⇒ 两侧在客户端取消后**都**仍提交写副作用 ⇒ **继承自 B 侧**） |
 | **gRPC deadline 的 description 文案形态** | **✅ 已对齐（2026-11-09 · `global` 收口域）** | 原为「B `context deadline exceeded` ↔ C `rpc deadline exceeded`」⇒ ⇒ 共享层 `ObservabilityAutoConfiguration` 改为复用 `RpcHandleRunner.GO_DEADLINE_EXCEEDED_DESCRIPTION` ⇒ ⇒ **两侧逐字一致** ⇒ ⇒ 本条**不再是待办**（独立于 PARITY-006 —— 后者早已闭合） |
 | **gRPC 的 deadline / 取消传播** | ✅ **已做**（2026-11-03 第三轮 · §12.2.2） | ⇒ **两侧 status 一致**（`DEADLINE_EXCEEDED` @ ~2.1s · `CANCELLED`）⇒ ⇒ **服务端 2s 预算两侧对称**；🔴 **2026-11-09：description 文案已对齐**（共享层 `ObservabilityAutoConfiguration` 改用 `RpcHandleRunner.GO_DEADLINE_EXCEEDED_DESCRIPTION` ⇒ **B `context deadline exceeded` == C `context deadline exceeded`**）⇒ ⇒ 那条客户端可见的差异**已消解** |
 | **「DB 完全不可响应」档的 HTTP 出口形态** | **🔶 已登记为签字偏离** | DRIFT-USER-PARITY-005 ⇒ DEV-USER-010 ⇒ 落点＝D1 合并的连带后果（与 DEV-USER-008 同族）⇒ ⚠️ **与下一行同源**：C 侧 gRPC 边界那套「主动关 call ＋ 把 deadline 绑给 SQL」在 HTTP 路径上**整层缺位**（`ObservabilityProperties.java:124-126` 自述） |
