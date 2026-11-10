@@ -53,6 +53,12 @@ docs/DRIFT/
 
 ⇒ ⇒ **全仓 Nacos namespace / group 统一为 `public` / `DEFAULT_GROUP`** ⇒ **偏离面从 9 个域收缩为 1 个域（users）**。
 ⇒ ⇒ **新增机器守门 A17**（全用 Jackson 2 · 不开属性字母序）＋ **新增运行时探针** `tools/difftest/jackson-key-order/`。
+
+> 🔴 **顺带查出的一个结构性缺口（本轮未修 · 需各域 lane 补）** —— **13 份台账里有 6 份声明「机器复算」**（article · comment · common · favorite · like · task）
+> ⇒ ⇒ **但只有 `users-user` 一份记录了可复现的复算命令**（`python3 tools/recount-ledger-status.py … --table-line 387 --compare-summary --expect-total 33`）
+> ⇒ ⇒ **其余 5 份的汇总数字目前不可复核** —— 工具的**自动探测在多个域会选错表**（实测：`common` 自动探测选到一张 199 行、状态列混进 `DEADLINE_EXCEEDED` / `MAX_VALUE` 等无关词的表 ⇒ 报出 `FAIL 5` 这种假数）
+> ⇒ ⇒ **凡声明「机器复算」的台账，都必须把复算命令（带 `--table-line` / `--expect-total`）原样写进文件**，否则等于没复算。
+> ⇒ ⇒ 📌 **本轮已修 users-user 的一处实例**：该台账原先唯一的 **FAIL 1** 就是「JSON 响应键序」那一行 ⇒ 本轮销账转 PASS 后，**汇总表未同步**（自报 30/2/0/**1** vs 明细实算 **31**/2/0/**0**）⇒ ⇒ **已订正** ⇒ 复算命令现返回「✅ 自报总数与复算一致（33）」。
 ⇒ ⇒ **偏离索引机器复算**：**49 条**（原自报 47 ⇒ 口径订正后为 49，见 `docs/Intentional_Deviations/_INDEX.md`）。
 
 ---
