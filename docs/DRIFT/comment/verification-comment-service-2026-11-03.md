@@ -70,7 +70,8 @@
 > ✅ **本轮最强证据已是 E-4（双侧活体对拍）** —— 已建立 `tools/parity-probe/comment/` 并**真跑通过**（B 侧用本地现成镜像 `sea/comment-api:latest` / `sea/comment-rpc:latest`，C 侧用本仓 fat jar，**两侧同时运行**，对 **33 个请求**做逐字节比对）⇒ 详见 **§1.9**。
 > ⚠️ **E-4 的覆盖面是「HTTP 面」**：gRPC 面**拓扑产物不可比**（B 侧两进程跨进程 gRPC vs C 侧单进程域内直连 · D2）⇒ gRPC 面的最强证据**仍是 E-3**。
 > ⚠️ **E-4 本身不改变 §5.4 那 51 个 `NOT_COVERED` 点的判定** —— 那些点集中在 **L4 装配面 / 配置 → 运行期**（出向 deadline 上界、Redis 池参数、缓存打点次数、事实载荷 JSON 契约…）⇒ **黑盒 HTTP 探针观测不到** ⇒ 仍判 `NOT_VERIFIED`。
-> ✅ **但本轮（§1.10 · E-5）用「装配层 / 进程内」断言把那 51 点里的 50 点补上了** ⇒ ⇒ **关掉这一类的是 E-5，不是 E-4** ⇒ **残留 1 点**（B 组第 ⑨ 点 · 根因 **D-15** 共享层差异）。
+> ✅ **但本轮（§1.10 · E-5）用「装配层 / 进程内」断言把那 51 点**全部**补上了** ⇒ ⇒ **关掉这一类的是 E-5，不是 E-4**
+> ⇒ ⇒ **残留的 1 点**（B 组第 ⑨ 点 · 根因 **D-15** 共享层差异）已于 **2026-11-10 由本域重跑核对并改判 `PASS`**（根因早由 `global` 收口域于 2026-11-04 消除 · `DRIFT-COMMON-V20`）⇒ ⇒ **51 点全闭合**。
 
 | # | 验证动作 | 证据强度 | 读数 | 判定 |
 |---|---|---|---|---|
@@ -117,8 +118,13 @@ cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment" && mvn -o -pl service/c
 | 模块 | 模块级汇总 | 判定 |
 |---|---|---|
 | **`comment-service`（本域）** | **`Tests run: 301, Failures: 0, Errors: 0, Skipped: 0`** | ✅ **绿 ＋ skipped=0**（**上轮 226 ⇒ 本轮 301，+75**） |
-| `common`（共享层，同 reactor） | `Tests run: 241, Failures: 0, Errors: 0, Skipped: 0` | ✅ 绿 ＋ skipped=0 |
-| **reactor 合计** | **542 例 · 0 失败 · 0 错误 · 0 跳过** · `BUILD SUCCESS` | ✅ |
+| `common`（共享层，同 reactor） | `Tests run: 255, Failures: 0, Errors: 0, Skipped: 0` | ✅ 绿 ＋ skipped=0（**原写 241 ⇒ 本轮 255** · 共享层自 2026-11-09 起又收口了 V16 / F-15 / D-15 三批 ⇒ 断言数随之增长） |
+| **reactor 合计** | **556 例 · 0 失败 · 0 错误 · 0 跳过** · `BUILD SUCCESS` | ✅（**原写 542 ⇒ 本轮 556**） |
+
+> ✅ **核对日期 2026-11-10（当轮重跑 · 本次改判的证据底座）** —— 工作树 `align/comment` @ `3c9c516`（已并入 `global` 收口域的 V23~V26 四批）⇒
+> `mvn -o -pl service/comment -am clean verify` ⇒ **BUILD SUCCESS · 10:14 min**（common 02:57 ＋ proto 00:10 ＋ comment-service 07:05）⇒
+> **comment-service 301 / 0 / 0 / 0** ＋ **common 255 / 0 / 0 / 0** ⇒ **reactor 556 例 · skipped=0**（守门四规则：计数只取**回归日志的模块级汇总**，不取 `surefire-reports/*.xml` 求和）。
+> ⚠️ **本次只改了「本域台账的计数与判定」**，`service/comment/**` 与 `common/**` 的**源码零改动**（D-15 的修法由 `global` 收口域在 `01c11dd` 落地）⇒ ⇒ **读数变化全部来自共享层自身的收口**，不是本域改了代码。
 
 #### 本域 301 例的逐类读数（**全部真跑**，无 `@EnabledIfDockerAvailable`、无静默跳过）
 
@@ -158,7 +164,7 @@ cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment" && mvn -o -pl service/c
 | 32 | **`service/CommentCacheRedisMetricGateTest`** | **7** | **E-3（真 Redis ＋ 真 PG ＋ 真 Micrometer）** | 🔴 **D 组**：D6/D7 打点**精确次数**（JSON 坏 ⇒ 只打 `GetSubjectWithCache` 且 == **2**；真异常 ⇒ 两个 label 各 == **2**；回填失败 ⇒ 读路径照常返回） |
 | 33 | **`domain/service/CommentFactPayloadContractTest`** | **7** | **E-2** | 🔴 **D 组**：事实载荷 JSON 契约（`null` vs 缺失 · `old_state=0` 必输出 · 20/22 字段序 · `subject_ref` 守卫 · 互动 ID 前缀） |
 | 34 | **`grpc/CommentOutboundDeadlineCapGateTest`** | **13** | **E-3（真 in-process gRPC）** | 🔴 **B 组**：出向 2s deadline 的**配置面 + 行为面**（无预算 / 30s 预算 / 生产 3s 形态 / 预算耗尽 / env 收紧 / `withDeadlineAfter` 代码行 == 0 / 无载体仍封顶 / 纳秒取预算） |
-| 35 | **`grpc/CommentOutboundDeadlineCarrierGateTest`** | **9** | **E-3（真 socket ＋ 真 PG/Redis ＋ Spring 上下文）** | 🔴 **B 组**：载体与装配面（入向载体在 handler 线程真绑上 · devh 全局拦截器链真生效 · SQL 载体毫秒精度 + 在途取消 + 过期回滚 · Redis 载体耗尽） |
+| 35 | **`grpc/CommentOutboundDeadlineCarrierGateTest`** | **9** | **E-3（真 socket ＋ 真 PG/Redis ＋ Spring 上下文）** | 🔴 **B 组**：载体与装配面（入向载体在 handler 线程真绑上 · devh 全局拦截器链真生效 · SQL 载体毫秒精度 + 在途取消 + 过期回滚 · Redis 载体耗尽）· ✅ **第 ⑨ 点已改回 B 侧真值断言**（`outboundCarrierIsBoundAndClientDeadlineIsHonoured`：出向载体 `isTrue()` ＋ 服务端剩余 `≤` 客户端 deadline 且 `> 0` ＋ 出向剩余纳秒 `> 0`）⇒ **2026-11-10 当轮实测 9/9 绿**（§1.10.4） |
 | | **合计** | **301** | | **0 失败 · 0 错误 · 0 跳过** |
 
 #### 假绿证伪（**每条断言都被证明是活的**）
@@ -176,8 +182,9 @@ cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment" && mvn -o -pl service/c
 1. **E-4（双侧活体对拍）本轮仍未做** ⇒ 「B 侧此刻真的产出同样字节 / 同样位点后果」**未证**。
 2. ~~**B 侧 253 个守门点里，C 侧覆盖 181（71.5%）** ⇒ **51 点无对应断言** ⇒ 相应行为判 **`NOT_VERIFIED`**
    （明细见 §5.4）⇒ **这些行为不得按「一致」读取**。~~
-   ✅ **本轮已更新**：§5.4 那 **51 个 `NOT_COVERED` 点**里 **50 点**已补成 C 侧真断言（§1.10）
-   ⇒ **覆盖 231/253 = 91.3%**；**残留 1 点**（B 组第 ⑨ 点）因 **D-15**（共享层差异）**未闭合** ⇒ 仍判 **`NOT_VERIFIED`**。
+   ✅ **本轮已更新**：§5.4 那 **51 个 `NOT_COVERED` 点**里 **51 点全部**已补成 C 侧真断言（§1.10）
+   ⇒ ⇒ **覆盖 232/253 = 91.7%**；**残留 0 点** —— 最后一个残留点（B 组第 ⑨ 点）的根因 **D-15** 已由 `global` 收口域消除（`DRIFT-COMMON-V20`），
+   本域已于 **2026-11-10 重跑核对并改判为 `PASS`**（§1.10.4）⇒ ⇒ 剩下的 3 个 `NOT_VERIFIED` **全部是原审计的 `PARTIAL` 半边**（非缺口）。
 3. 本节读数**只覆盖 C 侧单侧**；B 侧测试**未与 C 侧同时运行**。
 
 ### 1.8 全仓回归（`mvn -o -T1C clean verify`）与**本域之外的失败归属**
@@ -304,8 +311,8 @@ cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment" && mvn -o -pl service/c
 | **范围** | §5.4 的 **B 组 16 · C 组 10 · D 组 12 · E 组 13** = **51 点**（⚠️ **E 组原写「11」是计数笔误，本轮订正为 13** —— 见 §5.4） |
 | **形态** | **装配层 / 进程内**断言：真 Spring 上下文 · 真 devh 拦截器链 · 真 in-process + 真 socket gRPC · 真 Redis（Testcontainers）· 真 PostgreSQL 16 + 真 Flyway · 真 Micrometer `SimpleMeterRegistry` |
 | **交付物** | **11 个新测试类 / 4,769 行**（`service/comment/src/test/java/com/rag/comment/` 下）⇒ 本域测试类 29 → **40**，例数 226 → **301（+75）** |
-| **构建读数** | `mvn -o -pl service/comment -am clean verify` ⇒ **comment-service: Tests run: 301, Failures: 0, Errors: 0, Skipped: 0** ＋ `common: 241, 0, 0, 0` ＋ **BUILD SUCCESS** |
-| **闭合结果** | **51 点里 50 点闭合**（C 10/10 · D 12/12 · E 13/13 · B **15/16**）⇒ 覆盖 **231/253 = 91.3%**；**残留 1 点**（B 组第 ⑨ 点）**未闭合** ⇒ 见 §1.10.4 与 **D-15** |
+| **构建读数** | `mvn -o -pl service/comment -am clean verify` ⇒ **comment-service: Tests run: 301, Failures: 0, Errors: 0, Skipped: 0** ＋ `common: 255, 0, 0, 0` ＋ **BUILD SUCCESS**（**2026-11-10 当轮重跑**，见 §1.7） |
+| **闭合结果** | **51 点里 51 点闭合**（C 10/10 · D 12/12 · E 13/13 · B **16/16**）⇒ 覆盖 **232/253 = 91.7%**；**残留 0 点** —— 最后一个残留点（B 组第 ⑨ 点）的根因 **D-15** 已由 `global` 收口域消除，本域 **2026-11-10 重跑后改判 `PASS`** ⇒ 见 §1.10.4 |
 | **守门纪律** | 每个断言都带**三段式 javadoc**（① 多做了什么 ② 语义还一样吗 ③ B 出处 `文件:行号`）· 禁 `@Slf4j` / `@SneakyThrows` · Jackson 只用 2 · **禁 `@EnabledIfDockerAvailable`** · **零 skipped** |
 
 #### 1.10.2 四组逐条读数
@@ -315,7 +322,7 @@ cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment" && mvn -o -pl service/c
 | **C 组**（L4 配置面） | **10 / 10** ✅ | `config/CommentRuntimeConfigContractTest` | **16** | 池**已启用**（消费点 = Boot 3.5 `LettuceConnectionConfiguration#isPoolEnabled`）· `maxTotal==64` · `maxIdle==16` · `minIdle==0`（对齐 Go `MinIdleConns` **无 default ⇒ 0**，**不是 4 也不是 8**）· `maxWait==4s` · **阳性对照**（commons-pool2 默认 `maxWait==-1ms`）· 连接超时 **5s** · 命令超时 **3s** · 生产 grpc client 集合 + **三斜杠** + **两斜杠必须被拒绝**（devh 3.1.0 抛 `IllegalArgumentException`）· 解析出的服务名一致 · **`target/classes` yml 与源码树逐字节一致** |
 | **D 组**（L2/L4 领域语义） | **12 / 12** ✅ | `service/CommentCacheRedisMetricGateTest` ＋ `domain/service/CommentFactPayloadContractTest` | **7 + 7** | 缓存打点**精确次数**：命中/未命中 ⇒ **0 个**错误指标 · JSON 坏 ⇒ **只**打 `GetSubjectWithCache` 且计数 == **2** · Redis 真异常 ⇒ 两个 label **各 == 2** · 回填失败 ⇒ 读路径**照常返回** + `SetSubjectCache` >= 1 · 载荷契约：无 omitempty ⇒ **null**（不是缺失）· 有 omitempty ⇒ **整个消失** · **`old_state=0` 必须被输出** · 4 个固定常量 + `event_time` 是**文本** · **20 / 22 字段序**（`containsExactly`）· `subject_ref` 格式 + `uid<=0` 抛错 · 互动 ID 前缀 `rtw.comment.interaction.` |
 | **E 组**（跨层） | **13 / 13** ✅ | `config/CommentApiPropertiesSecretGuardTest` ＋ `http/CommentOversizedBodyRealTomcatTest` ＋ `service/CommentGoSemanticsGateTest` ＋ `service/CommentProtectionChainWiringTest` ＋ `service/CommentIdempotentDeleteRealPgTest` ＋ `service/CommentRedisDeadlineCarrierRealRedisTest` | **9 + 4 + 4 + 2 + 2 + 2** | **生产同款启动**（真 `SpringApplication` ＋ 真 ConfigData）**4 条** fail-closed（未设 / 空串 / 全空白 / 占位符原文）＋ 正常密钥对照组 · 判据边界（null/空串/全空白/未解析占位符）· **真 yaml 绑定到嵌套字段** · **超限 body ⇒ 413 压过 401**（无 token / 无效 token ＋ 负控 401）· **zero-pad 不改 HMAC**（与 Go 互通）＋ 不补齐被 jjwt 拒 · 保护链**包装过的 call**（`isNotSameAs`）＋ 无包装层反向对照 · **幂等删除只扣一次计数**（＋ 负控）· Redis 载体**耗尽 ⇒ 写不下发**（＋ 负控）＋ `SessionCallback` 事务绑定路径内层写也被拦 · `Span.current()` **无作用域根因条** |
-| **B 组**（出向 2s deadline） | **15 / 16** 🟠 | `grpc/CommentOutboundDeadlineCapGateTest` ＋ `grpc/CommentOutboundDeadlineCarrierGateTest` | **13 + 9** | 配置面：yml 必须是 `${COMMENT_OUTBOUND_DEADLINE_CAP_MILLIS:2000}` 形态 ＋ 绑出 `cap==2000` 且开关开 ＋ **按服务全名覆盖**为空 · 行为面：**无预算** / **30s 预算** / **生产 3s 形态** 三种都必须在 **2s** 处 `DEADLINE_EXCEEDED`（耗时 < 2400 / 2400 / 2600ms）· **预算耗尽 ⇒ 立刻失败**（< 500ms）· **env 收紧 ⇒ 上界跟着收紧**（证明 yml 那个键**真被读到**）· **`withDeadlineAfter` 代码行 == 0**（点位级棘轮）· **无载体仍套 2s 封顶** ＋ **cap=0 阳性对照**（证明上界是机制决定的）· **纳秒取预算**（精度损失 < 0.4ms）· **入向更长 ⇒ 压到 2s** / **入向更短 ⇒ 继承入向剩余** · **载体面**：入向载体在 **handler 线程真绑上**（真 socket）· **devh 全局拦截器链真生效**（真出向调用在 2s 处断）· **SQL 载体毫秒精度 + 在途取消 + 过期回滚（0 行）** · **Redis 载体耗尽 ⇒ 写不下发** |
+| **B 组**（出向 2s deadline） | **16 / 16** ✅ | `grpc/CommentOutboundDeadlineCapGateTest` ＋ `grpc/CommentOutboundDeadlineCarrierGateTest` | **13 + 9** | 配置面：yml 必须是 `${COMMENT_OUTBOUND_DEADLINE_CAP_MILLIS:2000}` 形态 ＋ 绑出 `cap==2000` 且开关开 ＋ **按服务全名覆盖**为空 · 行为面：**无预算** / **30s 预算** / **生产 3s 形态** 三种都必须在 **2s** 处 `DEADLINE_EXCEEDED`（耗时 < 2400 / 2400 / 2600ms）· **预算耗尽 ⇒ 立刻失败**（< 500ms）· **env 收紧 ⇒ 上界跟着收紧**（证明 yml 那个键**真被读到**）· **`withDeadlineAfter` 代码行 == 0**（点位级棘轮）· **无载体仍套 2s 封顶** ＋ **cap=0 阳性对照**（证明上界是机制决定的）· **纳秒取预算**（精度损失 < 0.4ms）· **入向更长 ⇒ 压到 2s** / **入向更短 ⇒ 继承入向剩余** · **载体面**：入向载体在 **handler 线程真绑上**（真 socket）· **devh 全局拦截器链真生效**（真出向调用在 2s 处断）· **SQL 载体毫秒精度 + 在途取消 + 过期回滚（0 行）** · **Redis 载体耗尽 ⇒ 写不下发** · 🔴 **第 ⑨ 点（出向载体真绑上 ＋ 有效期限 = min(服务端, 客户端)）—— 2026-11-10 已闭合**：断言**已改回 B 侧真值**（`isTrue()` / 剩余 `≤` 客户端 deadline 且 `> 0` / 出向剩余纳秒 `> 0`）⇒ **实测 9/9 绿**（§1.10.4） |
 
 #### 1.10.3 假绿证伪（**本轮新断言都被证明是活的**）
 
@@ -342,9 +349,14 @@ cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment" && mvn -o -pl service/c
   ① 出向载体 `isTrue()`（已绑）② 服务端剩余 `isLessThanOrEqualTo(客户端 deadline)` ＋ `isPositive()`（min 语义）
   ③ 出向载体剩余纳秒 `isGreaterThan(0L)`（不再返回 -1 = 未绑哨兵）
   ⇒ ⇒ **实测 9/9 绿**（`CommentOutboundDeadlineCarrierGateTest`）。
-- ⚠️ **本域 §5.4 状态表的「残留 1 点 ⇒ `NOT_VERIFIED`」仍按本域原判** ——
-  本点**根因已消除**，但「B 组第 ⑨ 点」的**逐项核对**属本域 253 点清单的一部分
-  ⇒ ⇒ **改判由本域 lane 重跑其核对后自行给出**；**`global` 收口域只销「共享层差异」这一根**（与 DRIFT-COMMON-V19 的销账口径同款）。
+- ✅ **本域 lane 已重跑核对并改判（2026-11-10 · 本轮）** ——
+  上一步只销了「共享层差异」这一根（`global` 收口域口径），**本域 253 点清单的逐项核对仍未做** ⇒ ⇒ **本轮补做**：
+  ① **当轮重跑**（`align/comment` @ `3c9c516`）⇒ `mvn -o -pl service/comment -am clean verify` ⇒
+  **comment-service 301 / 0 / 0 / 0** ＋ **common 255 / 0 / 0 / 0** ＋ **BUILD SUCCESS**（10:14）；
+  ② **D-15 那条用例在当轮工作树上实测 9/9 绿**（`CommentOutboundDeadlineCarrierGateTest` · 36.32 s）
+  ⇒ ⇒ **B 组第 ⑨ 点判 `PASS`**（不再是 `NOT_VERIFIED`）⇒ ⇒ **§5.4 的 51 个 `NOT_COVERED` 点 51/51 全闭合**
+  ⇒ ⇒ **覆盖 232/253 = 91.7%**（原 231/253 = 91.3%）⇒ ⇒ **§六 的 `NOT_VERIFIED` 由 4 ⇒ 3**（**3 个全是原审计的 `PARTIAL` 半边**）。
+  ⚠️ **本轮只改台账计数与判定，`service/comment/**` 与 `common/**` 的源码零改动** ⇒ ⇒ **读数变化全部来自共享层自身的收口**（`global` 收口域 V23~V26）。
 
 #### 1.10.5 ⚠️ 本轮踩过的坑（**写给下一个跑本域的人**）
 
@@ -644,7 +656,7 @@ cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment" && mvn -o -pl service/c
 | **D-12** | proto 契约测试的**基准资产** | B 侧把基准放在**资源文件**：`comment-rpc/src/test/resources/proto-contract/comment-proto-contract.expected.txt` ＋ `tools/proto-wire-probe/comment/expected.txt` | C 侧本仓 `tools/` 下**没有** `proto-wire-probe/` ⇒ 期望值**逐字内联**为常量，**并各加一条 sha256 断言**把内联文本与 B 侧那份冻结文件**钉成逐字节相同**（实测两个 sha256 完全匹配：`69f05c75…` / `52a30a67…`） | C 侧无对应资产目录（**且 `tools/` 属 global 域写权**） | **零**：内联文本与 B 侧冻结文件**逐字节相同** ⇒ B 侧担心的「手抄抄错」被**可执行地**关掉（抄错一个字节 ⇒ 红） | **L4（表达层）** | 无 | `CommentProtoContractTest#inlinedBaselineIsByteIdenticalToBSideFrozenFile` ＋ `CommentProtoWireParityTest` 的 sha256 锚定 |
 | **D-13** | `service/comment/pom.xml` 的 `io.grpc:grpc-inprocess` 依赖声明 | B 侧 `service/comment/comment-api/pom.xml:159-174` **明写「🔴🔴 刻意不在这里声明 grpc-inprocess」**，并给出根因：Maven「最近者优先」⇒ 本模块**直接声明**（深度 1）**顶掉** devh starter 传递进来的 compile 声明（深度 2）⇒ scope 一旦写成 `test` ⇒ **运行时 classpath 上整个 artifact 消失** ⇒ `NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder` ⇒ **组件根本起不来**，**而单元测试全绿** | **修前**：C 侧**直接违反**该明文约束（`pom.xml:68-72` 写了 `<scope>test</scope>`）⇒ 修前 fat jar 的 `BOOT-INF/lib/` 里**没有** `grpc-inprocess` ⇒ `java -jar` **启动失败**。**修后**：**整条删除**该直接声明（由 devh starter 传递，compile 作用域） | **C 侧自创缺陷**（**不是** B 侧问题 —— B 侧已明文警告过这个坑） | **产物层**：交付物 `comment-service-1.0-SNAPSHOT.jar` 能否启动 ⇒ **修前完全起不来** | **🔴 L1/L4（交付级 · 整个服务不可用）** | ✅ **本轮已修**（修法与 B 出处写在 `pom.xml` 的注释块里）＋ **新增 2 个守门类**把这条钉死：`CommentArtifactClasspathGateTest`（4 例）＋ `CommentRuntimeBootGateTest`（1 例） | 真 fat jar `java -jar`（**gRPC 端口真的在监听** ＋ 日志含 devh 的「gRPC Server started」）＋ `BOOT-INF/lib` 条目断言 ＋ `dependency:build-classpath -DincludeScope=runtime` |
 | **D-14** | **响应 JSON 的键序**（`dto/comment/CommentItem.java` ＋ `dto/comment/SubjectInfo.java` 的**属性输出顺序**） | **运行时产出 = 字母序**（`attribute, children, content, created_at, …`）—— 因为 B 侧跑 **Jackson 3.1.5**（Boot 4 默认；证据：镜像内 `BOOT-INF/lib/jackson-databind-3.1.5.jar`）⇒ **字母序是 Jackson 3 的默认行为**。⚠️ B 侧这两个 DTO **没有** `@JsonPropertyOrder` ⇒ 顺序**未被钉住** ⇒ 顺带暴露：B 侧自己的 `service/article/…/dto/Article.java:71` 与 `service/hot/…/dto/HotArticleCard.java:70` **明写**「Jackson 默认按字母序 ⇒ 必须用 `@JsonPropertyOrder` 钉回 **Go 的结构体声明序**」，而 **comment 域漏钉** | **声明序**（`id, user_id, content, root_id, …`）—— C 侧 DTO 是 **immutable record**（D5）⇒ Jackson 2（**2.19.4**，D14 钉死；证据：fat jar 内只有 `jackson-databind-2.19.4.jar`）按 **record 分量序**输出 | **框架版本分叉**（Jackson 3 ↔ Jackson 2）⇒ **不是 C 侧的业务逻辑缺陷**：**值完全相同**（E-4 活体实证：9/9 用例解析后取值逐字段相等 ⇒ 只差键序）。⚠️ **三方对照**：Go 真源（`encoding/json`）按**结构体声明序** = `id, user_id, root_id, parent_id, content, created_at, meta, like_count, dislike_count, reply_count, attribute, state, children`（B 侧 javadoc 引 `types.go:6-20` · 13 字段 ＋ 首尾 2 行 = 15 行 ✓）⇒ **C 侧（声明序）与 Go（声明序）是同一种序**，只是与 B 侧 DTO 的 Java 字段序不同 | `/comment/v1/comment/list` 响应里 `data.comment[0]` 与 `data.subject` 两个对象的**键序**（**值不变**）⇒ 严格按字节比对时两侧**不等** | **L1（wire 字节级）· 框架限制类** | **C 侧不改** —— D14 已把全项目钉在 Jackson 2；改成字母序＝**背离 Go 的声明序**（B 侧的字母序是它自己**漏钉 `@JsonPropertyOrder`** 的默认值泄漏，不是被签字的契约）⇒ 登记即可。⚠️ 若将来要「与 B 侧运行时字节一致」，则需给 C 侧所有响应 record 加 `@JsonPropertyOrder`（**会改 C 侧 wire 字节 ⇒ 须走决策流程**）<br>✅ **2026-11-09 已决策（`global` 收口域 · 用户拍板「全用 jackson2」）** ⇒ ⇒ **维持 C 侧 = 声明序，不改成字母序** ⇒ ⇒ 理由：① **Go 真源（`encoding/json`）按 struct 声明序输出** ⇒ 声明序才是**契约**；② B 侧的字母序是它**自己漏钉 `@JsonPropertyOrder`** 的**默认值泄漏**，不是被签字的契约；③ ⇒ **C 侧改为字母序＝背离 Go 真源** ⇒ ⇒ **D-14 本条至此销账**（不再待决策）<br>⇒ ⇒ **配套机制已落**：全仓**不开** `SORT_PROPERTIES_ALPHABETICALLY`（**新守门 A17**：`tools/difftest/check-arch-invariants.py` · PASS 645/645 Java + 10/10 yml）＋ **运行时探针** `tools/difftest/jackson-key-order/run.sh`（22/22 序一致 + 字节 BYTE-EQ）<br>⚠️ **同根因的其他登记同步销账**：`users-user` 的 `DRIFT-USER-PARITY-003`（JSON 响应键序）⇒ **一次统一，不再各域各签一遍** | **E-4 活体对拍**（`tools/parity-probe/comment/`）：33 例中 **24 例逐字节相等**、**9 例**列为**已知差异**并**冻结两侧各自字节**（`known-diff.txt`）⇒ **差异形状变了仍会判红**；变异 M4 证明该白名单**参与判定** |
-| **D-15** | **共享层 gRPC handler 线程上的「出向载体」绑定**（`common/…/autoconfigure/ObservabilityAutoConfiguration.java:324` 的 `GrpcObservationInterceptor.withDeadline`） | B 侧 `common/…/observability/RpcInterceptor.java:517-520` ⇒ `onHalfClose` 把**同一个绝对时刻**绑给**两个**载体：`DeadlineState.bindAbsoluteNanos(...)` **＋** `GoStyleRequestDeadline.bindAbsoluteNanos(...)`；且 `:304` ⇒ `effectiveTimeoutNanos = min(serverBudgetNanos, clientDeadlineRemainingNanos())` ⇒ **客户端给的更短 deadline 参与服务端有效期限** | ✅ **已修**（`global` 收口域 · 2026-11-04 · `DRIFT-COMMON-V20` · 提交 `01c11dd`）⇒ `:349-352` **两个载体绑同一个绝对时刻**（`DeadlineState` **＋** `GoStyleRequestDeadline`）＋ `:239-240` **min 语义**（客户端 deadline 参与）⇒ 旧的 `rpcDeadlineNanos(...)` **已删除** | ⚠️ **不是本轮新发现**：共享层台账 `docs/DRIFT/common/verification-common-2026-11-02.md` **DRIFT-COMMON-V17 · PARITY-006 根因 · `global` 收口域**（2026-11-03）**已登记**「⚠️ **只绑入向载体** `DeadlineState` ⇒ 出向 `GoStyleRequestDeadline` **仍未绑** ⇒ 爆炸半径更大 ⇒ **另案**」；`common/…/observability/DeadlineState.java:126-129` 有同款自述 ⇒ ⇒ **本条只是把它在本域的可观察后果钉出来** | ① **本域出向 gRPC 出口**（`article-rpc` / `message-rpc`）**拿不到入向剩余预算** ⇒ 只剩 **2s 客户端封顶**（B 侧是 `min(入向剩余, 2s)`）⇒ **下游耗时落在 2s 上下时两侧结局可能不同**；② **连带**：`common/…/redis/Deadline` 的期限闸门读 `GoStyleRequestDeadline.remainingNanos()` ⇒ **在生产里永不触发**（Redis 期限闸门形同虚设） | **L2 / L4（跨域 · 共享层）** | ✅ **已由 `global` 收口域修完**（本域**无 `common/**` 写权** ⇒ 由收口域按同一修法落地并销账）—— 修法与本域登记的完全一致：在 `GrpcObservationInterceptor.withDeadline(...)` 里把同一个绝对时刻也绑给 `GoStyleRequestDeadline`，并把服务端有效期限改成 `min(serverBudget, clientDeadlineRemaining)` | ✅ **棘轮已按其自身指示翻回**（2026-11-05 · `global` 收口域执行）—— `grpc/CommentOutboundDeadlineCarrierGateTest#outboundCarrierIsNotBoundAndClientDeadlineIsNotHonouredYet` ⇒ **已改名** `outboundCarrierIsBoundAndClientDeadlineIsHonoured` ＋ 三条断言**改回 B 侧真值**（① `isTrue()` ② 剩余 `≤` 客户端 deadline 且 `> 0` ③ 出向剩余纳秒 `> 0`）⇒ **实测 9/9 绿**。⚠️ **本域 §5.4 的「B 组第 ⑨ 点仍判 `NOT_VERIFIED`」按本域原判保留**（**根因已消除**，但逐项核对属本域 253 点清单 ⇒ **改判由本域 lane 重跑后自行给出**） |
+| **D-15** | **共享层 gRPC handler 线程上的「出向载体」绑定**（`common/…/autoconfigure/ObservabilityAutoConfiguration.java:324` 的 `GrpcObservationInterceptor.withDeadline`） | B 侧 `common/…/observability/RpcInterceptor.java:517-520` ⇒ `onHalfClose` 把**同一个绝对时刻**绑给**两个**载体：`DeadlineState.bindAbsoluteNanos(...)` **＋** `GoStyleRequestDeadline.bindAbsoluteNanos(...)`；且 `:304` ⇒ `effectiveTimeoutNanos = min(serverBudgetNanos, clientDeadlineRemainingNanos())` ⇒ **客户端给的更短 deadline 参与服务端有效期限** | ✅ **已修**（`global` 收口域 · 2026-11-04 · `DRIFT-COMMON-V20` · 提交 `01c11dd`）⇒ `:349-352` **两个载体绑同一个绝对时刻**（`DeadlineState` **＋** `GoStyleRequestDeadline`）＋ `:239-240` **min 语义**（客户端 deadline 参与）⇒ 旧的 `rpcDeadlineNanos(...)` **已删除** | ⚠️ **不是本轮新发现**：共享层台账 `docs/DRIFT/common/verification-common-2026-11-02.md` **DRIFT-COMMON-V17 · PARITY-006 根因 · `global` 收口域**（2026-11-03）**已登记**「⚠️ **只绑入向载体** `DeadlineState` ⇒ 出向 `GoStyleRequestDeadline` **仍未绑** ⇒ 爆炸半径更大 ⇒ **另案**」；`common/…/observability/DeadlineState.java:126-129` 有同款自述 ⇒ ⇒ **本条只是把它在本域的可观察后果钉出来** | ① **本域出向 gRPC 出口**（`article-rpc` / `message-rpc`）**拿不到入向剩余预算** ⇒ 只剩 **2s 客户端封顶**（B 侧是 `min(入向剩余, 2s)`）⇒ **下游耗时落在 2s 上下时两侧结局可能不同**；② **连带**：`common/…/redis/Deadline` 的期限闸门读 `GoStyleRequestDeadline.remainingNanos()` ⇒ **在生产里永不触发**（Redis 期限闸门形同虚设） | **L2 / L4（跨域 · 共享层）** | ✅ **已由 `global` 收口域修完**（本域**无 `common/**` 写权** ⇒ 由收口域按同一修法落地并销账）—— 修法与本域登记的完全一致：在 `GrpcObservationInterceptor.withDeadline(...)` 里把同一个绝对时刻也绑给 `GoStyleRequestDeadline`，并把服务端有效期限改成 `min(serverBudget, clientDeadlineRemaining)` | ✅ **棘轮已按其自身指示翻回**（2026-11-05 · `global` 收口域执行）—— `grpc/CommentOutboundDeadlineCarrierGateTest#outboundCarrierIsNotBoundAndClientDeadlineIsNotHonouredYet` ⇒ **已改名** `outboundCarrierIsBoundAndClientDeadlineIsHonoured` ＋ 三条断言**改回 B 侧真值**（① `isTrue()` ② 剩余 `≤` 客户端 deadline 且 `> 0` ③ 出向剩余纳秒 `> 0`）⇒ **实测 9/9 绿**。✅ **2026-11-10：本域 lane 已重跑核对并完成改判** —— §5.4 的「B 组第 ⑨ 点」由 **`NOT_VERIFIED` ⇒ `PASS`** ⇒ ⇒ **51 个 `NOT_COVERED` 点 51/51 全闭合** ⇒ ⇒ **覆盖 232/253 = 91.7%**（§1.10.4）⚠️ **本条登记的「共享层台账同款自述」已过期** —— `common/…/observability/DeadlineState.java:119-120` 仍写「出向载体**仍未绑** ⇒ 另案」，与 `ObservabilityAutoConfiguration.java:352` 的实际绑定**直接矛盾** ⇒ **属 `global` 收口域待订正项**（本域无 `common/**` 写权） |
 
 ### 5.2 📌 B 侧既有缺陷 / 既有行为的登记（**照抄，不修** —— `B-xx`）
 
@@ -742,21 +754,23 @@ cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment" && mvn -o -pl service/c
 
 | 组 | 补缺口前 | 补缺口后 | 承接测试类 |
 |---|---|---|---|
-| **B 组** | 16 点未覆盖 | **15 / 16 闭合** 🟠 | `grpc/CommentOutboundDeadlineCapGateTest`（13 例）＋ `grpc/CommentOutboundDeadlineCarrierGateTest`（9 例） |
+| **B 组** | 16 点未覆盖 | **16 / 16 闭合** ✅ | `grpc/CommentOutboundDeadlineCapGateTest`（13 例）＋ `grpc/CommentOutboundDeadlineCarrierGateTest`（9 例） |
 | **C 组** | 10 点未覆盖 | **10 / 10 闭合** ✅ | `config/CommentRuntimeConfigContractTest`（16 例） |
 | **D 组** | 12 点未覆盖 | **12 / 12 闭合** ✅ | `service/CommentCacheRedisMetricGateTest`（7 例）＋ `domain/service/CommentFactPayloadContractTest`（7 例） |
 | **E 组** | 13 点未覆盖 | **13 / 13 闭合** ✅ | 6 个新测试类（共 **23 例**） |
-| **合计** | **51** | **50 / 51 闭合** ⇒ 覆盖 **231/253 = 91.3%** | **11 个新测试类 / 4,769 行 / +75 例** |
+| **合计** | **51** | **51 / 51 闭合** ✅ ⇒ 覆盖 **232/253 = 91.7%** | **11 个新测试类 / 4,769 行 / +75 例** |
 
-> 🔴 **唯一未闭合点 = B 组第 ⑨ 点**（出向载体在 handler 线程真绑上 ＋ 有效期限 = `min(服务端预算, 客户端 deadline)`）
-> ⇒ **根因 = D-15**（共享层差异，**归属 `global` 收口域** ⇒ 本域**无 `common/**` 写权**）
-> ⇒ ⇒ 该点**仍判 `NOT_VERIFIED`**，**不计入 PASS**。
-> ⇒ ⇒ 本域测试已把它**钉成棘轮**（断言当前形状 ⇒ 共享层修好后**会红**）⇒ 详见 **§1.10.4**。
+> ✅ **原「唯一未闭合点 = B 组第 ⑨ 点」已闭合（2026-11-10 · 本域 lane 重跑后改判）**
+> （出向载体在 handler 线程真绑上 ＋ 有效期限 = `min(服务端预算, 客户端 deadline)`）
+> ⇒ **根因 D-15 已于 2026-11-04 由 `global` 收口域消除**（`DRIFT-COMMON-V20` · 提交 `01c11dd`）
+> ⇒ ⇒ 本域棘轮已按其自身指示**翻回 B 侧真值断言**（`outboundCarrierIsBoundAndClientDeadlineIsHonoured`）
+> ⇒ ⇒ **2026-11-10 当轮重跑实测 9/9 绿**（`align/comment` @ `3c9c516` · 36.32 s）⇒ ⇒ **该点判 `PASS`，计入覆盖**。
+> ⇒ ⇒ **本域 253 点清单的逐项核对已补做完毕** ⇒ ⇒ 覆盖 **232/253 = 91.7%**（原 231/253 = 91.3%）⇒ 详见 **§1.10.4**。
 
 > ✅ **另有 3 个 `PARTIAL`**（原审计判定）**本轮未动**：
 > ① 路径判据（`/comment/v10/x` 这种「前缀相同但非路径分隔」的边界）② 断连 A/B（`REJECT_COMMANDS` 毫秒级 vs 排队到超时）
 > ③ 在途查询的**存活时长 ≈ 剩余毫秒**（时间面，共享层只覆盖了「在途写 0 行」的结果面）
-> ⇒ ⇒ 这 3 点**仍各贡献 1 个 `NOT_VERIFIED` 半边** ⇒ §六 的 `NOT_VERIFIED` 共 **4**（3 半边 ＋ 1 残留）。
+> ⇒ ⇒ 这 3 点**仍各贡献 1 个 `NOT_VERIFIED` 半边** ⇒ §六 的 `NOT_VERIFIED` 共 **3**（**原 4 ＝ 3 半边 ＋ 1 残留；残留那 1 个已于 2026-11-10 改判 `PASS`**）。
 
 #### 与本轮已修 P0 的关系（**为什么这个审计值得做**）
 
@@ -781,26 +795,26 @@ cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment" && mvn -o -pl service/c
 
 | 状态 | 数 | 说明 |
 |---|---|---|
-| ✅ **PASS**（职责已完整承接，行为一致且有充分证据） | **231** | `COVERED` 170→**213** ＋ `COVERED_BY_EQUIVALENT` 11→**18**（用**更强或等价**的形态覆盖）⇒ **本轮 +50**（§1.10 的四组）⇒ 证据强度 **E-2 / E-3**（§1.7）<br>⚠️ **2026-11-09：计数不改** —— D-15 的**共享层根因已由 `global` 收口域闭合**（`DRIFT-COMMON-V20`）＋ 本域棘轮已翻回 **B 侧真值断言**（9/9 绿）⇒ ⇒ **但本域 253 点清单的改判由 comment lane 自行给出**（§1.10.4 明写：*`global` 收口域只销「共享层差异」这一根*）⇒ ⇒ **本数由本域 lane 重跑核对后自行更新** |
+| ✅ **PASS**（职责已完整承接，行为一致且有充分证据） | **232** | `COVERED` 170→**214** ＋ `COVERED_BY_EQUIVALENT` 11→**18**（用**更强或等价**的形态覆盖）⇒ **本轮 +51**（§1.10 的四组）⇒ 证据强度 **E-2 / E-3**（§1.7）<br>✅ **2026-11-10：本域 lane 已重跑核对并改判** —— D-15 的**共享层根因**早已由 `global` 收口域闭合（`DRIFT-COMMON-V20` · 2026-11-04）＋ 本域棘轮已翻回 **B 侧真值断言** ⇒ ⇒ **当轮重跑实测 9/9 绿**（`align/comment` @ `3c9c516`）⇒ ⇒ **B 组第 ⑨ 点由 `NOT_VERIFIED` 改判 `PASS`** ⇒ ⇒ **本数 231 ⇒ 232**（§1.10.4） |
 | ❌ **FAIL**（明确存在职责遗漏或行为漂移） | **0** | ⚠️ **本轮唯一的一条 FAIL 已修**：**D-13**（`grpc-inprocess` 被写成 `test` scope ⇒ **产物 jar 起不来**）⇒ 修后由 2 个新守门类（5 例）钉死 |
 | ⚠️ **INTENTIONALLY_CHANGED**（有明确批准依据的主动行为变更） | **2** | **D-02**（`show-details` 合并裁决 · 依据 D1）· **D-03**（两段式验签合并 · **⚠️ 尚未进 `docs/Intentional_Deviations/` ⇒ 严格说**未签字**，见 §5.4 注） |
 | 🔶 **FRAMEWORK_DIFFERENCE**（框架差异，尚未确认是否影响行为） | **0** | §4.A 的每一项都**已判定影响**（多为「否」） |
-| 🟡 **NOT_VERIFIED**（实现存在，但证据不足） | **4** | ⚠️ **上轮 54 ⇒ 本轮 4（-50）**：① **B 组第 ⑨ 点**（出向载体在 handler 线程真绑上 ＋ 有效期限 = `min(服务端, 客户端)`）—— **根因 = D-15**（共享层差异 · 归属 `global` 收口域 ⇒ 本域无写权）⇒ **仍不计入 PASS**<br>⚠️ **2026-11-09：① 的根因已消除，但计数仍由本域给出** —— 根因侧已闭合（**2026-11-04 · `DRIFT-COMMON-V20`** ＋ 本域棘轮 `CommentOutboundDeadlineCarrierGateTest` 按其**自身指示**翻回 **B 侧真值断言** `outboundCarrierIsBoundAndClientDeadlineIsHonoured` ⇒ **实测 9/9 绿**，提交 `d091c38`）⇒ ⇒ **但本域 253 点清单的改判由 comment lane 重跑其核对后自行给出**（§1.10.4）⇒ ⇒ **`global` 收口域不代改本数**；②③④ **3 个 `PARTIAL` 的未覆盖半边**（路径判据 / 断连 A/B / 在途查询存活时长）⇒ **不得计入 PASS** |
+| 🟡 **NOT_VERIFIED**（实现存在，但证据不足） | **3** | ⚠️ **上轮 54 ⇒ 本轮 3（-51）**：①②③ **3 个 `PARTIAL` 的未覆盖半边**（路径判据 / 断连 A/B / 在途查询存活时长）⇒ **不得计入 PASS**<br>✅ **2026-11-10**：原先的第 ④ 点（B 组第 ⑨ 点 · 出向载体在 handler 线程真绑上 ＋ 有效期限 = `min(服务端, 客户端)`）—— **根因 D-15 已由 `global` 收口域消除**（`DRIFT-COMMON-V20` · 2026-11-04）＋ 本域棘轮 `CommentOutboundDeadlineCarrierGateTest` 按其**自身指示**翻回 **B 侧真值断言** `outboundCarrierIsBoundAndClientDeadlineIsHonoured` ⇒ ⇒ **当轮重跑实测 9/9 绿** ⇒ ⇒ **本域 lane 已重跑核对并改判 `PASS`** ⇒ ⇒ **本数 4 ⇒ 3**（§1.10.4） |
 | ⛔ **NOT_IMPLEMENTED**（C 尚未实现） | **0** | 69/69 主代码**全部有实现**（0 空壳）；B 侧 83 个源文件**全部**在承接表中出现 |
 | 🚧 **BLOCKED**（缺环境，无法验证） | **0** | ✅ **本轮唯一的阻塞项已解除**：**E-4 双侧活体对拍**已建立（`tools/parity-probe/comment/`）并**真跑通过**（33 例：24 例逐字节相等 ＋ 9 例已知差异；变异 M1–M4 全红）⇒ 见 §1.9。⚠️ **剩余的「gRPC 面」与「写路径」是**不可比面**（拓扑产物 / 随机雪花 ID），不是阻塞项** |
 | 🔶 **E-4 证据类**（**不改变 253 的计数口径**） | **33 个请求用例** | **不是** B 侧守门点的计数单位，而是**新增的一类证据**：HTTP 面两侧**逐字节**比对。⚠️ **它当时不把 §5.4 那 51 个 `NOT_COVERED` 点变成 PASS** —— 那些点集中在 **L4 装配面 / 配置 → 运行期** ⇒ **黑盒 HTTP 探针观测不到** ⇒ ⇒ **那 51 点是靠 §1.10 的装配层断言补上的，不是靠 E-4** |
-| 🔶 **E-5 证据类**（本轮新增 · **不改变 253 的计数口径**） | **75 个新用例 / 11 个新测试类** | 装配层 / 进程内断言（真上下文 · 真 devh 链 · 真 gRPC · 真 Redis · 真 PG · 真 Micrometer）⇒ **本轮它确实把那 51 点里的 50 点变成了 PASS**（§5.4.3）⇒ 但**仍留 1 点**（D-15）<br>⚠️ **2026-11-09**：该 1 点的**根因已闭合**（`DRIFT-COMMON-V20` ＋ 本域棘轮翻回 ⇒ 9/9 绿）⇒ ⇒ **但 E-5 的计数口径改判同属本域 253 点清单**（§1.10.4）⇒ **本轮不改** |
+| 🔶 **E-5 证据类**（本轮新增 · **不改变 253 的计数口径**） | **75 个新用例 / 11 个新测试类** | 装配层 / 进程内断言（真上下文 · 真 devh 链 · 真 gRPC · 真 Redis · 真 PG · 真 Micrometer）⇒ **本轮它把那 51 点全部变成了 PASS**（§5.4.3 · 51/51）⇒ ✅ **2026-11-10**：最后那 1 点（D-15）的**根因已闭合**（`DRIFT-COMMON-V20`）＋ 本域棘轮翻回 ⇒ **当轮 9/9 绿** ⇒ ⇒ **E-5 的计数口径改判已由本域 lane 给出**（§1.10.4） |
 | ⛔ **N_A_TO_C**（B 侧结构在 C 侧已不存在） | **18** | 其中 12 点是 B 侧测试基础设施的**端口登记册**（C 侧改用 Testcontainers 动态映射口 ⇒ 端口冲突面结构性消失）；其余 6 点与 D1 合并 / C 侧无 `filter/` 包有关 |
 
-**换算成一句话**：**B 侧 253 个守门点里，C 侧已用 E-2/E-3/E-5 证据证明 231 个（91.3%）**；
-**4 个判 `NOT_VERIFIED`**（1 个因 **D-15** 共享层差异 ＋ 3 个 `PARTIAL` 半边）⇒ ⚠️ **2026-11-09：D-15 的根因已由 `global` 闭合，但本域清单的改判归 comment lane 自行给出（§1.10.4）⇒ 本数本轮未改**；
+**换算成一句话**：**B 侧 253 个守门点里，C 侧已用 E-2/E-3/E-5 证据证明 232 个（91.7%）**；
+**3 个判 `NOT_VERIFIED`**（**全是原审计的 3 个 `PARTIAL` 半边** ⇒ 路径判据 / 断连 A/B / 在途查询存活时长）⇒ ✅ **2026-11-10：原先第 4 个（因 D-15 共享层差异）已由本域重跑核对后改判 `PASS`**（§1.10.4）；
 **18 个因 B 侧结构在 C 侧不存在而 `N_A_TO_C`**；
 **0 个 FAIL、0 个未实现、0 个 BLOCKED**。
 
-⚠️ **这 231 是怎么来的（上轮 181 ⇒ 本轮 231，+50）**
-⇒ **§5.4 那 51 个 `NOT_COVERED` 点里 50 点闭合**（C 10/10 · D 12/12 · E 13/13 · B 15/16）⇒ 见 **§1.10** 与 **§5.4.3**。
+⚠️ **这 232 是怎么来的（上轮 181 ⇒ 本轮 232，+51）**
+⇒ **§5.4 那 51 个 `NOT_COVERED` 点 51 点全闭合**（C 10/10 · D 12/12 · E 13/13 · B **16/16**）⇒ 见 **§1.10** 与 **§5.4.3**。
 ⇒ 其中 **43 点是 1:1 移植**（期望值与判据逐字照抄 B 侧），
-**7 点是「等价或更强」形态**：
+**8 点是「等价或更强」形态**：
 ① C-⑩ yml **整文件**逐字节一致（B 侧只比 `grpc.client.*.address` ⇒ 强于 B）·
 ② B-⑨ 前半「入向载体在 handler 线程绑上」—— B 侧方向 `comment-api→comment-rpc` 在 C 侧**结构性不存在**（D1/D7 压平）⇒ 换成 C 侧**真实存在**的 `article-rpc` 方向（拦截器是 channel 级 ⇒ 机制等价）·
 ③ B-⑩ SQL 载体精度 —— B 侧用本域业务表，C 侧用**专用探针表 + 注解式探针 Mapper**（判据同款且不依赖 8 张业务表 / Flyway 账本）·
@@ -808,6 +822,7 @@ cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment" && mvn -o -pl service/c
 ⑤ B-⑫ 「无载体仍套 2s 封顶」—— B 侧只断 `CallOptions` 面，C 侧**加了行为面**（真调用 `DEADLINE_EXCEEDED`）⇒ 强于 B ·
 ⑥ B-⑮ 「按纳秒取预算」—— B 侧断毫秒精度，C 侧断**纳秒**（C 侧实现本来就是纳秒）⇒ 强于 B ·
 ⑦ B-⑯ 「devh 全局拦截器链真生效」—— B 侧**无对应点** ⇒ C 侧**新增**（只增不减的加固）。
+⑧ **B-⑨ 后半「出向载体真绑上 ＋ 有效期限 = min(服务端预算, 客户端 deadline)」** —— 与 ② 同款理由（B 侧 `comment-api→comment-rpc` 方向在 C 侧结构性不存在 ⇒ 换成 `article-rpc` 方向复现）⇒ ⇒ **且判据比 B 侧更严**：不只断言「载体在位」，还断言**服务端剩余 ≤ 客户端 deadline 且 > 0**（min 语义）＋ **出向载体剩余纳秒 > 0**（不是未绑哨兵 −1）⇒ ⇒ **2026-11-10 当轮实测 9/9 绿**（§1.10.4）⇒ ⇒ **这条即 D-15 那一点，由 `NOT_VERIFIED` 改判 `PASS`**。
 ⇒ ⇒ 另**新增 6 条 B 侧没有的加固 / 负控断言**（`cap=0` 阳性对照 · 打包 yml 缺失时**失败而非跳过** · 读穿结果一致性 · 若干负控）⇒ **只增不减**。
 
 ⚠️ **E-4 做完之后，这句话怎么变？**
@@ -816,14 +831,14 @@ cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment" && mvn -o -pl service/c
 ⇒ **E-4 本身不改变 253 的计数口径** ⇒ 它覆盖的是「L1/L2 的 wire 行为」，
 而 §5.4 那 51 点**集中在 L4 装配面 / 配置 → 运行期** ⇒ **黑盒 HTTP 探针根本观测不到它们**
 ⇒ ⇒ **「E-4 已做」≠「缺口已补」** ⇒ 这两件事**必须分开说**；
-⇒ ✅ **本轮是「E-5 装配层断言」把 50 点补上的**（§1.10）⇒ 计数口径才从 181 变成 231。
+⇒ ✅ **本轮是「E-5 装配层断言」把 51 点全部补上的**（§1.10）⇒ 计数口径才从 181 变成 232。
 
 
 ## 七、最终必须回答的问题（§十四）
 
 | # | 问题 | 回答 |
 |---|---|---|
-| 1 | **C 是否完整承接 B 的全部实际职责？** | ✅ **职责层面：是** —— B 侧 83 个源文件**全部**在承接表中出现（机器复算 B 列 83/83）；C 侧 69 个类**0 空壳**。🔴 **但「行为已被证明」仍不是 100%**：B 侧 **253 个守门点**里，C 侧以 E-2/E-3/**E-5** 证据证明 **231（91.3%）**（**上轮 181 ⇒ 本轮 231**：§5.4 那 51 个 `NOT_COVERED` 点里 **50 点**已补成装配层真断言 · §1.10）、**4 判 `NOT_VERIFIED`**（① B 组第 ⑨ 点 · 根因 **D-15** 共享层差异 · 归属 `global` 收口域；②③④ 3 个 `PARTIAL` 半边）、**18 判 `N_A_TO_C`**。⚠️ 承接的**证据强度**最高**已是 E-4**（HTTP 面：两侧**同时真跑**、33 个请求逐字节比对 ⇒ 24 例逐字节相等 ＋ 9 例已知差异 · §1.9）⇒ 但 **gRPC 面与写路径仍不是可比面**（拓扑产物 / 随机雪花 ID）⇒ 且 **4 个 `NOT_VERIFIED` 未被 E-4 覆盖**（L4 装配面，黑盒探针观测不到）⇒ ⇒ 「承接完整」在 **HTTP 面**上是**双侧活体**结论，在 **L4 装配面**上是**装配层断言（E-5）**结论，**只剩 1 个点因共享层差异未闭合**。 |
+| 1 | **C 是否完整承接 B 的全部实际职责？** | ✅ **职责层面：是** —— B 侧 83 个源文件**全部**在承接表中出现（机器复算 B 列 83/83）；C 侧 69 个类**0 空壳**。🔴 **但「行为已被证明」仍不是 100%**：B 侧 **253 个守门点**里，C 侧以 E-2/E-3/**E-5** 证据证明 **232（91.7%）**（**上轮 181 ⇒ 本轮 232**：§5.4 那 51 个 `NOT_COVERED` 点**全部 51 点**已补成装配层真断言 · §1.10）、**3 判 `NOT_VERIFIED`**（**全是原审计的 3 个 `PARTIAL` 半边**：路径判据 / 断连 A/B / 在途查询存活时长）、**18 判 `N_A_TO_C`**。⚠️ 承接的**证据强度**最高**已是 E-4**（HTTP 面：两侧**同时真跑**、33 个请求逐字节比对 ⇒ 24 例逐字节相等 ＋ 9 例已知差异 · §1.9）⇒ 但 **gRPC 面与写路径仍不是可比面**（拓扑产物 / 随机雪花 ID）⇒ 且 **3 个 `NOT_VERIFIED` 未被 E-4 覆盖**（L4 装配面，黑盒探针观测不到）⇒ ⇒ 「承接完整」在 **HTTP 面**上是**双侧活体**结论，在 **L4 装配面**上是**装配层断言（E-5）**结论，**已无「因共享层差异未闭合」的点**（✅ 2026-11-10 当轮重跑改判 · §1.10.4）。 |
 | 2 | **Mapping_Table 中 RAG → RAG-V1 的映射是否与当前真实代码一致？** | ✅ **一致** —— `tools/check-mapping-coverage.py comment` **EXIT=0**，C 列 **69/69**、B 列 **83/83**。⚠️ 映射表 §7.4 的 12 条待订正项**已在本轮闭合**，但**映射表本身未被修改**（§十三禁止改映射表）⇒ 复核人应以本台账为准。 |
 | 3 | **File_Tree 规定的目标结构是否正确落地？** | ✅ **是** —— 69 个主代码类**逐个落位**（包分布见 §1.2），**0 空壳**；`gen-file-tree.py`（改过 `ROOT` 的副本）重跑**无漂移** ⇒ 本轮新增的 **11 个测试类**（`config/` 2 · `domain/service/` 1 · `grpc/` 2 · `http/` 1 · `service/` 5）**已登记进 `docs/File_Tree/comment.md`**；`check-docs-vs-tree.py` **EXIT=0**。⚠️ 该脚本的 `ROOT` 仍**硬编码到主仓** ⇒ 在 worktree 里跑它会**重写主仓的 14 份文件树**（见 §1.6 第一条）⇒ 属**工具侧债**，不在本域写权内。⚠️ **本轮实测**：用改过 `ROOT` 的副本跑 ② 号判据（重新生成 ⇒ 逐字节比对）⇒ `comment.md` 与 `proto.md` **完全一致**；`article.md` 仍差一行 ⇒ 根因 = **工作树基于更早的提交**（主仓已有 `article/…/web/` 包，本工作树还没有）⇒ 属**跨域既有差异**（不属本域写权）⇒ **如实登记，不伪造**。 |
 | 4 | **多文件合并是否造成职责、分支或异常路径遗漏？** | ✅ **否** —— 6 条 N:1 全部逐项核过（§3.1）；其中 **N-1（7 个 api 用例合 1）** 的 **13 个关键点**逐条在位（V-11）；**N-2 的 3 个 `@Transactional` 方法没有被合进领域服务**（事务边界保持）。 |
@@ -833,8 +848,8 @@ cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment" && mvn -o -pl service/c
 | 8 | **Spring Boot 4 → 3.5 是否引入业务可观察行为变化？** | ⚠️ **有三处，均已登记**：**D-02** ＋ **D-03** ＋ **D-14**（🔴 **D-14 是 E-4 活体对拍抓到的新增项** —— **Jackson 3→2 会改变响应 JSON 的属性输出顺序** ⇒ B 侧字母序 / C 侧声明序 ⇒ **值相同、字节不同** ⇒ 归「框架版本分叉」类，**C 侧不改**）。其余框架差异（Boot 4 专有 artifact / Tomcat 11→10.1 / `spring-boot-kafka`）经 4.A 逐项判定**不影响业务可观察行为**，且都**在 Boot 3.5 上有等价替代**（共享层 starter 化 ＋ 显式依赖声明 ＋ 重跑重校断言）。 |
 | 9 | **Tomcat、Jackson、Spring Framework 等底层版本变化是否产生实际漂移？** | ⚠️ **产生了一条，且已被 E-4 活体抓到**：**D-14** —— **Jackson 3.1.5（B 侧，Boot 4 默认）↔ Jackson 2.19.4（C 侧，D14 钉死）** ⇒ **响应 JSON 的属性输出顺序**不同（B 侧字母序 / C 侧声明序）⇒ **值完全相同、键序不同** ⇒ 归 **「框架版本分叉」**类（C 侧**不改**，理由见 D-14）。⇒ 除此之外**未发现**版本引起的漂移；**D-03**（JWT 验签两段式载体差异）的根因是**文件树没有 `filter/` 包**，不是版本。⚠️ Tomcat 10.1 与 11 的差异需在 **E-3 真 Tomcat** 下重校（D14 明令）⇒ 本轮 HTTP 层断言**全部走真 Tomcat**（`CommentHttpWireContractRealTomcatTest` 33 例 ＋ `CommentJwtTokenMatrixRealTomcatTest` 14 例）＋ **E-4 双侧活体**（§1.9）。🔴 **另有一条不是版本、但同样致命的依赖面缺陷**：**D-13**（`grpc-inprocess` 被写成 `test` scope ⇒ **产物 jar 起不来**）⇒ 已修 ＋ 已加产物层/进程级守门。 |
 | 10 | **哪些差异已经通过证据证明安全？** | ✅ **21 项**（§5.2 的 B-01~B-27 中的行为继承项 ＋ §5.3 的 12 条闭合项 ＋ V-1~V-5 的归一化 diff ＋ 本轮新增的 **B-15 四条出口方向的位点级运行证据**）—— 这些差异要么**逐条相同**（E-2），要么**是 B 侧既有行为被原样继承**（按 §1.1 **不算 C 侧漂移**），要么**已被 E-3 运行证据钉住**。 |
-| 11 | **哪些差异仍然无法确认？** | ⚠️ **三类**：① **4 个 B 侧守门点在 C 侧仍无「B 侧真值」断言** ⇒ 一律判 **`NOT_VERIFIED`** —— **1 个**是 B 组第 ⑨ 点（出向载体在 handler 线程真绑上 ＋ 有效期限 = `min(服务端预算, 客户端 deadline)`），**根因 = D-15**（共享层 `ObservabilityAutoConfiguration` 只绑入向载体 ⇒ 出向载体在生产里从不绑；且服务端预算不含客户端 deadline）⇒ **共享层台账 DRIFT-COMMON-V17 已登记「另案」** ⇒ **本域无 `common/**` 写权** ⇒ **只登记不修**；本域测试已把它**钉成棘轮**（共享层修好后会红）⇒ **§1.10.4**；**3 个**是原审计的 `PARTIAL` 半边（路径判据 / 断连 A/B / 在途查询存活时长）—— ⚠️ **E-4 做完并没有关掉这一类**（E-4 覆盖的是 HTTP wire 行为），**本轮关掉它的是 E-5 装配层断言**（§1.10）。② **gRPC 面与写路径是「不可比面」**（B 侧两进程跨进程 gRPC vs C 侧单进程域内直连 · D2；写路径响应带随机雪花 ID）⇒ 不是「没验」，是**拓扑/随机性**决定的 ⇒ 这两面**最强证据仍是 E-3**。③ **D-14 的 JSON 键序**虽已定位根因（Jackson 3 ↔ 2）并冻结双方字节，但**「C 侧要不要改成与 B 侧运行时字节一致」**属 **L1 字节级变更** ⇒ 按 §八「L1 未变 ⇒ 走决策流程」**本轮未动** ⇒ 登记为**框架限制类**，**不需要拍板**（若要改则需拍板）。⚠️ 另：映射表 **P6-a / P6-b / P6-c**（fact 合并后的遗留子项）与 **P2（熔断子集）** 仍**待拍板** ⇒ 本轮**未动**。 |
-| 12 | **当前 C 是否具备可靠的行为对拍条件？** | ✅ **具备（HTTP 面）** —— 探针已建立：**`tools/parity-probe/comment/`**（`run.sh` / `probe-isolation.sh` / `mutate-parity.sh` / `expected.txt` / `known-diff.txt` / `README.md`）⇒ B 侧用**本地现成镜像**（**B 仓零改动**）、C 侧用**本仓 fat jar**，**两侧同时真跑** ⇒ **33 个请求逐字节比对** ⇒ **24 例逐字节相等** ＋ **9 例已知差异**；**变异 M1–M4 全部精确转红** ⇒ **不是恒绿**。⚠️ 仍**不具备**的部分：① **gRPC 面**（拓扑不同）② **写路径逐字节**（随机雪花 ID）③ **L4 装配面的黑盒观测**（那 51 点需要**进程内/装配层**断言，不是 HTTP 探针）—— ✅ **本轮已用 E-5 装配层断言补上 50 点**（§1.10），**剩 1 点因 D-15 共享层差异未闭合**。⚠️ 工程代价：探针的**五个隔离向量**（双 Nacos 命名空间 / 双 PG / 端口租约 / mvn 锁 / **双 Redis**）缺一不可 ⇒ 复用时**必须整套搬**，不能只搬 `run.sh`。⚠️ **本轮新学的并发纪律**：同一模块目录并发跑 maven ⇒ `target/` 互踩 ⇒ 症状伪装成「满屏 `NoClassDefFoundError`」⇒ ⇒ **并行 worker 一律禁跑 maven**（只做隔离 `javac` 编译），主控**持全局锁串行**跑 `mvn`（§1.10.5）。 |
+| 11 | **哪些差异仍然无法确认？** | ⚠️ **三类**：① **3 个 B 侧守门点在 C 侧仍无「B 侧真值」断言** ⇒ 一律判 **`NOT_VERIFIED`** —— **全是原审计的 `PARTIAL` 半边**（路径判据 / 断连 A/B / 在途查询存活时长）—— ⚠️ **E-4 做完并没有关掉这一类**（E-4 覆盖的是 HTTP wire 行为），**关掉它的是 E-5 装配层断言**（§1.10）⇒ ⇒ **原先第 4 个（B 组第 ⑨ 点 · 出向载体在 handler 线程真绑上 ＋ 有效期限 = `min(服务端预算, 客户端 deadline)`）已于 2026-11-10 由本域重跑核对并改判 `PASS`**（根因 D-15 早由 `global` 收口域于 2026-11-04 消除 · `DRIFT-COMMON-V20`；棘轮已按其自身指示翻回 B 侧真值断言 ⇒ 当轮 9/9 绿）⇒ ⇒ **§1.10.4**；② **gRPC 面与写路径是「不可比面」**（B 侧两进程跨进程 gRPC vs C 侧单进程域内直连 · D2；写路径响应带随机雪花 ID）⇒ 不是「没验」，是**拓扑/随机性**决定的 ⇒ 这两面**最强证据仍是 E-3**。③ **D-14 的 JSON 键序**虽已定位根因（Jackson 3 ↔ 2）并冻结双方字节，但**「C 侧要不要改成与 B 侧运行时字节一致」**属 **L1 字节级变更** ⇒ 按 §八「L1 未变 ⇒ 走决策流程」**本轮未动** ⇒ 登记为**框架限制类**，**不需要拍板**（若要改则需拍板）。⚠️ 另：映射表 **P6-a / P6-b / P6-c**（fact 合并后的遗留子项）与 **P2（熔断子集）** 仍**待拍板** ⇒ 本轮**未动**。 |
+| 12 | **当前 C 是否具备可靠的行为对拍条件？** | ✅ **具备（HTTP 面）** —— 探针已建立：**`tools/parity-probe/comment/`**（`run.sh` / `probe-isolation.sh` / `mutate-parity.sh` / `expected.txt` / `known-diff.txt` / `README.md`）⇒ B 侧用**本地现成镜像**（**B 仓零改动**）、C 侧用**本仓 fat jar**，**两侧同时真跑** ⇒ **33 个请求逐字节比对** ⇒ **24 例逐字节相等** ＋ **9 例已知差异**；**变异 M1–M4 全部精确转红** ⇒ **不是恒绿**。⚠️ 仍**不具备**的部分：① **gRPC 面**（拓扑不同）② **写路径逐字节**（随机雪花 ID）③ **L4 装配面的黑盒观测**（那 51 点需要**进程内/装配层**断言，不是 HTTP 探针）—— ✅ **本轮已用 E-5 装配层断言全部补上**（§1.10 · **51/51**），**已无因共享层差异未闭合的点**（✅ 2026-11-10 当轮重跑改判 · §1.10.4）。⚠️ 工程代价：探针的**五个隔离向量**（双 Nacos 命名空间 / 双 PG / 端口租约 / mvn 锁 / **双 Redis**）缺一不可 ⇒ 复用时**必须整套搬**，不能只搬 `run.sh`。⚠️ **本轮新学的并发纪律**：同一模块目录并发跑 maven ⇒ `target/` 互踩 ⇒ 症状伪装成「满屏 `NoClassDefFoundError`」⇒ ⇒ **并行 worker 一律禁跑 maven**（只做隔离 `javac` 编译），主控**持全局锁串行**跑 `mvn`（§1.10.5）。 |
 
 ---
 
@@ -844,9 +859,20 @@ cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment" && mvn -o -pl service/c
 2. **⚠️ 「已落地」≠「已实现」；「源码级对照」≠「双侧活体对拍」** —— V-1~V-5 是**源码级**证据，**不能**替代活体对拍；**E-4 也只替代得了「HTTP wire 行为」这一层**，替代不了 L4 装配面（§1.9.5）。
 3. **⚠️ 计数口径**：§1.2 的文件数用 `find … -path '*/src/main/*' -name '*.java'` 实测；**测试数**只取**回归日志的模块级汇总**（**不取** `surefire-reports/*.xml` 求和 —— 孤儿报告虚高），且**须同断 `skipped=0`**（AGENTS.md §五.8 守门四规则）。
 4. **⚠️ E-4 探针的 9 条已知差异是「冻结的字节对」，不是「免责清单」** —— `known-diff.txt` 冻结了**两侧各自**的字节 ⇒ **任一侧字节变了就判红**（变异 M4 已证）⇒ ⇒ 台账里那 9 条 **不得**读作「C 侧对」或「C 侧错」，只能读作「**两侧字节不同、形状已冻结、根因已定位（D-14）**」。
-4. **⚠️ 本文件只写 `docs/DRIFT/comment/` 目录**，**未改** `docs/DRIFT/_INDEX.md`（AGENTS.md §五.2 的写权边界）⇒ **`_INDEX.md` 里 comment 域那一行仍写着「⬜ 未建立」** ⇒ 收口人需手动更新（**那是 global 收口域的写权**）。
+4. **⚠️ 本文件只写 `docs/DRIFT/comment/` 目录**，**未改** `docs/DRIFT/_INDEX.md`（AGENTS.md §五.2 的写权边界）⇒ ⚠️ **2026-11-10 订正**：`_INDEX.md:27` 的 comment 行**已由 `global` 收口域改为「✅ 已建立」**（原文写的「⬜ 未建立」**已过期**）⇒ 但该行的**核对日期仍写 2026-11-03** ⇒ ⇒ **本文件的最新判定日期是 2026-11-10**（§1.10.4 的改判）⇒ ⇒ **索引的日期需 `global` 收口域同步**（本域无写权）。
 5. ⚠️ **本轮改动了 `service/comment/pom.xml`** —— 这是**主代码模块**的构建文件，属本域写权内；改动内容**只有一处**：删除 `io.grpc:grpc-inprocess` 的 `test` scope 直接声明（**D-13**）＋ 补上 B 出处与根因的注释块。**未改**任何依赖坐标、版本或 `dependencyManagement`。
 6. ⚠️ **本轮新增的 2 个守门类会自己构建 fat jar**（B 侧同款做法）：`CommentArtifactClasspathGateTest#fatJar()` 在 jar 缺失/过期时调 `mvn -o -q package -Dmaven.test.skip=true -am -pl service/comment`。
    ⇒ ⚠️ **「嵌套 maven 与外层构建抢同一个 `target/`」是已知冲突面**（本仓另一域为此改用过「产物 zip 手术 + 单独调 surefire goal」）；
    ⇒ ⇒ 本轮**实测**：外层 `mvn -o -pl service/comment -am clean verify` 与全仓 `mvn -o -T1C clean verify` **均绿**（surefire 默认**串行**跑测试类 ⇒ 嵌套构建期间没有别的用例在跑）⇒ 风险可控。
    ⇒ ⇒ 若将来把 surefire 改成**并行**，这条要重新评估。
+7. ✅ **2026-11-10 本轮（**D-15 改判**）的边界** —— **只改本台账的「计数与判定」**：`service/comment/**` 与 `common/**` 的**源码零改动**（D-15 的修法由 `global` 收口域在 `01c11dd` 落地）⇒ ⇒ **读数变化全部来自共享层自身的收口**（V23~V26），不是本域改了代码。
+   ⇒ ⇒ **复算命令入库**（免得下一个复核者无从复现）：
+   ```bash
+   cd "/Users/pr/Documents/GitHub/RAG-V1.worktrees/comment"
+   WORKDIR="$PWD" bash /tmp/rag-mvn-lock-comment.sh -o -pl service/comment -am clean verify
+   # ⇒ comment-service: Tests run: 301, Failures: 0, Errors: 0, Skipped: 0
+   #   common:          Tests run: 255, Failures: 0, Errors: 0, Skipped: 0
+   #   ⇒ BUILD SUCCESS · 10:14 min · reactor 556 例 · skipped=0
+   ```
+   ⇒ ⇒ **棘轮那条单独复核**：`CommentOutboundDeadlineCarrierGateTest`（**9 例 / 36.32 s** ⇒ D-15 的 B 侧真值断言在当轮工作树上仍然全绿）。
+   ⚠️ **仍登记在案的共享层待订正项**（属 `global` 收口域，本域无 `common/**` 写权）：`common/…/observability/DeadlineState.java:119-120` 的自述仍写「出向载体**仍未绑** ⇒ 另案」，与 `ObservabilityAutoConfiguration.java:352` 的实际绑定**直接矛盾** ⇒ ⇒ **源码里的假断言比台账陈旧更危险**（下一个人照着它读会得出错结论）。
