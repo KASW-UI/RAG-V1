@@ -114,6 +114,16 @@ for m in "${MUTATIONS[@]}"; do
     if [ "${rc}" = "0" ]; then
         say "   !! 变异后探针仍绿 ⇒ **gRPC 面判据没被触发**（这条变异对 gRPC 面无感）"
         FAILED=1
+    elif [ "${rc}" = "3" ]; then
+        # 🔴 EXIT=3 = oracle 侧没给出业务应答（本轮不可判）⇒
+        #    **不是**「变异被触发」⇒ 本轮变异验证**不成立** ⇒ 不能算通过，也不能算「没触发」。
+        say "   !! 变异态探针 EXIT=3（oracle 无效读数 ⇒ 本轮不可判）⇒ 变异验证**不成立** ⇒ 需重跑"
+        FAILED=1
+    elif [ "${rc}" = "2" ]; then
+        # 🔴 EXIT=2 = **环境问题**（依赖缺失 / 构建失败 / 容器起不来 / 真源漂移）
+        #    ⇒ ⇒ **绝不能**报成「变异被触发」⇒ 本轮**不成立** ⇒ 需在环境正常时重跑。
+        say "   !! 变异态探针 EXIT=2（**环境问题** ⇒ 本轮不成立）⇒ 需在环境正常时重跑"
+        FAILED=1
     else
         say "   ✓ 变异后 gRPC 面转红"
         python3 "${HERE}/judge_report.py" "${GRPC_REPORT}" \
@@ -136,7 +146,14 @@ for m in "${MUTATIONS[@]}"; do
     build_c
     rc="$(run_probe "restored")"
     say "   · 还原态探针 EXIT=${rc}"
-    if [ "${rc}" != "0" ]; then
+    if [ "${rc}" = "3" ]; then
+        say "   !! 还原态探针 EXIT=3（oracle 无效读数 ⇒ 本轮不可判）⇒ 还原验证**不成立** ⇒ 需重跑"
+        FAILED=1
+    elif [ "${rc}" = "2" ]; then
+        # 🔴 EXIT=2 = **环境问题** ⇒ ⇒ **绝不能**报成「变异没被还原干净」
+        say "   !! 还原态探针 EXIT=2（**环境问题** ⇒ 本轮不成立）⇒ 需在环境正常时重跑"
+        FAILED=1
+    elif [ "${rc}" != "0" ]; then
         say "   !! 还原后探针仍红 ⇒ 变异**没被还原干净**或另有问题"
         FAILED=1
     else
