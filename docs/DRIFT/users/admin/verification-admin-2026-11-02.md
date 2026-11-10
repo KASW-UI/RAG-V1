@@ -536,7 +536,13 @@
 
 > ⚠️ **2026-11-10 复算的实测口径（务必按此读，勿直接当「全链全绿」）**：
 > - **本域读数是权威的**：`mvn -o -pl service/users/admin clean verify -fae` ⇒ **BUILD SUCCESS**（EXIT=0）·
->   **152 / 0 / 0 / 0** · **repackage 通过**（`Replacing main artifact …admin-service-1.0-SNAPSHOT.jar with repackaged archive`）· 耗时 **09:15 min**。
+>   **154 / 0 / 0 / 0**（**2026-11-10 收口读数**：含新增的真 Nacos 守卫 2 例）· **repackage 通过**
+>   （`Replacing main artifact …admin-service-1.0-SNAPSHOT.jar with repackaged archive`）。
+>   📌 **前一轮读数**（改动前代码态，18:09–18:18）＝ **152 / 0 / 0 / 0** · 耗时 09:15 min ⇒ **本轮多出的正是那 2 例**。
+> - ⚠️ **2026-11-10 19:36–19:46 那轮的中断（须如实记）**：跑到一半 **Docker Desktop 的 daemon 整个挂了**
+>   （`docker info` ⇒ `connect ... no such file or directory`）⇒ ⇒ **9 个类报 `ContainerLaunchException`**
+>   （容器起不来）⇒ ⇒ **不是代码缺陷**；同一轮的**新守卫本身已绿**（`AdminNacosRealRegistrationTest` 2/2 · 154.2s）
+>   ⇒ ⇒ **重启 Docker 后重跑整轮 = 154 / 0 / 0 / 0 · BUILD SUCCESS**（上面的权威读数）。
 > - ⚠️ **同轮 `-am`（带 `common` / `proto` / `users-common` 一起跑）** ⇒ **common 不稳定绿** ⇒ 上游 FAILURE ⇒
 >   **`users-common` 与 `admin-service` 被 SKIPPED** ⇒ ⇒ **拿不到「全链一次绿」的读数** ⇒ 故本轮改用
 >   「**上游 jar 用本地仓库已装版本 + 本域独立 clean verify**」取本域权威读数（**口径必须如此写，勿混用**）。
