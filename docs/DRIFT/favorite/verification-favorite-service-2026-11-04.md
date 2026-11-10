@@ -46,7 +46,20 @@
 ## 一 · B → C 责任承接表（**75 → 63**）
 
 > 映射表：`docs/Mapping_Table/favorite/favorite.md`（**B↔C 两列覆盖 75/75 · 63/63 = 100%** · 机器复算 `tools/check-mapping-coverage.py` EXIT=0）。
-> 下表按 **B 侧源文件**逐个展开「职责 → C 侧承接位置」。
+>
+> 📌 **本台账「机器复算」的复算命令（原样记录 · 2026-11-10 核对 · 遵 `docs/DRIFT/_INDEX.md` 的「命令必须入库」纪律）**：
+> ```bash
+> # ① 两方对照覆盖度（上面这行声明的证据）
+> python3 tools/check-mapping-coverage.py
+> #   ⇒ 实测：EXIT=0 · C 列 645/645 · B 列 752/752 · B 列全局未覆盖 0
+> #   ⚠️ 该脚本的 ROOT **硬编码主仓**（`tools/check-mapping-coverage.py:32`）⇒ ⇒ 在**域工作树**里跑量的是主仓
+> #      ⇒ 收口域待办：给它加 `RAGV1_ROOT` 覆盖口子（与 `tools/gen-file-tree.py:25` 同一条待办）
+>
+> # ② 本台账 §11.6 的状态汇总 ⇒ ⇒ **命令只写在 §11.6 末尾**（那里带正确的 --table-line）
+> #   ⇒ ⚠️ **故意不在本块复制一份**：--table-line 是**行号** ⇒ 本块在明细表**之上** ⇒
+> #      在这里复制 ⇒ 改本块就会**顶偏** §11.6 那份的行号 ⇒ ⇒ 只留指针
+> ```
+> 下表按 **B 侧源文件分组**展开「职责 → C 侧承接位置」（**分组表** ⇒ 行级真相在 **§11.2.1** 的行级表）。
 
 ### 1.1 `favorite-common/`（4 类 → `contract/` 3 类 + `metrics/` 1 类）
 
@@ -859,7 +872,116 @@ gRPC 面（36 case × 3 方）：① 锚校验 SAME 33 / SAME_CODE 2 / OBS 1 ②
 
 ### 11.2 B → C 责任承接表
 
-见 §一（按 B 侧源文件逐项展开 · **覆盖 B 侧 75 个主代码文件 + 7 个 DDL 脚本**）。
+见 §一（按 B 侧源文件**分组**展开 · **覆盖 B 侧 75 个主代码文件 + 7 个 DDL 脚本**）。
+
+#### 11.2.1 🟢 **行级审核项表**（**一行一个 B 侧类** · 机器可复算 · **76 行**）
+
+> 🔴 **为什么要有这张表** —— §一 是**分组表**（一行顶多个 B 侧类）⇒ ⇒ **行级复算器数不出来**
+> ⇒ ⇒ §11.6 的汇总数过去**无法复现**（复算器对 §一 三块表实测 = PASS 31 / PARTIAL 1，与自报的 69/5/12 **对不上**）
+> ⇒ ⇒ 本表把 §一 **展开到类**（75 类 + 7 个 DDL 脚本合成 1 行 = **76 行**）⇒ ⇒ **状态列用机器词表**（`PASS` / `NOT_VERIFIED` / …）⇒ ⇒ §11.6 的数字**从这张表复算出来**。
+>
+> ✅ **展开时查出并修掉的 2 处 §一 漏项**：
+> ① `api/auth/` 实为 **4 类**（`GoStyleJwtAuthFilter` + `FavoriteJwtAuthPaths` + `FavoriteJwtSignatureVerifier` + `FavoriteJwtVerificationResult`）⇒ §一 的行文写「**3 类**（verifier + result + paths）」⇒ **漏了 `GoStyleJwtAuthFilter`**；
+> ② B 侧 `rpc/metrics/FavoriteRpcMetrics.java` 在 §一 **整行缺失**（§一 只覆盖 **74/75**）⇒ 本表已补。
+> ⇒ ⇒ **§一 本身不动**（它是分组叙述表）⇒ **行级真相在本表**。
+
+| 审核项 | 状态 | 依据 |
+|---|---|---|
+| `common/errmsg/FavoriteErrorCode.java` | PASS | §一 1.1 · **E-2**（逐条常量值 + **声明顺序**照抄） |
+| `common/errmsg/FavoriteErrorMessages.java` | PASS | §一 1.1 · **E-2** + E-3（§二·2.2） |
+| `common/errmsg/FavoriteGrpcError.java` | PASS | §一 1.1 · **E-2** + E-3（往返测试） |
+| `common/span/FavoriteSpans.java` | PASS | §一 1.1 · **E-2**（映射表 §1.8） |
+| `api/FavoriteApiApplication.java` | PASS | §一 1.2 · **E-2**（api 进程入口，与 rpc 入口合并） |
+| `api/advice/GlobalExceptionHandler.java` | PASS | §一 1.2 · **E-2** + E-3（本域特有 5003） |
+| `api/advice/GlobalResponseAdvice.java` | PASS | §一 1.2 · **E-2** |
+| `api/service/FavoriteCreateFolderService.java` | PASS | §一 1.2（`api/service/` 7 个用例类之一）· **E-2**（逐条判据见 §三） |
+| `api/service/FavoriteCreateItemService.java` | PASS | §一 1.2（`api/service/` 7 个用例类之一）· **E-2**（逐条判据见 §三） |
+| `api/service/FavoriteDeleteFolderService.java` | PASS | §一 1.2（`api/service/` 7 个用例类之一）· **E-2**（逐条判据见 §三） |
+| `api/service/FavoriteDeleteItemService.java` | PASS | §一 1.2（`api/service/` 7 个用例类之一）· **E-2**（逐条判据见 §三） |
+| `api/service/FavoriteListFoldersService.java` | PASS | §一 1.2（`api/service/` 7 个用例类之一）· **E-2**（逐条判据见 §三） |
+| `api/service/FavoriteListItemsService.java` | PASS | §一 1.2（`api/service/` 7 个用例类之一）· **E-2**（逐条判据见 §三） |
+| `api/service/FavoriteUpdateFolderNameService.java` | PASS | §一 1.2（`api/service/` 7 个用例类之一）· **E-2**（逐条判据见 §三） |
+| `api/service/FavoriteApiSupport.java` | PASS | §一 1.2 · **E-2**（身份解析 / proto→DTO / 业务日志 / RPC 失败还原） |
+| `api/auth/GoStyleJwtAuthFilter.java` | PASS | §一 1.2（`auth/` **4** 类之一）· **E-2** ⚠️ **§一 行文写「auth/ 3 类」实为 4 类 ⇒ 本表已展开到类** |
+| `api/auth/FavoriteJwtAuthPaths.java` | PASS | §一 1.2（`auth/` **4** 类之一）· **E-2**（受保护路由表） |
+| `api/auth/FavoriteJwtSignatureVerifier.java` | PASS | §一 1.2（`auth/` **4** 类之一）· **E-2**（验签） |
+| `api/auth/FavoriteJwtVerificationResult.java` | PASS | §一 1.2（`auth/` **4** 类之一）· **E-2**（验签结果载体） |
+| `api/interceptor/FavoriteJwtAuthInterceptor.java` | PASS | §一 1.2 · **E-2** ⚠️ **有界偏离**（§五·漂移 A：鉴权计时口径 · **不改变可观察行为** ⇒ 计入 PASS） |
+| `api/interceptor/FavoriteGoQueryLimitInterceptor.java` | PASS | §一 1.2 · **E-2**（判据复用共享层 `GetFormValuesFilter#goParseViolation`） |
+| `api/config/WebMvcConfig.java` | PASS | §一 1.2 · **E-2**（拦截器注册 + 关闭响应侧内容协商） |
+| `api/config/FavoriteApiProperties.java` | PASS | §一 1.2 · **E-2**（`favorite-api.*` + 密钥 fail-closed 守卫） |
+| `api/dto/CreateFavoriteFolderReq.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/CreateFavoriteFolderResp.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/CreateFavoriteReq.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/CreateFavoriteResp.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/DeleteFavoriteFolderReq.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/DeleteFavoriteFolderResp.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/DeleteFavoriteReq.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/DeleteFavoriteResp.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/FavoriteFolder.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/FavoriteItem.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/GetFavoriteFoldersResp.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/GetFavoritesByFolderReq.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/GetFavoritesByFolderResp.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/UpdateFavoriteFolderNameReq.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/dto/UpdateFavoriteFolderNameResp.java` | PASS | §一 1.2（`api/dto/` 15 个 DTO 之一）· **E-2** + E-3（JSON 形状） |
+| `api/client/FavoriteRpcClient.java` | PASS | §一 1.2 · **D2 域内直连**（见 §四·4.1）⇒ 该类在 C 侧删除，职责由 D2 承接 |
+| `api/controller/FavoriteController.java` | PASS | §一 1.2 · **E-2** + E-3（真 Tomcat · 7 端点） |
+| `rpc/FavoriteRpcApplication.java` | PASS | §一 1.3 · **E-2**（rpc 进程入口，与 api 入口合并） |
+| `rpc/bootstrap/FavoriteNacosRegistration.java` | PASS | §一 1.3（`rpc/bootstrap/` 4 个之一）· **E-2**（进程装配） |
+| `rpc/bootstrap/FavoriteSchemaGate.java` | PASS | §一 1.3（`rpc/bootstrap/` 4 个之一）· **E-2**（进程装配） |
+| `rpc/bootstrap/FavoriteSubjectRefGate.java` | PASS | §一 1.3（`rpc/bootstrap/` 4 个之一）· **E-2**（进程装配） |
+| `rpc/bootstrap/FavoriteFactProcessLogging.java` | PASS | §一 1.3（`rpc/bootstrap/` 4 个之一）· **E-2**（进程装配） |
+| `rpc/client/UserRpcClient.java` | PASS | §一 1.3（`rpc/client/` 2 个之一）· **E-2** |
+| `rpc/client/ArticleRpcClient.java` | PASS | §一 1.3（`rpc/client/` 2 个之一）· **E-2** |
+| `rpc/config/FavoriteRpcProperties.java` | PASS | §一 1.3 · **E-2**（`favorite.*` 配置） |
+| `rpc/config/FavoriteRpcLabels.java` | PASS | §一 1.3 · **E-2**（label 取值） |
+| `rpc/domain/FavoriteAuthorityFact.java` | PASS | §一 1.3（`rpc/domain/` 5 个 Entity 之一）· **E-2** + E-3（真 PG） |
+| `rpc/domain/FavoriteFactOutboxEntity.java` | PASS | §一 1.3（`rpc/domain/` 5 个 Entity 之一）· **E-2** + E-3（真 PG） |
+| `rpc/domain/FavoriteFolderEntity.java` | PASS | §一 1.3（`rpc/domain/` 5 个 Entity 之一）· **E-2** + E-3（真 PG） |
+| `rpc/domain/FavoriteItemEntity.java` | PASS | §一 1.3（`rpc/domain/` 5 个 Entity 之一）· **E-2** + E-3（真 PG） |
+| `rpc/domain/FavoriteLegacyFactMarkerEntity.java` | PASS | §一 1.3（`rpc/domain/` 5 个 Entity 之一）· **E-2** + E-3（真 PG） |
+| `rpc/exception/FavoriteExceptions.java` | PASS | §一 1.3 · **E-2**（异常族） |
+| `rpc/fact/FavoriteAuthorityEndpointConfig.java` | NOT_VERIFIED | ⚠️ **E-4 缺口**：两个面的 E-4 探针**不覆盖**该链路（§八·8.4 / 8.5 的证据边界）⇒ **有实现、无双侧活体证据**（权威读端点的**字节口径**） |
+| `rpc/fact/FavoriteFactDispatchScheduler.java` | NOT_VERIFIED | ⚠️ **E-4 缺口**：两个面的 E-4 探针**不覆盖**该链路（§八·8.4 / 8.5 的证据边界）⇒ **有实现、无双侧活体证据**（事实链路 4 个之一） |
+| `rpc/fact/FavoriteLegacyPreflightRunner.java` | PASS | §一 1.3 · **E-2**（逐条照抄 Go `favorite_legacy_preflight.go:30-96`） |
+| `rpc/mapper/FavoriteFactOutboxMapper.java` | PASS | §一 1.3（`rpc/mapper/` 4 个之一）· **E-2** + E-3（真 PG） |
+| `rpc/mapper/FavoriteFolderMapper.java` | PASS | §一 1.3（`rpc/mapper/` 4 个之一）· **E-2** + E-3（真 PG） |
+| `rpc/mapper/FavoriteItemMapper.java` | PASS | §一 1.3（`rpc/mapper/` 4 个之一）· **E-2** + E-3（真 PG） |
+| `rpc/mapper/FavoriteLegacyFactMarkerMapper.java` | PASS | §一 1.3（`rpc/mapper/` 4 个之一）· **E-2** + E-3（真 PG） |
+| `rpc/mapper/JsonbTypeHandler.java` | PASS | §一 1.3 · **D3** ⇒ **域内 0 副本**（落 `common/persistence/JsonbTypeHandler.java`） |
+| `rpc/metrics/FavoriteRpcMetrics.java` | PASS | 🔴 **§一 原表漏行**（B 侧 `rpc/metrics/` 1 类无对应行 ⇒ §一只覆盖 74/75）⇒ 本表已补 ⇒ **E-2** + E-3（真 Prometheus 抓取） |
+| `rpc/service/FavoriteArticleSnapshotResolver.java` | PASS | §一 1.3（`rpc/service/` 11 个之一）· **E-2** |
+| `rpc/service/FavoriteAssertionSchemaResolver.java` | PASS | §一 1.3（`rpc/service/` 11 个之一）· **E-2** |
+| `rpc/service/FavoriteAuthorityLookupService.java` | PASS | §一 1.3（`rpc/service/` 11 个之一）· **E-2** |
+| `rpc/service/FavoriteDeliveryValidator.java` | PASS | §一 1.3（`rpc/service/` 11 个之一）· **E-2** |
+| `rpc/service/FavoriteDomainService.java` | PASS | §一 1.3（`rpc/service/` 11 个之一）· **E-2** |
+| `rpc/service/FavoriteFactDispatchService.java` | NOT_VERIFIED | ⚠️ **E-4 缺口**：两个面的 E-4 探针**不覆盖**该链路（§八·8.4 / 8.5 的证据边界）⇒ **有实现、无双侧活体证据**（事实链路 4 个之一） |
+| `rpc/service/FavoriteFactEnvelopeFactory.java` | NOT_VERIFIED | ⚠️ **E-4 缺口**：两个面的 E-4 探针**不覆盖**该链路（§八·8.4 / 8.5 的证据边界）⇒ **有实现、无双侧活体证据**（事实链路 4 个之一） |
+| `rpc/service/FavoriteFactWriteService.java` | NOT_VERIFIED | ⚠️ **E-4 缺口**：两个面的 E-4 探针**不覆盖**该链路（§八·8.4 / 8.5 的证据边界）⇒ **有实现、无双侧活体证据**（事实链路 4 个之一） |
+| `rpc/service/FavoriteRpcSupport.java` | PASS | §一 1.3（`rpc/service/` 11 个之一）· **E-2** |
+| `rpc/service/FavoriteUserGuard.java` | PASS | §一 1.3（`rpc/service/` 11 个之一）· **E-2** |
+| `rpc/service/impl/FavoriteServiceGrpcImpl.java` | PASS | §一 1.3 · **E-2** + E-3（真传输） |
+| `rpc/src/main/resources/db/migration/V1..V7`（7 个 DDL 脚本） | PASS | §一 1.3 · **E-2**（**SQL 正文逐字零差异**）+ E-3（真 PG） |
+
+#### 11.2.2 🟢 **行级主动变更表**（**一行一条签字偏离** · 机器可复算 · **12 行**）
+
+> ⚠️ **为什么是**第二张表（而不是并进 11.2.1）：**12 条签字偏离只落在 8 个 B 侧类上**（如 `DEV-FAV-API-001`/`002` 同落 `GlobalExceptionHandler`；`RPC-003`/`008`/`009` 同落 `FavoriteLegacyPreflightRunner`）⇒ ⇒ **一行一个类无法同时承载两个轴** ⇒ ⇒ 两轴必须分表 ⇒ ⇒ 复算器按**表头分组**、按**行数**配对（见 §11.6 的复算命令）。
+
+| 偏离 ID | 状态 | 依据 |
+|---|---|---|
+| DEV-FAV-API-001 | INTENTIONALLY_CHANGED | ✅ 已签字 · §六（`docs/Intentional_Deviations/favorite/_signed-deviations.md`） |
+| DEV-FAV-API-002 | INTENTIONALLY_CHANGED | ✅ 已签字 · §六（`docs/Intentional_Deviations/favorite/_signed-deviations.md`） |
+| DEV-FAV-API-003 | INTENTIONALLY_CHANGED | 🟡 **C 侧专属** · §六（`docs/Intentional_Deviations/favorite/_signed-deviations.md`） |
+| DEV-FAV-COMMON-001 | INTENTIONALLY_CHANGED | ✅ 已签字 · §六（`docs/Intentional_Deviations/favorite/_signed-deviations.md`） |
+| DEV-FAV-COMMON-002 | INTENTIONALLY_CHANGED | ✅ 已签字 · §六（`docs/Intentional_Deviations/favorite/_signed-deviations.md`） |
+| DEV-FAV-RPC-001 | INTENTIONALLY_CHANGED | ✅ 已签字 · §六（`docs/Intentional_Deviations/favorite/_signed-deviations.md`） |
+| DEV-FAV-RPC-003 | INTENTIONALLY_CHANGED | ✅ 已签字 · §六（`docs/Intentional_Deviations/favorite/_signed-deviations.md`） |
+| DEV-FAV-RPC-004 | INTENTIONALLY_CHANGED | ✅ 已签字 · §六（`docs/Intentional_Deviations/favorite/_signed-deviations.md`） |
+| DEV-FAV-RPC-006 | INTENTIONALLY_CHANGED | ✅ 已签字 · §六（`docs/Intentional_Deviations/favorite/_signed-deviations.md`） |
+| DEV-FAV-RPC-007 | INTENTIONALLY_CHANGED | ✅ 已签字 · §六（`docs/Intentional_Deviations/favorite/_signed-deviations.md`） |
+| DEV-FAV-RPC-008 | INTENTIONALLY_CHANGED | 🟡 **C 侧专属** · §六（`docs/Intentional_Deviations/favorite/_signed-deviations.md`） |
+| DEV-FAV-RPC-009 | INTENTIONALLY_CHANGED | 🟡 **C 侧专属** · §六（`docs/Intentional_Deviations/favorite/_signed-deviations.md`） |
 
 ### 11.3 多文件合并和拆分专项报告
 
@@ -899,19 +1021,39 @@ gRPC 面（36 case × 3 方）：① 锚校验 SAME 33 / SAME_CODE 2 / OBS 1 ②
 | **DRIFT-FAV-013** | `application.yml` `management.endpoints.enabled-by-default` / `show-details` | B 侧 api 未写 `show-details`（Boot 默认 `never`）/ rpc 写 `when_authorized` | C 侧原为 `show-details: always` ⇒ **比 B 侧两个面都松** | 🟠 **健康端点细节泄露**（`show-details: always` ⇒ 未授权也能看到端点明细） | 同上 | 🟠 **P2**（健康端点细节泄露） | ✅ **已修**：取**更严**的一侧 `when_authorized` + 显式关掉未开启的端点（like / follow 域同款） | `application.yml` 逐键对照 + 文档对账 |
 | **DRIFT-FAV-014** | `service/FavoriteApiSupport.java`（`#invokeRpc` / `#resolveBizCode` / `#carriesDeadlineExceeded`）· `service/FavoriteUserGuard.java`（`#onDownstreamFailure`）· B 侧 `favorite-api/.../FavoriteRpcClient.java:108-115` | B 侧 api → rpc 是**自我 gRPC 往返** ⇒ **那一跳也带 2s 出向 cap** ⇒ 慢下游时 **api 自己的 cap 先到** ⇒ 收到的是**自己的 DEADLINE_EXCEEDED**（**无业务 description**）⇒ ⇒ 反查不出业务码 ⇒ 落 **`CODE_SERVER_BUSY(1015)`**（Go `CodeServerBusy = 1015`）⇒ **oracle 自述**：「下游挂死时是 2s 先到 ⇒ api 返回 200 + 业务码 1015」 | **修前**：**D2 域内直连** ⇒ **没有 api→rpc 这一跳** ⇒ ⇒ 2s cap 落在 **service→user-rpc** 那一跳 ⇒ ⇒ 超时落进 `FavoriteUserGuard#onDownstreamFailure:116` ⇒ 非 `NOT_FOUND` ⇒ ⇒ `:132` `internalServerCommon()` ⇒ **5001**<br>**修后（方向 ②）**：① api 面在 `FavoriteApiSupport#invokeRpc` **自持同值 2s 上界**（**复用同一个配置键** `rag.protection.outbound-deadline.cap-millis` ⇒ **不是「第二个 cap 来源」**；**不换线程** ⇒ deadline 传播 / OTel 上下文 / 事务边界都不受影响）② **判据用 cause 链**（`DEADLINE_EXCEEDED` ⇒ 1015）⇒ **无竞态**且与 B 侧 `status.FromError` 形状逐字对应 ③ 领域层两处下游失败分支改 `internalServerCommon(e)` ⇒ **保留原始 gRPC cause** ⇒ ⇒ **api 面落 1015**、**gRPC 面不受影响**（仍 5001 · 与 B 侧 gRPC 面同形） | 🟠 **慢下游时的业务码**（调用方要分两套码处理 —— B 侧 1015 / 修前 C 侧 5001；**现已同为 1015**） | **D2 域内直连的结构性代价**（与 hot 域**同根因、两种表现**：hot 域 = 上界**整体消失**；favorite 域 = 上界**还在但作用点变了**）⇒ ⇒ **不是漏配**（两侧耗时桶逐字相同 `2000-2499` ⇒ **cap 的值与生效性都没漂**）⇒ ⇒ **改 yaml 修不好** ⇒ ⇒ **方向 ② = 在域内复刻 B 侧 api→rpc 那一跳的 cap** | 🟠 **P2**（慢下游时的**业务码**不同；调用方要分两套码处理） | ✅ **已修**（2026-11-05 用户拍板**方向 ②**）⇒ ⇒ **api 面两侧已同为 1015** ⇒ ⇒ 载体差异登记为 **`DEV-FAV-API-003`**（§六）⇒ ⇒ 详见 **§五·5.10** | ① 场景轮 S3（下游桩慢 5s）⇒ 两侧耗时桶**相同** `2000-2499` · 业务码**两侧同为 1015** ⇒ ⇒ **`KNOWN_DIFFS` 已清空**（表结构保留 ⇒ 现在任何两侧不等都真报红）<br>② `http/FavoriteApiHopDeadlineContractTest` —— **5 条真触发**（真 gRPC 慢下游 · `GetUser` 睡 5s）：api 面 ⇒ **1015** / **反向对照** gRPC 面 ⇒ **仍 5001** / 非超时对照 ⇒ **仍 5001** / api→领域层这一跳**必须自带预算载体** / 慢下游服务器**真的在监听**<br>③ **三处机制变异红→绿**：去掉「`DEADLINE_EXCEEDED` ⇒ 1015」⇒ **红**；领域层丢掉 gRPC cause ⇒ **红**；不绑预算载体 ⇒ **红** ⇒ ⇒ 还原后复跑**绿** |
 
-### 11.6 完成度统计（**按 verification.md §11.6 分开统计**）
+### 11.6 完成度统计（**按 verification.md §11.6 分开统计** · 🟢 **机器可复算**）
 
-> 口径：**逐行重数**（不是估的）· 依据 §一的承接表 **75 行 B 侧职责**。
+> ✅ **口径已改为「从行级明细表数出来」**（2026-11-10 闭合）：本表的每一个数字都来自 **§11.2.1（76 行）** 与 **§11.2.2（12 行）** 两张**行级**明细表 ⇒ ⇒ **可用 `tools/recount-ledger-status.py` 复现**（命令见本节末）。
+> ⇒ 🔴 **两轴分表的原因**：**12 条签字偏离只落在 8 个 B 侧类上**（`DEV-FAV-API-001`/`002` 同落 `GlobalExceptionHandler`；`RPC-003`/`008`/`009` 同落 `FavoriteLegacyPreflightRunner`）⇒ ⇒ **一行一个类装不下两个轴** ⇒ ⇒ 必须分表（复算器按**表头分组**、按**行数**配对 ⇒ 两表互不串味）。
+> ⇒ ⚠️ **旧口径（69 / 5 / 12）已作废** —— 它按 **B 侧类**人工展开，而 §一 是**分组表** ⇒ ⇒ **行级复算器数不出来**（对 §一 三块表实测 = PASS 31 / PARTIAL 1，合计 32 ⇒ 与 69/5/12 对不上）⇒ ⇒ 现改为**行级表 ⇒ 数字随表走**（PASS 由 69 变 **71** = 76 − 5）。
 
-| 分类 | 条数 | 说明 |
+| 状态 | 数量 | 说明 |
 |---|---|---|
-| **已实现且已验证**（PASS，E-3 级） | **69** | 真 PG / 真 Tomcat / 真 gRPC 传输 / 真 Flyway 层（**2026-11-05 +1** = preflight 预检报表 · 真 PG 7 例 + 真 Tomcat 5 例） |
-| **已实现但未验证**（NOT_VERIFIED） | **5** | 事实链路的 4 个 + 权威端点的字节口径（**两个面的 E-4 探针都不覆盖 fact 链路与权威端点** ⇒ 这 5 条仍缺 E-4） |
-| **尚未实现**（NOT_IMPLEMENTED） | **0** | ✅ **原 1 条（preflight 触发入口 · P6-c）已于 2026-11-05 闭合**（见 §五·5.1 / §八·8.6） |
-| **明确存在漂移**（FAIL） | **0** | 🔴 **DRIFT-FAV-001 已修**；**DRIFT-FAV-008 ~ 013（本轮真启动抓出的 6 条配置面缺失）已修**；**DRIFT-FAV-014（慢下游业务码 B=1015 / C=5001）已修**（2026-11-05 用户拍板方向 ② ⇒ api 面两侧同为 1015 · §五·5.10）；其余 6 条已登记为**有界偏离 / 文档缺口**，均**不改变可观察行为** ⇒ ⇒ **无待裁决项** |
-| **框架差异待验证**（FRAMEWORK_DIFFERENCE） | **0** | §四 10 项**全部**已给出「是否影响业务行为」判定与适配方式 |
-| **被外部条件阻塞**（BLOCKED） | **0** | ✅ 原 1 条（E-4 双侧活体对拍）已于 2026-11-04 闭合（**HTTP 面** · §八·8.4）· **2026-11-05 补齐 gRPC 面**（§八·8.5） |
-| **已批准的主动变更**（INTENTIONALLY_CHANGED） | **12** | §六 的 12 条签字偏离（9 条继承 B 侧已签字 ＋ 3 条 C 侧专属：`DEV-FAV-RPC-008` 事务 · `DEV-FAV-RPC-009` 触发形态 · `DEV-FAV-API-003` api→领域层自持出向上界） |
+| **PASS** | **71** | 已实现且已验证（**E-3 级**：真 PG / 真 Tomcat / 真 gRPC 真传输 / 真 Flyway / 真 Prometheus 抓取）⇒ 逐行见 **§11.2.1** |
+| **NOT_VERIFIED** | **5** | **事实链路 4 个**（`rpc/fact/FavoriteFactDispatchScheduler` · `rpc/service/FavoriteFactDispatchService` · `rpc/service/FavoriteFactEnvelopeFactory` · `rpc/service/FavoriteFactWriteService`）＋ **权威端点的字节口径 1 个**（`rpc/fact/FavoriteAuthorityEndpointConfig`）⇒ **两个面的 E-4 探针都不覆盖 fact 链路与权威端点** ⇒ 这 5 条**仍缺 E-4**（逐行见 **§11.2.1**） |
+| **NOT_IMPLEMENTED** | **0** | ✅ 原 1 条（preflight 触发入口 · P6-c）已于 2026-11-05 闭合（见 §五·5.1 / §八·8.6） |
+| **FAIL** | **0** | 🔴 **DRIFT-FAV-001 已修**；**DRIFT-FAV-008 ~ 013（本轮真启动抓出的 6 条配置面缺失）已修**；**DRIFT-FAV-014（慢下游业务码 B=1015 / C=5001）已修**（方向 ② ⇒ api 面两侧同为 1015 · §五·5.10）；**DRIFT-FAV-002 ~ 007 共 6 条**已登记为**有界偏离 / 文档缺口**，均**不改变可观察行为** ⇒ ⇒ **无待裁决项** |
+| **FRAMEWORK_DIFFERENCE** | **0** | §四 10 项**全部**已给出「是否影响业务行为」判定与适配方式 |
+| **BLOCKED** | **0** | ✅ 无 |
+
+**轴 B · 主动变更（12 行 = §六 的 12 条签字偏离）**
+
+| 状态 | 数量 | 说明 |
+|---|---|---|
+| **INTENTIONALLY_CHANGED** | **12** | §六 的 **12 条**签字偏离（**9 条继承 B 侧已签字 ＋ 3 条 C 侧专属**：`DEV-FAV-RPC-008` 事务 · `DEV-FAV-RPC-009` 触发形态 · `DEV-FAV-API-003` api→领域层自持出向上界）⇒ 逐行见 **§11.2.2** |
+
+🔴 **复算命令（原样 · 2026-11-10 入库 · 遵 `docs/DRIFT/_INDEX.md` 的「命令必须入库」纪律）**：
+
+```bash
+python3 tools/recount-ledger-status.py \
+    docs/DRIFT/favorite/verification-favorite-service-2026-11-04.md \
+    --table-line 888 --table-line 971 --state-col 1 --compare-summary --expect-total 88
+```
+
+⇒ 实测：**PASS 71 · NOT_VERIFIED 5 · INTENTIONALLY_CHANGED 12（合计 88）** · **drift 0** · **unmatched_summaries 0** · EXIT=0
+> 🔴 **变异验证（证明这条守门不是假绿）** —— 把 §11.2.1 里**一行**的状态由 `PASS` 改成 `NOT_VERIFIED`（`api/controller/FavoriteController.java`）⇒ ⇒ 守门**红**（EXIT=1）⇒ ⇒ **精确报出**「PASS 自报 71 · 实算 **70**」＋「NOT_VERIFIED 自报 5 · 实算 **6**」⇒ ⇒ 还原 ⇒ **绿（EXIT=0）** ⇒ ⇒ **判据精确到单行**。
+⚠️ `--table-line` 是**行号** ⇒ ⇒ 本表**上方**任何增删都会顶偏它 ⇒ ⇒ **复核第一步必须先跑 `--list-tables` 核对行号**（本注记写在**表下方** ⇒ 不会自己顶偏自己）。
+⚠️ **§一 那三块分组表**（行 69 / 78 / 95）**故意不进复算命令** —— 它们是**分组叙述表**（状态列是 `✅`/`⚠️` 符号）⇒ ⇒ 复算器对它们会给 PASS 31 / PARTIAL 1 ⇒ ⇒ **不是真相** ⇒ ⇒ 真相在 §11.2.1 / §11.2.2 两张**行级表**。
 
 ### 11.7 verification.md §九「对拍必须覆盖」的覆盖度核对
 
@@ -969,5 +1111,6 @@ gRPC 面（36 case × 3 方）：① 锚校验 SAME 33 / SAME_CODE 2 / OBS 1 ②
 **🔴 第四轮又抓出 1 条「失败表象与真因完全无关」的测试设施缺陷（真 PG 测试类抢同一个 gRPC 端口 ⇒ 24 例全红但栈里没有端口冲突）⇒ 已修并加了机器守门（机制与证据见 §五·5.9）**；
 **🟡 第五轮新增「场景轮」（6 类场景：create 成功路径 / 并发 / 超时 / 部分成功 / Redis 故障 / **重复请求（幂等重放）**）⇒ 6/6 全绿 · 绝对断言全过 · 变异验证红→绿（两轮）⇒ 完整复跑 EXIT=0**（机制与证据见 §八·8.7）；
 **✅ 场景轮同时抓出的 1 条真漂移（DRIFT-FAV-014：慢下游时业务码 B=1015 / C=5001 ⇒ D2 域内直连的结构性代价）已按用户拍板的「方向 ②」修完 ⇒ ⇒ api 面两侧同为 1015 · gRPC 面不受影响 ⇒ ⇒ 载体差异登记为 `DEV-FAV-API-003`（见 §五·5.10）**；
+**✅ 第六轮：台账汇总数改为「行级表复算」（§11.2.1 **76 行** + §11.2.2 **12 行**）⇒ ⇒ 复算器**逐状态一致**（**PASS 71 / NOT_VERIFIED 5 / INTENTIONALLY_CHANGED 12 = 88**）· 变异验证**红→绿**（改一行即报 drift）⇒ ⇒ **本域数字首次可复核**（旧口径 69/5/12 不可复现 ⇒ 已作废）⇒ ⇒ 顺带查出并补上 **§一 的 2 处漏项**（`api/auth/` 实为 4 类 · `rpc/metrics/FavoriteRpcMetrics.java` 整行缺失）⇒ 机制与证据见 **§11.2 / §11.6**；
 **证据强度：HTTP 面 = E-4（32 case × 3 方 · Go 冻结字节 == B 侧活体 == C 侧活体 · 变异验证红→绿）/ gRPC 面 = E-4（36 case × 3 方 · Go gRPC 冻结锚 == B 侧 favorite-rpc 活体 == C 侧 favorite-service 活体 · 变异验证红→绿）/ 场景轮 = 🟠 只有 B↔C 双侧活体（无第三方锚）**；
 **🔴 本域无 E-4 的说法已作废（2026-11-04 HTTP 面闭合，见 §八·8.4；2026-11-05 gRPC 面闭合，见 §八·8.5）—— 但场景轮的强度低于三方（§8.7.4）；DRIFT-FAV-014 已闭合（§五·5.10 · 慢下游与慢 DB 两格均两侧同为 1015）**。
