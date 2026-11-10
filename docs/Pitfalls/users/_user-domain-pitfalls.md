@@ -325,3 +325,39 @@ NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder
    ⇒ ⇒ 否则 `rm` 失败时会留下一个**挂着的容器**给下一个 lane；
 4. ⇒ ⇒ ⚠️ **并发场景的临时文件也要各自独立** ⇒ 两侧并发写入**同一个** body 文件
    ⇒ ⇒ 互相覆盖 ⇒ ⇒ 读数是**串扰**出来的 ⇒ ⇒ 每侧各自一个文件。
+
+---
+
+## P-USER-19 · 「启动即连」型进程的 **~3s 预算** ⇒ 共享中间件冷/忙时**假失败** ⇒ 看起来像行为差异
+
+**形态**：B 侧 `user-api` 的 gRPC client **启动即连** `discovery:///user-rpc`（`grpc-client-spring-boot-starter` 3.1.0）
+⇒ ⇒ `AbstractChannelFactory.connectOnStartup` 只有 **~3s 等待窗**
+⇒ ⇒ 而**首次 discovery resolve**（Nacos 客户端冷启 + 首次 `getInstances` 往返）实测 **2.2~2.9s**
+⇒ ⇒ **余量只有 ~35%** ⇒ 共享 Nacos 冷/忙（多 lane 共用 + Docker Desktop 重启后重建）时**必挂**：
+
+```
+Failed to create channel: user-rpc
+  ← IllegalStateException: Can't connect to channel user-rpc
+    at net.devh.boot.grpc.client.channelfactory.AbstractChannelFactory.connectOnStartup(...:301)
+```
+
+⚠️ **症状极具误导性**：报错发生在 **B 侧启动**阶段、指向 **gRPC 通道**，看起来像「B↔C 的 gRPC 契约对不上」
+⇒ ⇒ 但这轮探针里 **C 侧 `user-service` 23s 正常起来** ⇒ **卡点不在本仓**。
+
+**判定式**：
+1. ⇒ ⇒ **先分清「读数失败」与「行为差异」**：退出码 **2 = 环境问题**（`run.sh` 的约定）⇒ **不是真差异**；
+2. ⇒ ⇒ **复跑同一命令**：手动单跑 4 次 ⇒ **3 挂 1 成** ⇒ ⇒ **「时序」不是「配置」**（配置错 ⇒ 4 次全挂）；
+3. ⇒ ⇒ **抓帧定位预算**：开 `--logging.level.net.devh.boot.grpc.client=DEBUG`
+   ⇒ 能看到 `Scheduled resolve for user-rpc` → `Got 1 candidate servers` → `READY` 的**逐段时间戳**
+   ⇒ ⇒ **拿实测耗时和窗口比**，别猜（本例：实测 2.9s vs 窗口 3.0s ⇒ 差 0.1s 就翻脸）；
+4. ⇒ ⇒ **同一坑还有第二个变体**：B 侧 `user-rpc` 的**注册**也会踩 ⇒
+   `register FAILED ... Waited 3000 milliseconds` ⇒ **客户端等超时，但服务端其实已落库** ⇒
+   ⇒ 后续查实例列表**又查得到** ⇒ ⇒ **「注册失败」的日志与「注册成功」的事实可以同时成立**；
+5. ⇒ ⇒ **修法只重试「启动」，绝不重试「判定」** ⇒ 读数口径不变（本例：`start_with_retry` 只包启动+就绪校验，
+   最多 3 次 ⇒ 失败才重试 ⇒ **不产生「重试到绿」的假闭合**）。
+
+⚠️ **附带的机器级事实**（2026-11-10 实测）：同一台机器上 Nacos 容器**冷启动耗时 85s / 220s**
+（共享的 `Sea-nacos` 只用 14s）⇒ ⇒ **机器被多 lane 压满时，中间件自身的启动都是分钟级**
+⇒ ⇒ 此时**任何依赖「固定时间预算」的断言都不可信**（本例的场景轮 2s 预算 / 1.2s 放行偏移）
+⇒ ⇒ **该轮读数只能当「弱证据」**，强证据仍以低负载时的读数为准。
+
