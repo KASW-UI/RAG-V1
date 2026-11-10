@@ -92,14 +92,52 @@ for p in "${B_API_PORT}" "${B_RPC_PORT}" "${B_RPC_MGMT_PORT}" "${C_HTTP_PORT}" "
   port_busy "${p}" && die "端口 ${p} 被占用 ⇒ 换端口（env 可覆盖）"
 done
 
-wait_ready() {   # $1=端口 $2=标签
-  local i
-  for i in $(seq 1 60); do
+wait_ready() {   # $1=端口 $2=标签 $3=超时秒数（默认 60）
+  local i limit="${3:-60}"
+  for i in $(seq 1 "${limit}"); do
     if nc -z -G 2 127.0.0.1 "$1" >/dev/null 2>&1; then say "   ✅ ${2} 就绪（:${1}）"; return 0; fi
     sleep 1
   done
-  say "   ❌ ${2} 60s 内未就绪（:${1}）"
+  say "   ❌ ${2} ${limit}s 内未就绪（:${1}）"
   return 1
+}
+
+# 🔴 **启动 + 就绪校验，带重试**（2026-11-10 实测踩过 ⇒ 坑见 `docs/Pitfalls/users/`）
+#    **为什么需要**：共享 Nacos（49848，多个 lane 共用）冷/忙时，「启动即连」型进程会**假失败**：
+#      ① B 侧 user-api 的 gRPC client **启动即连** `discovery:///user-rpc`
+#         ⇒ grpc-client 的 `connectOnStartup` 只有 ~3s 等待窗
+#         ⇒ 而**首次 discovery resolve**（Nacos 客户端冷启 + 首次 getInstances 往返）实测 **2.4s**
+#         ⇒ 共享 Nacos 冷/忙时超过窗口 ⇒ user-api 起不来 ⇒ 报 `Can't connect to channel user-rpc`
+#         ⇒ ⚠️ **看起来像行为差异，其实是环境时序**（实测：同一条命令连挂 3 次、第 4 次成功）
+#      ② B 侧 user-rpc 的 Nacos **注册**同理：`register FAILED ... Waited 3000 milliseconds`
+#         ⇒ 客户端等 3s 没等到注册应答（**但服务端其实已落库** ⇒ 后续 assert 又能查到）
+#    ⇒ ⇒ 这里统一给「启动 + 就绪校验」加**重试**：失败 ⇒ 杀掉本轮该端口的进程 ⇒ 重来。
+#    ⚠️ **只重试启动，不重试任何判定** ⇒ 读数口径不变。
+kill_by_port() {   # $1=端口
+  local pid
+  pid="$(lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1)"
+  if [ -n "${pid}" ]; then kill -9 "${pid}" 2>/dev/null; sleep 1; fi
+}
+
+start_with_retry() {   # $1=启动函数 $2=就绪校验函数 $3=标签 $4=要清理的端口 $5=最大尝试次数（默认 3）
+  local start_fn="$1" ready_fn="$2" label="$3" port="$4" max="${5:-3}" attempt=1
+  while :; do
+    "${start_fn}"
+    if "${ready_fn}"; then
+      if [ "${attempt}" -gt 1 ]; then
+        say "   ✅ ${label} 就绪（第 ${attempt} 次尝试 ⇒ 前 $((attempt-1)) 次是环境时序假失败）"
+      fi
+      return 0
+    fi
+    attempt=$((attempt+1))
+    if [ "${attempt}" -gt "${max}" ]; then
+      say "   ❌ ${label} 连续 ${max} 次启动未就绪 ⇒ 放弃"
+      return 1
+    fi
+    say "   ⚠️ ${label} 第 $((attempt-1)) 次未就绪 ⇒ 杀掉本轮进程并重试（共享 Nacos 冷/忙 ⇒ 首次 discovery 解析可能超过 grpc-client 的 ~3s 等待窗）"
+    kill_by_port "${port}"
+    sleep 3
+  done
 }
 
 # ⚠️ **按端口把监听进程记进 PIDS** ⇒ cleanup 能按 PID 精确杀掉**本轮起的**进程。
@@ -198,46 +236,69 @@ PY
 say "   ✅ 两侧 jar 就绪"
 
 step "启动 B 侧（user-rpc → user-api · 双进程）"
-( cd "${B_REPO}" && POSTGRES_ADDR=127.0.0.1 POSTGRES_PORT="${B_PG_PORT}" POSTGRES_DB="${PG_DB_B}" \
-  POSTGRES_USER="${PG_USER}" POSTGRES_PASSWORD="${PG_PASSWORD}" \
-  REDIS_ADDR=127.0.0.1 REDIS_PORT="${REDIS_PORT}" REDIS_PASSWORD= \
-  NACOS_ADDR=127.0.0.1 NACOS_PORT="${NACOS_PORT}" NACOS_NAMESPACE=public NACOS_GROUP="${B_GROUP}" \
-  NACOS_USERNAME= NACOS_PASSWORD= \
-  USER_JWT_SECRET="${JWT_SECRET}" USER_JWT_EXPIRE=31536000 \
-  USER_RPC_PORT="${B_RPC_PORT}" USER_RPC_MANAGEMENT_PORT="${B_RPC_MGMT_PORT}" \
-  exec java -jar "${B_RPC_JAR}" ) > "${WORK}/b-user-rpc.log" 2>&1 &
-PIDS+=($!); disown 2>/dev/null || true
-wait_ready "${B_RPC_PORT}" "B user-rpc(gRPC)" || { tail -30 "${WORK}/b-user-rpc.log"; die "B user-rpc 起不来"; }
-track_listener "${B_RPC_PORT}"
-# 🔴 **必须等 Nacos 注册落地**再起 user-api（它的 gRPC client **启动即连** `user-rpc`）
-nacos_assert_instance user-rpc "${B_GROUP}" "${B_RPC_PORT}" \
-  || { tail -30 "${WORK}/b-user-rpc.log"; die "B 侧 user-rpc 没出现在 Nacos[${B_GROUP}] 实例列表里"; }
-say "   ✅ B 侧 user-rpc 已自注册进 Nacos[${B_GROUP}]（:${B_RPC_PORT}）"
+start_b_rpc() {
+  ( cd "${B_REPO}" && POSTGRES_ADDR=127.0.0.1 POSTGRES_PORT="${B_PG_PORT}" POSTGRES_DB="${PG_DB_B}" \
+    POSTGRES_USER="${PG_USER}" POSTGRES_PASSWORD="${PG_PASSWORD}" \
+    REDIS_ADDR=127.0.0.1 REDIS_PORT="${REDIS_PORT}" REDIS_PASSWORD= \
+    NACOS_ADDR=127.0.0.1 NACOS_PORT="${NACOS_PORT}" NACOS_NAMESPACE=public NACOS_GROUP="${B_GROUP}" \
+    NACOS_USERNAME= NACOS_PASSWORD= \
+    USER_JWT_SECRET="${JWT_SECRET}" USER_JWT_EXPIRE=31536000 \
+    USER_RPC_PORT="${B_RPC_PORT}" USER_RPC_MANAGEMENT_PORT="${B_RPC_MGMT_PORT}" \
+    exec java -jar "${B_RPC_JAR}" ) > "${WORK}/b-user-rpc.log" 2>&1 &
+  PIDS+=($!); disown 2>/dev/null || true
+}
+# 🔴 **就绪 = 端口起来了【且】Nacos 里真注册上了** —— 后者也会因共享 Nacos 忙而失败
+#    （`register FAILED ... Waited 3000 milliseconds` ⇒ 客户端等超时）⇒ 一并纳入重试。
+check_b_rpc() {
+  wait_ready "${B_RPC_PORT}" "B user-rpc(gRPC)" || return 1
+  track_listener "${B_RPC_PORT}"
+  nacos_assert_instance user-rpc "${B_GROUP}" "${B_RPC_PORT}" || return 1
+  say "   ✅ B 侧 user-rpc 已自注册进 Nacos[${B_GROUP}]（:${B_RPC_PORT}）"
+  return 0
+}
+start_with_retry start_b_rpc check_b_rpc "B user-rpc(gRPC)" "${B_RPC_PORT}" \
+  || { tail -30 "${WORK}/b-user-rpc.log"; die "B user-rpc 起不来"; }
 
-( cd "${B_REPO}" && POSTGRES_ADDR=127.0.0.1 POSTGRES_PORT="${B_PG_PORT}" POSTGRES_DB="${PG_DB_B}" \
-  POSTGRES_USER="${PG_USER}" POSTGRES_PASSWORD="${PG_PASSWORD}" \
-  REDIS_ADDR=127.0.0.1 REDIS_PORT="${REDIS_PORT}" REDIS_PASSWORD= \
-  NACOS_ADDR=127.0.0.1 NACOS_PORT="${NACOS_PORT}" NACOS_NAMESPACE=public NACOS_GROUP="${B_GROUP}" \
-  NACOS_USERNAME= NACOS_PASSWORD= \
-  USER_JWT_SECRET="${JWT_SECRET}" USER_JWT_EXPIRE=31536000 \
-  USER_API_PORT="${B_API_PORT}" \
-  exec java -jar "${B_API_JAR}" ) > "${WORK}/b-user-api.log" 2>&1 &
-PIDS+=($!); disown 2>/dev/null || true
-wait_ready "${B_API_PORT}" "B user-api(HTTP)" || { tail -30 "${WORK}/b-user-api.log"; die "B user-api 起不来"; }
-track_listener "${B_API_PORT}"
+start_b_api() {
+  ( cd "${B_REPO}" && POSTGRES_ADDR=127.0.0.1 POSTGRES_PORT="${B_PG_PORT}" POSTGRES_DB="${PG_DB_B}" \
+    POSTGRES_USER="${PG_USER}" POSTGRES_PASSWORD="${PG_PASSWORD}" \
+    REDIS_ADDR=127.0.0.1 REDIS_PORT="${REDIS_PORT}" REDIS_PASSWORD= \
+    NACOS_ADDR=127.0.0.1 NACOS_PORT="${NACOS_PORT}" NACOS_NAMESPACE=public NACOS_GROUP="${B_GROUP}" \
+    NACOS_USERNAME= NACOS_PASSWORD= \
+    USER_JWT_SECRET="${JWT_SECRET}" USER_JWT_EXPIRE=31536000 \
+    USER_API_PORT="${B_API_PORT}" \
+    exec java -jar "${B_API_JAR}" ) > "${WORK}/b-user-api.log" 2>&1 &
+  PIDS+=($!); disown 2>/dev/null || true
+}
+check_b_api() {
+  wait_ready "${B_API_PORT}" "B user-api(HTTP)" || return 1
+  track_listener "${B_API_PORT}"
+  return 0
+}
+# 🔴 **user-api 是「启动即连」型**（gRPC client 启动即连 `discovery:///user-rpc`）
+#    ⇒ 共享 Nacos 冷/忙 ⇒ 首次 discovery 解析 > grpc-client 的 ~3s 等待窗 ⇒ 假失败 ⇒ **必须重试**。
+start_with_retry start_b_api check_b_api "B user-api(HTTP)" "${B_API_PORT}" \
+  || { tail -30 "${WORK}/b-user-api.log"; die "B user-api 起不来"; }
 
 step "启动 C 侧（user-service · D1 合并单进程）"
-( cd "${C_ROOT}" && POSTGRES_HOST=127.0.0.1 POSTGRES_PORT="${C_PG_PORT}" POSTGRES_DB="${PG_DB_C}" \
-  POSTGRES_USER="${PG_USER}" POSTGRES_PASSWORD="${PG_PASSWORD}" \
-  REDIS_ADDR=127.0.0.1 REDIS_PORT="${REDIS_PORT}" REDIS_PASSWORD= \
-  NACOS_ADDR=127.0.0.1 NACOS_PORT="${NACOS_PORT}" NACOS_NAMESPACE=public NACOS_GROUP="${C_GROUP}" \
-  NACOS_USERNAME= NACOS_PASSWORD= \
-  USER_JWT_SECRET="${JWT_SECRET}" USER_JWT_EXPIRE=31536000 \
-  USER_HTTP_PORT="${C_HTTP_PORT}" USER_GRPC_PORT="${C_GRPC_PORT}" \
-  exec java -jar "${C_JAR}" ) > "${WORK}/c-service.log" 2>&1 &
-PIDS+=($!); disown 2>/dev/null || true
-wait_ready "${C_HTTP_PORT}" "C user-service(HTTP)" || { tail -40 "${WORK}/c-service.log"; die "C user-service 起不来"; }
-track_listener "${C_HTTP_PORT}"
+start_c_service() {
+  ( cd "${C_ROOT}" && POSTGRES_HOST=127.0.0.1 POSTGRES_PORT="${C_PG_PORT}" POSTGRES_DB="${PG_DB_C}" \
+    POSTGRES_USER="${PG_USER}" POSTGRES_PASSWORD="${PG_PASSWORD}" \
+    REDIS_ADDR=127.0.0.1 REDIS_PORT="${REDIS_PORT}" REDIS_PASSWORD= \
+    NACOS_ADDR=127.0.0.1 NACOS_PORT="${NACOS_PORT}" NACOS_NAMESPACE=public NACOS_GROUP="${C_GROUP}" \
+    NACOS_USERNAME= NACOS_PASSWORD= \
+    USER_JWT_SECRET="${JWT_SECRET}" USER_JWT_EXPIRE=31536000 \
+    USER_HTTP_PORT="${C_HTTP_PORT}" USER_GRPC_PORT="${C_GRPC_PORT}" \
+    exec java -jar "${C_JAR}" ) > "${WORK}/c-service.log" 2>&1 &
+  PIDS+=($!); disown 2>/dev/null || true
+}
+check_c_service() {
+  wait_ready "${C_HTTP_PORT}" "C user-service(HTTP)" || return 1
+  track_listener "${C_HTTP_PORT}"
+  return 0
+}
+start_with_retry start_c_service check_c_service "C user-service(HTTP)" "${C_HTTP_PORT}" \
+  || { tail -40 "${WORK}/c-service.log"; die "C user-service 起不来"; }
 
 step "HTTP 对拍矩阵（20 例）"
 if [ "${SKIP_MATRIX:-0}" = "1" ]; then
