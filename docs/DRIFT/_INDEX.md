@@ -63,6 +63,44 @@ docs/DRIFT/
 
 ---
 
+## ✅ 2026-11-11 · 合并轮（5 条域分支合入 main ＋ 公共面校准）
+
+> **用户指令**：「现在合并工作树，然后根据刚才的会话，把公共面合并」⇒ ⇒ **上半 = 合并 5 条域分支**；**下半 = 按上一轮 3 项决策核查并校准跨域面**。
+> ⚠️ **「已合并」≠「已验证」** —— 下面的读数一律读作「**在该证据强度下一致**」（AGENTS.md §〇）。
+
+### ① 合并（`--no-ff` 显式 merge commit · **零冲突**）
+
+| 分支 | 分支头 | merge commit | 带入内容 |
+|---|---|---|---|
+| `align/hot` | `b3a4587` | `11210af` | 命名债销账（DTO → `HotArticleCard` · 与 B 侧逐字一致）＋ G-6 装配层门禁 ＋ 9 处陈旧断言订正 |
+| `align/like` | `f009023` | `77ddf6c` | Kafka 三面隔离修好（consumer group 每 JVM 唯一）＋ 变异整轮闭合 ＋ 台账回填 |
+| `align/task` | `9b4113f` | `edea6ed` | 「基线推进后是否仍闭合」复验 ＋ 5 个判据缺陷 ＋ 1 个夹具缺陷 ＋ 1 个读数归属缺陷 |
+| `align/comment` | `be5887a` | `0c01153` | 台账订正（D-15 改判 PASS · 51 点全闭合 · 读数 542⇒556）—— ⚠️ **本条由 `global` 代为提交**（原为该 lane 未提交但已成稿的在制品） |
+| `align/favorite` | `a392a40` | `5af87bb` | 台账订正（**复算命令入库** · 遵本文件「复算命令未入库」纪律）＋ 承接表改分组表 —— ⚠️ **本条由 `global` 代为提交** |
+
+⇒ ⇒ **代为提交的两处说明**：comment / favorite 两个 lane 的改动**内容已成稿、只差提交**⇒ ⇒ 按「合并工作树」指令代为提交（`be5887a` / `a392a40`）；**其余在制品一律不动**（follow lane 作业中的 7 项 · `Book/**` · `.aider.*` · `速查表/.obsidian/`）。
+
+### ② 公共面校准（`3961965`）
+
+- **触发点**：hot 分支把 DTO `HotArticleItem` → **`HotArticleCard`**（与 B 侧逐字一致）⇒ ⇒ 产生 **4 处陈旧落点**（`tools/difftest/check-arch-invariants.py` 的 A17 注释举例 · `docs/架构符合性断言.md` 的 A17 边界行举例 · `docs/DRIFT/hot/verification-hot-2026-11-05.md:54` · `docs/DRIFT/hot/verification-hot-service-2026-11-03.md:148`）⇒ ⇒ 全部校准。
+- ⚠️ **刻意不动**：proto message **`hot.HotArticleItem`**（**L1 契约** ⇒ 改它即改契约）＋ 方法名 **`buildHotArticleItem`**（**照抄 B 侧** ⇒ 改名即行为偏离）。
+- **核查结论（三项用户拍板未被回退）** —— `proto/` · `common/` · 其他域 · 任何 `application.yml` **零改动**；合并内容**未带回** `sea-rtw` / `USER_GROUP`（**0 行**）· 未带回「Jackson 按字母序」类假断言（**0 行**）· `@JsonPropertyOrder` **注解本身未动**（仅文档提及变动）。
+
+### ③ 合并后读数
+
+- **全仓回归**（隔离工作树 `_probe` · 串行 `mvn -o clean verify`）⇒ **BUILD SUCCESS · 16/16 模块 · 1615 例 · Failures 0 · Errors 0 · Skipped 0**（耗时 **11:40**）。
+  ⇒ **1611 ⇒ 1615（+4）** —— 增量**全部来自合入的域分支**：hot **102 → 104**（`HotKafkaErrorHandlerAssemblyGateTest` 装配层门禁 2 例）＋ admin **152 → 154**（V-3「真 Nacos 注册面守卫」2 例）。
+  ⚠️ **计数只取回归日志的模块级汇总**（AGENTS.md §五.8 规则 ①）。
+- **三道守门** ⇒ **EXIT=0**（断言 **PASS 15 · FAIL 0 · N/A 2 · PENDING 0**，共 17 条）＋ `gen-file-tree.py` 重生成**幂等无 diff**。
+- **JSON 键序探针** ⇒ **22/22 一致 ＋ 22/22 BYTE-EQ · 0 不一致**（`tools/difftest/jackson-key-order/`）。
+- **工作树** ⇒ 12 个域工作树全部 ff 同步到 `3961965` · 无未合入提交。
+
+### ④ 本轮顺手修掉的一处自造不一致
+
+- `docs/DRIFT/users/verification-users-user-2026-11-02.md` 的汇总表（JSON 键序转 PASS 后**未同步**）⇒ **PASS 30 → 31 · FAIL 1 → 0**（合计仍 **33**）⇒ 该文件自带的复算命令现返回「✅ 自报总数与复算一致（33）」。
+
+---
+
 ## 纪律
 
 1. **开工前必读**本域台账 —— 否则会重复已修项、误把签字偏离当新漂移「顺手修回」。
