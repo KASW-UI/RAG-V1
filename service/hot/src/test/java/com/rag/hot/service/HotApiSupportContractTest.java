@@ -1,7 +1,7 @@
 package com.rag.hot.service;
 
 import com.rag.common.exception.BusinessException;
-import com.rag.hot.dto.article.HotArticleItem;
+import com.rag.hot.dto.article.HotArticleCard;
 import com.rag.hot.dto.article.HotArticlesReq;
 import com.rag.hot.dto.article.HotArticlesResp;
 import org.junit.jupiter.api.DisplayName;
@@ -98,11 +98,11 @@ class HotApiSupportContractTest {
     @Test
     @DisplayName("assignRanks：过滤 null 后 rank 是稠密序号，且跨页连续")
     void assignRanksIsDenseAndSkipsNulls() {
-        HotArticleItem a = item("a");
-        HotArticleItem b = item("b");
-        HotArticleItem c = item("c");
+        HotArticleCard a = item("a");
+        HotArticleCard b = item("b");
+        HotArticleCard c = item("c");
 
-        List<HotArticleItem> ranked = HotApiSupport.assignRanks(
+        List<HotArticleCard> ranked = HotApiSupport.assignRanks(
                 Arrays.asList(a, null, b, null, c));
 
         assertEquals(3, ranked.size());
@@ -117,7 +117,7 @@ class HotApiSupportContractTest {
     @Test
     @DisplayName("assignRanks：全为 null ⇒ 返回空列表（不是 null）")
     void assignRanksOnAllNullReturnsEmptyList() {
-        List<HotArticleItem> ranked =
+        List<HotArticleCard> ranked =
                 HotApiSupport.assignRanks(Arrays.asList(null, null));
         assertTrue(ranked.isEmpty());
     }
@@ -125,7 +125,7 @@ class HotApiSupportContractTest {
     @Test
     @DisplayName("slice：items 永不为 null（空页也是 []）；total 是过滤后的长度")
     void sliceNeverReturnsNullItems() {
-        List<HotArticleItem> ranked = HotApiSupport.assignRanks(
+        List<HotArticleCard> ranked = HotApiSupport.assignRanks(
                 Arrays.asList(item("a"), item("b"), item("c")));
 
         HotArticlesResp page1 = HotApiSupport.slice(ranked, 1, 2);
@@ -219,8 +219,8 @@ class HotApiSupportContractTest {
      * @param id 文章 id
      * @return 卡片
      */
-    private static HotArticleItem item(String id) {
-        return new HotArticleItem(id, 0, 1L, "t", "b", "c", "a", 1L, 0, 0, 0, "m",
+    private static HotArticleCard item(String id) {
+        return new HotArticleCard(id, 0, 1L, "t", "b", "c", "a", 1L, 0, 0, 0, "m",
                 Collections.emptyList());
     }
 }

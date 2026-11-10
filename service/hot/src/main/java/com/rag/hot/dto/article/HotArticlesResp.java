@@ -44,7 +44,7 @@ import java.util.List;
  */
 @JsonPropertyOrder({"items", "total", "page", "page_size", "scope"})
 public record HotArticlesResp(
-        @com.fasterxml.jackson.annotation.JsonProperty("items") List<HotArticleItem> items,
+        @com.fasterxml.jackson.annotation.JsonProperty("items") List<HotArticleCard> items,
         @com.fasterxml.jackson.annotation.JsonProperty("total") long total,
         @com.fasterxml.jackson.annotation.JsonProperty("page") int page,
         @com.fasterxml.jackson.annotation.JsonProperty("page_size") int pageSize,

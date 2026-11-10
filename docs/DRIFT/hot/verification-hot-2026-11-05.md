@@ -8,7 +8,14 @@
 > 📌 **状态更新（2026-11-05 · 审核结束后的实施轮次）**：本报告的 **D-05 / D-06（三处 javadoc 措辞）**
 > 与 **D-07 的 G-1~G-5 + G-7（六条守护网）** **已由实施轮次关闭** ⇒ 详见
 > [`verification-hot-service-2026-11-03.md`](verification-hot-service-2026-11-03.md) **§十**（含 4 条变异验证读数）。
-> **D-01~D-04（本报告的 4 项配置面 FAIL）与 G-6/G-8 本轮未动** ⇒ 处置见 §十三·收口清单。
+> 📌 **状态更新（2026-11-10 · 第二轮实施）**：**D-01~D-04（本报告的 4 项配置面 FAIL）与 G-6 / G-8 亦已全部关闭** ⇒
+> · **D-01**（OTLP 导出整体缺失）⇒ hot 的 `application.yml` 补齐 otel 段（另由 `global` 收口域在 **5 个域**统一处理 · DRIFT-COMMON-V21）<br>
+> · **D-02**（health show-details 偏大）⇒ `always` → `when_authorized`（取严）<br>
+> · **D-03**（actuator 缺 `metrics`）⇒ 暴露集取**并集**（B 侧 api 3 个 + rpc 4 个）<br>
+> · **D-04**（gRPC 端口 env 名断裂）⇒ 双名兼容（**B 侧老名字优先**、新名字保留别名）<br>
+> · **G-8**（otel 段的守护用例）⇒ `HotOtelExporterWiringTest`（3 例：真被读到 / 真挂 `BatchSpanProcessor` / 端点空则不挂）<br>
+> · **G-6**（容器 error handler 的装配层断言）⇒ `HotKafkaErrorHandlerAssemblyGateTest`（2 例：读**容器真正会用的那个 handler** 的 `ackAfterHandle` / `noRetries` / `maxAttempts`）<br>
+> ⇒ 详见 §十一（M7 轮）；**本报告的 8 条缺口（D-01~D-07 + G-1~G-8）至此全部关闭**。
 
 ---
 
@@ -301,6 +308,14 @@
 ---
 
 ## 十三·给 hot lane 的收口清单（本报告**只建议、不执行**）
+
+> ✅ **2026-11-10：本清单已全部处置**（**表格保留为「当时的建议」，逐条销账见抬头与
+> [`verification-hot-service-2026-11-03.md`](verification-hot-service-2026-11-03.md) **§十二**）**——
+> P0 otel 段 ✅（另由 `global` 收口域在 5 域统一处理）· P1 六条守护网 ✅（+G-6 +G-8 共 8 条）·
+> P1 三处 javadoc ✅ · P2 三项配置取舍 ✅ · P2 三个 `_INDEX.md` ✅（已并入主干）·
+> P2 F-15 ✅（`global` 收口域已修 · DRIFT-COMMON-V21）·
+> **待决 F-02** ✅ 已处置（域内方向补回 2s 上界 ⇒ 失败形状与 B 侧逐条相同）·
+> **待决 F-11** ✅ 已处置（DTO 改名 `HotArticleCard` ⇒ 与 B 侧逐字一致）**
 
 | 优先级 | 事项 | 归属 | 类型 |
 |---|---|---|---|
