@@ -13,7 +13,7 @@ M4 冻结锚面）**全是 HTTP 面** ⇒ 「B 侧 task-rpc 与 C 侧 task-servi
     ⚠️ **classpath 从 C 侧 fat jar 的 `BOOT-INF/lib/` 解出来**
     ⇒ 版本与「真正在跑的那套依赖」**完全一致**（不引入第二份版本来源）。
 
-判定口径（**与 `http_probe.py` 完全同款三档**，任一档不满足即 EXIT=1）：
+判定口径（**与 `http_probe.py` 完全同款四档**，任一档不满足即 EXIT=1）：
     · **普通用例**：B 与 C 的读数**必须逐字节相同**；
       且（若给了 `--expected`）C 与**冻结锚**（B 侧读数）也必须逐字节相同
       ⇒ oracle 漂移会被抓到。
@@ -21,6 +21,15 @@ M4 冻结锚面）**全是 HTTP 面** ⇒ 「B 侧 task-rpc 与 C 侧 task-servi
       ① C 的读数必须**逐字节等于** `--known-readings` 里登记的形状（⇒ 差异形状变了 ⇒ 失败）；
       ② B 的读数必须逐字节等于冻结锚（⇒ B 侧漂移会被抓到）。
       ⇒ **白名单不是「豁免」** —— 它把「允许不同」钉成「只允许差这一处，且必须还是当初那一处」。
+    · **无效读数档**（2026-11-10 补，与 `http_probe.py` 同款）：**oracle 侧（B）**本轮
+      没给出业务应答时，本条**不可判** ⇒ 记 `INVALID` ⇒ **不计入一致数、也不计真差异**
+      ⇒ 整轮结论是「环境不稳 ⇒ 需重跑」（EXIT=3），**不是**「C 侧有差异」。
+
+退出码：
+    0 = 全部可判用例逐字节一致
+    1 = 有真差异
+    3 = **有不可判用例**（oracle 侧至少一条没给出业务应答）⇒ 结论不可信 ⇒ 需重跑
+    2 = 探针本身跑不起来（读数缺失 / 用例表非法）
 
 子命令：
     build    解 fat jar 的 BOOT-INF/lib + 编译探针
@@ -146,6 +155,38 @@ def _read_frozen(path: str | None) -> dict[str, str]:
     return out
 
 
+# ── 「oracle 无效读数」判定（2026-11-10 补 · 与 http_probe.py 同款）───────────
+# 🔴 **为什么只把这三个 status 判为「无效」**：
+#     B 侧 task-rpc 的**合法业务 status 只有两个** ——
+#     `OK`（正常）与 `INVALID_ARGUMENT`（`uid <= 0`，见
+#     `service/task/task-rpc/.../service/TaskDomainService.java:90-93`
+#     ＋ `service/task/task-rpc/.../service/impl/TaskServiceGrpcImpl.java:80-88` 的透传），
+#     外加领域层裸 error 的兜底 `UNKNOWN`（`TaskServiceGrpcImpl.java:89-92`）。
+#     ⇒ 而 `UNAVAILABLE` / `DEADLINE_EXCEEDED` / `CANCELLED` **不在业务 status 集合里**
+#     ⇒ 它们**只可能**来自传输层（连不上 / 超时 / 被取消）
+#     ⇒ ⇒ **B 侧出现这三个 status ⇒ oracle 自己没答上来 ⇒ 本条不可判**。
+#     ⚠️ **`INTERNAL` / `UNKNOWN` / `RESOURCE_EXHAUSTED` 不算无效** ——
+#        它们是**服务端真正产生的 status**（业务语义）⇒ 必须参与逐字节比对
+#        （否则真差异会被降级成「不可判」⇒ 漏判）。
+INVALID_STATUSES = ("UNAVAILABLE", "DEADLINE_EXCEEDED", "CANCELLED")
+
+
+def invalid_reason(reading: str) -> str | None:
+    """这一侧**有没有给出业务应答**？⇒ 返回「无效原因」；`None` = 有效读数。
+
+    🔴 **判据只看 status 码，不看 description 文案** —— 与 HTTP 面同款理由：
+        实测到的那个超时文案在 B 仓源码树里**搜不到** ⇒ 没有 `文件:行号` 可钉
+        ⇒ ⇒ 不能把它写成判据（写进去就是「拿无法复核的字符串当规则」）。
+    """
+    if not reading or reading == "<MISSING>":
+        return "<MISSING>"
+    if reading.startswith("status="):
+        status = reading[len("status="):].split("|", 1)[0]
+        if status in INVALID_STATUSES:
+            return f"gRPC {status}"
+    return None
+
+
 def cmd_probe(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, required=True)
@@ -198,17 +239,56 @@ def cmd_compare(argv: list[str]) -> int:
     out_known: list[str] = []
     failed = 0        # **真差异**
     known_n = 0       # **已登记的表达层差异**（计数，不算失败）
+    invalid_n = 0     # **不可判**（oracle 侧本轮没给出业务应答 ⇒ 不计入任何一侧）
 
     for name, _uid in cases:
         rb = b_readings.get(name, "<MISSING>")
         rc = c_readings.get(name, "<MISSING>")
-        out_expected.append(f"{name}\t{rb}")
+        # 🔴 **冻结时只收「oracle 侧有业务应答」的读数** —— 把 DEADLINE_EXCEEDED 冻进锚里
+        #    ⇒ 锚就变成「一条超时」⇒ 下一轮所有 C 侧正常读数都会被误判成「与冻结锚不一致」
+        #    ⇒ ⇒ **冻结一个无效读数 = 毒化锚** ⇒ 这里直接跳过。
+        b_inv = invalid_reason(rb)
+        c_inv = invalid_reason(rc)
+        if b_inv is None:
+            out_expected.append(f"{name}\t{rb}")
         if name in known_reasons:
             out_known.append(f"{name}\t{rc}")
 
         same = rb == rc
         notes: list[str] = []
-        if name in known_reasons:
+        verdict = "SAME" if same else "DIFF"
+
+        # ── 🔴 「oracle 无效读数」档（2026-11-10 补 · 与 http_probe.py 同款）────
+        if b_inv is not None:
+            invalid_n += 1
+            verdict = "INVALID"
+            notes.append(f"**oracle 侧无业务应答**（{b_inv}）⇒ 本条不可判")
+            # 🔴 **「不可判」只免 B↔C 那一对，不免 C 侧的独立判据**：
+            #    · **普通用例** ⇒ C 的基准是**冻结锚**（= oracle 的历史读数）；
+            #    · **已登记差异用例** ⇒ C 的基准是**登记形状**（`known_readings`），
+            #      **不是**冻结锚（⇒ C 本来就与锚不同 ⇒ 拿锚判它 = **必然假红**）。
+            if c_inv is None:
+                if name in known_reasons:
+                    want = known_readings.get(name)
+                    if want is None:
+                        notes.append(f"已知差异 · **缺登记形状**（{known_reasons[name]}）")
+                        failed += 1
+                        verdict = "DIFF"
+                    elif want != rc:
+                        notes.append(f"已知差异 · **形状变了**（登记：{known_reasons[name]}）")
+                        failed += 1
+                        verdict = "DIFF"
+                    else:
+                        notes.append(f"已知差异 · 形状与登记一致（{known_reasons[name]}）")
+                elif expected and name in expected and expected[name] != rc:
+                    notes.append("**C 侧读数与冻结锚不一致**（回归）")
+                    failed += 1
+                    verdict = "DIFF"
+        elif c_inv is not None:
+            failed += 1
+            verdict = "DIFF"
+            notes.append(f"**C 侧无业务应答**（{c_inv}）而 oracle 侧有 ⇒ 行为差异")
+        elif name in known_reasons:
             known_n += 1
             want = known_readings.get(name)
             if want is None:
@@ -233,13 +313,22 @@ def cmd_compare(argv: list[str]) -> int:
         lines.append(f"### {name}")
         lines.append(f"  B: {rb}")
         lines.append(f"  C: {rc}")
-        lines.append(f"  => {'SAME' if same else 'DIFF'}"
+        lines.append(f"  => {verdict}"
                      + ("  [" + " ｜ ".join(notes) + "]" if notes else ""))
 
     report = "\n".join(lines) + "\n"
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             fh.write(report)
+    # 🔴 **冻结时若存在「不可判」条目 ⇒ 拒绝写锚**（2026-11-10 补 · 与 http_probe.py 同款）：
+    #    部分锚 = **静默削弱的锚** ⇒ 下一轮那些用例会因为「锚里没有它」而**跳过锚校验**
+    #    ⇒ ⇒ 等于把「回归检测」悄悄关掉 ⇒ ⇒ **宁可不冻结**（保持旧锚不动）⇒ 报错退出。
+    if args.freeze and invalid_n:
+        sys.stderr.write(
+            f"!! 拒绝冻结：{invalid_n} 条用例的 oracle 侧读数无效（见明细）"
+            f"⇒ 冻结出来的锚会**缺条目** ⇒ 下一轮那些用例会跳过锚校验\n"
+            f"   ⇒ 请在 oracle 稳定时重跑 FREEZE=1\n")
+        return 3
     if args.freeze:
         with open(args.freeze, "w", encoding="utf-8") as fh:
             fh.write("\n".join(out_expected) + "\n")
@@ -248,12 +337,16 @@ def cmd_compare(argv: list[str]) -> int:
             fh.write("\n".join(out_known) + "\n")
 
     total = len(cases)
-    print(f"用例 {total} 条 · B↔C 逐字节一致 {total - known_n - failed} 条 · "
-          f"已登记的表达层差异 {known_n} 条 · 真差异 {failed} 条")
+    print(f"用例 {total} 条 · B↔C 逐字节一致 {total - known_n - failed - invalid_n} 条 · "
+          f"已登记的表达层差异 {known_n} 条 · 真差异 {failed} 条 · 不可判 {invalid_n} 条")
+    if invalid_n:
+        print(f"  ⚠️ 有 {invalid_n} 条**oracle 侧没给出业务应答** ⇒ 这些条本轮不可判 "
+              f"⇒ **不是「C 侧有差异」** ⇒ 结论不可信 ⇒ 需重跑（EXIT=3）")
     if failed:
         for idx, line in enumerate(lines):
             if "=> DIFF" in line and ("不一致" in line or "漂移" in line
-                                      or "缺登记形状" in line or "形状变了" in line):
+                                      or "缺登记形状" in line or "形状变了" in line
+                                      or "无业务应答" in line):
                 print("\n".join(lines[max(0, idx - 3):idx + 1]))
                 bh = lines[idx - 2].split("B: ", 1)[-1]
                 ch = lines[idx - 1].split("C: ", 1)[-1]
@@ -263,7 +356,12 @@ def cmd_compare(argv: list[str]) -> int:
                             [bh], [ch], fromfile="B", tofile="C", lineterm=""):
                         print("  " + d)
                 print()
-    return 1 if failed else 0
+    # 🔴 **退出码三档**（与 http_probe.py 同款）：真差异（1）优先于不可判（3）。
+    if failed:
+        return 1
+    if invalid_n:
+        return 3
+    return 0
 
 
 def main() -> int:

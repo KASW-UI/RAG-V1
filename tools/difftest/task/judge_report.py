@@ -23,7 +23,7 @@ import re
 import sys
 
 CASE_RE = re.compile(r"^### (\S+)\s*$")
-VERDICT_RE = re.compile(r"^  => (SAME|DIFF)")
+VERDICT_RE = re.compile(r"^  => (SAME|DIFF|INVALID)")
 
 
 def parse(path: str) -> dict[str, str]:
@@ -67,16 +67,23 @@ def main() -> int:
             problems.append(f"对照用例 {name} 期望 SAME，实得 {got!r}")
     same_n = sum(1 for v in verdicts.values() if v == "SAME")
     diff_n = sum(1 for v in verdicts.values() if v == "DIFF")
+    invalid_n = sum(1 for v in verdicts.values() if v == "INVALID")
     if same_n < args.min_same:
         problems.append(f"SAME 条数 {same_n} < 下限 {args.min_same}（⇒ 疑似「整体崩掉」而非「局部转红」）")
+    if invalid_n:
+        # 🔴 **INVALID = oracle 侧本轮没给出业务应答** ⇒ 这轮判据**不成立**
+        #    （不是「目标没转红」，是「oracle 自己没答上来」）⇒ 必须显式报出来，
+        #    否则会退化成「目标用例实得 None」这种看不出根因的报错。
+        problems.append(f"有 {invalid_n} 条判为 INVALID（oracle 侧没给出业务应答）"
+                        f"⇒ 本轮判据不成立 ⇒ 需在环境稳定时重跑")
 
     if problems:
         print("!! 判据不成立：")
         for p in problems:
             print(f"   · {p}")
-        print(f"   （SAME {same_n} 条 / DIFF {diff_n} 条）")
+        print(f"   （SAME {same_n} 条 / DIFF {diff_n} 条 / INVALID {invalid_n} 条）")
         return 1
-    print(f"✓ 判据成立（SAME {same_n} 条 / DIFF {diff_n} 条）")
+    print(f"✓ 判据成立（SAME {same_n} 条 / DIFF {diff_n} 条 / INVALID {invalid_n} 条）")
     return 0
 
 
