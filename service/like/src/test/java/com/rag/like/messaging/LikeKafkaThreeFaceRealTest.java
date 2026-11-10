@@ -25,9 +25,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.KafkaException;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -97,9 +100,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 会把地址回写成 {@code kafka:9092} ⇒ 宿主解析不了 ⇒ 卡在 metadata 阶段。
  *
  * <h2>⚠️ 为什么消费组用<b>测试专属 group</b> ＋ <b>latest</b></h2>
- * <p>listener 的 group 来自 {@code ${spring.kafka.consumer.group-id}} ⇒ 本类覆盖成
- * {@code like-update-group-kafka3face} ⇒ <b>不与别的 lane / 对拍探针抢同一 group 的分区</b>
+ * <p>listener 的 group 来自 {@code ${spring.kafka.consumer.group-id}} ⇒ 本类用
+ * {@link #GROUP_ID}（= 固定前缀 + <b>每 JVM 唯一</b>的后缀）⇒ <b>不与别的 lane / 对拍探针抢同一 group 的分区</b>
  * ⇒ 否则同一批消息会被两个实例分走 ⇒ 读数随机。
+ * <p>🔴🔴 <b>为什么 group 必须「每 JVM 唯一」而不只是「测试专属」</b>（DRIFT-LIKE-024）：
+ * {@code auto-offset-reset=latest} <b>只在「该 group 从未提交过位点」时才生效</b>
+ * ⇒ ⇒ group 名一旦被复用，broker 上就留了已提交位点 ⇒ ⇒ listener 从**旧位点**续读
+ * ⇒ ⇒ <b>重放历史运行的消息</b> ⇒ ⇒ 而本类 {@link #SEQ} 每 JVM 重启 ⇒ <b>msg_id 跨运行复用</b>
+ * ⇒ ⇒ 重放到的旧消息与本轮消息同 msg_id 不同载荷 ⇒ ⇒ 消费侧判「conflicting payload」⇒ <b>丢弃</b>
+ * ⇒ ⇒ 消费面 / 推送面 / 幂等面**三红**，而生产面仍绿。详见 {@link #RUN_SUFFIX}。
  * <p>🔴 <b>为什么是 {@code latest} 而不是 {@code earliest}</b>：本 topic 上<b>存着对拍探针
  * 留下的几百条历史消息</b> ⇒ 若从头部开始 ⇒ listener 必须**先消化全部积压**
  * （每条都要落库 ＋ 事务）⇒ ⇒ 实测在<b>全量回归</b>里 30s 预算被积压吃光
@@ -109,6 +118,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * ⇒ ⇒ 故本类加了一个<b>预热步骤</b>（{@link #awaitConsumerReady()}）：先发一条探针消息
  * 并<b>等它真的落进 inbox</b> ⇒ ⇒ 「listener 已定位且在消费」有了<b>运行证据</b>
  * ⇒ 之后的测试消息才发得出去。
+ * <p>📌 <b>预热判据成立的前提</b>：inbox 表是<b>每 JVM 新建</b>的（Testcontainers）⇒
+ * ⇒ 同 msg_id 的行只可能来自**本轮** ⇒ ⇒ 「inbox 里有这行」确实等于「本轮 listener 消费了它」
+ * ⇒ ⇒ <b>前提是 group 唯一</b>：若 group 被复用、listener 重放了历史消息，
+ * ⇒ ⇒ 那条历史消息也会在 inbox 里落一行（msg_id 相同）⇒ ⇒ 预热会**假就绪**。
  *
  * <h2>⚠️ 断言一律用<b>有界轮询</b>（Kafka 是异步的）</h2>
  * <p>⇒ 每条断言都带一个上限（消息 30s / PG 30s）⇒ 超时即失败，<b>不会挂死</b>；
@@ -123,10 +136,18 @@ import static org.assertj.core.api.Assertions.assertThat;
         properties = {
                 // ⚠️ Sea-kafka 的 EXTERNAL 发布口（容器内 9092 对宿主不可用）
                 "spring.kafka.bootstrap-servers=127.0.0.1:49992",
-                // 🔴 测试专属 group ⇒ 不与别的 lane / 探针抢分区（见类注释）
-                "spring.kafka.consumer.group-id=like-update-group-kafka3face",
+                // 🔴 **consumer group 不在这里写死** —— 它必须**每 JVM 唯一** ⇒
+                //    ⇒ 改由 {@link #properties} 用 `@DynamicPropertySource` **动态注册**
+                //    ⇒ （原因见 {@link #RUN_SUFFIX} 的注释）
                 // 🔴 latest（**不是 earliest**）⇒ 跳过历史消息的「重放积压」（见类注释）
                 "spring.kafka.consumer.auto-offset-reset=latest",
+                // 🔴 **真 broker 的 metadata 预算** —— 不复用 `application-test.properties` 里的 1000ms。
+                //    ⚠️ 那 1000ms 是**「无 broker 时快失败」**的设定（默认 60s ⇒ 没有它测试会卡 60 秒）
+                //    ⇒ ⇒ 而本类**故意**连真 broker ⇒ broker 冷启动 / 宿主高负载时
+                //       metadata 取回**可以超过 1s**（实测：Docker 重启后 load 38 时必现）
+                //    ⇒ ⇒ 1000ms 会把「broker 慢」误报成「用例 error」⇒ ⇒ 这里给 10s。
+                //    （**只在本类生效** ⇒ 其余测试仍保持「无 broker 时 1s 快失败」的原行为）
+                "spring.kafka.producer.properties.max.block.ms=10000",
                 // 加快中继轮询（生产默认 1000ms）
                 "like.outbox-relay-interval=300"
         })
@@ -161,6 +182,42 @@ class LikeKafkaThreeFaceRealTest {
     private static final AtomicLong SEQ = new AtomicLong(8_400_000_000_000L);
 
     /**
+     * 🔴🔴 <b>本 JVM 的运行标识</b> —— consumer group 的唯一性靠它（2026-11-10 修 · DRIFT-LIKE-024）。
+     *
+     * <p><b>为什么必须有它</b>：{@code auto-offset-reset=latest} <b>只在「该 group 从来没有提交过位点」时才生效</b>
+     * ⇒ ⇒ 只要 group 名被复用过一次，broker 上就留了**已提交位点**
+     * ⇒ ⇒ listener 会从**旧位点**续读 ⇒ ⇒ **重放历史运行留下的消息**。
+     * <p>🔴 <b>而历史消息与本轮消息会撞 msg_id</b>：本类的 {@link #SEQ} <b>每个 JVM 都从
+     * {@code 8_400_000_000_000} 重启</b> ⇒ ⇒ 不同运行发出的消息<b>共用同一批 msg_id</b>
+     * ⇒ ⇒ 重放到的旧消息与本轮消息<b>同 msg_id、不同载荷</b>
+     * ⇒ ⇒ 消费侧判「{@code reused with conflicting payload}」⇒ <b>按 Go 的 ForceCommit 语义丢弃</b>（位点前移、不重投）
+     * ⇒ ⇒ 本轮的 {@code like_record} / {@code like_outbox_event} <b>永远不落库</b>
+     * ⇒ ⇒ 表现 = 消费面 / 推送面 / 幂等面**三红**，而生产面仍绿（它只验证「发得出去」）。
+     * <p>📌 <b>实测证据</b>（2026-11-10 22:38 那轮）：broker 日志打的是
+     * {@code Setting offset ... to the committed offset FetchPosition{offset=923}}
+     * ⇒ <b>「committed」而不是「latest」</b> ⇒ ⇒ 证明位点是**上一轮留下的**。
+     * <p>⚠️ <b>这里曾经踩过的坑</b>：变异脚本原来靠「改测试源码里的 group 名」来做到「每轮换 group」
+     * ⇒ ⇒ 但脚本每次运行都从第 1 轮重新编号（{@code -r1}、{@code -r2}…）
+     * ⇒ ⇒ <b>跨脚本运行 group 名照样复用</b> ⇒ ⇒ 位点照样残留 ⇒ ⇒ <b>「每轮换 group」只在单次脚本运行内有效</b>。
+     * ⇒ ⇒ 现在改成：<b>group 名 = 固定前缀 + 本 JVM 唯一后缀</b>
+     * ⇒ ⇒ ① 普通回归跑（不经过脚本）也是新的 ⇒ ② 脚本每轮再用环境变量追加轮次后缀 ⇒ ③ 跨运行绝不复用。
+     * <p>🔴 <b>后缀的来源</b>：优先取环境变量 {@code LIKE_TEST_RUN_SUFFIX}（变异脚本按轮注入）
+     * ⇒ ⇒ 没有它时用 {@code pid + nanoTime} ⇒ ⇒ <b>任何一次 JVM 启动都天然唯一</b>。
+     */
+    private static final String RUN_SUFFIX = resolveRunSuffix();
+
+    /** 🔴 本轮的 consumer group 名（= 前缀 + {@link #RUN_SUFFIX}）⇒ <b>每 JVM 唯一</b>。 */
+    private static final String GROUP_ID = "like-update-group-kafka3face-" + RUN_SUFFIX;
+
+    private static String resolveRunSuffix() {
+        String override = System.getenv("LIKE_TEST_RUN_SUFFIX");
+        if (override != null && !override.isBlank()) {
+            return override.trim();
+        }
+        return ProcessHandle.current().pid() + "-" + System.nanoTime();
+    }
+
+    /**
      * 🔴 有界轮询的预算 —— **60s**（不是 30s）。
      *
      * <p>⚠️ <b>为什么从 30s 提到 60s</b>：连跑多轮 mvn（变异验证一次就是 5~6 轮）时，
@@ -171,6 +228,38 @@ class LikeKafkaThreeFaceRealTest {
      */
     private static final long AWAIT_TIMEOUT_MS = 60_000L;
 
+    /**
+     * 🔴 <b>预热步骤的总预算</b> —— **60s**。
+     *
+     * <p>⚠️ <b>为什么要有预算</b>：预热会**反复发探针消息**并等它落库
+     * ⇒ ⇒ broker 不可达时（变异验证的 M3）每一次发送都要等满 {@code max.block.ms}
+     * ⇒ ⇒ 不设预算 ⇒ 8 次 × 10s = 80s × 4 个用例 ⇒ 单轮变异验证要多花好几分钟。
+     * <p>⇒ ⇒ 预算按「最坏一轮」给 ⇒ 宽一点**只会让失败更慢**，不会掩盖失败。
+     */
+    private static final long WARMUP_BUDGET_MS = 60_000L;
+
+    /**
+     * 🔴 <b>预热的尝试次数</b> —— **20**（× {@link #WARMUP_POLL_MS} = **3s** ⇒ **60s**）。
+     *
+     * <p>⚠️ <b>为什么次数必须撑满预算</b>：预热是「<b>等 listener 真的在消费</b>」的<b>唯一</b>手段
+     * ⇒ ⇒ 它不够久 ⇒ listener 还没定位完 ⇒ 后续消息撞上 `latest` 的竞态 ⇒ ⇒ **消息被丢**
+     * ⇒ ⇒ 表现 = 各用例「落库超时」⇒ ⇒ 而**真因离症状很远**。
+     * <p>⚠️ **曾经踩过的坑**：原先是 8 次 × 2s = <b>16s</b>，而预算写的是 60s
+     * ⇒ ⇒ **预算那个形参根本没被用满** ⇒ ⇒ 看起来「有 60s 预算」，实际只有 16s。
+     */
+    private static final int WARMUP_MAX_ATTEMPTS = 20;
+
+    /**
+     * 🔴 <b>预热每次轮询 PG 的预算</b> —— **3s**。
+     *
+     * <p>⚠️ 之所以不更短：broker 冷启动后 listener 的首次定位常常要十几秒 ⇒ ⇒ 每次轮询给足 3s
+     * ⇒ ⇒ 才有机会抓到「探针消息刚落库」那一刻（否则会在两次轮询的间隙里错过它）。
+     */
+    private static final long WARMUP_POLL_MS = 3_000L;
+
+    /** 本类的日志（预热是准备工作 ⇒ 它的失败要**留痕**但**不抛异常**）。 */
+    private static final Logger LOG = LoggerFactory.getLogger(LikeKafkaThreeFaceRealTest.class);
+
     /** Sea-kafka 的宿主发布口（= EXTERNAL listener）。 */
     private static final String BOOTSTRAP = "127.0.0.1:49992";
 
@@ -178,6 +267,13 @@ class LikeKafkaThreeFaceRealTest {
     static void properties(DynamicPropertyRegistry registry) {
         TestPostgres.register(registry);
         TestRedis.register(registry);
+        // 🔴🔴 **consumer group 必须每 JVM 唯一**（DRIFT-LIKE-024）⇒
+        //    ⇒ 动态注册 ⇒ 每次 JVM 启动都是**零已提交位点**的新 group
+        //    ⇒ ⇒ `auto-offset-reset=latest` 生效 ⇒ listener 只读「本轮定位之后」的消息
+        //    ⇒ ⇒ **不会重放历史运行的消息** ⇒ ⇒ 也就不会与本轮 msg_id 撞成「conflicting payload」。
+        //    📌 这里的 group 名**不进 `@SpringBootTest(properties=...)`** —— 那样写死就必然跨运行复用。
+        registry.add("spring.kafka.consumer.group-id", () -> GROUP_ID);
+        LOG.info("[隔离] 本轮 consumer group = {}", GROUP_ID);
     }
 
     /**
@@ -228,14 +324,40 @@ class LikeKafkaThreeFaceRealTest {
      * ⇒ ⇒ 这是「listener 真在消费」的<b>运行证据</b>（不是读配置名推断）。
      */
     private void awaitConsumerReady() {
-        for (int attempt = 1; attempt <= 8; attempt++) {
+        long deadline = System.currentTimeMillis() + WARMUP_BUDGET_MS;
+        // 🔴 **尝试次数必须撑满预算**：否则「预算」形同虚设 ——
+        //    ⚠️ 原先是 8 次 × 2s = **16s** ⇒ 远小于 60s 的预算 ⇒ ⇒ 预算那个形参**根本没被用满**
+        //      ⇒ ⇒ broker 冷启动（Docker 重启后要恢复几百个分区）时，listener 的首次定位
+        //      ⇒ ⇒ 常常 **> 16s** ⇒ ⇒ 预热**抓不到**「listener 已定位」⇒ ⇒ 后续消息撞上
+        //      ⇒ ⇒ `latest` 的竞态 ⇒ ⇒ **消息被丢** ⇒ ⇒ 各用例在自己的 60s 轮询里超时变红
+        //      ⇒ ⇒ 实测（2026-11-10）：基线轮就出现 `like_record` / `like_outbox_event` 两条落库超时
+        //    ⇒ ⇒ 现在 **20 次 × 3s = 60s** ⇒ ⇒ 预热**真的**能覆盖整个预算
+        for (int attempt = 1; attempt <= WARMUP_MAX_ATTEMPTS; attempt++) {
+            if (System.currentTimeMillis() > deadline) {
+                LOG.warn("[预热] 预算 {}ms 用尽 ⇒ 停止预热（后续各用例在自己的有界轮询里判红）",
+                        WARMUP_BUDGET_MS);
+                return;
+            }
             String probeMsgId = String.valueOf(SEQ.incrementAndGet());
             String probeTarget = "k3warm-" + attempt + "-" + probeMsgId;
-            kafkaTemplate.send(LIKE_TOPIC, kafkaLikeMsgJson(
-                    probeMsgId, probeMsgId.hashCode() & 0x7fffffffL, TARGET_TYPE, probeTarget, true));
+            try {
+                kafkaTemplate.send(LIKE_TOPIC, kafkaLikeMsgJson(
+                        probeMsgId, probeMsgId.hashCode() & 0x7fffffffL, TARGET_TYPE, probeTarget, true));
+            } catch (KafkaException e) {
+                // 🔴 **这里必须吞掉**：本方法的约定是「预热失败不抛异常」（预热只是准备工作，不是判据）。
+                //    ⇒ 而 `KafkaTemplate#send` 在 **metadata 取不到** 时会**同步抛** `KafkaException`
+                //      （`max.block.ms` 到点 ⇒ `TimeoutException: Topic ... not present in metadata`）
+                //    ⇒ ⇒ 那正是 broker **冷启动 / 宿主高负载**时的常态（实测：Docker 重启后 load 38 时必现）
+                //    ⇒ ⇒ 不吞 ⇒ 预热会把「broker 慢」变成「用例 error」⇒ **失败点离真正的断言很远**
+                //    ⇒ ⇒ 吞掉之后由**各用例自己的断言**判红（那才是判据）⇒ 失败点更贴近语义。
+                //    ⚠️ **不会掩盖问题**：broker 真断时，各用例体里的 `send` / `awaitRecord` 同样会红。
+                LOG.warn("[预热] 第 {} 次发送失败（{}）⇒ 换一次再试（预热不是判据 ⇒ 不抛异常）",
+                        attempt, e.getMessage());
+                continue;
+            }
             Integer landed = awaitPgQuiet(
                     "SELECT count(*) FROM like_consume_inbox WHERE msg_id = ?",
-                    Integer.class, new Object[]{probeMsgId}, 2_000L);
+                    Integer.class, new Object[]{probeMsgId}, WARMUP_POLL_MS);
             if (landed != null && landed > 0) {
                 return;
             }
@@ -503,7 +625,13 @@ class LikeKafkaThreeFaceRealTest {
     private TopicReader reader(String topic) {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "like-probe-reader-" + SEQ.incrementAndGet());
+        // 🔴🔴 group 也必须**每 JVM 唯一**（DRIFT-LIKE-024 的同一根因）：
+        //    ⇒ 固定名 ⇒ 跨运行复用 ⇒ broker 上留了已提交位点 ⇒ ⇒ reader 从**旧位点**续读
+        //    ⇒ ⇒ 它会读到**历史运行**留下的消息 ⇒ ⇒ 而本类的 target_id 形如 `t-<SEQ>`
+        //    ⇒ ⇒ SEQ 每 JVM 重启 ⇒ **历史消息的 target_id 与本轮完全相同**
+        //    ⇒ ⇒ `awaitRecord` 会**匹配到历史消息** ⇒ ⇒ 假绿（读到的是上一轮的消息）。
+        props.put(ConsumerConfig.GROUP_ID_CONFIG,
+                "like-probe-reader-" + RUN_SUFFIX + "-" + SEQ.incrementAndGet());
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");

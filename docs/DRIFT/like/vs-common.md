@@ -2,6 +2,8 @@
 
 > **由 `align/like` 工作树产出** · **基线 commit `116ce63`**（本地 `main`）· 分支 `align/like`
 > **核对日期**：2026-11-03
+> 🔄 **2026-11-10 基线前进复验**（基线 `116ce63` → **`3c9c516`**）⇒ 本文件的**结论未变**，
+> 新增的 3 条**测试面**缺陷登记在 §6·**6-13** ⇒ 详见配套报告 [§〇](verification-like-2026-11-03.md)。
 > **写权**：✅ 可写**本域** `service/like/**` ＋ `docs/DRIFT/like/**`；
 > 🔴 **`common/**` 只读**（唯一写者 = 合并收口执行者 —— AGENTS.md §五.3 规则 3：「`common/**` 只有收口任务能写」）。
 > **本文件正文的「整合者」一律按「合并收口执行者」理解**（`docs/Worktree.md` §1e）。
@@ -23,7 +25,7 @@
 | 工作树 | `/Users/pr/Documents/GitHub/RAG-V1.worktrees/like` |
 | 分支 / 基点 | `align/like` / `116ce63`（已 fast-forward 合入 `main`） |
 | 本轮改动 | **全部在工作树内、未提交**（`git status` 见配套报告 §一·1.4） |
-| 本轮核对日期 | **2026-11-03** |
+| 本轮核对日期 | **2026-11-03**（2026-11-10 基线前进复验：基线 → **`3c9c516`**） |
 
 ---
 
@@ -191,9 +193,11 @@
 | 6-8 | ~~**netty gRPC server 真启动**~~ | — | ✅ **本轮已闭合**（配套报告 §四·4.H） |
 | 6-9 | ~~**Flyway 运行时版本（覆盖 Boot BOM 11.7.2）**~~ | — | ✅ **本轮已由「间接」升级为「显式」**（配套报告 §四·4.G） |
 | 6-10 | 🔴 **C 侧 `grpc-inprocess` 声明成 `test` scope ⇒ 真 fat jar 起不来**（**DRIFT-LIKE-014**） | **生产形态完全不可用**（`NoClassDefFoundError` ⇒ `MessageRpcClient` Bean 创建失败 ⇒ 服务起不来）⇒ 而 **102/102 测试全绿**（**当时的读数**；本轮加完 Kafka 三面后为 106/106）⇒ AGENTS §3.3.3「跑绿 ≠ 本来就绿」 | ✅ **已修**（`service/like/pom.xml` 去掉 `test` scope ＋ 补 B 侧 `like-rpc/pom.xml:313-344` 同款根因注释）⇒ **活体证据**：真 fat jar 起成功（Tomcat ＋ gRPC server 都起、无 `NoClassDefFoundError`）⇒ 配套报告 §五·5.1 #14 |
-
 | 6-11 | 🔧 **`spring.kafka.listener.auto-startup=false` 是**死配置**（**DRIFT-LIKE-016**） | 应用在 `LikeServiceApplication#kafkaListenerContainerFactory` 里**自己 `new`** 了 `ConcurrentKafkaListenerContainerFactory` ⇒ Boot 的 configurer **不参与** ⇒ `spring.kafka.listener.*` **一整族键无消费点** ⇒ `autoStartup` 一直是框架默认 **true** ⇒ **listener 其实一直都在起** ⇒ ⇒ 台账旧结论「listener 没起 ⇒ 消费面零覆盖」的**归因写反了**（真因 = **无 broker 可连**）⇒ ⇒ **一条错误归因会把下一个人引去改一个不存在的开关** | ✅ **已修**（删死键 ＋ 注释改为如实描述；**不影响生产行为** —— 生产 `application.yml` 无此键）＋ 补**区分性实验**（`mutate-kafka-3face.sh` M1：listener 一停 ⇒ 消费面/推送面/幂等面立刻转红 ⇒ **反证该键从未生效过**）⇒ 配套报告 §四·4.I ＋ §八·8.6 |
 | 6-12 | ~~**`notifyArticleLiked` 跨域通知面零覆盖**~~ | — | ✅ **本轮已闭合**：本域自带**真 netty 假 message-rpc** ＋ Spring Cloud `SimpleDiscoveryClient` 寻址 ⇒ 通知**真的发出去**且**逐字段** == B 侧 `MessageRpcClient.java:63-82` ＋ 失败语义不误伤点赞结果；**变异验证**（只有正例红 ＋ 还原后回绿）⇒ 配套报告 §四·4.J<br>⚠️ **不冒充**「B 侧 message 域此刻真的收到了」（那属跨 lane 依赖） |
+| 6-13 | 🔧 **2026-11-10 基线前进复验时新挖出的 3 条**（**全在测试面 · `common/` 零改动**）｜ **DRIFT-LIKE-020**：Kafka 三面测试**故意**连真 broker，却继承了 `application-test.properties` 的 `max.block.ms=1000`（**「无 broker 时快失败」**的设定）⇒ 冷 broker / 高负载 ⇒ 预热 `send` 同步抛 ⇒ 用例**在断言前**就 ERROR｜ **DRIFT-LIKE-021**：假 message-rpc server 钉死 `18221` ⇒ **与 hot lane 的探针段（`18221-18232`）硬撞**｜ **DRIFT-LIKE-022**：**选端口的规矩没落进仓库**（只活在各 lane 的 `run.sh` 注释里）⇒ 021 的病根 | 🔴 三个都是「**红灯含义失真**」型问题（回归红了 ⇒ 看不出是 broker 慢、是别的 lane 抢端口、还是本域真坏了）⇒ ⇒ 违背 AGENTS §3.3「判定必须能归因」 | ✅ **三条均已修**（本类单独覆盖 `max.block.ms=10000` ＋ 预热吞异常留 WARN ＋ 预热预算 60s；端口挪到 `18291` ⇒ **同步改 3 处**；规矩写进 `FakeMessageRpcServer` 类 javadoc ＋ 全仓端口分段表）⇒ **零断言被改动** ⇒ 配套报告 §〇·0.4 |
+| 6-14 | 🔧 **变异脚本 5 轮共用同一个 consumer group ⇒ 跨轮积压污染**（**DRIFT-LIKE-023**）｜ M1 轮（listener 停）**位点不前进** ⇒ M2 轮 listener 从**旧位点**继续 ⇒ 而 `auto-offset-reset=latest` **只在无已提交位点时生效** ⇒ ⇒ **M2 轮先消化全部积压**（实测 topic `LOG-END-OFFSET` = **858** 条）⇒ ⇒ 幂等面 60s 预算被吃光 ⇒ ⇒ **M2 轮判据被污染**（**两次独立整轮都可重复**） | 🔴 **错误归因会把人引去改一个不存在的耦合**（幂等面与中继**毫无关系**）⇒ ⇒ 且 2026-11-03 台账把该 flaky 归因为「预算偏紧」⇒ ⇒ **那个归因是错的**（提预算只是「慢一点地失败」）⇒ ⇒ 违背 AGENTS §3.3「判定必须能归因」 | ✅ **已修**（脚本**每轮换一个全新 group** ⇒ 每轮零位点 ⇒ 轮次间互不污染）＋ 残留自检补「group-id 行必须还在」⇒ **取证**：单跑一次 M2（无前置 M1 轮）⇒ 幂等面 **3.77s 就绿** ⇒ 配套报告 §〇·0.4 |
+| 6-15 | 🔧 **consumer group 跨运行复用 ⇒ 已提交位点残留 ⇒ 重放历史消息 ⇒ 同 msg_id 冲突被丢弃**（**DRIFT-LIKE-024**）｜ 变异脚本的**基线轮就红**（消费面 / 推送面 / 幂等面 3 例落库超时）⇒ 而**单独跑那个类是绿的**（4 例 0/0/0） | 🔴 **红灯含义失真**（回归红了 ⇒ 看不出是本域坏了，还是隔离没做对）⇒ 且 2026-11-03 留下的唯一尾巴**一直闭不上** ⇒ 违背 AGENTS §3.3「判定必须能归因」；**`common/` 零改动** ⇒ 只影响本域测试/工具面 | ✅ **已修**（consumer group 改**每 JVM 唯一**（`@DynamicPropertySource` 动态注册 `like-update-group-kafka3face-<pid>-<nanoTime>`）＋ `TopicReader` 的 group 同样唯一 ＋ 变异脚本改用**环境变量注入轮次后缀**（**不再改源码改名**）＋ **每轮断言「本轮 group 真的生效」**）⇒ **零断言改动** ⇒ 决定性实验：改前 **3 红 / 232.8s** ⇒ 改后 **4 例 0/0/0 / 27.01s** ⇒ 配套报告 §〇·0.4 |
 ---
 
 ## 7. 交付物清单（**本域侧**）
