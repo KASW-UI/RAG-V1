@@ -9,6 +9,83 @@
 
 ---
 
+## 〇、2026-11-10 基线前进复验（基线 `116ce63` → `3c9c516`）
+
+> 📌 **为什么有这一节**：基线从 `116ce63` 前进到 **`3c9c516`**（含 `global` 域第二批收口：
+> Nacos namespace 全仓统一 ＋ JSON 键序「全用 jackson2」＋ P-27 根治 ＋ users-user 台账订正）
+> ⇒ ⇒ 「此前所有闭合结论在新基线下是否仍成立」**必须重测**，不能沿用 2026-11-03 的读数。
+> ⚠️ 本节**只增不改**旧章节的读数 ⇒ 旧读数仍是它自己那一天的**真跑记录**。
+
+### 0.1 新基线对 like 域的**影响面**（逐项核对，结论：**零改动需求**）
+
+| 基线提交 | 内容 | 对 like 域的影响 | 证据 |
+|---|---|---|---|
+| `8d41b8c` | Nacos namespace/group 全仓统一到 `public` / `DEFAULT_GROUP`（改 article / comment / hot / message / admin / user 的 `application.yml` ＋ 各自 `NacosRegistration`） | **零** —— 该提交**未触碰 `service/like`** ⇒ 且 like 的 `application.yml:185` 本就写 `namespace: ${NACOS_NAMESPACE:public}` ⇒ 本来就合规 | `git show --stat 8d41b8c -- service/like common` ⇒ **空输出** |
+| `8d41b8c` | 新增守门 **A17**（全仓不得出现 Jackson 3 包名 / 不得开启属性字母序）＋ `tools/difftest/jackson-key-order/` 探针 | **一次通过** ⇒ like 域 `645/645` 份 Java ＋ `10/10` 份 yml 均为纯 Jackson 2 且未开字母序 | 守门② `PASS 15 · FAIL 0 · N/A 2 · PENDING 0`（A17 子项 `PASS 645/645` ＋ `10/10`） |
+| `8d41b8c` | `tools/gen-file-tree.py` 把 `.jdtls-build` 加进 `SKIP` / `SKIP_DIRS`（P-27 根治） | **零** —— like 工作树**没有** `.jdtls-build` 目录 ⇒ 生成结果不受影响；`docs/File_Tree/like.md` 无需重生成 | `find . -maxdepth 3 -name .jdtls-build` ⇒ **空输出**；且 `find service/like/src -name '*.java' -newer docs/File_Tree/like.md` ⇒ **空输出**（文件树比源码新） |
+| `2964ebb` / `3c9c516` | Prometheus 假红澄清 · 无表域持久层残留已删 · gRPC description 文案对齐 · users-user 台账汇总表订正 | **零**（`git show --stat` ⇒ 均不触及 `service/like`） | 同上 |
+
+⇒ ⇒ **结论**：新基线**没有**给 like 域带来任何**需要跟改**的内容；
+⇒ ⇒ 但「此前所有闭合结论在新基线下仍成立」这件事**仍要靠重跑证明**，不能靠「基线没碰我」推断。
+
+### 0.2 本轮读数（**全部真跑**，2026-11-10）
+
+| 读数 | 值 | 命令 / 口径 |
+|---|---|---|
+| **like 域全量回归** | **110 例 · Failures 0 · Errors 0 · Skipped 0**（**与 2026-11-03 的读数逐字一致**） | `mvn -o -pl service/like test`（**隔离跑**，见 0.3 的口径说明）· 取**模块级汇总行**（AGENTS §五.8 规则 ①） |
+| `LikeKafkaThreeFaceRealTest`（单类） | **4 例 · 0/0/0**（80.69s） | 改完 0.4 的两处后**复跑** |
+| `LikeMessageRpcCrossDomainRealTest`（单类） | **4 例 · 0/0/0**（93.67s） | 改完 0.4 的端口后**复跑** |
+| 守门 ① | `check-mapping-coverage.py` ⇒ **EXIT=0**（**C 列 645/645 · B 列 752/752 · B 列全局未覆盖 0**） | — |
+| 守门 ② | `check-arch-invariants.py` ⇒ **EXIT=0**（**PASS 15 · FAIL 0 · N/A 2 · PENDING 0**） | 含新基线带来的 **A17** |
+| 守门 ③ | `check-docs-vs-tree.py` ⇒ **EXIT=0** | — |
+| **双侧活体对拍** | `tools/difftest/like/run.sh` ⇒ 见 §八·8.1 起的读数 | 新基线复验（**且在改完测试面之后又跑一遍** ⇒ 读数必须对应这份代码） |
+| **改完测试面后的 like 域回归复跑** | **110 例 · Failures 0 · Errors 0 · Skipped 0**（**与前两次读数逐字一致**）⇒ 其中 `LikeKafkaThreeFaceRealTest` **4 例 0/0/0**（全量回归里只花 **15.44s**） | `mvn -o -pl service/like test`（隔离跑）· 取**模块级汇总行**（AGENTS §五.8 规则 ①）<br>⚠️ **对照**：改前该类在整轮里是 **232.8s / 3 红** ⇒ ⇒ 同一个测试类，**只改了 group 的唯一性**，就从「三红 + 232s」变成「全绿 + 15s」 |
+| **改完测试面后的三道守门复跑** | ① `check-mapping-coverage.py` ⇒ **EXIT=0**（C **645/645** · B **752/752** · B 全局未覆盖 **0**）｜② `check-arch-invariants.py` ⇒ **EXIT=0**（**PASS 15 · FAIL 0 · N/A 2 · PENDING 0**）｜③ `check-docs-vs-tree.py` ⇒ **EXIT=0** | 与 §〇·0.2 首表读数**逐字一致** ⇒ ⇒ 本轮改动**没有**影响三道守门 |
+
+### 0.3 ⚠️ 一条**必须说清的口径**：`common` 模块的 3 个失败**不是** like 域的回归
+
+| 现象 | 证据 | 判定 |
+|---|---|---|
+| `common` 的 `PrometheusScrapeEndpointRealTomcatTest` / `PrometheusTestContextExportDisabledAnchorTest` 报 `Failed to bind to address 0.0.0.0/0.0.0.0:9090` ⇒ `BindException: Address already in use` | `common` **未配 `grpc.server.port`** ⇒ 走 devh 的默认 **9090**；而实测此刻机器上有 **3 条 lane 并行跑 `common` 模块测试**（主仓 `common` ＋ `article` 工作树 ＋ 本 lane）⇒ **抢同一个 9090** | 🔴 **跨 lane 端口争用**（`common/**` 不在本 lane 写权内 ⇒ 只登记，不改） |
+| `common` 的 `DeadlineBudgetPersistencePgTest.cancelledCursorQueryBecomesDeadlineExceeded` 报 `HikariPool-1 - Connection is not available, request timed out after 2006ms (total=0, active=0, idle=0, waiting=0)` | 同一时刻宿主 `load average` **35~38**（3 lane ＋ 52 个容器）⇒ Testcontainers PG 的 2s 连接预算被打穿 | 🔴 **宿主过载**（`total=0` ⇒ 连接池**一个连接都没建成** ⇒ 是「连不上」，不是「断言错」） |
+
+> 📌 **为什么 like 域要「隔离跑」**：`-am` 会先跑 `common` 的测试 ⇒ 一旦 `common` 因**跨 lane 争用**红，
+> like 模块**根本不会执行** ⇒ ⇒ 读数会变成「像域回归」的样子（**红灯含义失真**）。
+> ⇒ ⇒ 本轮 like 域用 `mvn -o -pl service/like test`（`common` 已在 `-DskipTests` 下构建安装过）**隔离跑**，
+> ⇒ ⇒ 拿到的 110 例读数**只归因于 like 域自身**。
+> ⚠️ **这不是绕过守门**：`common` 的 3 个失败**如实登记**在上表 ⇒ **不写成「全仓绿」**。
+
+### 0.4 本轮**挖出并修掉**的 5 条（**都在测试面 · 都不涉及生产行为**）
+
+| Drift ID | 症状 | 真因 | 修法 | 证据 |
+|---|---|---|---|---|
+| **DRIFT-LIKE-020** | 新基线复验的 like 域回归里，`LikeKafkaThreeFaceRealTest` 出现 **2 个 ERROR**（`producerSendsKafkaLikeMsgToTopic` / `redeliveryIsIdempotent`），报 `KafkaException: Send failed` ⇒ `TimeoutException: Topic like_promotion_topic not present in metadata after 1000 ms` | 🔴 **两个因素叠加**：① 该类**故意**连真 broker，却**继承了** `application-test.properties` 的 `spring.kafka.producer.properties.max.block.ms=1000` —— 而那个 1000ms 是**「无 broker 时快失败」**的设定（默认 60s ⇒ 没有它测试会卡 60 秒）⇒ 对**真 broker** 而言 1s 的 metadata 预算**在冷启动 / 高负载下不现实**（实测 Docker 重启后 `load 38` 时必现）；② 预热步骤的 `kafkaTemplate.send` **会同步抛** `KafkaException` ⇒ **违背了它自己 javadoc 写的「预热失败不抛异常」** ⇒ ⇒ 预热把「broker 慢」变成「用例 ERROR」⇒ **失败点离真正的断言很远** | ① 该类单独覆盖 `max.block.ms=10000`（**只在本类生效** ⇒ 其余测试仍保持「无 broker 时 1s 快失败」的原行为）；② 预热 `send` 包 `try/catch`（吞掉 ⇒ 留 WARN 日志 ⇒ **兑现它自己的 javadoc**）＋ 预热总预算 **60s**（⇒ broker 不可达时不会无限拖） | 改后单类**复跑 4 例 0/0/0**（80.69s）＋ 全量 **110 例 0/0/0**；⚠️ **零断言被改动**（4 条用例的断言原样保留） |
+| **DRIFT-LIKE-021** | 假 message-rpc server 钉死端口 **18221** ⇒ 与 **hot lane 的探针**硬撞（两边同时跑 ⇒ 谁先起谁赢 ⇒ 另一边 `BindException`） | 🔴 **端口分段分配没查全**：like 当时的 javadoc 写「在 like 探针段 18211-18219 之外，避免撞段」—— 但全仓实际分段是 follow `18201-18209` ｜ like `18211-18219` ｜ **hot `18221-18232`** ｜ task `18241-18248` ｜ users-user `18301-18309` ⇒ ⇒ **18221 正是 hot 探针的 `B_API_PORT`** | 假 server 端口挪到 **18291**（**所有已声明段之外**）⇒ **同步改 3 处**（`FakeMessageRpcServer.PORT` ＋ 跨域测试类的 `@SpringBootTest` 属性 ＋ `application-test.properties` 的全局 discovery 实例 —— devh 的 resolver 是**全局静态** ⇒ 全局那份必须一致） | 改后单类**复跑 4 例 0/0/0**（93.67s）；端口 `18291` 实测 `lsof` **无占用** |
+| **DRIFT-LIKE-022** | 同上 | ⚠️ **是 DRIFT-LIKE-021 的病根**：选端口的规矩**没写进任何地方** ⇒ 下一个人还会踩 | 在 `FakeMessageRpcServer` 的类 javadoc 里写死**三条选端口规矩** ＋ **全仓端口分段表** ⇒ 且在 `application-test.properties` 与跨域测试类里各留一份**指向该规矩**的指针 | 端口分段表由 `tools/difftest/*/run.sh` 的头部注释**逐个核对**得出（follow/hot/like/task/users-user 五段 + B 侧探针 `18101-18110`） |
+| **DRIFT-LIKE-023** | 变异脚本的 **M2 轮「幂等面仍绿」判据两次整轮都不成立**（2026-11-03 记过一次，当时归因为「**30s 预算偏紧**」⇒ **那个归因是错的**） | 🔴 **跨轮积压污染**：脚本 5 轮**共用同一个 consumer group** ⇒ M1 轮（listener 停）**位点不前进** ⇒ M2 轮 listener 从**旧位点**继续 ⇒ ⇒ `auto-offset-reset=latest` **只在无已提交位点时生效** ⇒ ⇒ **M2 轮先消化全部积压**（实测 topic 的 `LOG-END-OFFSET` = **858** 条，每条都要落库 + 开事务）⇒ ⇒ 60s 预算被吃光 ⇒ ⇒ **两次独立整轮都可重复**（不是偶发） | ① **脚本每轮换一个全新 group** ⇒ 每轮零位点 ⇒ `latest` 生效 ⇒ **轮次间互不污染**；② **台账旧归因订正**（提预算只是「慢一点地失败」）；③ 残留自检补「group-id 行必须还在」（否则「换 group」**静默失效** ⇒ 而读数**看不出来**） | **取证**：① 单跑一次 M2（无前置 M1 轮）⇒ 幂等面 **3.77s 就绿**；② 查 broker ⇒ topic `LOG-END-OFFSET` = **858**；③ 两次整轮**同一处**红 ⇒ ⇒ 可重复 ⇒ ⇒ 不是偶发 |
+| **DRIFT-LIKE-024** | 变异脚本的**基线轮就红**（消费面 / 推送面 / 幂等面 3 例红 ⇒ 各等满 60s 落库超时）⇒ ⇒ 2026-11-03 留下的唯一尾巴（「⚠️ **完整脚本未再整体复跑一次**」）**一直没能闭合**；而**单独跑那个测试类是绿的**（4 例 0/0/0） | 🔴 **consumer group 名被跨运行复用 ⇒ broker 上留了已提交位点 ⇒ `auto-offset-reset=latest` 失效 ⇒ listener 从旧位点续读 ⇒ 重放历史运行的消息**；而本类 `SEQ` **每个 JVM 都从 `8_400_000_000_000` 重启** ⇒ ⇒ **msg_id 跨运行复用** ⇒ ⇒ 重放到的旧消息与本轮消息**同 msg_id、不同载荷** ⇒ ⇒ 消费侧判 `reused with conflicting payload` ⇒ ⇒ **按 Go 的 `ForceCommit=true` 语义丢弃**（位点前移、不重投）⇒ ⇒ 本轮 `like_record` / `like_outbox_event` **永不落库** | ① **consumer group 改每 JVM 唯一**（`@DynamicPropertySource` 动态注册 `like-update-group-kafka3face-<pid>-<nanoTime>`）⇒ ⇒ 零已提交位点 ⇒ `latest` 生效 ⇒ **不重放历史消息**；② **原始 consumer（`TopicReader`）的 group 同样唯一**（否则它会读到历史消息 ⇒ **假绿**）；③ **变异脚本改用环境变量注入轮次后缀**（**不再改源码改名** ⇒ 顺带消灭「改名静默失效」这一类风险）＋ **每轮断言「本轮 group 真的生效」**（读 surefire 报告里**测试自己打的** group 名 ⇒ 运行证据，不是读配置名推断） | **决定性实验**：改前基线轮 **4 例 3 红**（整类 **232.8s**）⇒ 改后单类 **4 例 0/0/0**（**27.01s**）⇒ 耗时差 **8.6 倍** = 「不再消化积压」的量级；⇒ 旁证：broker 日志从 `Setting offset ... to the **committed** offset FetchPosition{offset=923}` 变成 `latest` 定位；⇒ **取证**：dump topic ⇒ 同一个 `msg_id` 在 1008 条消息里出现**多达 75 次**（跨运行复用 msg_id 的直接证据） |
+
+> ⚠️ **这 5 条都不在生产面** —— C 侧**主代码 69 个 `.java` 零改动**（本轮 `git diff --stat` 只碰测试与台账）
+> ⇒ ⇒ **L1 契约 / L2 业务语义零影响**。
+
+### 0.5 本轮**闭合**的唯一尾巴
+
+> 📌 2026-11-03 留下的尾巴：「⚠️ **完整脚本未再整体复跑一次**（M1/M3 的判据在第二轮**仍按预期**）」。
+> ⇒ ⇒ 本轮在**新基线**下把 `tools/difftest/like/mutate-kafka-3face.sh` **完整整轮**跑完
+> ⇒ ⇒ 读数见 §八·8.6 ⇒ ⇒ **该尾巴关闭**。
+
+| 次序 | 结果 | 说明 |
+|---|---|---|
+| ① 第 1 次整轮（2026-11-10 22:37 · Docker 刚恢复的**冷 broker** 场景） | ❌ **基线轮就红**（4 例 **3 红** · 整类 **232.8s**）⇒ ⇒ 脚本按设计**快速中止**（exit 1：「基线就不绿 ⇒ 后续变异判定无意义」） | 🔴 根因 = **DRIFT-LIKE-024**（consumer group **跨运行复用** ⇒ 已提交位点残留 ⇒ 重放历史消息 ⇒ 同 msg_id 冲突被丢弃）⇒ ⇒ **不是** broker 慢、**不是** 预算紧 |
+| ② 决定性实验（22:54 · 单类复跑） | ✅ **4 例 0/0/0**（**27.01s**）⇒ ⇒ 耗时差 **8.6 倍** | 证实「group 每 JVM 唯一 ⇒ 不消化积压」这条根因（**同一条命令、只改一处**） |
+| ③ 第 2 次整轮（隔离修好后） | ✅ **EXIT=0**（基线绿 ＋ M1/M2/M3 判据互斥 ＋ 还原后转绿）—— ⚠️ **但这一轮不采信** | 🔴 **自查抓到**：那轮新加的「隔离生效」断言是**空期望恒真** —— 轮次推进写在 `run_tests` 里，而 `RC="$(run_tests)"` 是**命令替换** ⇒ 子 shell 的变量**传不回父 shell** ⇒ 期望值永远是空串 ⇒ ⇒ 「找空串」**恒真** ⇒ ⇒ **断言形同虚设**（还打印得漂漂亮亮）⇒ ⇒ **这正是本项目反复吃过的「假绿」** |
+| ④ 第 3 次整轮（断言修好后 · **最终读数**） | ✅ **EXIT=0** ＋ **每轮都打印出真实的 group 名**（例：`like-update-group-kafka3face-r1-1794323728-3298`）⇒ ⇒ 「隔离生效」是**被验证过的**，不是恒真 | ⇒ ⇒ **该尾巴关闭**（§八·8.6 有逐轮读数） |
+
+> 📌 **第 ③ → ④ 轮之间只改了一处**：把轮次推进从子 shell 挪到父 shell（`next_round`）＋ **空期望直接判失败**
+> ⇒ ⇒ **与 ② 一样是「只改一处、其余不动」的对照实验** ⇒ ⇒ 读数可归因。
+
+---
+
 ## 一、审核范围
 
 ### 1.1 两个项目的角色
@@ -58,6 +135,9 @@
 | 架构断言 | [`docs/架构符合性断言.md`](../../架构符合性断言.md)（A1–A13） |
 
 ### 1.5 本轮的验证读数（**全部真跑**）
+
+> 📌 **本表是 2026-11-03 那一轮的读数**（基线 `116ce63`）⇒ **原样保留**，不覆盖。
+> ⇒ **2026-11-10 基线前进（`3c9c516`）后的复验读数 ⇒ 见 [§〇](#〇2026-11-10-基线前进复验基线-116ce63--3c9c516)。**
 
 | 读数 | 值 | 命令 |
 |---|---|---|
@@ -458,12 +538,15 @@
 
 ---
 
-#### 🔴 踩坑记录（本轮补 Kafka 三面时真的踩到的两条）
+#### 🔴 踩坑记录（本轮补 Kafka 三面时真的踩到的三条 · C 是 2026-11-10 基线前进复验时新踩的）
 
 | # | 症状 | 真因 | 修法 |
 |---|---|---|---|
-| **A** | 消费面 / 推送面 / 幂等面**三个一起超时**，而**单独跑那个测试类是绿的** | ⚠️ **topic 上存着对拍探针留下的几百条历史消息** ⇒ 若 consumer 从头部开始 ⇒ listener 必须**先消化全部积压**（每条都要落库 ＋ 事务）⇒ ⇒ 实测 30s 预算被积压吃光<br>📌 **取证**：broker 上 `CURRENT-OFFSET=355` == `LOG-END-OFFSET=355` ⇒ ⇒ **它最终追上了**，只是没赶上 30s ⇒ ⇒ 根因是「**追积压耗时**」，**不是**「消费失败」 | ① consumer 的 `auto-offset-reset` 改 **`latest`**（= `seek` 到 log 末尾，**O(1)** ⇒ **不消化积压**）<br>② ⚠️ `latest` 的代价 = **竞态**（定位完成前发的消息会丢）⇒ ⇒ 加**预热步骤**：先发一条探针消息并**等它真的落进 `like_consume_inbox`** ⇒ ⇒ 「listener 已定位且在消费」有了**运行证据**，之后的测试消息才发得出去<br>⚠️ 预热**不抛异常**（只准备工作）⇒ ⇒ 变异验证里「listener 停 ⇒ **生产面仍绿**」这条判据才成立<br>③ ⚠️ **有界轮询预算从 30s 提到 60s**：连跑多轮 mvn（变异验证一次 5~6 轮）时 broker 有积压与调度抖动 ⇒ 实测 30s **偶发**不足（同一轮变异复跑又绿 ⇒ ⇒ **flaky 而非结构性问题**）⇒ ⇒ 预算按「**最坏一轮的真实耗时**」给 ⇒ ⇒ 宽一点**只让失败更慢**，不会掩盖失败（超时仍判红） |
+| **A** | 消费面 / 推送面 / 幂等面**三个一起超时**，而**单独跑那个测试类是绿的** | ⚠️ **topic 上存着对拍探针留下的几百条历史消息** ⇒ 若 consumer 从头部开始 ⇒ listener 必须**先消化全部积压**（每条都要落库 ＋ 事务）⇒ ⇒ 实测 30s 预算被积压吃光<br>📌 **取证**：broker 上 `CURRENT-OFFSET=355` == `LOG-END-OFFSET=355` ⇒ ⇒ **它最终追上了**，只是没赶上 30s ⇒ ⇒ 根因是「**追积压耗时**」，**不是**「消费失败」 | ① consumer 的 `auto-offset-reset` 改 **`latest`**（= `seek` 到 log 末尾，**O(1)** ⇒ **不消化积压**）<br>② ⚠️ `latest` 的代价 = **竞态**（定位完成前发的消息会丢）⇒ ⇒ 加**预热步骤**：先发一条探针消息并**等它真的落进 `like_consume_inbox`** ⇒ ⇒ 「listener 已定位且在消费」有了**运行证据**，之后的测试消息才发得出去<br>⚠️ 预热**不抛异常**（只准备工作）⇒ ⇒ 变异验证里「listener 停 ⇒ **生产面仍绿**」这条判据才成立<br>③ ⚠️ **有界轮询预算从 30s 提到 60s**：连跑多轮 mvn（变异验证一次 5~6 轮）时 broker 有积压与调度抖动 ⇒ 实测 30s **偶发**不足（同一轮变异复跑又绿 ⇒ ⇒ **flaky 而非结构性问题**）⇒ ⇒ 预算按「**最坏一轮的真实耗时**」给 ⇒ ⇒ 宽一点**只让失败更慢**，不会掩盖失败（超时仍判红）> 🔴 **2026-11-10 订正**：**「预算偏紧」不是那次 flaky 的真因**（真因是**跨轮积压污染** ⇒ 见下方 **D** 行 ⇒ DRIFT-LIKE-023）⇒ ⇒ 提到 60s 只让它「**慢一点地失败**」⇒ ⇒ **教训**：「flaky」的第一反应不该是「加预算」，而该是「**它在跟谁共享状态**」 |
 | **B** | 跨域通知报 `UNAVAILABLE: No servers found for message-rpc`，而**单独跑那个测试类是绿的** | ⚠️ devh 的 gRPC **名字解析器注册进全局静态的 `io.grpc.NameResolverRegistry`** ⇒ ⇒ resolver 持有的是「**第一个创建它的 Spring 上下文**」里的 `DiscoveryClient` bean ⇒ ⇒ 在**别的**上下文里配 `spring.cloud.discovery.client.simple.instances.*` **对该 resolver 无效** ⇒ ⇒ **跨上下文串味** | 把那族键从「测试类的 `@SpringBootTest(properties=...)`」提到 **`application-test.properties`**（**所有**上下文都读得到）⇒ ⇒ 无论哪个上下文先起，resolver 手里的 `DiscoveryClient` 都含 `message-rpc` ⇒ 登记为 **DRIFT-LIKE-018** |
+| **C**（2026-11-10 · 基线前进复验时新踩） | 全量回归里 `LikeKafkaThreeFaceRealTest` 出现 **2 个 ERROR**，报 `KafkaException: Send failed` ⇒ `TimeoutException: Topic like_promotion_topic not present in metadata after 1000 ms`；而**单独跑那个类是绿的**（4 例 0/0/0） | 🔴 **两件事叠在一起**：① 该类**故意**连真 broker，却**继承了** `application-test.properties` 的 `spring.kafka.producer.properties.max.block.ms=1000` —— 那个 1000ms 是**「无 broker 时快失败」**的设定（默认 60s ⇒ 没有它测试会卡 60 秒）⇒ 对**真 broker** 而言 1s 的 metadata 预算在**冷启动 / 宿主高负载**下不现实（实测 Docker 重启后 `load 38` 时必现）；② 预热的 `kafkaTemplate.send` 在 metadata 取不到时**会同步抛** ⇒ **违背了它自己 javadoc 写的「预热失败不抛异常」** ⇒ ⇒ 预热把「broker 慢」变成「用例 ERROR」⇒ **失败点离真正的断言很远** | ① 该类单独覆盖 `max.block.ms=10000`（**只在本类生效** ⇒ 其余测试仍保持「无 broker 时 1s 快失败」）；② 预热 `send` 包 `try/catch`（吞掉 ＋ 留 WARN 日志 ⇒ **兑现自己的 javadoc**）＋ 预热总预算 **60s**<br>⇒ ⇒ **零断言被改动**（4 条用例的断言原样保留）⇒ 登记为 **DRIFT-LIKE-020** |
+| **D**（2026-11-10 · 跑**完整整轮**变异验证时挖到） | 变异脚本的 **M2 轮「幂等面仍绿」判据两次整轮都不成立**（2026-11-03 记过一次，当时归因为「**30s 预算偏紧**」⇒ **那个归因是错的**） | 🔴 **不是预算问题，是「**跨轮积压污染**」**：脚本 5 轮**共用同一个 consumer group** ⇒ M1 轮（listener 停）**位点不前进** ⇒ ⇒ M2 轮 listener 从**旧位点**继续 ⇒ ⇒ 而 `auto-offset-reset=latest` **只在无已提交位点时生效** ⇒ ⇒ **M2 轮先消化全部积压**（实测 `LOG-END-OFFSET` = **858** 条，每条都要落库 + 开事务）⇒ ⇒ 60s 预算被吃光 ⇒ ⇒ 幂等面超时变红 ⇒ ⇒ **两次独立整轮都可重复** ⇒ ⇒ 不是偶发 | ① **脚本每轮换一个全新 group**（⇒ 每轮零位点 ⇒ `latest` 生效 ⇒ **轮次间互不污染**）② **台账旧归因订正**（2026-11-03 的「预算偏紧」是**误判** ⇒ 提到 60s 只是「**慢一点地失败**」）③ 残留自检补一条「**group-id 行必须还在**」（否则「换 group」会**静默失效** ⇒ 而读数**看不出来**）⇒ 登记为 **DRIFT-LIKE-023** |
+| **F**（2026-11-10 · 跑**完整整轮**变异验证时挖到 · **DRIFT-LIKE-024**） | 变异脚本**基线轮就红**（3 例落库超时）⇒ ⇒ 2026-11-03 留下的唯一尾巴**一直闭不上**；而**单独跑那个类是绿的** | 🔴 **不是 broker 慢、不是预算紧，是「**隔离没做对**」**：consumer group 名**跨运行复用** ⇒ ⇒ broker 留了**已提交位点** ⇒ ⇒ `auto-offset-reset=latest` **失效**（实测 broker 打的是 `Setting offset ... to the **committed** offset FetchPosition{offset=923}` ⇒ **「committed」不是「latest」**）⇒ ⇒ listener 从旧位点续读 ⇒ ⇒ **重放历史运行的消息**；而本类 `SEQ` **每个 JVM 都从 `8_400_000_000_000` 重启** ⇒ ⇒ **msg_id 跨运行复用** ⇒ ⇒ 重放到的旧消息与本轮消息**同 msg_id、不同载荷** ⇒ ⇒ 消费侧判 `reused with conflicting payload` ⇒ ⇒ **按 Go 的 `ForceCommit=true` 语义丢弃** ⇒ ⇒ 本轮 `like_record` / `like_outbox_event` **永不落库** ⇒ ⇒ 三红 | ① **consumer group 改每 JVM 唯一**（`@DynamicPropertySource` 动态注册 `like-update-group-kafka3face-<pid>-<nanoTime>`）⇒ ⇒ 零已提交位点 ⇒ `latest` 生效 ⇒ **不重放历史消息**；② **原始 consumer（`TopicReader`）的 group 同样唯一**（否则它读到历史消息 ⇒ `awaitRecord` 匹配到上一轮的 `target_id` ⇒ **假绿**）；③ **变异脚本不再改源码改名**（改用**环境变量注入轮次后缀**）⇒ ⇒ 顺带消灭「改名静默失效」这一类风险；④ **每轮断言「本轮 group 真的生效」**（读 surefire 报告里测试自己打的 group 名）⇒ ⇒ 「隔离没生效」不再可能**静默地**跑完一整轮 |
 
 > ⚠️ **这条同时说明**：`like_record.target_type VARCHAR(32)` 是 **L1 契约**（C 侧与 B 侧逐字一致）
 > ⇒ ⇒ **不是漂移**，不许为了「让夹具好过」去改列宽。
@@ -491,8 +574,8 @@
 | 环节 | 做法 | 为什么 |
 |---|---|---|
 | 对端 | 本域测试里起一个**真 netty gRPC server**（`NettyServerBuilder`），实现 `MessageServiceGrpc.MessageServiceImplBase#sendNotification`，逐条记录收到的请求 | ⇒ 走**真 TCP ＋ 真 HTTP/2 ＋ 真 proto 编解码** ⇒ 不是 mock |
-| 寻址 | `spring.cloud.discovery.client.simple.instances.message-rpc[0].host/port` ⇒ 把 `message-rpc` 指到 `127.0.0.1:18221` | devh 的 `@GrpcClient("message-rpc")` 走 Spring Cloud 的 `DiscoveryClient` ⇒ **`SimpleDiscoveryClient`** 即可 ⇒ **不碰 Nacos**（`NacosStubConfiguration` 只打桩了 `getNamingService()`，**没**打桩 `DiscoveryClient` ⇒ 两条路互不干扰） |
-| 端口 | **钉死** `18221`（like 探针段 18211-18219 之外） | devh 客户端**启动即连** ⇒ 假 server 必须**先于** Spring 上下文就绪 ⇒ 端口必须提前可知 ⇒ 假 server 在**类加载**时就起 |
+| 寻址 | `spring.cloud.discovery.client.simple.instances.message-rpc[0].host/port` ⇒ 把 `message-rpc` 指到 `127.0.0.1:18291` | devh 的 `@GrpcClient("message-rpc")` 走 Spring Cloud 的 `DiscoveryClient` ⇒ **`SimpleDiscoveryClient`** 即可 ⇒ **不碰 Nacos**（`NacosStubConfiguration` 只打桩了 `getNamingService()`，**没**打桩 `DiscoveryClient` ⇒ 两条路互不干扰） |
+| 端口 | **钉死** `18291`（**所有** lane 探针段之外） | devh 客户端**启动即连** ⇒ 假 server 必须**先于** Spring 上下文就绪 ⇒ 端口必须提前可知 ⇒ 假 server 在**类加载**时就起<br>⚠️ **2026-11-10 改**：原为 `18221` ⇒ 那是 **hot 探针**的 `B_API_PORT` ⇒ **跨 lane 硬撞** ⇒ 登记为 **DRIFT-LIKE-021**（选端口的规矩见 `FakeMessageRpcServer` 的类 javadoc ⇒ **DRIFT-LIKE-022**） |
 
 > 📌 **运行证据**（不是推断）：`DiscoveryClientNameResolver : Done updating server list for message-rpc`
 > ⇒ ⇒ **devh 真的经 discovery 解析到了 `message-rpc`** ⇒ 寻址链成立。
@@ -575,6 +658,11 @@
 | **DRIFT-LIKE-018** | `service/like/src/test/resources/application-test.properties`（`spring.cloud.discovery.client.simple.instances.message-rpc[*]` 的**放置位置**） | B 侧**无对应配置**（Go 侧 `zrpc.MustNewClient` 直接按 etcd key 寻址，不经服务发现客户端配置面） | ❌ 原本写在**跨域测试类的 `@SpringBootTest(properties=...)`** 里 ⇒ ⇒ **全量回归时失效**，**单跑那个类是绿的** ⇒ ⇒ 现象：跨域通知报 `UNAVAILABLE: No servers found for message-rpc` | ⚠️ devh 的 gRPC **名字解析器注册进全局静态的 `io.grpc.NameResolverRegistry`** ⇒ ⇒ resolver 持有的是「**第一个创建它的 Spring 上下文**」里的 `DiscoveryClient` bean ⇒ ⇒ **别的上下文里再配 discovery 实例，对该 resolver 无效** ⇒ ⇒ **跨上下文串味**（单跑绿 / 全量红）⇒ ⚠️ 与「**单测绿 ≠ 全量绿**」是同族但**更隐蔽**（连「单跑那个类」都是绿的） | **不影响生产行为**（生产面 `application.yml` 无此键）⇒ 只影响**测试配置面** | 🟡 **P2**（测试面） | ✅ **已修**（把那族键提到 `application-test.properties` ⇒ **所有**上下文都读得到）⇒ **证据**：全量回归 **EXIT=0**（改前该用例红：`No servers found for message-rpc`） |
 | **DRIFT-LIKE-019** | `service/like/src/test/java/com/rag/like/service/LikeMessageRpcCrossDomainRealTest.java` ＋ `support/FakeMessageRpcServer.java`（**类带静态副作用**：静态块起 netty server） | — | 🟠 **曾一度在一次全量回归里被 surefire「静默跳过」**：同一条命令两次全量回归 ⇒ 一次 like=**110**（该类跑了，4/4 绿）⇒ 一次 like=**106**（**该类没跑**）⇒ ⇒ **BUILD SUCCESS 且 0 ERROR、0 Skipped** | ⚠️ **病根**：该类的**静态块**在 surefire 的**类扫描阶段**起 netty server ⇒ ⇒ 扫描期一旦出问题 ⇒ 该类被**静默丢弃**（不报错、不执行、不计数）⇒ ⇒ **「不执行」比「失败」更危险** | **回归覆盖面**（4 条断言一度**不稳定地在回归里执行**）⇒ ⚠️ **不是**行为漂移 | 🟠 中 | ✅ **已闭合**（把 server 启动从**静态块**挪到 **`@BeforeAll`** ⇒ 扫描期无副作用 ⇒ 必定被发现；起不来时变成**可见的 ERROR**）⇒ **修后验证**：**两次独立全量回归逐字一致**（均 like=**110**，跨域 4 例均被执行）⇒ §四·4.J |
 | **DRIFT-LIKE-015** | 场景轮 F · **超时失败形态**（`tools/difftest/like/` 实测） | B 侧 **api→rpc 两跳** ⇒ 外层 API 预算 **2s** 先到 ⇒ 业务码 **1015** @**2098ms** | C 侧 **D2 域内直连**（D1 合并成单进程）⇒ 外层 HTTP 预算 **3s** + Redis 3s 命令超时后**走 DB 降级** ⇒ HTTP **503** · 无信封 @**3091ms** | **D1（api+rpc 合并）＋ D2（域内直连）的拓扑产物** —— ⚠️ **两侧都观测的是「外层预算」**，**不是领域语义** ⇒ 码值差异**不由错误映射决定，而由失败形态决定** | **客户端观测到的码/形态不同**（业务**结果**两侧一致：都没挂死，unpause 后都回 200） | 🟡 **P2**（形态面） | **INTENTIONALLY_CHANGED**（**拓扑产物**，已在 `tools/difftest/like/README.md` 的「已知现象 1」登记，**不计失败**）⇒ §八·8.3 |
+| **DRIFT-LIKE-020** | `service/like/src/test/java/com/rag/like/messaging/LikeKafkaThreeFaceRealTest.java`（预热步骤 ＋ `max.block.ms` 继承） | B 侧**无对应测试资产**（Go 真源无此测试）⇒ ⇒ 本条**不是** C↔B 漂移 | ❌ 该类**故意**连真 broker，却**继承**了 `application-test.properties` 的 `max.block.ms=1000` ⇒ 真 broker 冷启动 / 宿主高负载时 metadata 取回超 1s ⇒ `TimeoutException: Topic ... not present in metadata`；且预热的 `send` **同步抛** ⇒ **违背它自己 javadoc 写的「预热失败不抛异常」** ⇒ ⇒ 用例**在到达断言前**就 ERROR | 🔴 **两件事叠在一起**：① `max.block.ms=1000` 是**「无 broker 时快失败」**的设定（默认 60s ⇒ 没有它测试会卡 60 秒）⇒ 对**真 broker** 而言 1s 的 metadata 预算**在冷启动 / 高负载下不现实**（实测 Docker 重启后 `load 38` 时必现）；② 预热的 `send` 在 metadata 取不到时**会同步抛** ⇒ **契约（javadoc）与代码不一致** | ⚠️ **只影响测试面**（生产面 `application.yml` 未动）⇒ 但会让「回归红了」与「broker 慢」**无法分辨**（红灯含义失真）⇒ 且会让变异脚本的 5 轮连跑变 flaky | 🟡 **P2**（测试面） | ✅ **已修**（本类单独覆盖 `max.block.ms=10000` ＋ 预热 `send` 吞异常留 WARN ＋ 预热总预算 60s）⇒ **零断言被改动** ⇒ 修后单类 4 例 0/0/0 ＋ 全量 110 例 0/0/0（§〇·0.4） |
+| **DRIFT-LIKE-021** | `service/like/src/test/java/com/rag/like/support/FakeMessageRpcServer.java`（`PORT`） | B 侧**无对应测试资产** | ❌ 假 server 钉死 `18221` ⇒ **与 hot lane 的探针硬撞**（hot 探针段 `18221-18232`，`B_API_PORT=18221`）⇒ ⇒ 两边同时跑 ⇒ 谁先起谁赢 ⇒ 另一边 `BindException` | 🔴 **端口分段分配没查全** —— like 当时的 javadoc 写「在 like 探针段 18211-18219 之外，避免撞段」，但全仓实际分段是 follow `18201-18209` ｜ like `18211-18219` ｜ **hot `18221-18232`** ｜ task `18241-18248` ｜ users-user `18301-18309` ⇒ ⇒ **18221 正是 hot 探针的 `B_API_PORT`**；且该端口**无回退**（不像探针的「候选端口列表」）⇒ **硬撞** | ⚠️ **跨 lane 的红灯**（like 域变红的原因在 hot lane 手里，hot lane 变红的原因在 like 域手里 ⇒ **红灯含义失真**） | 🟡 **P2**（测试面） | ✅ **已修**（端口挪到 `18291` = 所有 lane 探针段之外 ⇒ **同步改 3 处**）⇒ 修后单类 4 例 0/0/0（§〇·0.4） |
+| **DRIFT-LIKE-022** | 同上（**选端口的规矩没落进任何地方**） | — | ❌ 端口分段分配只存在于各 lane 的 `tools/difftest/<域>/run.sh` 头部注释里 ⇒ ⇒ 新增测试资产时**没有规矩可循** | 🔴 **知识只活在各 lane 的脚本注释里** ⇒ ⇒ 这正是 **DRIFT-LIKE-021** 的病根（属「**知识没落进仓库**」） | ⚠️ **同类复发风险**（下一个人还会踩）⇒ 光在台账里写没用 | 🟡 **P2**（文档面） | ✅ **已修**（`FakeMessageRpcServer` 类 javadoc 写死 3 条选端口规矩 ＋ 全仓端口分段表；`application-test.properties` 与跨域测试类各留一份指向该规矩的指针）⇒ §〇·0.4 |
+| **DRIFT-LIKE-023** | `tools/difftest/like/mutate-kafka-3face.sh`（变异脚本的**轮次间状态隔离**） | — | ❌ 脚本 5 轮**共用同一个 consumer group**（`like-update-group-kafka3face`）⇒ ⇒ **M1 轮（listener 停）位点不前进** ⇒ ⇒ M2 轮 listener 从**旧位点**继续 ⇒ ⇒ **M2 轮的「幂等面仍绿」判据不成立** ⇒ ⇒ **两次独立整轮都可重复**（不是偶发） | 🔴 **跨轮状态污染**：① listener 的 group **跨轮固定** ⇒ 上一轮的**未消费积压**被下一轮继承；② 而 `auto-offset-reset=latest` **只在「该 group 没有已提交位点」时才生效** ⇒ ⇒ 有旧位点 ⇒ **M2 轮先消化全部积压**（实测 topic 的 `LOG-END-OFFSET` = **858** 条，每条都要落库 + 开事务）⇒ ⇒ 60s 预算被吃光 | ⚠️ **错误归因会把人引去改一个不存在的耦合**（幂等面与中继**毫无关系**）⇒ ⇒ 且台账 2026-11-03 把该 flaky 归因为「**30s 预算偏紧**」⇒ ⇒ **那个归因是错的**（提到 60s 只是让它「**慢一点地失败**」）⇒ ⇒ AGENTS §3.3「判定必须能归因」被违反 | 🟡 **P2**（工具/测试面） | ✅ **已修**（脚本**每轮换一个全新 group** ⇒ 每轮零位点 ⇒ `latest` 生效 ⇒ **轮次间互不污染**）＋ 残留自检补一条「group-id 行必须还在」（否则「换 group」会**静默失效** ⇒ 而读数**看不出来**）⇒ **取证**：单跑一次 M2（无前置 M1 轮）⇒ 幂等面 **3.77s 就绿** ⇒ §〇·0.4 |
+| **DRIFT-LIKE-024** | `service/like/src/test/java/com/rag/like/messaging/LikeKafkaThreeFaceRealTest.java`（consumer group）＋ `tools/difftest/like/mutate-kafka-3face.sh`（轮次隔离） | B 侧**无对应测试资产**（Go 真源无此测试）⇒ ⇒ 本条**不是** C↔B 漂移 | ❌ consumer group 名**跨运行复用** ⇒ ⇒ broker 上留了**已提交位点** ⇒ ⇒ `auto-offset-reset=latest` **失效** ⇒ ⇒ listener 从**旧位点**续读 ⇒ ⇒ **重放历史运行的消息**；而本类 `SEQ` 每个 JVM 从 `8_400_000_000_000` 重启 ⇒ ⇒ **msg_id 也跨运行复用** ⇒ ⇒ 重放到的旧消息与本轮消息**同 msg_id 不同载荷** ⇒ ⇒ 消费侧判 `reused with conflicting payload` ⇒ ⇒ **按 Go 的 `ForceCommit=true` 语义丢弃** ⇒ ⇒ 本轮 `like_record` / `like_outbox_event` **永不落库** ⇒ ⇒ 消费面 / 推送面 / 幂等面**三红**（生产面仍绿：它只验证「发得出去」） | 🔴 **两处「轮次隔离」都只在单次脚本运行内有效**：① 脚本原来靠「**改测试源码里的 group 名**」（`...-rN`）做到每轮换 group ⇒ ⇒ 但脚本**每次运行都从第 1 轮重新编号** ⇒ ⇒ **跨脚本运行 group 名照样复用** ⇒ ⇒ 位点照样残留 ⇒ ⇒ 「每轮换 group」**名不副实**；② 更根本的一层：**普通回归跑（不经过脚本）用的 group 名是写死的** ⇒ ⇒ 它的位点**从来就没清过** | ⚠️ **只影响测试面**（生产面 `application.yml` 的 `like-update-group` **未动**）⇒ 但会让「回归红了」与「真的坏了」**无法分辨**⇒ 且会让 2026-11-03 留下的唯一尾巴**一直闭不上** ⇒ ⇒ 违背 AGENTS §3.3「判定必须能归因」 | 🟡 **P2**（工具/测试面） | ✅ **已修**（consumer group 改**每 JVM 唯一**（`@DynamicPropertySource` 动态注册）＋ `TopicReader` 的 group 同样唯一 ＋ 脚本改用**环境变量注入轮次后缀**（不再改源码）＋ **每轮断言「本轮 group 真的生效」**）⇒ **零断言被改动** ⇒ 决定性实验：改前 **3 红 / 232.8s** ⇒ 改后 **4 例 0/0/0 / 27.01s**（§〇·0.4） |
 
 ### 5.1 本轮**修掉**的缺陷（不是漂移，是 C 侧实现期抓出的问题）
 
@@ -595,6 +683,11 @@
 | 13 | **netty gRPC server 从未真启动过**（测试一律 `grpc.server.port=-1`） | 传输层、TCP bind、HTTP/2 帧编解码、trailer 线上序列化**全部零覆盖** | ✅ 已补（`LikeGrpcNettyServerRealTest` 5 例 ⇒ §四·4.H） |
 | 15 | **`spring.kafka.listener.auto-startup=false` 是**死配置**（**DRIFT-LIKE-016**）⇒ 台账把「消费面零覆盖」的归因**写反了** | 该键**没有消费点**（域内自建 `ConcurrentKafkaListenerContainerFactory` ⇒ Boot configurer 不参与）⇒ `autoStartup` 一直是框架默认的 **true** ⇒ **listener 一直都在起**；零覆盖的真因是**无 broker 可连** | ✅ 已修（删掉死键 ＋ 注释改为如实描述）＋ 补**区分性实验**（M1 ⇒ 见 §八·8.6） |
 | 14 | 🔴 **`grpc-inprocess` 声明成 `test` scope ⇒ 真 fat jar 起不来**（**DRIFT-LIKE-014**） | **生产形态完全不可用**（`NoClassDefFoundError` ⇒ `MessageRpcClient` Bean 创建失败 ⇒ 服务起不来）⇒ 而 **102/102 测试全绿**（**当时的读数**；本轮加完 Kafka 三面后为 **106/106**）（缺陷藏在生产 classpath 上） | ✅ 已修（`service/like/pom.xml` 去 `test` scope ＋ B 侧同款根因注释）⇒ **活体证据**：真 fat jar 起成功（Tomcat + gRPC server 都起、无 `NoClassDefFoundError`） |
+| 16 | **Kafka 三面测试继承了「无 broker 时快失败」的 `max.block.ms=1000`**（**DRIFT-LIKE-020**） | 冷 broker / 高负载 ⇒ 预热 `send` 同步抛 ⇒ 2 个用例**在到达断言前**就 ERROR ⇒ 红灯与「broker 慢」**无法分辨** | ✅ 已修（本类单独覆盖 `max.block.ms=10000` ＋ 预热吞异常留 WARN ＋ 预热预算 60s）**＋ 零断言改动** |
+| 17 | **假 message-rpc server 的端口钉在 hot lane 的探针段里**（**DRIFT-LIKE-021**） | 跨 lane 硬撞 ⇒ 两边同时跑时谁先起谁赢 ⇒ 另一边 `BindException` ⇒ **跨 lane 的红灯** | ✅ 已修（挪到 `18291` ⇒ **同步改 3 处**） |
+| 18 | **选端口的规矩没落进仓库**（**DRIFT-LIKE-022**） | 同类复发风险 ⇒ 下一个人还会踩 | ✅ 已修（类 javadoc 写死 3 条规矩 ＋ 全仓端口分段表） |
+| 19 | **变异脚本 5 轮共用同一个 consumer group ⇒ 跨轮积压污染**（**DRIFT-LIKE-023**） | M1 轮（listener 停）位点不前进 ⇒ M2 轮先消化全部积压（实测 **858** 条）⇒ 幂等面 60s 预算被吃光 ⇒ ⇒ **M2 轮的判据被污染**（且台账 2026-11-03 把该 flaky 归因为「预算偏紧」⇒ **归因错误**） | ✅ 已修（脚本**每轮换全新 group** ＋ 残留自检补「group-id 行必须还在」）⇒ §〇·0.4 |
+| 20 | **consumer group 跨运行复用 ⇒ 已提交位点残留 ⇒ 重放历史消息 ⇒ 同 msg_id 被判冲突而丢弃**（**DRIFT-LIKE-024**） | 消费面 / 推送面 / 幂等面**三红**（60s 落库超时）⇒ 而**单跑那个类是绿的** ⇒ ⇒ 红灯含义失真（像是本域坏了，其实是隔离没做对）⇒ 且 2026-11-03 的唯一尾巴因此**闭不上** | ✅ 已修（group 改**每 JVM 唯一** ＋ `TopicReader` group 同样唯一 ＋ 脚本改用环境变量注入轮次后缀 ＋ **每轮断言「group 真的生效」**）⇒ **零断言改动** ⇒ 决定性实验：改前 3 红 / 232.8s ⇒ 改后 **4 例 0/0/0 / 27.01s** |
 
 ---
 
@@ -611,7 +704,7 @@
 | 🏷 **已批准的主动变更**（INTENTIONALLY_CHANGED） | **2** | A-17（验签位置）· F-03（进程身份三元组） |
 | **合计** | **57** | 与 §2.5 机器复算结果**一致** |
 
-### 6.2 维度二：语义漂移清单（**19 条登记项 · 独立于上表**）
+### 6.2 维度二：语义漂移清单（**24 条登记项 · 独立于上表**）
 
 | 档位 | 数量 | 明细 |
 |---|---|---|
@@ -619,11 +712,11 @@
 | ✅ **已撤销的假阳性**（**不是漂移**） | **1** | **DRIFT-LIKE-010**（`/actuator/prometheus` 404）—— 原归因（Boot 3.5 装配顺序）**两条都错** ⇒ 真因 = **Boot 测试框架的全局禁用** ⇒ 与 C↔B 行为无关 ⇒ **已撤销**（§四·4.F） |
 | ✅ **已闭合的覆盖缺口**（**不是漂移**） | **4** | **DRIFT-LIKE-012**（netty gRPC server 真启动）⇒ §四·4.H ｜ **DRIFT-LIKE-013**（Kafka 消费/推送面）⇒ §四·4.I ｜ **DRIFT-LIKE-017**（跨域通知面）⇒ §四·4.J ｜ **DRIFT-LIKE-019**（跨域面被 surefire 静默跳过）⇒ §四·4.J |
 | ✅ **本轮发现并已修的 C 侧漂移** | **1** | **DRIFT-LIKE-014**（`grpc-inprocess` 的 scope 与 B 侧相反 ⇒ 真 fat jar 起不来）⇒ **已修 + 活体验证**（§五·5.1 #14） |
-| 🔧 **测试配置面的坑**（**不影响生产行为**，但**推翻了旧归因 / 造成单跑绿全量红**） | **2** | **DRIFT-LIKE-016**（`spring.kafka.listener.auto-startup=false` **没有消费点** ⇒ listener 其实一直都在起）⇒ 已修 ＋ 区分性实验 ｜ **DRIFT-LIKE-018**（discovery 实例配置**放错位置** ⇒ devh 的**全局静态** resolver 串味）⇒ 已修 ⇒ §四·4.I ＋ §八·8.6 |
-| 🟡 **文档/台账不一致（不影响运行）** | **1** | DRIFT-LIKE-011（映射表自报数 30 vs 实际 29） |
+| 🔧 **测试配置面的坑**（**不影响生产行为**，但**推翻了旧归因 / 造成单跑绿全量红 / 造成跨 lane 红灯 / 造成轮次间状态污染 / 造成跨运行状态污染**） | **6** | **DRIFT-LIKE-016**（`spring.kafka.listener.auto-startup=false` **没有消费点** ⇒ listener 其实一直都在起）⇒ 已修 ＋ 区分性实验 ｜ **DRIFT-LIKE-018**（discovery 实例配置**放错位置** ⇒ devh 的**全局静态** resolver 串味）⇒ 已修 ⇒ §四·4.I ＋ §八·8.6 ｜ **DRIFT-LIKE-020**（真 broker 测试继承「无 broker 时快失败」的 `max.block.ms=1000` ⇒ 预热 `send` 同步抛 ⇒ 用例在断言前就 ERROR）⇒ 已修 ⇒ §〇·0.4 ｜ **DRIFT-LIKE-021**（假 server 端口钉在 **hot lane 的探针段** ⇒ 跨 lane 硬撞）⇒ 已修 ｜ **DRIFT-LIKE-023**（变异脚本**跨轮共用 consumer group** ⇒ 轮次间积压污染 ⇒ M2 轮判据被污染）⇒ 已修 ⇒ §〇·0.4 ｜ **DRIFT-LIKE-024**（consumer group **跨运行复用** ⇒ 已提交位点残留 ⇒ 重放历史消息 ⇒ 同 msg_id 冲突被丢弃 ⇒ **三红**）⇒ 已修 ⇒ §〇·0.4 |
+| 🟡 **文档/台账不一致（不影响运行）** | **2** | DRIFT-LIKE-011（映射表自报数 30 vs 实际 29）｜ **DRIFT-LIKE-022**（**选端口的规矩没落进仓库** ⇒ DRIFT-LIKE-021 的病根）⇒ 已修 ⇒ §〇·0.4 |
 | 🟠 **未闭合（测试执行不稳定）** | **0** | ~~DRIFT-LIKE-019~~（跨域 4 例曾被 surefire **静默跳过**）**本轮已闭合**（§四·4.J）⇒ 已修 ＋ **两次全量回归逐字一致** |
 | ⚠️ **仍开放的覆盖缺口**（NOT_VERIFIED，非行为漂移） | **0** | ~~DRIFT-LIKE-013~~（Kafka 三面）**本轮闭合**（§四·4.I）｜ ~~DRIFT-LIKE-019~~（跨域面）**本轮闭合**（§四·4.J） |
-| **登记项合计** | **19** | 10 已批准/表达层 ＋ 1 已撤销假阳性 ＋ **4 已闭合覆盖缺口**（012/013/017/019）＋ 1 已修 C 侧漂移 ＋ 2 测试配置坑 ＋ 1 文档不一致 ＋ **0 未闭合** = **19**<br>⚠️ **本表此前漏计 DRIFT-LIKE-012**（已闭合项没有单列一档 ⇒ 分类只覆盖 14/15）⇒ 本轮补上 ⇒ **零漏项** |
+| **登记项合计** | **24** | 10 已批准/表达层 ＋ 1 已撤销假阳性 ＋ **4 已闭合覆盖缺口**（012/013/017/019）＋ 1 已修 C 侧漂移 ＋ **6 测试配置坑**（016/018/020/021/023/**024**）＋ **2 文档不一致**（011/022）＋ **0 未闭合** = **24**<br>⚠️ **本表此前漏计 DRIFT-LIKE-012**（已闭合项没有单列一档 ⇒ 分类只覆盖 14/15）⇒ 2026-11-03 补上；**2026-11-10 再补 4 条**（020/021/022/023）；**2026-11-10 深夜再补 1 条**（**024** · 变异整轮挖出）⇒ **零漏项** |
 
 > ⚠️ **两个维度的计数不相加** —— 6.1 数的是「职责承接」，6.2 数的是「差异」；
 > 同一条目可以同时出现在两边（例如 R-17 既在 6.1 的 NOT_VERIFIED，也在 6.2 的 DRIFT-LIKE-013）。
@@ -666,6 +759,8 @@
 | 7-4 | ~~**并发 / 超时 / 外部依赖失败 / 恢复**四类场景轮~~ | — | ✅ **本轮已闭合**：探针阶段 C/D/E/F（依赖失败 / 恢复 / 并发 / 超时），**两侧的码值 ＋ 耗时都记**，并逐条登记 ⇒ §八·8.3（超时那条的形态差异登记为 **DRIFT-LIKE-015**，**不计失败**） |
 | 7-5 | ~~**`/actuator/prometheus` 可用性**~~ | — | ✅ **本轮已查明**：**不是缺口，是假阳性** —— 真因 = Boot 测试框架的全局禁用（`ObservabilityContextCustomizerFactory`）⇒ 生产形态**可用** ⇒ §四·4.F |
 | 7-6 | ~~**Flyway 11.14.1 覆盖 BOM 11.7.2**~~ | — | ✅ **本轮已由「间接」升级为「显式」**：`LikeFlywayRuntimeVersionTest` 4 例 ⇒ §四·4.G |
+| 7-13 | 🔧 **2026-11-10 基线前进复验新挖出的 3 条**（**DRIFT-LIKE-020 / 021 / 022**，**全在测试面**） | —— | ✅ **本轮已全部修掉**：① 真 broker 场景的 `max.block.ms` 预算 ＋ 预热吞异常留 WARN ＋ 预热预算 60s（**零断言改动**）② 假 message-rpc server 端口挪到 `18291`（避开 **hot lane 的探针段 `18221-18232`**）③ **选端口的规矩**写进类 javadoc ＋ 全仓端口分段表 ＋ ④ **变异脚本每轮换全新 consumer group**（⇒ 切断跨轮积压污染）⇒ §〇·0.4<br>⚠️ **注意**：这 3 条**不是**「本域行为与 B 侧不一致」，而是「**红灯含义失真**」—— 回归红了会看不出是 broker 慢、是别的 lane 抢端口、还是本域真坏了 ⇒ ⇒ 违背 AGENTS §3.3「判定必须能归因」 |
+| 7-14 | 🔧 **2026-11-10 跑完整整轮时挖出的第 4 条**（**DRIFT-LIKE-024**，**全在测试/工具面**） | —— | ✅ **本轮已修掉**：consumer group 改**每 JVM 唯一**（`@DynamicPropertySource` 动态注册）＋ `TopicReader` 的 group 同样唯一 ＋ 变异脚本改用**环境变量注入轮次后缀**（不再改源码改名）＋ **每轮断言「本轮 group 真的生效」** ⇒ ⇒ 决定性实验：改前 **3 红 / 232.8s** ⇒ 改后 **4 例 0/0/0 / 27.01s** ⇒ §〇·0.4<br>⚠️ **注意**：这条**不是**「本域行为与 B 侧不一致」，而是「**隔离没做对 ⇒ 红灯含义失真**」⇒ ⇒ 与 7-13 同族，但**更隐蔽**：它不是偶发，而是**每次整轮都必现**（只要 group 名被复用） |
 
 ### 7.2 转派**「合并收口执行者」**的（**本域只登记**）
 
@@ -734,6 +829,14 @@
 
 📌 另有**启动前残留自检**：发现上一轮变异没还原 ⇒ **立刻拒绝启动**（⇒「读数没有意义」）。
 
+> ⚠️ **2026-11-10 本轮**：`mutate-parity.sh`（M1~M6）**未复跑** —— 理由**如实登记**：
+> ① 它的 6 个变异靶子分别是 `ErrMsg.java` / `expected.txt` / `run.sh`（×3）/ `GetLikeCountResp.java`
+> ⇒ ⇒ **本轮一个都没动**（本轮只改测试类 ＋ `mutate-kafka-3face.sh` ＋ 本域台账）
+> ⇒ ⇒ 它证明的命题（「探针不是假绿」）**不受本轮改动影响** ⇒ ⇒ 2026-11-03 的读数**仍然成立**；
+> ② 它每轮都要跑**完整探针**（两侧构建 ＋ 起服务 ＋ 8 条 HTTP ＋ 6 条 gRPC）⇒ 代价极高；
+> ③ ⚠️ **这不是「省事」**：若日后改了 `ErrMsg` / `GetLikeCountResp` / `expected.txt` / `run.sh` **任一项**
+> ⇒ ⇒ **必须重跑** `mutate-parity.sh` ⇒ ⇒ 该条件已写进本节。
+
 ### 8.5 探针的机器摘要（**逐字引用**）
 
 ```
@@ -743,7 +846,12 @@
 
 退出码：`run.sh` = **0**（派发入口 `tools/difftest/run-parity.sh like` = **0**）· `mutate-parity.sh` = **0**。
 
-📌 **两轮独立复跑**（构建轮 ＋ 主 lane 复跑轮）⇒ **摘要逐字相同**、**退出码逐字相同** ⇒ 读数稳定。
+📌 **三轮独立复跑**（构建轮 ＋ 主 lane 复跑轮 ＋ **2026-11-10 基线前进复验后的第三轮**）⇒ **摘要逐字相同**、**退出码逐字相同** ⇒ 读数稳定。
+📌 **第三轮（2026-11-10 23:41 · 本轮改完测试面之后）**：`bash tools/difftest/like/run.sh` ⇒ **EXIT=0** ＋ 摘要**逐字相同** ＋ **9 个端口零残留** ⇒ ⇒ **读数对应「本轮改动后的这份代码」**（不是沿用改动前的旧读数）。
+
+🔄 **2026-11-10 基线前进复验（基线 `3c9c516`）**：又跑一遍 `tools/difftest/like/run.sh` ⇒ **EXIT=0**，
+机器摘要**逐字相同**（`❌ 真差异 0 ｜ ⚠️ 已知现象 1` ＋ `✅ 三方逐字节一致`）⇒ ⇒ **新基线下对拍结论不变**。
+（13 阶段全跑：两侧 PG/Redis 起容器 ⇒ 两侧构建 ⇒ 4 枚 JWT ⇒ Nacos 分组注册 ⇒ 起两侧服务 ⇒ 阶段 A/B 三方逐字节 ⇒ 阶段 C 双失败分支 ⇒ 阶段 D 恢复 ⇒ 阶段 E 并发 ⇒ 阶段 F 超时 ⇒ 收尾**9 个端口零残留**。）
 📌 **收尾零残留**（两轮实测）：探针端口段 **18211-18219 零残留** ＋ 探针容器零残留。
 📌 **B 侧只读**：探针全程只在 B 仓跑 `mvn package`（产物落 `target/`，已 gitignore）⇒ B 仓 `service/like` ＋ `service/common` **干净**。
 
@@ -773,6 +881,7 @@
 | M3 | `✅ 整体转红（exit 1）` ＋ **四例全 red** |
 | 收尾 | `✅ 还原后绿（exit 0）⇒ 之前的红确实是**变异**造成的` |
 
+
 #### 📌 三条变异各自证明了什么
 
 | 变异 | 证明的命题 |
@@ -790,6 +899,20 @@
 | **启动前残留自检** | 三个靶点逐个查原始形态 ⇒ 有残留**拒绝启动**（exit 2） | 脚本被杀掉（超时/手动/重启）时，变异会留在文件里 ⇒ 下一轮读数**没有意义** |
 | **判红判绿的读数源** | **surefire 的 XML 报告**（逐 `<testcase>` 看 `<failure>`/`<error>`），**不用 grep 日志** | 日志里的 `FAILURE!` 行会被框架噪声淹没 |
 | **还原后必须复跑** | 每条变异都要求「变异红 **且** 对照用例仍绿」＋ **还原后复跑为绿** | 只红不够 ⇒ 要证明「红是这次变异造成的，不是本来就红」 |
+| **consumer group 必须每 JVM 唯一** | 测试侧用 `@DynamicPropertySource` **动态注册** `like-update-group-kafka3face-<pid>-<nanoTime>`（脚本再用**环境变量**追加轮次后缀）⇒ ⇒ 每轮**零已提交位点** ⇒ `latest` 生效 ⇒ **不重放历史消息** | 🔴 group 名一旦被复用 ⇒ broker 留了**已提交位点** ⇒ ⇒ `latest` **失效** ⇒ ⇒ listener 从旧位点续读 ⇒ ⇒ **重放历史运行的消息** ⇒ ⇒ 而本类 `SEQ` 每 JVM 重启 ⇒ **msg_id 也跨运行复用** ⇒ ⇒ 同 msg_id 不同载荷 ⇒ ⇒ **被丢弃** ⇒ ⇒ 三红（**DRIFT-LIKE-024**）⇒ ⇒ **「每轮换 group」若只在单次脚本运行内有效 ⇒ 等于没换** |
+| **「隔离生效」必须每轮断言** | 每轮读 surefire 报告里**测试自己打的** group 名 ⇒ 不匹配 ⇒ 脚本 **exit 2** | 🔴 否则「隔离没生效」会**静默地**跑完一整轮 ⇒ 读数是「用错 group 的读数」⇒ **日志里看不出来** |
+| **断言的期望值不能为空** | 期望 group 名为空 ⇒ 直接判 `empty-expectation` ⇒ 判失败 | 🔴 **本轮真的踩到**：轮次推进写在 `run_tests` 里，而 `RC="$(run_tests)"` 是**命令替换** ⇒ 子 shell 的变量**传不回父 shell** ⇒ 父 shell 里的期望值永远是空串 ⇒ ⇒ 「找空串」**恒真** ⇒ ⇒ **断言形同虚设**，还打印得漂漂亮亮 ⇒ ⇒ 已把轮次推进拆到父 shell 的 `next_round`（⇒ 这就是「**断言也要自证**」） |
+| **不再改源码改名** | 轮次后缀走**环境变量** ⇒ 源码里没有「改名残留」这种失败模式 | 🔴 原来的「改源码 ＋ 正则可重入」本身就有**静默失效**风险 ⇒ ⇒ 改成「不改源码」⇒ 从根上消掉这一类 |
+
+#### 🔴 2026-11-10 基线前进复验时的**整轮读数**（**唯一尾巴的闭合过程**）
+
+| 次序 | 场景 | 结果 | 判定依据 |
+|---|---|---|---|
+| ① | 第 1 次整轮（22:37 · **冷 broker**：Docker 刚恢复、容器 Up 2s） | ❌ **基线轮就红** —— `consumerWritesAllFourPlaces` / `redeliveryIsIdempotent` / `relayPushesOutboxEventToHotTopic` 三例**落库超时**（各等满 60s）；`producerSendsKafkaLikeMsgToTopic` **仍绿** ⇒ 整类 **232.8s** ⇒ 脚本 **exit 1**（**快速中止**，没白跑后面的变异轮） | surefire 报告：3 个 `<failure>` ＋ 1 个绿；**基线红 ⇒ 后续变异判定无意义** ⇒ 脚本按设计中止 |
+| ② | 根因取证（**不是**猜的） | 🔴 broker 日志：`Setting offset for partition like_promotion_topic-0 to the **committed** offset FetchPosition{offset=923, …}` ⇒ ⇒ **`committed` 而不是 `latest`** ⇒ ⇒ 该 group **有已提交位点** ⇒ ⇒ `auto-offset-reset=latest` **失效**<br>🔴 listener 日志：`commit like message failed, will be dropped: msgId=8400000000006 err=like message 8400000000006 reused with conflicting payload` ⇒ ⇒ 每条都因**同 msg_id 不同载荷**被**丢弃**<br>🔴 dump 整个 topic（1008 条）⇒ ⇒ 同一个 `msg_id` **出现多达 75 次** ⇒ ⇒ 跨运行复用 `msg_id` 的直接证据 | 三条证据**互相独立** ⇒ ⇒ 排除「broker 慢」「预算紧」「宿主过载」等解释 |
+| ③ | 决定性实验（22:54 · **只改一处**：group 改每 JVM 唯一） | ✅ **4 例 0/0/0**（整类 **27.01s**）⇒ ⇒ 耗时从 **232.8s → 27.01s**（**8.6 倍**） | 同一条命令、同一 broker、同一宿主负载 ⇒ ⇒ **只可能是「不再重放积压」** |
+| ④ | 第 2 次整轮（隔离修好后） | ✅ **EXIT=0** —— 但 ⚠️ **那轮「隔离生效」的断言是空期望恒真** ⇒ ⇒ **该轮读数不采信** | 断言的期望值写在**子 shell** 里 ⇒ 传不回父 shell ⇒ 「找空串」恒真 ⇒ **自己抓到的假绿** |
+| ⑤ | 第 3 次整轮（断言修好后 · **最终读数**） | ✅ **EXIT=0** —— 基线 4 例全绿 ＋ M1/M2/M3 判据组合互斥 ＋ 还原后复跑转绿；**每轮都打印出真实的 group 名**（例：`like-update-group-kafka3face-r1-1794323728-3298`）⇒ ⇒ 「隔离生效」**被验证过** | §八·8.6 的判据表逐条对上 ＋ 每轮 group 名与**测试自己打的**日志逐字一致 |
 
 ⚠️ **本次实测的收尾零残留**：`autoStartup = "false"` 命中 **0** 次 · `fixedRateString = "3600000"` 命中 **0** 次 · `bootstrap-servers=127.0.0.1:49992` 命中 **1** 次 ⇒ 三个靶点全部恢复原状。
 
@@ -808,7 +931,7 @@
 | **7** | **Common Starter 上收是否遗漏原有消费方？** | ✅ **无遗漏** —— 上收 **8 项 · 域内零副本**；26 个共享类**零空壳**；A6 守门 PASS；⚠️ 唯一留在域内的 Jackson 2 条补强**本就该留域内**（B 侧域私有） |
 | **8** | **Spring Boot 4 → 3.5 是否引入业务可观察行为变化？** | ✅ **0 条** —— 原报的「`/actuator/prometheus` 404」是**假阳性**（真因 = Boot 测试框架的全局禁用 ⇒ 生产形态**可用**）⇒ 已撤销（§四·4.F）。其余 **12 组框架差异逐条核证后判定为「已证明等价」**（含本轮补证的 netty gRPC server 与 Flyway 版本） |
 | **9** | **Tomcat / Jackson / Spring Framework 等底层版本变化是否产生实际漂移？** | ✅ **无漂移**（Tomcat 3 旋钮同值 ＋ 404 字节形状逐字节钉住；Jackson 强转规则逐条等价 ＋ 区分性实验 5 例；Spring 6.2 无 `withCoercionConfig` ⇒ 走 `postConfigurer` 路线，**不替换** Boot 的 mapper） |
-⑯ **like → message 跨域通知真链路**（真 netty 对端 ＋ 真 discovery ⇒ 通知**逐字段** == B 侧规格 ＋ 失败语义 ⇒ §四·4.J；**两次全量回归均执行** ⇒ DRIFT-LIKE-019 已闭合） |
+| **10** | **哪些差异已经通过证据证明安全？** | ✅ **22 条登记项（§五·6.2）里 21 条已被证据判死** —— 证明强度分**三档**，逐条见 §五：<br>① **L1 契约层逐字对照**（proto 字段号 / 错误码值 / HTTP path / JWT claim / 表结构 / topic 名 / 指标名 / JSON 字段序）⇒ **源码级**证据；<br>② **双侧活体对拍**（8 条 HTTP **三方逐字节** ＋ 6 条 gRPC wire **双边逐字节**）⇒ **运行级**证据（§八）；<br>③ **区分性实验**（对拍侧 M1~M6 ＋ Kafka 三面 M1~M3）⇒ 证明**断言有牙齿**、不是假绿。<br>📌 与本域收口直接相关的几条：<br>· ✅ **12 组框架差异已证明等价**（Tomcat 3 旋钮 / Jackson 强转规则 / Flyway 11.14.1 显式断言 / netty gRPC server 真启动 / `@KafkaListener` 真进 registry / Prometheus 端点生产形态可用）⇒ §四·4.B~4.H；<br>· ✅ **Kafka 三面真链路**（生产 / 消费 / 推送 / 幂等 四面 ＋ 真 broker ＋ 真 listener ＋ 真中继）⇒ §四·4.I；<br>· ✅ **like → message 跨域通知真链路**（真 netty 对端 ＋ 真 discovery ⇒ 通知**逐字段** == B 侧规格 ＋ 失败语义不误伤点赞结果）⇒ §四·4.J；**两次全量回归均执行** ⇒ DRIFT-LIKE-019 已闭合；<br>· ✅ **`/actuator/prometheus` 不是缺口**（原报是**假阳性** ⇒ 真因 = Boot 测试框架的全局禁用 ⇒ 生产形态可用）⇒ §四·4.F。<br>⚠️ **唯一未被「证据判死」的一条**：**DRIFT-LIKE-015**（超时场景的失败形态差异）—— 它**不是**「不安全」，而是 **D1/D2 拓扑的必然产物**（两侧观测的都是「**外层预算**」、不是领域语义）⇒ 已登记为**签字偏离** ⇒ §八·8.3 |
 | **11** | **哪些差异仍然无法确认？** | **§七·7.1 里已列的缺口 = 0 项** |
 | **12** | **当前 C 是否具备可靠的行为对拍条件？** | ✅ **具备「双侧活体对拍」条件（本轮已用上）** ——<br>✅ 具备：真 PG 16 ＋ 真 Redis 7 ＋ 真 Tomcat ＋ 真 Flyway ＋ 真 gRPC in-process **＋ 真 netty** ＋ 真 Kafka **broker**（`apache/kafka:3.7.2`）＋ 真 Kafka 客户端 jar<br>✅ **本轮已建成并跑通**：`tools/difftest/like/`（13 阶段）⇒ **C == B == 冻结的 Go 字节**，**两轮复跑读数一致**，退出码 **0**<br>⚠️ **仍不具备**「Go 真源活体对拍」条件（本机无 Sea-etcd）⇒ ⇒ 结论表述为「**C == B == 冻结的 Go 字节**」，**不表述**为「Go 此刻产出同样字节」 |
 
@@ -828,6 +951,10 @@
 > 📌 **本轮一次「自我证伪」**：DRIFT-LIKE-010 原本是一条**跨域共性**的漂移（`/actuator/prometheus` 404 ⇒ 建议归 `global` 收口域），
 > **本轮实测把它证伪了** ⇒ 真因是 **Boot 测试框架的全局禁用** ⇒ **生产形态可用** ⇒ **收口域不需要动**。
 > ⇒ 这是 §3.3.2「以『实测证据』措辞出现的断言必须能被区分性实验支撑」的**反向示范**：**错误断言比没有断言更危险**。
+>
+> 🔄 **2026-11-10 基线前进复验（基线 `3c9c516`）**：like 域**全部闭合结论仍成立** —— 回归 **110 例 0/0/0**（与 2026-11-03 逐字一致）＋ 三道守门 **EXIT=0 / EXIT=0 / EXIT=0** ＋ 对拍探针 **EXIT=0**（`真差异 0 ｜ 已知现象 1`，与前轮**逐字相同**）＋ 变异脚本**完整整轮**跑完 ⇒ ⇒ **唯一尾巴关闭**。
+> ⇒ 本轮**新挖出并修掉 3 条**（**DRIFT-LIKE-020 / 021 / 022**，**全在测试面**）⇒ ⇒ **C 侧主代码 69 个 `.java` 零改动**。
+> ⚠️ 另如实登记：**`common` 模块的 3 个失败是跨 lane 资源争用**（3 lane 并行 ⇒ 抢 devh 默认 gRPC 端口 9090 ＋ 宿主 `load 38` 打穿 Testcontainers PG 的 2s 连接预算）⇒ **不是** like 域回归 ⇒ 详见 §〇·0.3。
 >
 > 📌 **本轮第二次「自我证伪」**：**DRIFT-LIKE-016** —— 台账旧结论写「`spring.kafka.listener.auto-startup=false` ⇒ listener 没起 ⇒ 消费面零覆盖」。
 > **实测**：该键**没有消费点**（域内自建 `ConcurrentKafkaListenerContainerFactory` ⇒ Boot configurer 不参与）⇒ `autoStartup` 一直是框架默认的 **true** ⇒ **listener 一直都在起**；零覆盖的真因是**没有 broker 可连**。

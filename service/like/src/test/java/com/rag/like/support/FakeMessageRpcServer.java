@@ -41,7 +41,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <h2>🔴 端口为什么钉死成 {@value #PORT}</h2>
  * <p>{@code @SpringBootTest} 的上下文在测试方法<b>之前</b>就创建，而 devh 的 gRPC 客户端
  * <b>启动即连</b> ⇒ ⇒ 假 server 必须<b>先于</b>上下文就绪 ⇒ ⇒ 端口必须<b>提前可知</b>
- * ⇒ ⇒ 钉死端口（{@value #PORT}，在 like 探针端口段 18211-18219 之外，避免撞段）。
+ * ⇒ ⇒ 钉死端口（{@value #PORT}）。
+ * <p>🔴 <b>为什么是 {@value #PORT}（2026-11-10 改）</b>：原先钉的是 <b>18221</b>，
+ * 而全仓探针端口的分配是<b>分段</b>的：
+ * <pre>
+ *   follow 18201-18209 ｜ like 18211-18219 ｜ <b>hot 18221-18232</b> ｜ task 18241-18248
+ *   users-user 18301-18309 ｜ B 侧探针 18101-18110
+ * </pre>
+ * ⇒ ⇒ <b>18221 正是 hot 探针的 {@code B_API_PORT}</b> ⇒ ⇒ 本 server 与 <b>hot lane</b> 硬撞
+ * ⇒ ⇒ 两边同时跑时**谁先起谁赢**，另一边直接 BindException ⇒ ⇒ <b>跨 lane 的红灯</b>。
+ * ⇒ ⇒ 挪到 {@value #PORT}（**所有已声明段之外**）。
+ * <p>⚠️ <b>选端口的规矩</b>：① 不进任何 lane 的探针段（探针段由各 lane 的
+ * {@code tools/difftest/<域>/run.sh} 头部注释声明）；② 不进 like 自己的探针段
+ * 18211-18219（回归与探针可能同时跑）；③ 改端口必须<b>同步改 3 处</b>：
+ * 本类的 {@link #PORT} ＋ 跨域测试类的 {@code @SpringBootTest} 属性 ＋
+ * {@code application-test.properties} 的全局 discovery 实例（devh 的 resolver 是
+ * <b>全局静态</b> ⇒ 全局那份必须与实际端口一致）。
  * <p>⚠️ 假 server 在<b>类加载时</b>就起（静态初始化块）⇒ ⇒ 「类加载」必须早于
  * 「Spring 上下文创建」⇒ 测试类用静态块显式调 {@link #ensureStarted()} 触发。
  *
@@ -49,14 +64,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>{@code @GrpcClient("message-rpc")} 走 devh 的 discovery ⇒ devh 用的是
  * Spring Cloud 的 {@code DiscoveryClient} bean ⇒ ⇒ 用
  * {@code spring.cloud.discovery.client.simple.instances.message-rpc[0].host/port}
- * 把 {@code message-rpc} 指到 {@code 127.0.0.1:18221} ⇒ <b>不碰 Nacos</b>。
+ * 把 {@code message-rpc} 指到 {@code 127.0.0.1:18291} ⇒ <b>不碰 Nacos</b>。
  * <p>⚠️ {@code NacosStubConfiguration} 只打桩了 {@code NacosServiceManager#getNamingService()}，
  * <b>没有</b>打桩 {@code DiscoveryClient} ⇒ ⇒ 两条路互不干扰。
  */
 public final class FakeMessageRpcServer {
 
-    /** 假 server 的端口（固定 ⇒ 必须早于 Spring 上下文可知）。 */
-    public static final int PORT = 18221;
+    /**
+     * 假 server 的端口（固定 ⇒ 必须早于 Spring 上下文可知）。
+     *
+     * <p>⚠️ **选端口的规矩**见类注释的「端口为什么钉死」一节（**不许**落进任何 lane 的探针段）。
+     */
+    public static final int PORT = 18291;
 
     /** 收到的请求队列（测试按顺序 poll）。 */
     private static final BlockingQueue<SendNotificationReq> RECEIVED = new LinkedBlockingQueue<>();

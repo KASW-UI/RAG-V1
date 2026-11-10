@@ -63,8 +63,11 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spring.cloud.nacos.discovery.enabled=false",
                 "spring.cloud.service-registry.auto-registration.enabled=false",
                 // 🔴 把 discovery 的 "message-rpc" 指到本地假 server ⇒ 不碰 Nacos
+                //    ⚠️ 端口必须与 `FakeMessageRpcServer.PORT` **逐字一致**（18291）
+                //       （devh 的 resolver 是**全局静态** ⇒ 全局那份 discovery 配置也得一致）
+                //    ⚠️ **不许**落进任何 lane 的探针段（hot 探针占 18221-18232 ⇒ 18221 会硬撞）
                 "spring.cloud.discovery.client.simple.instances.message-rpc[0].host=127.0.0.1",
-                "spring.cloud.discovery.client.simple.instances.message-rpc[0].port=18221"
+                "spring.cloud.discovery.client.simple.instances.message-rpc[0].port=18291"
         })
 @ActiveProfiles("test")
 class LikeMessageRpcCrossDomainRealTest {
@@ -97,7 +100,9 @@ class LikeMessageRpcCrossDomainRealTest {
      * 会在扫描期发生 ⇒ 扫描期一旦出问题 ⇒ 该类被<b>静默丢弃</b>（不报错、不执行、不计数）
      * ⇒ ⇒ 实测「同命令两次全量回归：一次 like=110、一次 like=106」
      * ⇒ ⇒ 挪到这里 ⇒ 扫描期<b>无副作用</b> ⇒ 必定被发现；起不来时变成<b>可见的 ERROR</b>。
-     * <p>📌 端口必须**提前可知**（devh 的 discovery 要指向它）⇒ ⇒ 固定 {@code 18221}
+     * <p>📌 端口必须**提前可知**（devh 的 discovery 要指向它）⇒ ⇒ 固定 {@code 18291}
+     *     （**2026-11-10 改**：原为 {@code 18221} ⇒ 那是 **hot 探针**的 {@code B_API_PORT}
+     *     ⇒ ⇒ 与 hot lane 硬撞 ⇒ ⇒ 挪到所有 lane 探针段之外）
      * ⇒ 全局配置见 {@code application-test.properties}。
      */
     @BeforeAll

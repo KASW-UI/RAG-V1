@@ -18,6 +18,33 @@
 #   M2 relay 停     │ 绿   │  绿    │  红    │  绿
 #   M3 断真 broker  │ 红   │  红    │  红    │  红
 #
+# 🔴 **每轮换一个全新的 consumer group**（2026-11-10 加 · 2026-11-10 再修 · DRIFT-LIKE-024）
+#    ⚠️ **为什么必须每轮换**：
+#      · `auto-offset-reset=latest` **只在「该 group 从来没有提交过位点」时才生效**
+#        ⇒ ⇒ group 名一旦被复用，broker 上就留了**已提交位点**
+#        ⇒ ⇒ listener 从**旧位点**继续 ⇒ ⇒ **重放历史运行留下的消息**
+#      · ⇒ 而历史消息与本轮消息**会撞 msg_id**（测试里的 `SEQ` 每个 JVM 都从
+#        `8_400_000_000_000` 重启 ⇒ 不同运行共用同一批 msg_id）
+#        ⇒ ⇒ 同 msg_id 不同载荷 ⇒ ⇒ 消费侧判「`reused with conflicting payload`」
+#        ⇒ ⇒ **按 Go 的 ForceCommit 语义丢弃** ⇒ ⇒ 本轮的 `like_record` / `like_outbox_event`
+#        **永远不落库** ⇒ ⇒ 表现 = 消费面 / 推送面 / 幂等面**三红**（生产面仍绿：它只验证「发得出去」）
+#      · ⇒ ⇒ 每轮换新 group ⇒ 每轮都是**零位点** ⇒ ⇒ `latest` 生效 ⇒ ⇒ 只从 log 末尾开始
+#        ⇒ ⇒ **轮与轮之间、运行与运行之间都互不污染** ⇒ ⇒ 读数只归因于「这一轮的变异」
+#    🔴 **2026-11-10 的二次修复（这里以前的做法是错的）**：
+#      · 原实现靠「**改测试源码里的 group 名**」来做到每轮换 group（`...kafka3face-rN`）
+#      · ⇒ 但脚本**每次运行都从第 1 轮重新编号** ⇒ ⇒ `-r1`、`-r2`… **跨脚本运行照样复用**
+#      · ⇒ ⇒ 「每轮换 group」**只在单次脚本运行内有效** ⇒ ⇒ 位点照样残留
+#      · ⇒ ⇒ 实测（2026-11-10 22:38）：broker 打的是
+#        `Setting offset ... to the committed offset FetchPosition{offset=923}`
+#        ⇒ ⇒ **「committed」而不是「latest」** ⇒ ⇒ 位点是上一轮留下的 ⇒ ⇒ 基线轮三红
+#      · ⇒ ⇒ 现在改为：**group 名 = 固定前缀 + 每 JVM 唯一后缀**
+#        （测试侧默认 `pid+nanoTime`；脚本再用环境变量 `LIKE_TEST_RUN_SUFFIX` 追加轮次后缀）
+#        ⇒ ⇒ ① 不经过脚本的普通回归跑也是新 group ⇒ ② 脚本每轮再追加轮次 ⇒ ③ **跨运行绝不复用**
+#      · ⇒ ⇒ 而且**不用再改源码** ⇒ ⇒ 顺带消灭了「改名静默失效」这一类风险
+#    📌 **本脚本每轮都会断言「本轮 group 真的生效了」**（读 surefire 报告里测试自己打的 group 名）
+#       ⇒ ⇒ 「隔离没生效」不再可能**静默地**跑完一整轮。
+#    ⚠️ 顺带好处：多 lane 并发时**不会**抢同一个 group 的分区。
+#
 # ⚠️ **还原一律用「文件备份 + 复制回来」** —— 绝不用 `git checkout --`：
 #    本 lane 的改动可能还没提交 ⇒ `git checkout` 会把它们一起回滚掉。
 # ⚠️ **每个 trap 都还原**：脚本被杀掉（超时 / 手动 / 机器重启）时，
@@ -74,11 +101,64 @@ io.open(p, "w", encoding="utf-8").write(s.replace(old, new, 1))
 PY
 }
 
+# 🔴 每轮给测试注入**一个全新**的 consumer group 后缀（见文件头「每轮换一个全新的 consumer group」）。
+#    ⚠️ **不再改测试源码** ⇒ ⇒ 源码里没有「改名残留」这种失败模式了。
+#    ⚠️ 后缀必须**跨脚本运行唯一** ⇒ ⇒ 用「轮次 + 启动时刻 + PID」⇒ ⇒ 两次脚本运行不会撞。
+ROUND=0
+CURRENT_SUFFIX=""
+EXPECTED_GROUP=""
+
+# 🔴🔴 **轮次推进必须在父 shell 里做**（2026-11-10 自查时抓到的坑）：
+#    `RC="$(run_tests)"` 是**命令替换** ⇒ `run_tests` 在**子 shell** 里跑
+#    ⇒ ⇒ 子 shell 里的 `ROUND` / `EXPECTED_GROUP` **不会传回父 shell**
+#    ⇒ ⇒ 父 shell 里的 `EXPECTED_GROUP` 永远是**空串**
+#    ⇒ ⇒ 「隔离生效」的断言去找空串 ⇒ **恒真** ⇒ ⇒ **断言形同虚设**（还打印得漂漂亮亮）。
+#    ⇒ ⇒ 所以拆成两个函数：`next_round` 在父 shell 推进轮次，`run_tests` 只负责跑。
+next_round() {
+  ROUND=$((ROUND + 1))
+  CURRENT_SUFFIX="r${ROUND}-$(date +%s)-$$"
+  EXPECTED_GROUP="like-update-group-kafka3face-${CURRENT_SUFFIX}"
+}
+
 run_tests() {
+  # 🔴 后缀走**环境变量** ⇒ surefire fork 出来的测试 JVM 也能看到
+  #    （`-D` 只进 Maven 自己的 JVM ⇒ fork 出去的测试 JVM **看不到** ⇒ 不能用 `-D`）
+  LIKE_TEST_RUN_SUFFIX="${CURRENT_SUFFIX}" \
   MAVEN_OPTS=-Xmx768m mvn -o -pl service/like -am test \
     -Dtest='LikeKafkaThreeFaceRealTest' \
     -Dsurefire.failIfNoSpecifiedTests=false >"${TMP_OUT}" 2>&1
   echo $?
+}
+
+# 🔴 **本轮 group 隔离是否真的生效** —— 读 surefire 报告里**测试自己打的** group 名。
+#    ⇒ 这是「机制生效」的运行证据（AGENTS §3.3.1）⇒ 不是靠读配置名推断。
+group_isolated() {   # $1 = 期望的 group 名 ⇒ 打印 ok / not-seen / missing-report
+  python3 - "${REPORT}" "$1" <<'PY'
+import sys, xml.etree.ElementTree as ET
+rep, want = sys.argv[1], sys.argv[2]
+# 🔴 **空期望必须判失败** —— 否则「找空串」会**恒真** ⇒ 断言形同虚设
+if not want:
+    print("empty-expectation"); sys.exit(0)
+try:
+    root = ET.parse(rep).getroot()
+except Exception:
+    print("missing-report"); sys.exit(0)
+text = "\n".join((e.text or '') for e in root.iter('system-out'))
+print("ok" if ("group = " + want) in text else "not-seen")
+PY
+}
+
+# 🔴 **断言失败必须中止整轮**（exit 2）：否则「隔离没生效」会**静默地**跑完一整轮
+#    ⇒ ⇒ 读数是「用错 group 的读数」⇒ ⇒ 而**日志里看不出来** ⇒ ⇒ 白跑一轮。
+assert_group_isolated() {
+  local got; got="$(group_isolated "${EXPECTED_GROUP}")"
+  if [ "${got}" = "ok" ]; then
+    say "   ✅ 本轮 group 隔离生效：${EXPECTED_GROUP}"
+    return 0
+  fi
+  say "❌ **拒绝继续**：本轮 consumer group **没有**生效（读到 ${got}，期望 ${EXPECTED_GROUP}）"
+  say "   ⇒ 读数是「用错 group 的读数」（⇒ 跨轮/跨运行位点残留 ⇒ 重放历史消息）⇒ ⇒ 没有意义 ⇒ 立刻中止"
+  exit 2
 }
 
 # ⚠️ **判红/判绿从 surefire 的 XML 报告读**（不用 grep 日志）：
@@ -132,6 +212,11 @@ residue_check() {
   if ! grep -q 'spring.kafka.bootstrap-servers=127.0.0.1:49992' "${TEST_SRC}"; then
     say "❌ **残留**：测试里 M3 删掉的 broker 覆盖还没加回来 ⇒ 先还原再跑"; bad=1
   fi
+  # ⚠️ 每轮换 group 的**前提**：测试里必须有 consumer group 的**动态注册**
+  #    ⇒ 否则「每轮换 group」静默失效（⇒ 跨轮/跨运行位点残留 ⇒ 重放历史消息 ⇒ 读数**看不出来**）
+  if ! grep -q 'spring.kafka.consumer.group-id' "${TEST_SRC}"; then
+    say "❌ **残留**：测试里没有 consumer group 的动态注册 ⇒ 「每轮换 group」会静默失效 ⇒ 先还原再跑"; bad=1
+  fi
   if [ "${bad}" = "1" ]; then
     say "❌ **拒绝启动**：上一轮的变异没有还原干净 ⇒ 跑出来的读数**没有意义**"
     exit 2
@@ -141,7 +226,10 @@ residue_check() {
 residue_check
 
 say "== 基线（未变异）必须四个全绿 =="
+next_round
 RC="$(run_tests)"
+# 🔴 **先验隔离、再看红绿** —— 「隔离没生效」比「用例红」更基本
+assert_group_isolated
 if [ "${RC}" = "0" ]; then
   say "   ✅ 基线绿（exit 0 · Tests run: 4, Failures: 0）"
 else
@@ -160,7 +248,10 @@ say ""
 say "== M1 listener 停（autoStartup=false）⇒ 消费面/推送面/幂等面转红，生产面仍绿 =="
 mutate "${LISTENER}" '@KafkaListener(id = "like-update-consumer",' \
                 '@KafkaListener(id = "like-update-consumer", autoStartup = "false",'
+next_round
 RC="$(run_tests)"
+# 🔴 **先验隔离、再看红绿** —— 「隔离没生效」比「用例红」更基本
+assert_group_isolated
 if [ "${RC}" != "0" ]; then
   say "   ✅ 整体转红（exit ${RC}）"
   expect "consumerWritesAllFourPlaces"      red   "listener 停 ⇒ inbox 无行"
@@ -182,7 +273,10 @@ say ""
 say "== M2 中继停（relay 间隔改 1 小时）⇒ 只有推送面转红，其余仍绿 =="
 mutate "${RELAY}" '@Scheduled(fixedRateString = "${like.outbox-relay-interval:1000}")' \
                 '@Scheduled(fixedRateString = "3600000")'
+next_round
 RC="$(run_tests)"
+# 🔴 **先验隔离、再看红绿** —— 「隔离没生效」比「用例红」更基本
+assert_group_isolated
 if [ "${RC}" != "0" ]; then
   say "   ✅ 整体转红（exit ${RC}）"
   expect "relayPushesOutboxEventToHotTopic"  red   "中继停 ⇒ article-hot-events 无新消息"
@@ -204,7 +298,10 @@ say ""
 say "== M3 断掉真 broker（撤掉 bootstrap 覆盖）⇒ 四个用例全部转红 =="
 mutate "${TEST_SRC}" '                "spring.kafka.bootstrap-servers=127.0.0.1:49992",
 ' ''
+next_round
 RC="$(run_tests)"
+# 🔴 **先验隔离、再看红绿** —— 「隔离没生效」比「用例红」更基本
+assert_group_isolated
 if [ "${RC}" != "0" ]; then
   say "   ✅ 整体转红（exit ${RC}）"
   expect "producerSendsKafkaLikeMsgToTopic"  red   "无 broker ⇒ 发不出去"
@@ -222,7 +319,10 @@ restore "${TEST_SRC}" test.java
 # ─────────────────────────────────────────────────────────────
 say ""
 say "== 还原后复跑必须转绿 =="
+next_round
 RC="$(run_tests)"
+# 🔴 **先验隔离、再看红绿** —— 「隔离没生效」比「用例红」更基本
+assert_group_isolated
 if [ "${RC}" = "0" ]; then
   say "   ✅ 还原后绿（exit 0）⇒ 之前的红确实是**变异**造成的"
 else
