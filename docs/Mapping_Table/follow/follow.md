@@ -24,7 +24,7 @@
 ## 0. 顶层模块对照
 
 | B RAG 文件 / 目录 | C RAG-V1 文件 / 目录 | 映射类型 | 备注 |
-|---|---|---|
+| --- | --- | --- | --- |
 | `service/follow/follow-api/`（31 个 `.java`） | `service/follow/src/main/java/com/rag/follow/advice + service/follow/src/main/java/com/rag/follow/config + service/follow/src/main/java/com/rag/follow/controller + service/follow/src/main/java/com/rag/follow/dto + service/follow/src/main/java/com/rag/follow/interceptor + service/follow/src/main/java/com/rag/follow/metrics + service/follow/src/main/java/com/rag/follow/service`（17 个 `.java`） | 1:1 | **D1**：api 与 rpc 合并进同一 app ⇒ C 列的 `api/` 包只是**同一进程内的 HTTP 层**，不再是独立部署单元 |
 | `service/follow/follow-rpc/`（16 个 `.java`） | `service/follow/src/main/java/com/rag/follow/wiring + service/follow/src/main/java/com/rag/follow/client + service/follow/src/main/java/com/rag/follow/config + service/follow/src/main/java/com/rag/follow/domain/entity + service/follow/src/main/java/com/rag/follow/domain/service + service/follow/src/main/java/com/rag/follow/grpc + service/follow/src/main/java/com/rag/follow/mapper + service/follow/src/main/java/com/rag/follow/metrics + service/follow/src/main/java/com/rag/follow/service`（15 个 `.java`） | 1:1 | 同上；C 列的 `rpc/` 包 = **服务端能力层**（命名债，见《完全spring化的文件树》§5.2） |
 | `service/follow/follow-common/`（4 个 `.java`） | `service/follow/src/main/java/com/rag/follow/contract/`（4 个 `.java`） | 1:1 | 模块改名 `follow-common` → 域内 `contract/` 包；包名 `com.rag.follow.follow.common.errmsg` → `com.rag.follow.contract` |
@@ -75,7 +75,7 @@
 ### 1.1 契约层（域内 `common` / 错误码 / proto）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+| --- | --- | --- | --- |
 | `follow-common/.../errmsg/FollowCodeError.java` | `service/follow/src/main/java/com/rag/follow/contract/CodeError.java` | 1:1 | `Code` / `Msg` **双访问器**（`BusinessException` 只有 `getCode()`/`getMessage()`，语义不同）；`Error()` 的 `"ErrCode:%d, Errmsg:%s"` 只进日志 ⇒ **不迁**（非可观察差异） |
 | `follow-common/.../errmsg/FollowErrorCode.java` | `service/users/common/src/main/java/com/rag/users/common/ErrCodes.java` | 1:1 | 码值逐字照抄：`200/500/1015/5001-5008/5101/5201-5204`（`follow-common/.../errmsg/FollowErrorCode.java:42` 起，枚举 16 个常量） |
 | `follow-common/.../errmsg/FollowErrorMessages.java` | `service/users/common/src/main/java/com/rag/users/common/ErrMsg.java` | 1:1 | ⚠️ **文案是英文**（`"service busy"` / `"internal server error"` / `"record not found"` …，`follow-common/.../errmsg/FollowErrorMessages.java:52-54`）⇒ **逐域隔离，不可跨域统一**；未知码回退 `"FAIL"` 是 L1（`:50,78`） |
@@ -85,7 +85,7 @@
 ### 1.2 API 层（进程装配 · 路由 · Handler · DTO · 中间件 · 指标）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+| --- | --- | --- | --- |
 | `follow-api/.../FollowApiApplication.java` | `service/follow/src/main/java/com/rag/follow/FollowServiceApplication.java` | 1:1 | **D1** ⇒ C 只有**一个** `@SpringBootApplication`（api + rpc 合流） |
 | `follow-api/.../advice/GlobalResponseAdvice.java` | `service/follow/src/main/java/com/rag/follow/advice/FollowApiResponseAdvice.java` | 1:1 | 改名；成功信封 `{code:200,msg:"OK",data:...}` |
 | `follow-api/.../advice/GlobalExceptionHandler.java` | `service/follow/src/main/java/com/rag/follow/advice/FollowApiExceptionHandler.java` | 1:1 | 改名；HTTP 状态码**恒 200**（除 401），成败只体现在 body 的 `code` |
@@ -119,7 +119,7 @@
 > **这是本域最需要单列的一段** —— C 列的 api 层用例**不合并成 1 个**，而是由「2 个带专属业务规则的读用例」把 8 个用例劈成 2 组。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+| --- | --- | --- | --- |
 | `follow-api/.../service/FollowService.java` | `service/follow/src/main/java/com/rag/follow/service/FollowRelationService.java` | 1:1 | **写用例组**（4 个）；`route` 常量 `/follow/v1/follow` |
 | `follow-api/.../service/UnfollowService.java` | `service/follow/src/main/java/com/rag/follow/service/FollowRelationService.java` | N:1 | 合并进 `FollowRelationService.unfollow` |
 | `follow-api/.../service/BlockService.java` | `service/follow/src/main/java/com/rag/follow/service/FollowRelationService.java` | N:1 | 合并进 `FollowRelationService.block` |
@@ -134,7 +134,7 @@
 ### 1.4 RPC 层（进程装配 · 分发 · model · 用例 · 指标）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+| --- | --- | --- | --- |
 | `follow-rpc/.../FollowRpcApplication.java` | `service/follow/src/main/java/com/rag/follow/FollowServiceApplication.java` | 1:1 | **D1** ⇒ api / rpc 两个入口合并成一个 |
 | `follow-rpc/src/main/resources/application.yml` | `service/follow/src/main/resources/application.yml` | 1:1 | `List` 与 `Recommend` **两段配置必须分开**（3 个 list 与 1 个 recommend 取值不同） |
 | `follow-rpc/.../config/FollowRpcProperties.java` | `service/follow/src/main/java/com/rag/follow/config/FollowRpcProperties.java` | 1:1 | `List{DefaultLimit:20,MaxLimit:100}`；`Recommend{DefaultLimit:20,MaxLimit:50,MaxDepth:3,MaxFanout:50}` |
@@ -191,7 +191,7 @@
 > 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+| --- | --- | --- | --- |
 | `follow-api/…/auth/FollowJwtAuthPaths.java` ＋ `follow-api/…/auth/FollowJwtSignatureVerifier.java` ＋ `follow-api/…/auth/FollowJwtVerificationResult.java` ＋ `follow-api/…/auth/GoStyleJwtAuthFilter.java` | `service/follow/src/main/java/com/rag/follow/interceptor/FollowJwtAuthInterceptor.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 1 个 `HandlerInterceptor`** ⇒ 🔴 **C 侧缺口**：要么补 1 个 `OncePerRequestFilter` 承载验签，要么显式登记为签字偏离。⚠️ **受保护路由表 ＋ public 前缀集合是 L1**；⚠️ follow 域另有 `FollowBlacklistInterceptor.java`（C 侧已列）⇒ **黑名单与验签是两个拦截器**，别合并 |
 
 ---
@@ -235,7 +235,7 @@
 | 中间件链 | `WebMvcConfig.addInterceptors(JWT).addInterceptors(Blacklist)` | `service/follow/src/main/java/com/rag/follow/config/WebMvcConfig.java`（注册 2 个拦截器） | 1:1 | 🔴 **注册顺序即执行顺序**：JWT 必须在前 ⇒ 验签失败时黑名单**从不被查**（B 侧也不为畸形 token 产生 Redis 读） |
 | 鉴权实现 | `interceptor/FollowJwtAuthInterceptor.java`（`HandlerInterceptor`） | `service/follow/src/main/java/com/rag/follow/interceptor/FollowJwtAuthInterceptor.java` | 1:1 | 401 **空 body** |
 | 黑名单实现 | `interceptor/FollowBlacklistInterceptor.java`（Redis `exists`） | `service/follow/src/main/java/com/rag/follow/interceptor/FollowBlacklistInterceptor.java` | 1:1 | 🔴 **fail-open**（`err != nil` ⇒ 放行）；401 + `Content-Type: application/json;charset=utf-8` + body `{"code":5004,"msg":"unauthorized"}`（**无 `data` 字段**） |
-| 两种 401 形态 | ① JWT 失败 ⇒ **空 body**；② 黑名单命中 ⇒ **JSON body** | `GlobalExceptionHandler`（①） + 拦截器直写（②） | `service/follow/src/main/java/com/rag/follow/advice/FollowApiExceptionHandler.java`（①） + 拦截器直写（②） | 1:1 | 🔴 **必须分两条路**：若黑名单 401 也抛 `AuthenticationException` ⇒ 变成空 body ⇒ 丢 `Content-Type` 与 code/msg |
+| 两种 401 形态 | ① JWT 失败 ⇒ **空 body**；② 黑名单命中 ⇒ **JSON body**（`GlobalExceptionHandler`（①） + 拦截器直写（②）） | `service/follow/src/main/java/com/rag/follow/advice/FollowApiExceptionHandler.java`（①） + 拦截器直写（②） | 1:1 | 🔴 **必须分两条路**：若黑名单 401 也抛 `AuthenticationException` ⇒ 变成空 body ⇒ 丢 `Content-Type` 与 code/msg |
 | Service 分层 | 8 个单端点 Service + 1 基类 | 2 个 Service（`FollowRelationService` / `FollowQueryService`） | N:1 | ★ 见 §1.3 |
 | 错误表达 | `throw BusinessException` + `advice/GlobalResponseAdvice` + `advice/GlobalExceptionHandler` ⇒ **HTTP 200** + `{code,msg,data}` 信封 | `service/follow/src/main/java/com/rag/follow/advice/FollowApiResponseAdvice.java` + `service/follow/src/main/java/com/rag/follow/advice/FollowApiExceptionHandler.java` | 1:1 | HTTP 状态码**恒 200**（401 除外）⇒ 成败只体现在 body 的 `code` |
 | 身份解析 | `service/FollowApiSupport.userId`（**5 种类型全收**：`json.Number`/`string`/`int64`/`int`/`float64`） | `service/follow/src/main/java/com/rag/follow/service/FollowApiSupport.java` | 1:1 | 🔴 **不能照抄 like 域**（like 只收 `json.Number`）⇒ 字符串 claim 与浮点 claim 在 follow 是**合法**输入 |

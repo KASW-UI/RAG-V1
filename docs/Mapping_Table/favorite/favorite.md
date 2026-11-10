@@ -40,7 +40,7 @@
 ## 0. 顶层模块对照
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `service/favorite/favorite-api/` | `service/favorite/`（的 `service/favorite/src/main/java/com/rag/favorite/advice + service/favorite/src/main/java/com/rag/favorite/config + service/favorite/src/main/java/com/rag/favorite/controller + service/favorite/src/main/java/com/rag/favorite/dto + service/favorite/src/main/java/com/rag/favorite/interceptor + service/favorite/src/main/java/com/rag/favorite/service` 子包） | N:1 | B 侧 api 是独立 Spring Boot 进程（`favorite-api/…/api/FavoriteApiApplication.java`，HTTP `server.port=${FAVORITE_API_PORT:18893}`）；C 里 api 与 rpc 合并为单一 app（决策 **D1**）⇒ **C 侧没有独立 api 模块** |
 | `service/favorite/favorite-rpc/` | `service/favorite/`（的 `service/favorite/src/main/java/com/rag/favorite/wiring + service/favorite/src/main/java/com/rag/favorite/client + service/favorite/src/main/java/com/rag/favorite/config + service/favorite/src/main/java/com/rag/favorite/domain/entity + service/favorite/src/main/java/com/rag/favorite/domain/model + service/favorite/src/main/java/com/rag/favorite/domain/service + service/favorite/src/main/java/com/rag/favorite/exception + service/favorite/src/main/java/com/rag/favorite/grpc + service/favorite/src/main/java/com/rag/favorite/mapper + service/favorite/src/main/java/com/rag/favorite/metrics + service/favorite/src/main/java/com/rag/favorite/service` 子包） | N:1 | B 侧 rpc 是独立 Spring Boot 进程（`favorite-rpc/…/rpc/FavoriteRpcApplication.java`，gRPC `grpc.server.port=${FAVORITE_RPC_PORT:8082}`）；C 里与 api 合并（**D1**） |
 | `service/favorite/favorite-common/` | `service/favorite/src/main/java/com/rag/favorite/contract/`（`ErrCodes`/`ErrMsg`/`GrpcErrorMapper`） | 1:N | B 侧 `favorite-common` 装 `errmsg/`（3 类：码表 / 文案表 / gRPC 往返）+ `span/`（`FavoriteSpans`）；C 侧按「proto（L1）+ 域内错误契约」重新分包，**码表内容一字不改** |
@@ -103,7 +103,7 @@
 ### 1.2 api 组件（B 侧 `advice + auth + client + config + controller + dto + interceptor + service`）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `favorite-api/…/api/FavoriteApiApplication.java` | `service/favorite/src/main/java/com/rag/favorite/FavoriteServiceApplication.java` | N:1 | B 侧 api 入口（`@SpringBootApplication` + `SpringApplication.run`）与 rpc 入口合并成 C 侧唯一 `@SpringBootApplication`（**D1**）。B 侧「装配上下文 + 注册路由」两步由 Spring DI + 注解式路由承担 |
 | `favorite-api/…/api/advice/GlobalResponseAdvice.java` + `…/advice/GlobalExceptionHandler.java` | `service/favorite/src/main/java/com/rag/favorite/advice/FavoriteApiResponseAdvice.java` + `service/favorite/src/main/java/com/rag/favorite/advice/FavoriteApiExceptionHandler.java` | 1:N | 🔴 B 侧**没有**统一的响应 / 错误处理器全局钩子 ⇒ 响应信封**逐个 Service 手写**（`favorite-api/…/api/service/FavoriteCreateFolderService.java`）。C 侧改成 advice 后**只包一层**（`body == null` 或 `body instanceof Response` 放行），否则双层信封 |
 | `favorite-api/src/main/resources/application.yml` | `service/favorite/src/main/resources/application.yml` | N:1 | B 侧 api yaml 与 rpc yaml 两份合并成 C 的一份。⚠️ 端口值未逐字照抄（B api=`${FAVORITE_API_PORT:18893}`、rpc=`${FAVORITE_RPC_PORT:8082}`；C HTTP=`8894`、gRPC=`9003`）⇒ 属**部署层（L3）**，L1 契约（前缀 / 码 / 表名 / 字段号）不受影响 |
@@ -148,7 +148,7 @@
 ### 1.3 rpc 组件（B 侧 `bootstrap + client + config + domain + exception + fact + mapper + metrics + service`）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `favorite-rpc/…/rpc/FavoriteRpcApplication.java` | `service/favorite/src/main/java/com/rag/favorite/FavoriteServiceApplication.java` | N:1 | B 侧 rpc 入口（`@SpringBootApplication` + `SpringApplication.run`）与 api 入口合并（**D1**）。B 侧的 **v2 启动拒绝门禁**落到 `FavoriteSubjectRefGate` |
 | `favorite-rpc/…/rpc/bootstrap/FavoriteSubjectRefGate.java` | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteSubjectRefGate.java` | 1:1 | 门禁判据：`SubjectRefV2Facts` 开启且**非** dev/test 模式 ⇒ 拒绝启动。⚠️ 模式取值域由 Spring profile 映射（未决项 U3） |
 | `favorite-rpc/src/main/resources/application.yml` | `service/favorite/src/main/resources/application.yml` | N:1 | 与 api yaml 合并（见 §1.2 同名行） |
@@ -191,7 +191,7 @@
 > 🔴 **本域是唯一「只有常量 + 文案表 + 反查索引 + `GRPCError` + `BizCodeFromError`，**无 `CodeError` 类型**」的域。**
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `favorite-common/…/common/errmsg/FavoriteErrorCode.java` | `service/users/common/src/main/java/com/rag/users/common/ErrCodes.java` | 1:1 | **24 个常量**整表保留：Success=200 / Error=500 / CodeServerBusy=1015 / 5001–5009 / 5101–5105 / 5201–5203 / 5301–5304（`favorite-common/…/common/errmsg/FavoriteErrorCode.java:41` 起）。⚠️ 6 个常量在域内无直接调用点但**不可删**（反查表的基础） |
 | `favorite-common/…/common/errmsg/FavoriteErrorMessages.java` | `service/users/common/src/main/java/com/rag/users/common/ErrMsg.java` | 1:1 | 24 条文案逐字照抄，**含语言**：23 条中文 + 🔴 **5002 = 英文 `not found`**（`favorite-common/…/common/errmsg/FavoriteErrorMessages.java:52`，本域唯一英文）+ `OK` / `FAIL`。未命中回退 `"FAIL"`（回退值本身是 L1，`favorite-common/…/common/errmsg/FavoriteErrorMessages.java:48,86`） |
 | `favorite-common/…/common/errmsg/FavoriteGrpcError.java` | `service/favorite/src/main/java/com/rag/favorite/contract/GrpcErrorMapper.java` | 1:1 | 🔴 **互逆往返**：`grpcError` 写的 description 是**业务文案**（不是码数字），`bizCodeFromError` 靠文案反查 ⇒ **业务码在 gRPC status 的 code 字段里是「丢失」的**。反查顺序：**先 message、后 gRPC 标准码**（InvalidArgument→5003 / Unauthenticated→5004 / PermissionDenied→5005 / AlreadyExists→5006 / NotFound→5002 / Internal→5001 / default→1015，`favorite-common/…/common/errmsg/FavoriteGrpcError.java:193-194`）。⚠️ 反查表构建**必须 `putIfAbsent`**（与 B 侧 map 遍历顺序等价，`:139`） |
@@ -201,7 +201,7 @@
 ### 1.5 proto 组件
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `favorite-proto/src/main/proto/favorite.proto` | `proto/src/main/proto/favorite.proto` | 1:1 | `package favorite` 两侧逐字一致 ⇒ 方法路径零 wire 偏离。7 个 message + `service FavoriteService`（7 个 RPC）的**字段号 / 字段名 / 类型逐条不改**。C 侧只改 option 块（`go_package` → `java_package` + `java_multiple_files`） |
 
 ---
@@ -209,7 +209,7 @@
 ### 1.6 三个 fact 组件（dispatch / authority / legacy-preflight）各自的落点
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `favorite-rpc/…/rpc/fact/FavoriteFactDispatchScheduler.java` | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteFactDispatchScheduler.java` | 1:1 | ✅ **有落点**。B 侧的 `-once` 开关降级为配置项（决策 P6-a 已选 ①）；节奏 **1s** / 批次 **16** / 单次 **10s deadline** 逐条保留 |
 | `favorite-rpc/…/rpc/fact/FavoriteAuthorityEndpointConfig.java` | `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteAuthorityEndpointConfig.java` | 1:1 | ✅ **有落点**。wire 形态按 **B 侧原样**（path 参数）；⚠️ B 侧是**独立 HTTP 端口**（`FAVORITE_AUTHORITY_LISTEN`），C 并入主 app 端口（决策 P6-b 已选 ①）⇒ **wire 面变更，未拍板**（未决项 U1） |
 | `favorite-rpc/…/rpc/fact/FavoriteLegacyPreflightRunner.java` | `service/favorite/src/main/java/com/rag/favorite/service/FavoriteLegacyPreflightService.java`（**报表计算**）+ `service/favorite/src/main/java/com/rag/favorite/wiring/FavoriteLegacyPreflightEndpoint.java`（**触发入口**） | 1:N | ✅ **有落点（2026-11-05 · 决策 P6-c 拍板 ① Actuator 自定义端点）**。B 侧 1 个类拆成 2 个 C 侧文件：① `service/` = **报表计算**（`Report` 为 immutable record，5 个字段名与顺序由 `@JsonProperty` 钉死，与 Go `favorite_legacy_preflight.go:30-96` 逐字同形）② `wiring/` = **Actuator `@WebEndpoint(id="favorite-legacy-preflight")`**（`@ConditionalOnProperty(favorite.fact.legacy-preflight.enabled=true)` ⇒ **默认不注册** ⇒ 404 ⇒ 不会被健康检查探活误触发）<br>⚠️ **退出码语义的替代**：B 侧/Go 的 `exit 2` = 未裁决 / `exit 1` = 读取失败 / `exit 0` = clear ⇒ Spring 进程内无退出码 ⇒ C 侧改用 **HTTP 状态码**（**200** = clear / **409** = 未裁决 / **500** = 读取失败）+ **结构化日志**双通道表达 ⇒ 登记 `DEV-FAV-RPC-009`<br>⚠️ **刻意不加 `@Transactional`**：B 侧 `preflight()` 的注解在，但**只被同 bean 的 `run()` 自调用** ⇒ Spring AOP 代理被绕过 ⇒ 事务从未生效 ⇒ 按 D16「继承 B 侧既有差异」照抄 ⇒ 登记 `DEV-FAV-RPC-008` |
@@ -237,7 +237,7 @@
 > 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `favorite-api/…/auth/FavoriteJwtAuthPaths.java` ＋ `favorite-api/…/auth/FavoriteJwtSignatureVerifier.java` ＋ `favorite-api/…/auth/FavoriteJwtVerificationResult.java` ＋ `favorite-api/…/auth/GoStyleJwtAuthFilter.java` | `service/favorite/src/main/java/com/rag/favorite/interceptor/FavoriteJwtAuthInterceptor.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 1 个 `HandlerInterceptor`** ⇒ 🔴 **C 侧缺口**：要么补 1 个 `OncePerRequestFilter` 承载验签，要么显式登记为签字偏离。⚠️ **受保护路由表 ＋ public 前缀集合是 L1** |
 | `favorite-api/…/interceptor/FavoriteGoQueryLimitInterceptor.java` | `service/favorite/src/main/java/com/rag/favorite/interceptor/QueryLimitInterceptor.java` | 1:1 | ✅ **已落地（2026-11-01）**：C 侧新建 `interceptor/QueryLimitInterceptor.java`（**类名去掉了语言前缀**，用户 2026-11-01 定）⇒ **这一层不再靠 Tomcat `server.tomcat.max-parameters` 兜底**；⚠️ 「总参数个数 vs 非空值个数」的口径差异（`DRIFT-HOTAPI-030`）**仍未决** ⇒ 移植实现时**必须先定口径**，否则 favorite 域会出现「B 拒 / C 不拒」 |
 | `favorite-common/…/span/FavoriteSpans.java` | `service/favorite/src/main/java/com/rag/favorite/metrics/FavoriteRpcMetrics.java` | 1:1 | B 侧把 span 名常量从指标类里**拆出**（且落在 `favorite-common`）⇒ C 侧并回 `FavoriteRpcMetrics`；⚠️ 指标**完整名**带 `favorite_service_` 前缀，**不许补全** |

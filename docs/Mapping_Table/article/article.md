@@ -33,7 +33,7 @@
 ## 0. 顶层模块对照
 
 | B (RAG) | C (RAG-V1, Spring 目标) | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `service/article/article-api/`（43 个 `.java`） | `service/article/` 的 `service/article/src/main/java/com/rag/article/advice + service/article/src/main/java/com/rag/article/config + service/article/src/main/java/com/rag/article/controller + service/article/src/main/java/com/rag/article/dto + service/article/src/main/java/com/rag/article/interceptor + service/article/src/main/java/com/rag/article/service` 包（21 个 `.java`） | 1:N | D1：api 进程并入单 app，HTTP 边界改由 `api/` 包承载 |
 | `service/article/article-rpc/`（39 个 `.java`） | `service/article/` 的 `service/article/src/main/java/com/rag/article/wiring + service/article/src/main/java/com/rag/article/client + service/article/src/main/java/com/rag/article/config + service/article/src/main/java/com/rag/article/domain/entity + service/article/src/main/java/com/rag/article/domain/service + service/article/src/main/java/com/rag/article/exception + service/article/src/main/java/com/rag/article/grpc + service/article/src/main/java/com/rag/article/mapper + service/article/src/main/java/com/rag/article/metrics` 包（25 个 `.java`） | 1:N | D1：rpc 进程并入单 app |
 | `service/article/article-common/`（1 个 `.java`） | `service/article/src/main/java/com/rag/article/contract/`（4 个 `.java`） | 1:N | C 把「错误契约」并入契约模块；B 侧 `article-common` 只有 errmsg 一个包 |
@@ -93,7 +93,7 @@
 ### 1.1 api 侧（HTTP 边界）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `article-api/…/ArticleApiApplication.java` | `service/article/src/main/java/com/rag/article/ArticleServiceApplication.java` | N:1 | **D1**：与 `article-rpc/…/ArticleRpcApplication.java` 合并为唯一入口（`@SpringBootApplication` + `@EnableDiscoveryClient`）；C 侧不再有第二个 Application |
 | `article-api/…/config/ArticleApiProperties.java` | `service/article/src/main/java/com/rag/article/config/ArticleApiProperties.java` | 1:1 | 静态字段 → `@ConfigurationProperties`；`SecurityRpcConf` 两侧均不迁移（B 侧死配置，见 §1.4-④） |
 | `article-api/…/config/WebMvcConfig.java` + `article-api/…/controller/ArticleController.java` + `article-api/…/interceptor/JwtAuthInterceptor.java` | `service/article/src/main/java/com/rag/article/config/WebMvcConfig.java` + `service/article/src/main/java/com/rag/article/controller/ArticleController.java` + `service/article/src/main/java/com/rag/article/interceptor/JwtAuthInterceptor.java` | 1:N | **代码注册路由 → 注解式路由**；`/v1` 前缀、4 组 method、public 段、10 MiB 上限、70s 超时**逐字保留** |
@@ -126,7 +126,7 @@
 ### 1.2 rpc 侧（领域 / 服务端能力层）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `article-rpc/…/ArticleRpcApplication.java` | `service/article/src/main/java/com/rag/article/ArticleServiceApplication.java` | N:1 | **D1**：与 `article-api/…/ArticleApiApplication.java` 合并；四件套「同启同停」交给 Spring 容器生命周期 |
 | `article-rpc/…/config/ArticleRpcProperties.java` | `service/article/src/main/java/com/rag/article/config/ArticleRpcProperties.java` | 1:1 | `@ConfigurationProperties` 聚合；字段逐条对应 |
 | `article-rpc/…/config/ArticleKafkaChannelValidator.java` | `service/article/src/main/java/com/rag/article/config/ArticleKafkaChannelValidator.java` | 1:1 | 🔴 校验 4 通道 brokers 与全局 `spring.kafka.bootstrap-servers` 一致，不一致**启动失败**（B 侧改某通道 brokers 会切 broker） |
@@ -164,7 +164,7 @@
 ### 1.3 契约模块（proto + 错误契约）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `article-common/…/errmsg/ErrorCode.java` | `service/article/src/main/java/com/rag/article/contract/ErrCodes.java` + `service/article/src/main/java/com/rag/article/contract/ErrMsg.java` | 1:N | C 拆「码值表」与「文案表」两个类；⚠️ **错误契约逐域隔离，不可跨域统一**（article 的 5004=文件上传失败 / 5005=文件删除失败 / 5006=文件下载失败，与 users 域同值不同义）；⚠️ **本文档原先把落点误写成 `service/users/common/…`（2026-11-03 已订正）** —— article 的错误码**不**进 `users-common`，落**域内 `contract/`** |
 | `article-rpc/…/mq/ArticleSyncEventTypes.java` | `service/article/src/main/java/com/rag/article/contract/ArticleSyncEvent.java` | 1:N | ✅ **已闭合（2026-11-03）** —— C 侧 **1 个顶层 record** 承载 ⇒ 内嵌 `ArticleReviewMessage` / `ArticleSyncResult` 两个嵌套 record ⇒ **缺口 G-6 关闭** |
 | `article-rpc/…/mq/ArticleSyncEventTypes.java`（payload 部分）+ `service/common/…/communityfact/Wire.java`（信封部分） | `service/article/src/main/java/com/rag/article/contract/CommunityArticleEvent.java` + `common/src/main/java/com/rag/common/communityfact/Event.java` | 1:N | 信封（`event_id`/`event_type`/`schema_version`/`producer`/`aggregate_id`/`aggregate_version`/`operation_id`/`occurred_at`/`payload`）是 **L1**；payload 是 article 特有 ⇒ 域内契约模块 |
@@ -205,7 +205,7 @@
 > 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `article-api/…/auth/ArticleJwtProtectedRoutes.java` ＋ `article-api/…/auth/ArticleJwtSignatureVerifier.java` ＋ `article-api/…/auth/ArticleJwtVerificationResult.java` ＋ `article-api/…/auth/GoStyleJwtAuthFilter.java` | `service/article/src/main/java/com/rag/article/interceptor/JwtAuthInterceptor.java`（HandlerInterceptor 段）＋ `service/article/src/main/java/com/rag/article/interceptor/ArticleJwtAuthFilter.java`（Servlet Filter 段） | N:1 | RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ ✅ **2026-11-03 已补 `ArticleJwtAuthFilter`（`OncePerRequestFilter`）承载验签** ⇒ **该缺口在 article 域闭环**；⚠️ **受保护路由表 ＋ public 前缀集合是 L1**（逐条一致，不可凭直觉改）|
 | `article-rpc/…/service/ArticleSpans.java` | `service/article/src/main/java/com/rag/article/metrics/ArticleRpcMetrics.java` | 1:1 | B 侧把 span 名常量从指标类里**拆出** ⇒ C 侧并回 `ArticleRpcMetrics`；⚠️ 指标**完整名**带 `article_service_` 前缀（B 侧 `article-rpc/…/metrics/ArticleRpcMetrics.java:59` 的 `NAMESPACE`），`article_status_total` 只有 `reviewing` 有调用点，**不许补全** |
 

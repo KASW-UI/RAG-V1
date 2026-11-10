@@ -64,7 +64,7 @@
 ## 0. 顶层模块对照
 
 | B RAG | C RAG-V1 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `service/hot/hot-api/` | `service/hot/`（`service/hot/src/main/java/com/rag/hot/advice + service/hot/src/main/java/com/rag/hot/config + service/hot/src/main/java/com/rag/hot/controller + service/hot/src/main/java/com/rag/hot/dto + service/hot/src/main/java/com/rag/hot/metrics + service/hot/src/main/java/com/rag/hot/service` 子包） | 1:1 | **D1**：api 侧不再独立成模块，收进 `hot-service` 的 `api/` 子包 |
 | `service/hot/hot-rpc/` | `service/hot/`（`service/hot/src/main/java/com/rag/hot/wiring + service/hot/src/main/java/com/rag/hot/client + service/hot/src/main/java/com/rag/hot/config + service/hot/src/main/java/com/rag/hot/domain/model + service/hot/src/main/java/com/rag/hot/grpc + service/hot/src/main/java/com/rag/hot/metrics + service/hot/src/main/java/com/rag/hot/service` 子包） | 1:1 | **D1**：同上；`pb/`（生成物）移到根级 `proto/` |
 | `service/hot/hot-common/`（`errmsg/`） | `service/hot/src/main/java/com/rag/hot/contract/`（`contract/`） | 1:1 | ⚠️ **模块名与职责都变了**：B 的 `hot-common` 只装 errmsg；C 的域内 `contract/` 包 = **错误契约 + 事件 DTO**；proto 另落根级 `proto/` |
@@ -108,7 +108,7 @@
 ### 1.1 契约 —— 错误契约（域内 `contract/` 包）+ proto（根级 `proto/` 模块）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `hot-common/.../errmsg/HotErrorCode.java` | `service/users/common/src/main/java/com/rag/users/common/ErrCodes.java` | 1:1 | 码值 L1，逐字照抄：`200` / `500` / `1015` / `5001`–`5008`。**枚举顺序即契约**（B 侧有 `declarationOrderMatchesGoSourceOrder` 断言） |
 | `hot-common/.../errmsg/HotErrorMessages.java` | `service/users/common/src/main/java/com/rag/users/common/ErrMsg.java` | 1:1 | ⚠️ **英文文案**（`service busy` / `internal server error` / …）；未知码回退 `"FAIL"`（回退值本身是 L1） |
 | `hot-common/.../errmsg/HotErrorCode.java` + `hot-api/.../exception/HotCodeError.java` | `service/hot/src/main/java/com/rag/hot/contract/CodeError.java` | 1:N | ⚠️ B 侧 `HotCodeError` **同时是 error 类型和 JSON 响应体**（`{code,msg}`）⇒ 不能当普通异常丢字段。B 侧构造点：`hot-api/…/api/exception/HotCodeError.java:66`（构造器）+ `:89`（`getMessage()` 覆写为 `ErrCode:%d, Errmsg:%s` 整串，**只进日志**） |
@@ -118,7 +118,7 @@
 ### 1.2 `hot-service` · `advice + config + controller + dto + metrics + service` —— HTTP 边界
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `hot-api/.../HotApiApplication.java` + `hot-rpc/.../HotRpcApplication.java` | `service/hot/src/main/java/com/rag/hot/HotServiceApplication.java` | N:1 | **D1**：B 侧 2 个入口（`hot-api/…/api/HotApiApplication.java` + `hot-rpc/…/rpc/HotRpcApplication.java`）→ **1 个 C 入口**（`@SpringBootApplication` + `@EnableDiscoveryClient`） |
 | `hot-api/.../advice/GlobalResponseAdvice.java` | `service/hot/src/main/java/com/rag/hot/advice/HotApiResponseAdvice.java` | 1:1 | 产出 `{code:200,msg:"OK",data}`；必须对 `body == null` 与已包装 body 放行 |
 | `hot-api/.../advice/GlobalExceptionHandler.java` | `service/hot/src/main/java/com/rag/hot/advice/HotApiExceptionHandler.java` | 1:1 | ⚠️ B 侧**恒 HTTP 200** + `{code,msg,null}`（B 侧 `hot-api/…/api/advice/GlobalExceptionHandler.java:81-137` 全部 handler 都返回 200 口径） |
@@ -141,7 +141,7 @@
 ### 1.3 `hot-service` · `wiring + client + config + domain/model + grpc + metrics + service` —— 领域 / 服务端能力层
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `hot-rpc/.../service/impl/HotServiceGrpcImpl.java` | `service/hot/src/main/java/com/rag/hot/grpc/HotGrpcService.java` | 1:1 | `@GrpcService`；5 个 override（`GetHotArticles` + 4 个互动） |
 | `hot-rpc/.../service/HotRankingQueryService.java` | `service/hot/src/main/java/com/rag/hot/service/HotRankingQueryService.java` | 1:1 | 唯一有逻辑的 rpc 方法；`redis.Nil` → 空 items（不能冒泡）、`uint32(score)` **向零截断**（不能 `Math.round`） |
 | `hot-rpc/.../service/InteractionStubService.java` | `service/hot/src/main/java/com/rag/hot/service/InteractionStubService.java` | N:1 | ⚠️ **不对称**：like / coin / share → `UNIMPLEMENTED`；**comment → `success=true`**（B 侧既定行为，照抄不得「修齐」） |
@@ -163,7 +163,7 @@
 > 这 5 个 B 文件是 **B 侧有、C 侧无**。它们不是「RAG 特有」，而是 **C 侧还没建的位置**。列在此处是为了避免「以为 C 覆盖了 B」。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 归位建议 |
-|---|---|---|
+|---|---|---|---|
 | `hot-api/.../client/HotRpcClient.java` | — | 1:1 | **不需要** —— D2 域内直连 |
 | `hot-api/.../client/GoStyleGrpcCallDeadline.java` | `service/hot/src/main/java/com/rag/hot/config/HotApiProperties.java` + `application.yml` 的 `grpc.client.*` | 1:1 | 落进配置（无独立类） |
 | `hot-api/.../form/GoFormValues.java` | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java`（**跨域共享**） | 1:N | 落进 `common/`（C 已有该类） |
@@ -176,7 +176,7 @@
 > **G-6 / G-7** 两行 C 列本就有落点（跨域共享类 / 配置类）⇒ **本域无剩余「无落点」项**。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注（缺什么 · 影响面） |
-|---|---|---|
+|---|---|---|---|
 | `hot-rpc/.../mq/HotEventConsumer.java` | `service/hot/src/main/java/com/rag/hot/messaging/HotEventConsumer.java` | 1:1 | ✅ **已落地（2026-11-01）** —— 热度数据的**唯一入口**；⚠️ 消费入口**任何异常都不外抛** |
 | `hot-rpc/.../mq/HotPartitionSketchRegistry.java` | `service/hot/src/main/java/com/rag/hot/messaging/HotPartitionSketchRegistry.java` | 1:1 | ✅ **已落地（2026-11-01）** —— 分区 sketch 生命周期（assign 回灌 / revoke 落盘） |
 | `hot-rpc/.../mq/HotRedisSnapshotStore.java` | `service/hot/src/main/java/com/rag/hot/messaging/HotRedisSnapshotStore.java` | 1:1 | ✅ **已落地（2026-11-01）** —— Redis 影子 + `RENAME` 原子快照（4 段 Lua、`EXISTS` 守卫、`EXPIRE 300`）—— **最易漂移面** |

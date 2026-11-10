@@ -55,7 +55,7 @@
 > ⇒ ⇒ **在途 SQL 拿得到 `setQueryTimeout`** ⇒ ⇒ 预算到点 PG 收到 CancelRequest ⇒ 事务回滚 ⇒ ⇒ **在途写不再落库**
 > ⇒ ⇒ **验收**：新 `GrpcDeadlineBindingTest`（3 例）＋ `GrpcInboundDeadlinePgTest`（**2 例 · 真 PG** · 服务端预算到点 / 客户端主动取消）⇒ **5 例全绿**；**变异实测** ⇒ 两条都**红在核心判据**（`expected: 0L but was: 1L`）⇒ ⇒ **判据精确、其余维仍绿** ⇒ 还原后同条件复跑回绿
 > ⇒ ⇒ 现状 = **✅ 已修 10 · ✅ 已裁决 1（V11）· ⚪ 已登记 4（V10/V12/V13/V16/V18）· 🔴 0**。
-> ⚠️ **诚实边界**：① **只绑入向载体** ⇒ 出向 `GoStyleRequestDeadline` **另案**；② 作用域随 `onHalfClose` 返回而结束 ⇒ **异步 handler 不在作用域内**（与 B 侧同款）；③ **跨域复测**（admin 域 E-4-R2 场景轮 ⇒ `admin_admin` 0 行）**待 admin 域 lane 落地**（本 lane 只写 `common/`）。
+> ⚠️ **诚实边界**：① 作用域随 `onHalfClose` 返回而结束 ⇒ **异步 handler 不在作用域内**（与 B 侧同款）；② **跨域复测**（admin 域 E-4-R2 场景轮 ⇒ `admin_admin` 0 行）**待 admin 域 lane 落地**（本 lane 只写 `common/`）。<br>✅ **2026-11-11 订正（`global` 收口域 · comment 域 lane 上报）**：原第 ① 条「**只绑入向载体** ⇒ 出向 `GoStyleRequestDeadline` **另案**」**已被后续的 `DRIFT-COMMON-V20`（2026-11-04）闭合** ⇒ ⇒ **出向载体已绑**（`ObservabilityAutoConfiguration` 的 `withDeadline(...).onHalfClose()` 里**两个载体绑同一绝对时刻**）⇒ ⇒ **不再有「另案」** ⇒ 本条现只剩上面 ①② 两条边界。
 >
 > ✅ **2026-11-05（`global` 收口域 · 本轮）· V16 已收口（保护层开关接线）**：B 侧 `GoStyleRpcProtectionChain.java:228/235` 用两个开关**决定这两层是否拼进链** ⇒ ⇒ **C 侧修前两个 Bean 恒在且不读开关** ⇒ ⇒ `Stat` 层**照记样本 ＋ 照打那条每 60s 的统计日志**、`Prometheus` 层**照写指标** ⇒ ⇒ **现行配置下两侧行为一致**（默认值同为 `true` ＋ 各域 yml 均未覆盖）⇒ ⇒ 本条闭合的是「**接线缺口**」，**不是**现行行为漂移
 > ⇒ ⇒ **修法**：两层各在**构造期**接 `enabled` ⇒ 关掉时 **Stat 层不记样本 ＋ 不起那条 60s 上报线程**（B 侧那条线程的**唯一来源** = `GoStyleStatInterceptor.java:82` ⇒ 开关关掉时 B 侧也没有那行日志）、**Prometheus 层一条指标都不写** ⇒ ⇒ 与 B 侧「层不拼进链」**逐项等价**（沿用本类既有的 breaker / cpu-shedding 惯例 ⇒ 链的组成不变 ⇒ **客户端可观测面零差异**）
@@ -325,7 +325,7 @@ B 侧 `service/common` **不是独立可执行进程**（是被 10 个 rpc + 10 
 | F-4 | `LettuceClientOptionsBuilderCustomizer` 包名 | `org.springframework.boot.data.redis.autoconfigure.*` | `org.springframework.boot.autoconfigure.data.redis.*` | `@ConditionalOnClass` 判定依据变了 | Redis 客户端选项定制 | **会**（不改 ⇒ 整份自动配置**静默不生效**） | ✅ **已回改**（`redis/ClientAutoConfiguration.java:13`） | 源码级：包名正确；⚠️ **但该类不在 imports ⇒ 回改了也不加载** ⇒ 被 **DRIFT-COMMON-V01** 掩盖 | **已回改，但当前无效** |
 | F-5 | `DataSourceAutoConfiguration` 包名 | `org.springframework.boot.jdbc.autoconfigure.*` | `org.springframework.boot.autoconfigure.jdbc.*` | 排序边的字符串目标变了 | MP 自动配置求值顺序 | 否（不回改 ⇒ **排序边静默失效**，字符串不解析、不报错） | ✅ **已回改** | 源码级：`autoconfigure/MybatisPlusOrderingBridgeAutoConfiguration.java` | **已适配** |
 | F-6 | `AutoConfiguration.imports` 登记面 | 8 行 | **7 行** | **少 2 行** | starter 能力装载 | **会**（2 个 redis auto-config 永不加载） | ❌ **未适配** | 源码级：diff 两份清单 | 🔴 **DRIFT-COMMON-V01** |
-| F-7 | Tomcat | 11.0.24 | **10.1** | 内部类/反射链可能变化 | `GoStyleClientDisconnectProbe` 的 socket 反射写 | **会**（B 的取证全部基于 Tomcat 11） | ⚠️ C 侧该类**尚未实现** ⇒ 暂不适用 | — | **BLOCKED**（实现时须在 10.1 重测） |
+| F-7 | Tomcat | 11.0.24 | **10.1** | 内部类/反射链可能变化 | `GoStyleClientDisconnectProbe` 的 socket 反射写 | **会**（B 的取证全部基于 Tomcat 11） | ✅ **C 侧已实现**（`ClientDisconnectProbe` · 照抄 B 侧 `GoStyleClientDisconnectProbe` · C 侧类名去 `GoStyle` 前缀） | **已验**：非 Tomcat 容器 ⇒ 反射链取不到 ⇒ **fail-open**（`ClientDisconnectProbeTest`）；⚠️ **真 Tomcat 10.1 下的 socket 反射写（1xx 探针那条路）未验** | ⚠️ **部分闭合**（fail-open 已验 · 真 Tomcat 反射链未验）—— ✅ **2026-11-11 订正**：原写「C 侧该类**尚未实现** ⇒ 暂不适用」＋「**BLOCKED**」**已过期**（类早在批次 C `V04` 就落地了）⇒ 且与 §11.2 状态列**自相矛盾**（favorite 域 2026-11-11 上报） |
 | F-8 | devh grpc starter | 3.1.0.RELEASE（grpc 1.63.0） | **同** | 无 | gRPC 拦截链挂载 | 否 | `ProtectionAutoConfiguration` 声明 `GrpcServerConfigurer` 并真调 `server.intercept(...)` | `ProtectionAutoConfigurationWiringTest`(5) | **已适配（A3 PASS）** |
 | F-9 | `ResponseBodyAdvice` 收集机制 | Spring 7 | Spring 6.2：`RequestMappingHandlerAdapter#setResponseBodyAdvice` **无 `@Autowired`** ⇒ 不会自动收集 | `ResponseBodyAdvice` bean 需靠 `@RestControllerAdvice` 进 advice 链 | JSON 响应 Content-Type 补 charset | **会**（漏收集 ⇒ Content-Type 无 charset） | `JsonContentTypeAdvice` 同时挂 `@RestControllerAdvice` **且**由 `WebAutoConfiguration` 的 `@Bean` 显式注册 | 源码级：`WebAutoConfiguration.java:115-118` | **已适配** |
 | F-10 | `SpringBoot4-Jackson3` 专属 artifact | `spring-boot-data-redis` / `spring-boot-tomcat` | **不存在** | 依赖坐标需换 | Redis / Tomcat 装配 | 否 | C 用 `spring-boot-starter-data-redis` / starter 自带 tomcat | 源码级：`common/pom.xml` | **已适配（D14）** |
@@ -662,7 +662,7 @@ S3b（PG 停）= `200 + 信封 1015` @ 2.05s · S4（持锁）= `200 + 信封 10
 | **修后（2026-11-03 · 已实施）** | ① `ObservabilityAutoConfiguration.GrpcObservationInterceptor` 的 listener **补 `onHalfClose()`** ⇒ 在**真正跑 handler 的线程**上 `DeadlineState.bindAbsoluteNanos(绝对时刻)`；② 绝对时刻 = **调用开始** ＋ `rpc-timeout`（**在 `registry == null` 早退之前**算 ⇒ ⇒ 绑 deadline 与「装没装 Micrometer registry」**无关** ⇒ ⇒ 「没装观测的进程」也不会没有 deadline）；③ **绑定层包在观测层外面** ⇒ scope 包住整个 handler 执行期（含观测层收尾）⇒ ⇒ 与 B 侧 `RpcInterceptor.java:516-522` 的嵌套次序同形；④ 预算取 `rpc-timeout`（**不是** `resolveInnerBudget()`）—— gRPC 边界上**没有 HTTP 预算** ⇒ ⇒ 与 B 侧 `zrpc.RpcServerConf.Timeout = 2s` 一致，且与 `scheduleTimeout` 同一刻 |
 | **假断言订正（本轮）** | 台账原先（含 admin 台账 4 处 + common 台账 1 处）写「`DeadlineState` 的**生产绑定点只有 gRPC 服务端路径**（`RpcHandleRunner.java:121` `bindRemainingNanos` ＋ `newUnaryServerInterceptor`）」⇒ ⇒ **两半都是假的** ⇒ ⇒ 修前的准确表述 = 「**C 侧 `DeadlineState` 在生产路径上零绑定点**」⇒ ⇒ **5 处已逐一订正** |
 | **影响范围** | 凡走 **gRPC 入口**的写路径（10 个域的 rpc 侧）⇒ ⇒ 客户端取消 / 服务端预算到点 ⇒ **服务端仍提交** ⇒ ⇒ 属「**失败-成功不一致**」型风险（同 V15 的 HTTP 侧，但方向相反：V15 是 HTTP 路径**没绑**，本条是 gRPC 路径**也没绑**） |
-| **修法（**已实施**，2026-11-03）** | 在 `GrpcObservationInterceptor` 的 listener 里**补 `onHalfClose()`** ⇒ 在**真正跑 handler 的线程**上 `DeadlineState.bindAbsoluteNanos(绝对时刻)`（绝对时刻 = 调用开始 + `rpc-timeout`）⇒ ⇒ 在途 SQL 会被 CancelRequest ⇒ 写路径回滚（B=0 行 / C=0 行）。⚠️ **只绑入向载体 `DeadlineState`**（出向 `GoStyleRequestDeadline` 的绑定**不在本条范围**，爆炸半径更大 ⇒ 另案） |
+| **修法（**已实施**，2026-11-03）** | 在 `GrpcObservationInterceptor` 的 listener 里**补 `onHalfClose()`** ⇒ 在**真正跑 handler 的线程**上 `DeadlineState.bindAbsoluteNanos(绝对时刻)`（绝对时刻 = 调用开始 + `rpc-timeout`）⇒ ⇒ 在途 SQL 会被 CancelRequest ⇒ 写路径回滚（B=0 行 / C=0 行）。✅ **【2026-11-11 订正】本条实施时（2026-11-03）确实「只绑入向载体 `DeadlineState`」（出向 `GoStyleRequestDeadline` 的绑定**不在本条范围**，当时判「另案」）⇒ ⇒ 但该「另案」已由 `DRIFT-COMMON-V20`（2026-11-04）闭合**：出向载体**现已绑上**，且有效期限 = `min(服务端 rpc-timeout, 客户端 deadline 剩余)` ⇒ ⇒ 现状**不再是「只绑入向」**（本行保留当时的实施口径以存史，不删改） |
 | **验收判据** | ① admin 域 E-4-R2 场景轮（客户端 1s 取消写路径）⇒ **跨域复测已跑**（users-user 域 · 2026-11-03 · 见下一行）；② **可判别**的回归测试（必须写明「到达调用方的是 `StatusRuntimeException` 且 code = `DEADLINE_EXCEEDED`」——只断言「抛了异常」在包装层还在时**照样绿** ⇒ 不可判别）；③ **变异验证**（拿掉 `onHalfClose` 的绑定 ⇒ 该维转红、其余维仍绿）—— ✅ **已在两个层次各做一次**（单元/PG 层 ＋ **跨侧探针层**） |
 | **✅ 跨侧验证（2026-11-03 · users-user 域 · **对称注入扫描**）** | **探针**：`tools/difftest/users-user/`（阶段 **D / D2**）⇒ **两侧真进程**（B 侧 Boot 4 双进程 ＋ C 侧 Boot 3.5 单进程）⇒ **同一 JVM 同时向两侧发调用**、**同一绝对时刻取消**、**放行点相对两侧等距**（= 调用开始 + 固定偏移）⇒ **机器读数逐字**：<br>`· 放行@+1200ms ⇒ B=1 · C=1` ／ `· 放行@+1800ms ⇒ B=1 · C=1` ／ `· 放行@+2400ms ⇒ B=0 · C=0` ／ `· 放行@+3000ms ⇒ B=0 · C=0` ／ `· 翻转点（1 行 → 0 行）：B 侧=2400 · C 侧=2400` ／ `✅ 两侧翻转点重合（=2400）⇒ 预算语义等价`<br>⇒ ⇒ **两侧逐点相同 + 翻转点重合** ⇒ ⇒ **C 侧与 B 侧预算语义等价**（**不是「某一个点恰好相等」**）⇒ ⇒ **V17 的修复达成**；⚠️ 翻转点读数 2400 比 2s 预算晚 ⇒ 因 `docker unpause` 自身有几百毫秒延迟 ⇒ **两侧延迟相同 ⇒ 不影响判据** |
 | **✅ 变异验证 · 探针层（2026-11-03）** | 拿掉 `onHalfClose` 的绑定后**复跑同一探针** ⇒ 机器读数逐字：`· 放行@+2400ms ⇒ B=0 · C=1` ／ `· 放行@+3000ms ⇒ B=0 · C=1` ／ `· 翻转点（1 行 → 0 行）：B 侧=2400 · C 侧=None` ⇒ ⇒ **C 侧不再跟随 B 侧翻转** ⇒ ⇒ **判据有牙齿** ⇒ ⇒ **该修复是必要的**；⇒ ⇒ ⚠️ **推论**：变异态下 C 在**所有**偏移都读 1 ⇒ ⇒ **旧（顺序注入）探针读到的「C=1」在修前修后完全相同** ⇒ ⇒ **旧探针对这个修复【完全不敏感】**（读数恒定 ⇒ 既证不了差异、也证不了修复）⇒ ⇒ **这正是必须把探针改成对称注入的理由**；⇒ ⇒ **还原后同条件复跑 = 绿**（翻转点重合 =2400 · 摘要「❌ 真差异 1 ｜ ⚠️ 对称异常/已知现象 3」） |
@@ -671,7 +671,7 @@ S3b（PG 停）= `200 + 信封 1015` @ 2.05s · S4（持锁）= `200 + 信封 10
 
 ### ⚪ DRIFT-COMMON-V18｜出向 deadline 的**运行期守门缺口**（装配层有网 · 运行期差分无网）
 
-**状态**：**⚪ 已登记**（守门缺口，**非行为漂移**）⇒ 落点在 `common/` ⇒ 归 `global` 收口域。
+**状态**：**🟠 部分闭合**（2026-11-11 · `global` 收口域）—— **缺口④ 已闭合**（补网：新增 `common/src/test/java/com/rag/common/protection/OutboundDeadlineExpiredBudgetTest.java` **3 例** ⇒ **变异红 / 还原绿**）⇒ **缺口③（devh 真实链路上的运行期差分）仍无网** ⇒ ⇒ **本条未完全闭合**（**如实标注「未完全闭合」**，不记已闭合）。
 ⚠️ **缺口本身**：`OutboundDeadlineInterceptor` 的类注释原先点名三个「运行期锁定用例」
 （`GoStyleOutboundDeadlineRpcAssemblyTest` / `GoStyleDevhOutboundDeadlineAssemblyGateTest` /
 `GoStyleRpcInterceptorOutboundDeadlineChainGateTest`）⇒ ⇒ **实测：这 3 个测试名在 C 侧全仓只出现在那段注释里，一个都不存在** ⇒ ⇒ 注释宣称「已锁定」的**运行期行为差分**，C 侧**无网**。
@@ -915,6 +915,40 @@ comment 域工作树里 `service/comment/src/test/java/com/rag/comment/grpc/Comm
 | **🟢 m2e 会不会改回去？—— 实测：不会** | 改完后 jdtls 触发了「Updated service / user-service / task-service / users-common / users」的一轮**重新导入** ⇒ ⇒ `.classpath` 里的输出目录**未被重置** ⇒ 根因 = `kind="output"` 条目**不带** `maven.pomderived` 标记 ⇒ **m2e 不接管它** ⇒ ⇒ 补丁能扛过「Update Maven Project」⇒ ⇒ **脚本仍做成幂等可重跑**（兜底） |
 | **⚠️ 诚实边界（尚未现场验证的一点）** | jdtls **下一次真正编译**时产物落到 `.jdtls-build/classes` —— 本轮只验证到「`.classpath` 已改 + `mvn clean` 不碰该目录 + m2e 不回改」⇒ ⇒ **触发条件是编辑器的 `didChange` 通知**（单纯 `touch` 文件**不触发** ⇒ 无编辑器在场时无法强制触发）⇒ ⇒ **等下一次 IDE 编译自然验证**。<br>**已知残留（刻意不修）**：`org.eclipse.jdt.apt.core.prefs` 的 `genSrcDir=target/generated-sources/annotations` 与 `.classpath` 里指向 `target/generated-sources/**` 的**源目录条目**仍在 `target/` 内 ⇒ ⇒ `mvn clean` 会删掉它们 ⇒ jdtls 会重新生成（APT 自己管）⇒ ⇒ **只影响 IDE 瞬时状态，不影响 Maven 产物** |
 | **⚠️ 纪律（本机环境动作 ≠ 仓库动作）** | `.classpath` / `.project` / `.settings/` **不进版本控制**（`.gitignore`）⇒ ⇒ 本仓**不为它提交任何文件**；**进版本控制的是「可重跑的脚本」** ⇒ ⇒ 别人 clone 后跑一次即可 ⇒ ⇒ **不重复踩坑** |
+
+---
+
+### ✅ DRIFT-COMMON-V27｜**公共面收口轮**（10 个域 lane 各自交接给公共面的条目）—— **已收口（2026-11-11 · `global` 收口域）**
+
+**状态**：**✅ 已收口**（2026-11-11 · `global` 收口域）—— 本轮把 **10 个业务域 lane 各自交接给公共面的条目**逐条闭合。
+⇒ ⇒ **来源**：各域 lane 的最后一条收尾结论（follow / like / task / admin / message / hot / user / comment / favorite / article）⇒ ⇒ **无法向它们发消息**（会话均已停摆：连接错误 / Token 上限 / 超时）⇒ ⇒ **全部由本会话直接改**。
+
+| 交接方 | 交接条目 | 落点 | 状态 |
+|---|---|---|---|
+| **follow** | `tools/README.md`（**共享**工具总表）的同类既有缺陷，**未动** —— 归 owner | `tools/README.md` | ✅ 已修（随 GFM 批量修复，见 **DRIFT-COMMON-V28**） |
+| **comment** | `common/…/observability/DeadlineState.java:119-120` 的**源码级假断言**（写「出向载体 `GoStyleRequestDeadline` **仍未绑** ⇒ 另案」，与 `ObservabilityAutoConfiguration.java:352` 的实际绑定**直接矛盾**）＋ common 台账 2 处「只绑入向 ⇒ 另案」的**现时**陈述（`:58` / `:665`） | `common/src/main/java/com/rag/common/observability/DeadlineState.java` ＋ 本台账 | ✅ 已订正（**源码里的假断言比台账陈旧更危险** ⇒ 就地改正并写明订正缘由）⇒ ⚠️ **历史陈述保留**（`ObservabilityAutoConfiguration.java:306-308` 与本台账 `:751` 用的是「**此前**」⇒ 正确 ⇒ 不动） |
+| **favorite** | `tools/check-mapping-coverage.py:32` ＋ `tools/gen-file-tree.py:25` 的 **ROOT 硬编码主仓** ⇒ 在域工作树里跑 ⇒ **验的是主仓** ⇒ **假绿** | 两个共享脚本 | ✅ 已改（`ROOT` 改为 `pathlib.Path(__file__).resolve().parent.parent` ⇒ **跟着脚本走**）＋ **双侧实证**（隔离工作树 `_rootprobe`：工作树里跑 ⇒ **EXIT=1** 且报出 `C 列 645/646` ⇒ 量到工作树；同一时刻主仓跑 ⇒ **EXIT=0**） |
+| **favorite** | 本台账 **F-7 行与 §11.2 自相矛盾**（写「C 侧该类**尚未实现** ⇒ 暂不适用 / **BLOCKED**」，而类早已落地 ⇒ 与 §11.2 的状态列打架） | 本台账 §十一 F 表 | ✅ 已订正（改为「**部分闭合**」并写清「**已验**（非 Tomcat ⇒ fail-open）/ **未验**（真 Tomcat 10.1 的 socket 反射写）」两段） |
+| **favorite** | `DRIFT-COMMON-V18`（本台账**唯一 ⚪ 真缺口**） | `common/src/test/java/com/rag/common/protection/OutboundDeadlineExpiredBudgetTest.java` | 🟠 **部分闭合** —— 缺口④（`>= 0L` 那道守卫）**已闭合**（**3 例** · **变异红 / 还原绿**：把 `>= 0L` 改成 `> 0L` ⇒ 主断言当场转红 ⇒ 还原复绿）；缺口③（devh 真实链路运行期差分）**仍无网** |
+| **hot** | `docs/File_Tree/article.md` 有一行**陈旧目录**（article 域 `web/` 包已删、只剩 `.DS_Store` ⇒ **git 不跟踪空目录** ⇒ **fresh clone 里那行根本不存在** ⇒ 文件树**不可复现**）＋ `check-docs-vs-tree.py` **只查文件层、查不到目录层** ⇒ 守门盖不住 | `tools/gen-file-tree.py` ＋ `tools/difftest/check-docs-vs-tree.py` | ✅ 已修 —— 生成器改为**跳过「无版本控制文件」的空壳目录**（判据沿用它自己已有的原则）⇒ 复生成剔掉 **2 处**空壳目录（`article/web/` ＋ `proto/test/java/`）；守门新增 **⑦ 目录层校验**（文件树里每个目录 ⇒ 磁盘存在 **且** 含版本控制文件）⇒ **单独验证有牙齿**（幽灵目录 / 空壳目录**都能抓** ⇒ 还原复绿） |
+| **article** | `common/` 两处**测试隔离缺陷**：`DeadlineBudgetPersistencePgTest`（容器 **stop/start** 后**静态缓存的 `jdbcUrl` 不刷新** ⇒ 池/表全废）＋ `HttpMiddlewareTest`（**JVM 级 static 共享 worker 池**被 512 个阻塞线程占满 ⇒ **连带 503**）⇒ 两者都是「**单跑绿 / 全量跑红**」 | 两个测试类 | ✅ 已修（**消除顺序依赖**：容器 restart 后**整体重建**连接池/工厂/建表；饱和用例**等池排空**再返回）⚠️ **本机未复现**（改前改后都是 **258 例 / 0/0/0**）⇒ 属**条件性**缺陷 ⇒ **如实标注「未复现」**，不记「已复现并闭合」 |
+| **like / task / admin / message / user** | **无**公共面交接 | — | — |
+
+---
+
+### ✅ DRIFT-COMMON-V28｜**GFM 表格形状缺陷**：**整张表在 GitHub 上塌成段落**，而既有守门**对它完全隐形** —— **已收口（2026-11-11 · `global` 收口域）**
+
+**状态**：**✅ 已收口**（2026-11-11 · `global` 收口域）—— 本条是本会话**自查发现**的公共面缺陷（不在任何域的交接单里）。
+
+| 项 | 内容 |
+|---|---|
+| **现象（实测）** | 全仓 **110 份 markdown** 扫描 ⇒ **26 份命中 / 99 处** ⇒ 其中 **`docs/Mapping_Table/` 全套主表**（common / article / comment / favorite / hot / like / message / task）的**分隔行一律 3 格、表头却是 4 格** ⇒ ⇒ 按 GFM §4.10 Ex.200，**整块不被识别为表格** ⇒ ⇒ **「抄写路线图」在 GitHub 上整张表塌成一段文字** ⇒ ⇒ **读者看到的是一坨挤在一起的管道符** |
+| **🔴 为什么既有守门盖不住** | `check-mapping-coverage.py` 查**内容**（B↔C 列覆盖率 · 映射行形状）· `check-docs-vs-tree.py` 查**路径 / 数字 / 包名** ⇒ ⇒ 两者**自己解析表格行、不经 GFM 渲染器** ⇒ ⇒ **结构性地看不见「渲不渲染」** ⇒ ⇒ 而 `gen-file-tree.py` 的幂等比的是**生成物 vs 生成物** ⇒ 生成器自己错 ⇒ **两边一起错 ⇒ 恒绿** |
+| **四类缺陷** | ① 表块**缺分隔行**（含被空行切块后的续块）② **分隔行格数 ≠ 表头格数**（⇒ 整块不是表）③ **数据行格数 ≠ 表头格数**（⇒ 多出的格**静默丢弃**）④ **inline code 内裸竖线**（⇒ 竖线被当列分隔符） |
+| **✅ 修法** | ① **新增守门** `tools/difftest/check-gfm-tables.py`（**4 类缺陷 + 围栏豁免逐类可红** ⇒ `--self-test` **8/8**）② **新增修复器** `tools/difftest/fix-gfm-tables.py`（**只做形状修复**；① ③ 一律跳过并点名 ⇒ 「该补格还是并格」必须人工判断）③ **已修 99 处 / 26 份** ⇒ 复扫 **0 处** ⇒ **表格数 +60 张** |
+| **✅ 内容零丢失（逐字证明）** | 逐文件把「改前 / 改后」都交给 `pandoc -f gfm -t plain` 渲染 ⇒ **字符级比对** ⇒ **实义字符零丢失**（唯一例外是我自己拆格时去掉的一对纯分隔括号）⇒ ⇒ 新增的 **~1400 字全部来自「原本被 GFM 丢弃的格」被找回**（例：`docs/README.md` 的 `--contract A\|B` 那行，**改前第 3 格被静默丢弃 ⇒ 读者根本看不到那段话**）⇒ ⇒ **表格从「塌成段落」变成「渲成表格」＝ 读者实际多看到的内容** |
+| **⚠️ 检查器自己也会骗你** | **代码围栏内的行不是 markdown** —— `find … \| xargs`（shell 管道）与 `\|  \- org.springframework…`（依赖树）**都以 `\|` 开头** ⇒ ⇒ 不认围栏 ⇒ **假红**（首跑把 6 处围栏内容报成「缺分隔行」）⇒ ⇒ 检查器**必须先标出围栏内的行** ⇒ **已加**（并入 `--self-test`） |
+| **元教训** | **「检查器绿」≠「格式对」** —— 尤其当检查器只看**内容 / 结构**时 ⇒ ⇒ 要问「**这个洞会不会藏住别的东西**」⇒ 本条正是 ⇒ 详见 **`docs/Pitfalls/_cross/P-28-*.md`** |
 
 ---
 

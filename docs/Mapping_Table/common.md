@@ -66,7 +66,7 @@
 ## 0. 顶层模块对照
 
 | B (RAG, 真理之源) | C (RAG-V1, Spring 目标) | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `service/common/`（**12 个包 / 88 个主代码类**，2026-11-01 实测） | `common/`（**仓库根**，**12 个包 / 112 个主代码类**，2026-11-03 实测） | 1:1 | 包**路径**变（`service/common` → `common`），职责集合变；⚠️ C 侧第 **12** 个包 `redis/` 是 **2026-11-01 新建** |
 | `service/common/communityfact/`（4 类） | `common/src/main/java/com/rag/common/communityfact/`（**13 类**） | 1:N | B 侧的「单文件多类型」被拆成 1 类型 1 文件（L1 wire 类型必须逐字段保真） |
 | `service/common/logger/`（6 类） | `common/src/main/java/com/rag/common/logger/`（**5 类**） | N:1 | B 的 `Logger` + `LoggerFactoryBean` 双轨 → C 单个 `GoStyleLogger implements slf4j.Logger` |
@@ -113,7 +113,7 @@
 > ⇒ **消费方零 `@Import` 清单**（RAG 侧有 10 份）。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `spring/HttpMiddlewareFilter.java` + `spring/AuthorityHandlerFactory.java` | `common/src/main/java/com/rag/common/autoconfigure/WebAutoConfiguration.java` | N:1 | 注册 servlet filter + `ServletRegistrationBean`；⚠️ Boot 4 的 `addUrlMappings` API<br>✅ **已落地（2026-11-02 · 批 3）**：批 1 落的 4 个 web filter/interceptor/advice（`PathNormalizingFilter` / `JsonBodyLimitFilter` / `TraceparentFilter` / `JsonContentTypeAdvice`）＋ `ValueLimitInterceptor` ＋ Tomcat `maxParameterCount=10001` ＋ `AuthorityHandler` 的 `ServletRegistrationBean` 工厂 全部在此注册 ⇒ **消费方零装配代码**；⚠️ Boot 4 → 3.5 包名回改（`org.springframework.boot.tomcat.*` → `org.springframework.boot.web.embedded.tomcat.*`） |
 | `http/GoStyleJsonBodyConverterConfig.java` + `users-common/http/GoStyleCoercion.java` | `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java` | N:1 | 收编 Jackson `CoercionConfig`（K-01，**已是原生机制**）+ `JsonBodyConverter` 注册（K-02）<br>✅ **已落地（2026-11-02 · 批 3）**：K-01 走 **`postConfigurer` 路线**（Spring 6.2 的 `Jackson2ObjectMapperBuilder` **无** coercion API ⇒ 改 `ObjectMapper#coercionConfigFor`，探针实测改动生效）⇒ **不替换 Boot 的 `ObjectMapper`**（保住 `spring.jackson.*` 绑定）；⚠️ 插入点判据从 `JacksonJsonHttpMessageConverter`（Spring 7 才有）改成 **`MappingJackson2HttpMessageConverter`** |
 | `spring/ObservabilityLifecycle.java` + `spring/ObservabilityProperties.java` + `observability/RpcInterceptor.java` + `observability/HttpMiddleware.java` + `observability/MqConsumer.java` + `observability/GoStyleRecoverInterceptor.java` + `spring/RpcServerInterceptorFactory.java` | `common/src/main/java/com/rag/common/autoconfigure/ObservabilityAutoConfiguration.java` | N:1 | ⚠️ **B 侧 `RpcServerInterceptorFactory` 曾经「Bean 在、没挂上」**（`DRIFT-COMMON-004`）⇒ C 侧必须断言真的进了 `server.intercept`<br>✅ **已落地（2026-11-02 · 批 3）**：HTTP 侧 = filter（`ContentCachingResponseWrapper` 抓信封 + 状态码 ⇒ 按 **B 侧的判定顺序**分类）＋ gRPC 侧 = `ServerInterceptor`（7 个业务码集合 / `DEADLINE_EXCEEDED` 优先 / `rpc-timeout` 到点关 `DEADLINE_EXCEEDED`）⇒ **判定与写入都在 `ObservabilityCustomizer`**（本 auto-config 只做装配）⇒ ⚠️ **真正挂链的是 `ProtectionAutoConfiguration` 的 `GrpcServerConfigurer`**（A3）⇒ 已由真触发测试断言 |
@@ -136,7 +136,7 @@
 > ⇒ **C 侧的「三域共享」与 B 侧实况一致**；原「favorite 是平行实现」是**旧形态的事实**，见 §7.4「职责对不上 #1」。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `communityfact/Wire.java`（嵌套 `Event`） | `common/src/main/java/com/rag/common/communityfact/Event.java` | 1:N | 9 字段；`aggregate_version` 是 `int64` **非指针**；B 侧 `payload` 是 `json.RawMessage`（**逐字输出**） |
 | `communityfact/Wire.java` | `common/src/main/java/com/rag/common/communityfact/TechnicalReceipt.java` | 1:N |  |
 | `communityfact/Wire.java` | `common/src/main/java/com/rag/common/communityfact/SubjectRef.java` | 1:N | ⚠️ 要求 `uid>0` **且** `FormatInt(uid,10)==id`（拒绝 `+1001` / `01001`） |
@@ -154,20 +154,20 @@
 ### 1.3 `contract/` —— 全局信封（C: 1 类）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `response/Response.java` | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | 1:1 | ⚠️ **L1 契约**：字段名 / 顺序 / 无 `omitempty`（`data:null` 恒出现）必须逐字保留；**不可用 `ProblemDetail` 替换**（K-06） |
 
 ### 1.4 `exception/` —— 业务异常（C: 2 类）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `exception/BusinessException.java` | `common/src/main/java/com/rag/common/exception/BusinessException.java` | 1:1 | 只接 `int` 业务码 + `String` 文案；**不耦合** Web / gRPC |
 | `exception/AuthenticationException.java` | `common/src/main/java/com/rag/common/exception/AuthenticationException.java` | 1:1 | 与 `BusinessException` 只差一条：**HTTP 状态码是 401**（`DRIFT-004` 引入） |
 
 ### 1.5 `logger/` —— SLF4J 适配器（C: 5 类）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `logger/Logger.java` | `common/src/main/java/com/rag/common/logger/GoStyleLogger.java` | 1:1 | ⚠️ **待执行的改名**：设计已定「改名与归位」（`Logger` → SLF4J 适配器），**树里仍是 `GoStyleLogger`** ⇒ 归位时须同步改 import |
 | `logger/LogOption.java` | `common/src/main/java/com/rag/common/logger/LogOption.java` | 1:1 | `@FunctionalInterface` |
 | `logger/LogOptions.java` | `common/src/main/java/com/rag/common/logger/LogOptions.java` | 1:1 | `UserID` / `ArticleID`；空串 ⇒ **整字段不出现** |
@@ -179,7 +179,7 @@
 ### 1.6 `observability/` —— Observation + Deadline（C: 19 类）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `observability/Observability.java` + `observability/ObservabilityConstants.java` | `common/src/main/java/com/rag/common/observability/ObservabilityCustomizer.java` | N:1 | Micrometer Observation + OTel bridge 承担 span 写入（D-03）；⚠️ `sea.slow=true` 与 `sea.biz_code` 是**业务定义的标记，必须保留**<br>✅ **已落地（2026-11-02 · 批 3）**：**业务标记的唯一载体**（判定是纯函数 + 写入双载体：OTel span 带类型 ＋ Micrometer `Observation.Context`）⇒ ⚠️ Micrometer `KeyValue` **只有 String 值** ⇒ Observation 侧属性类型退化为字符串（**D-03 已登记**）；OTel 侧类型逐字保住 |
 | `observability/Observability.java#slowThreshold` + `spring/ObservabilityProperties.java` | `common/src/main/java/com/rag/common/observability/ObservabilityProperties.java` | 1:1 | ⚠️ **B 侧** `MarkBusinessError` 读的是 **env** 而不是 yml ⇒ 这条路径上 yml 不生效，**不能顺手修正**<br>✅ **已落地（2026-11-02 · 批 3）**：去 `@Component` 改由 `ObservabilityAutoConfiguration` 的 `@EnableConfigurationProperties` 注册（starter 化 ⇒ 消费方零装配代码） |
 | `observability/HttpMiddleware.java` + `spring/HttpMiddlewareFilter.java` + `observability/GoStyleClientDisconnectProbe.java` | `common/src/main/java/com/rag/common/observability/HttpMiddleware.java` ＋ `common/src/main/java/com/rag/common/observability/ObservabilityResponseWriter.java` ＋ `common/src/main/java/com/rag/common/observability/ClientDisconnectProbe.java` | 1:N | ⚠️ **499（客户端取消）/ 503（服务端超时）两分支是行为契约**，但 **B 侧漏了 499 写回**（`DRIFT-COMMON-011` 未修）<br>✅ **已落地（2026-11-02 · 批次 C）**：抄 RAG 整段（L2 · D13）＋ **写入载体改为 Micrometer Observation**（L4 · D4 / D-03）⇒ **三条拒绝路径的形状逐条对齐**：超时 = **503 + body `Request Timeout\n`（16 字节）+ `text/plain; charset=utf-8` + `nosniff` + `Content-Length: 16`**；断连 = **499**（同款 body）；池饱和 = **裸 503（无 body、无 Content-Type）**；⇒ ⇒ **512 worker 池**（`obs-http-worker` ＋ `SynchronousQueue` ⇒ 满了直接拒绝）⇒ **池饱和 503** 这条路径由此而来；⚠️ **RAG 侧注释写「15 字节」是笔误**（`Request Timeout` 15 字符 + `\n` 1 字节 = **16**）⇒ 本仓照**代码**不照注释 |
@@ -193,7 +193,7 @@
 ### 1.7 `persistence/` —— 超时注入 + JSON TypeHandler（C: 6 类）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `persistence/DeadlineQueryTimeoutInjector.java` | `common/src/main/java/com/rag/common/persistence/DeadlineQueryTimeoutInjector.java` | 1:1 | 把当前 rpc 的 deadline 落到每条 SQL 的 `setQueryTimeout`；⚠️ **无 deadline 时不注入** |
 | `persistence/SqlTimeoutStatusTranslator.java` | `common/src/main/java/com/rag/common/persistence/SqlTimeoutStatusTranslator.java` | 1:1 | `SQLState=57014` → `DEADLINE_EXCEEDED`；⚠️ **必须拦 `Executor` 而非 `StatementHandler`**，且 `catch(SQLException)` 匹配不上 MyBatis 抛的 `InvocationTargetException`；🔴 **2026-11-03 补签 `Executor.queryCursor`**（MP 的 `BaseMapper.selectOne(Wrapper, boolean)` 走的游标路径此前**完全不经过本翻译器** ⇒ 57014 原样冒到域层 ⇒ 5001）；⚠️ **不可签 3 参的 `Executor.query`**（MyBatis 3.5.19 无此方法 ⇒ `Plugin.getSignatureMap` 启动期抛 `PluginException`） |
 | （B 侧**无对应类** —— B 靠 ctx 掐住整个 DB 调用） | `common/src/main/java/com/rag/common/persistence/DeadlineBoundedConnectionTimeout.java` | **C 独有** | 🔴 **DRIFT-COMMON-V15 修法 ③**（2026-11-03 · `global` 收口域）：把 Hikari 的 `connectionTimeout` **只收紧不放宽**地收到内层预算（`min(http-timeout, rpc-timeout)`）⇒ ⇒ **PG 不可用时不再干等 30s**；⚠️ `DeadlineQueryTimeoutInjector` 只管「已拿到连接上的语句」，**管不到「取连接」** ⇒ ⇒ 两者必须成对 |
@@ -211,7 +211,7 @@
 > RAG-V1 按 **D4 生态优先**把它们交回生态。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `protection/GoStyleBreaker.java` + `GoStyleBreakerFilter.java` + `GoStyleCircuitOpenException.java` + `GoStyleStatusCapturingResponse.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java`（resilience4j `CircuitBreaker` + `CircuitBreakerRegistry`） | N:1 | ⚠️ **D-02 L3 降级**：失败判定窗口 / half-open 策略与 go-zero 不同；隔离 key 仍是 `METHOD://path`（**每路由一个实例**） |
 | `protection/GoStyleRpcBreakerInterceptor.java` + `GoStyleRpcFailurePolicy.java` + `GoStyleRpcProtectionChain.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java`（gRPC server interceptor 装配） | N:1 | ⚠️ **链序是行为语义**：**B 侧的保护链本体是 recover → breaker → shedding → business（最内）**（stat / prometheus 在 B 侧是独立 gRPC interceptor，不在同一条链里）；失败判据**只保留 6 码白名单浅查**（`DEADLINE_EXCEEDED` / `INTERNAL` / `UNAVAILABLE` / `DATA_LOSS` / `UNIMPLEMENTED` / `RESOURCE_EXHAUSTED`） |
 | `protection/GoStyleGrpcClientBreakerInterceptor.java` | `common/src/main/java/com/rag/common/autoconfigure/ProtectionAutoConfiguration.java`（devh `@GrpcGlobalClientInterceptor`） | N:1 | ⚠️ `@GrpcGlobalClientInterceptor` + `@Component` **缺一即静默失效**（Bean 在、channel 里没有） |
@@ -228,7 +228,7 @@
 > ⇒ 这三行**不计入 §7.2 的「common 域 B 列覆盖」**（归 users 域），但**计入 C 列覆盖**。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `users-common/jwt/JwtUtil.java` | `common/src/main/java/com/rag/common/security/JwtUtil.java` | 1:1 | ⚠️ claim 名 `userId`（`Long`）+ `exp` + `iat`；签名算法必须**钉死 HS256**（jjwt 的 `Keys.hmacShaKeyFor` 会随密钥长度漂到 HS384/HS512） |
 | `users-common/jwt/BearerTokenExtractor.java` | `common/src/main/java/com/rag/common/security/BearerTokenExtractor.java` | 1:1 | ⚠️ **B 侧两套互不相同**的取法（验签 vs 黑名单 key）必须**各自保留**，合并即等于擅自修好 B 侧的 bug |
 | `users-common/cryptx/PasswordUtil.java` | `common/src/main/java/com/rag/common/security/PasswordUtil.java` | 1:1 | ⚠️ **B 侧 `check()`** 把「密码不匹配」与「hash 本身非法」**压成同一个 false**（另有 `checkDetailed()` 可区分三态）⇒ 畸形 hash 不得抛异常 |
@@ -236,7 +236,7 @@
 ### 1.10 `snowflake/` —— 分布式 ID（C: 1 类）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `snowflake/Snowflake.java` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` | 1:1 | ⚠️ epoch / 位段是**业务契约**（like 域游标编码依赖 `>>22`） |
 | `spring/SnowflakeBean.java` + `spring/SnowflakeProperties.java` | `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` | N:1 | `SNOWFLAKE_NODE_ID` 优先，parse 失败**继续走 hash 不报错**；否则 `sha256("SERVICE_NAME-PID")` 取前 2 字节大端 ⇒ `%1024` |
 
@@ -246,7 +246,7 @@
 > 根因（设计文档 §5.5）：Jackson 的 `CoercionConfig` 是原生机制，但**「何时才读请求体」与「错误文案 / 状态码形状」不是框架能力** ⇒ 必须手写。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `common/http/GoStyleJsonBodyConverter.java` | `common/src/main/java/com/rag/common/web/JsonBodyConverter.java` | 1:1 | ⚠️ **K-02**：判据是 `ContentLength > 0` 且 Content-Type **字面**含 `application/json` ⇒ `application/vnd.api+json` 在 **B 侧不匹配**<br>✅ **已落地（2026-11-02 · 批 2）**：Jackson 3 → 2 + Spring 7 → 6.2 的 **5 处回改**（基类 / `read` 签名 / mapper 类型 / `canRead`·`canWrite` 覆写点 / 包名）⇒ 决策锁 **L-17** |
 | `common/http/GoStyleJsonBodyConverterConfig.java` | `common/src/main/java/com/rag/common/web/JsonBodyConverterConfig.java` | 1:1 | 注册点；⚠️ C 侧最终应并入 `JsonBodyConverterAutoConfiguration`（见 §7.4「职责对不上 #5」） |
 | `common/http/GoStyleRouterErrorResponses.java` | `common/src/main/java/com/rag/common/web/RouterErrorResponses.java` | 1:1 | 400 + **text/plain** 的错误形状（D-01 只降级**文案**，形状不受影响） |
@@ -276,7 +276,7 @@
 > ⚠️ 其中原 **9 行标「无对应文件」** ⇒ **2026-11-01 已补 7 行**（form 族 3 + `JsonContentTypeAdvice` + `TraceparentFilter` + `ClientDisconnectProbe` + `RouteResolution`/`RouteTemplateSource` + `redis/` 5 类）⇒ **余 2 行仍标「无对应文件」**：① `common/spring/HttpPoolLifecycle.java`（**D4 生态吸收** ⇒ Tomcat 自管连接池，零 Java 代码）② `common/web/ConditionalOnApiSide.java`（**D1 合并 api/rpc** ⇒ C 侧不存在「api 侧」这个维度）—— **两条都不是缺口**。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `common/http/GoStyleFormValues.java` | `common/src/main/java/com/rag/common/web/GetFormValuesFilter.java` | 1:1 | ⚠️ **RAG 已把域内 `GoStyleGetFormValuesFilter`（2026-10-25 第十四轮）收编进共享层** ⇒ B 侧旧类名**已不存在**；本行即 §1.11 旧行的改写 |
 | `common/http/GoStyleFormLimitMode.java` ＋ `common/http/GoStyleFormValueLimitInterceptor.java` ＋ `common/http/GoStyleFormLimitExceededException.java` | `common/src/main/java/com/rag/common/web/LimitMode.java` ＋ `common/src/main/java/com/rag/common/web/ValueLimitInterceptor.java` ＋ `common/src/main/java/com/rag/common/web/LimitExceededException.java` | 1:1 | ✅ **已落地（2026-11-01）**：三个类落 `common/web/`（**去 `Form` 前缀**，命名债 P4-④ 先例）。⚠️ **枚举在共享层、文案在域里**：`LimitMode` 只承载**拒绝形状**（RAW / ENVELOPE / OFF），**错误码与文案仍由各域 `advice/` 渲染** ⇒ 共享层不自带域级文案；闸门用 `HandlerInterceptor`（非 servlet `Filter`）才能把异常抛到 `@RestControllerAdvice` |
 | `common/http/GoStyleFormLimitWebMvcConfig.java` ＋ `common/http/GoStyleTomcatParameterLimitCustomizer.java` ＋ `common/http/GoStylePathNormalizingAutoConfiguration.java` | `common/src/main/java/com/rag/common/autoconfigure/WebAutoConfiguration.java` | N:1 | 3 个注册点归 **starter**（D3）；⚠️ 拦截器必须 `HIGHEST_PRECEDENCE` ⇒ 先于域鉴权（**与 B 侧同款** ⇒ C ≡ B） |

@@ -29,7 +29,11 @@
 """
 import pathlib, re, sys
 
-ROOT = pathlib.Path("/Users/pr/Documents/GitHub/RAG-V1")
+# ⚠️ ROOT 必须**跟着脚本走**（2026-11-11 修 · `global` 收口域）——
+#    此前**硬编码主仓绝对路径** ⇒ 在域工作树里跑本脚本 ⇒ 验的是**主仓 main 分支**，
+#    域的改动根本没被验到 ⇒ **假绿**（favorite 域实测撞出）。
+#    样板：tools/difftest/check-docs-vs-tree.py · tools/difftest/check-arch-invariants.py
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 RAG  = pathlib.Path("/Users/pr/Documents/java&golang/RAG")
 MT   = ROOT / "docs/Mapping_Table"
 

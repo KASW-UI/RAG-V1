@@ -13,6 +13,7 @@
   ④ 落点表计数守恒（各域「技术角色包」汇总行 == 磁盘主代码数）
   ⑤ 落点表分项求和 == 汇总数（防「补总数忘补分项」）
   ⑥ 包名有效性（文档里的 `com.rag.*` 包 → 磁盘上存在）
+  ⑦ **目录层**有效性（文件树里的每个目录 → 磁盘存在 **且含版本控制文件**）—— 2026-11-11 补：原先只查文件层 ⇒ 空壳目录（git 不跟踪）漏网 ⇒ 文件树不可复现
 
 ⚠️ **本脚本只查 RAG-V1 侧**。映射表 **B 列（RAG 仓）** 的路径有效性由
    `check-mapping-coverage.py` 负责（它有 RAG 仓 + RAG-V1 两侧的索引）。
@@ -124,6 +125,57 @@ def check_file_tree_coverage():
         for m in re.finditer(r"([A-Za-z0-9_]+\.java)", md.read_text(encoding="utf-8")):
             if m.group(1) not in disk_names and m.group(1) not in b_names:
                 failures.append(f"① File_Tree 幽灵文件 {md.name}: {m.group(1)}")
+
+
+# ---------- ⑦ File_Tree 目录层校验（2026-11-11 · global 收口域 · hot 域上报）----------
+TREE_LINE = re.compile(r"^((?:(?:│   |    ))*)(├── |└── )(\S.*)$")
+
+
+def _tracked_files():
+    out = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"],
+                         capture_output=True).stdout.decode("utf-8", "replace")
+    return {f for f in out.split("\0") if f}
+
+
+def check_file_tree_dirs():
+    """🔴 **目录层**校验 —— 原先只查**文件层**（① 双向覆盖）⇒ **目录层是盲区**。
+
+    ⚠️ **真实缺陷（hot 域 2026-11-11 上报）**：`docs/File_Tree/article.md` 里有一行
+    `web/`（article 域 D-10 把类上收共享层后**只剩 `.DS_Store`**）⇒
+    **git 根本不跟踪空目录** ⇒ ⇒ **fresh clone 里那一行不存在** ⇒ ⇒ **文件树不可复现**。
+    ⇒ 而 `check-docs-vs-tree.py` 当时**只查文件层** ⇒ ⇒ 守门**盖不住这一类**。
+
+    ⇒ 判据（本条）：**文件树里出现的每一个目录** ⇒
+      ① 磁盘上**必须存在**；② **必须含至少一个版本控制文件**（否则 fresh clone 里不存在）。
+    """
+    tracked = _tracked_files()
+    for dom, (mod, _mt, ftdoc) in DOMAINS.items():
+        txt = (FT / ftdoc).read_text(encoding="utf-8")
+        stack: list[str] = []
+        for ln in txt.split("\n"):
+            m = TREE_LINE.match(ln)
+            if not m:
+                continue
+            prefix, _conn, raw = m.group(1), m.group(2), m.group(3)
+            # ⚠️ **目录性由「名字段」判定，不是整行**（2026-11-11 自测踩到）——
+            #    文件行的职责注释**可能恰好以 `/` 结尾** ⇒ 整行 endswith("/") 会把
+            #    `X.java    # 职责：……/` 误判成目录 ⇒ ⇒ 判据必须先切掉注释段。
+            name = raw.split("    #", 1)[0].strip()
+            if not name.endswith("/"):
+                continue          # 文件条目 ⇒ 不判目录
+            depth = len(prefix) // 4
+            stack = stack[:depth]
+            stack.append(name.rstrip("/"))
+            rel = "/".join(stack)
+            disk = ROOT / mod / rel
+            if not disk.is_dir():
+                failures.append(f"⑦ File_Tree 幽灵目录 {ftdoc}: {rel}（磁盘不存在）")
+                continue
+            prefix_rel = f"{mod}/{rel}/"
+            if not any(t.startswith(prefix_rel) for t in tracked):
+                failures.append(
+                    f"⑦ File_Tree 空壳目录 {ftdoc}: {rel}"
+                    f"（无版本控制文件 ⇒ fresh clone 里不存在 ⇒ 文件树不可复现）")
 
 
 # ---------- ② File_Tree 幂等 ----------
@@ -280,6 +332,9 @@ def check_pkg_names():
 
 
 # ---------- 负向自检 ----------
+NL = chr(10)   # 换行常量（避免在补丁文本里出现裸转义）
+
+
 def selftest():
     """造一个假树，验证每个判据都能红。"""
     print("=" * 70)
@@ -325,8 +380,32 @@ def selftest():
             print(f"  ✅ ⑤ 分项求和判据能红（分项 {s} ≠ 汇总 99）"); ok += 1
         else:
             print("  ❌ ⑤ 分项求和判据没红")
-        print(f"\n负向自检：{ok}/4 条判据均能红")
-        return 0 if ok == 4 else 1
+        # ⑦ 目录层判据（2026-11-11 新增）：文件树里的目录必须**能被解析出来**，
+        #    且判据要能识别「空壳目录」（磁盘存在但**无版本控制文件** ⇒ fresh clone 不存在）。
+        ft = fake / "docs/File_Tree/x.md"
+        ft.write_text("├── src/" + NL + "│   └── main/" + NL + "├── ghostdir/" + NL)
+        ghost = fake / "service/x/src/main/java/com/rag/x/ghostdir"
+        ghost.mkdir(parents=True, exist_ok=True)
+        (ghost / "junk.txt").write_text("x")   # 无版本控制文件 ⇒ 空壳目录
+        names = set()
+        stack = []
+        for ln in ft.read_text().split(NL):
+            m = TREE_LINE.match(ln)
+            if not m:
+                continue
+            name = m.group(3).split("    #", 1)[0].strip()
+            if not name.endswith("/"):
+                continue
+            d = len(m.group(1)) // 4
+            stack = stack[:d]
+            stack.append(name.rstrip("/"))
+            names.add("/".join(stack))
+        if "ghostdir" in names and "src/main" in names:
+            print("  ✅ ⑦ 目录层判据能红（ghostdir + src/main 解析出来）"); ok += 1
+        else:
+            print(f"  ❌ ⑦ 目录层判据没红（解析出：{sorted(names)}）")
+        print(f"{NL}负向自检：{ok}/5 条判据均能红")
+        return 0 if ok == 5 else 1
     finally:
         shutil.rmtree(fake, ignore_errors=True)
 
@@ -356,6 +435,7 @@ def main():
         sys.exit(selftest())
     check_file_tree_coverage()
     check_file_tree_idempotent()
+    check_file_tree_dirs()
     check_paths()
     check_landing_counts()
     check_pkg_names()
@@ -369,7 +449,7 @@ def main():
             print(f"  ❌ {f}")
         print(f"\n发现 {len(failures)} 处不符 ⇒ EXIT=1")
         sys.exit(1)
-    print("  ✅ 全部相符合（File_Tree 双向 · 幂等 · 路径 · 落点计数 · 包名）")
+    print("  ✅ 全部相符合（File_Tree 双向 · **目录层** · 幂等 · 路径 · 落点计数 · 包名）")
     print("\nEXIT=0")
 
 

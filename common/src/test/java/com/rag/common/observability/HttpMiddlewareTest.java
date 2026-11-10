@@ -146,6 +146,25 @@ class HttpMiddlewareTest {
             for (Thread t : fillers) {
                 t.join(3000);
             }
+            // ⚠️ **必须等池排空再返回**（2026-11-11 修 · `global` 收口域 · article 域上报）
+            //    —— `HttpMiddleware.httpExecutor()` 是 **JVM 级 static 共享池**
+            //    （`ThreadPoolExecutor` core=max=512 ＋ **AbortPolicy** ⇒ 满了直接 `RejectedExecutionException`
+            //    ⇒ 调用点转**裸 503**）
+            //    ⇒ ⇒ 本用例把 512 个 worker **全部占满** ⇒ 若不排空就返回 ⇒ ⇒
+            //    **同 JVM 的后续用例**提交任务时池仍满 ⇒ ⇒ **连带 503**
+            //    ⇒ ⇒ 症状就是「**单跑绿 / 全量跑红**」（与被测对象无关的**跨用例污染**）。
+            //
+            // ⚠️ **判据（必须等两件事都成立）**：`getActiveCount() == 0`（没有正在跑的任务）
+            //    **且** `getQueue().isEmpty()`（没有排队中的任务）⇒ 池回到「空闲」形态。
+            long drainDeadline = System.currentTimeMillis() + 5_000L;
+            while (System.currentTimeMillis() < drainDeadline
+                    && (HttpMiddleware.httpExecutor().getActiveCount() > 0
+                        || !HttpMiddleware.httpExecutor().getQueue().isEmpty())) {
+                Thread.onSpinWait();
+            }
+            assertThat(HttpMiddleware.httpExecutor().getActiveCount())
+                    .as("用例返回前必须把 JVM 级共享 worker 池排空 ⇒ 否则后续用例会连带裸 503")
+                    .isZero();
         }
     }
 

@@ -239,6 +239,7 @@
 │                       │   └── JsonTypeHandlerPgTest.java    # 🔴 **两个 TypeHandler 的真 PostgreSQL 守门** ——
 │                       ├── protection/
 │                       │   ├── MaxConnsFilterTest.java    # §3.3「机制可证」守门：并发连接闸门真的在超限时立刻 503（而不是排队）。
+│                       │   ├── OutboundDeadlineExpiredBudgetTest.java    # 🔴 DRIFT-COMMON-V18 的收口守门：出向 deadline 的 「请求载体预算恰好为 0」这条分支。
 │                       │   ├── RouteTemplateResolverTest.java    # §3.3「机制可证」守门：路由模板解析真的能区分三态
 │                       │   └── RpcProtectionLayerTest.java    # §3.3「机制可证」守门：gRPC 降载拒绝的 wire 形状 ＋ 熔断失败判据 ＋
 │                       ├── redis/
@@ -269,5 +270,5 @@
 | 项 | 状态 |
 |---|---|
 | 目录结构 | ✅ 已落地（本文件由 `tools/gen-file-tree.py` **按磁盘实际生成** ⇒ 不与代码漂） |
-| 文件内容 | ✅ **无空壳** —— 本模块 **157** 个 `.java`（含测试源）· **待填空壳 0 个**（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**） |
+| 文件内容 | ✅ **无空壳** —— 本模块 **158** 个 `.java`（含测试源）· **待填空壳 0 个**（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**） |
 | B 侧 ↔ Java 逐文件对照 | 📄 [`../Mapping_Table/common.md`](../Mapping_Table/common.md) —— 逐文件对照的**唯一权威副本**；由 `tools/check-mapping-coverage.py` **机器双向核验**（B 列 ⇄ C 列 ⇄ 磁盘） |

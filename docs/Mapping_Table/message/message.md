@@ -25,7 +25,7 @@
 ## 0. 顶层模块对照
 
 | B (RAG) | C (RAG-V1) | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `service/message/message-api/` | `service/message/` 的 `service/message/src/main/java/com/rag/message/advice + service/message/src/main/java/com/rag/message/config + service/message/src/main/java/com/rag/message/controller + service/message/src/main/java/com/rag/message/dto + service/message/src/main/java/com/rag/message/interceptor + service/message/src/main/java/com/rag/message/metrics + service/message/src/main/java/com/rag/message/service` 包 | 1:N | C 把 api 折进单 app（D1） |
 | `service/message/message-rpc/` | `service/message/` 的 `service/message/src/main/java/com/rag/message/wiring + service/message/src/main/java/com/rag/message/client + service/message/src/main/java/com/rag/message/config + service/message/src/main/java/com/rag/message/domain/entity + service/message/src/main/java/com/rag/message/domain/service + service/message/src/main/java/com/rag/message/exception + service/message/src/main/java/com/rag/message/grpc + service/message/src/main/java/com/rag/message/mapper + service/message/src/main/java/com/rag/message/metrics + service/message/src/main/java/com/rag/message/service` 包 | 1:N | 同上；`rpc.*` 命名债明确不改 |
 | `service/message/message-common/` | `service/message/src/main/java/com/rag/message/contract/` | 1:1 | 模块改名 `common` → `contract`（承载域内错误契约）；⚠️ **proto 已随 D7 集中到根级 `proto/` 模块** |
@@ -79,7 +79,7 @@
 ### 1.1 入口 / 配置 / 装配（api 侧 + 进程拓扑）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `message-api/.../MessageApiApplication.java` | `service/message/src/main/java/com/rag/message/MessageServiceApplication.java` | 1:1 | 入口；C 侧 `@SpringBootApplication` + `@EnableDiscoveryClient`，api/rpc 合一个进程（D1） |
 | `message-api/.../advice/GlobalResponseAdvice.java` + `advice/GlobalExceptionHandler.java` | `service/message/src/main/java/com/rag/message/advice/MessageApiResponseAdvice.java` + `service/message/src/main/java/com/rag/message/advice/MessageApiExceptionHandler.java` | 1:N | B 侧 `advice/` 两个类（`GlobalResponseAdvice` + `GlobalExceptionHandler`）→ C 两个 advice 类。**HTTP 恒 200 + `{code,msg,data}` 信封**、业务失败码在 body 里，是 L1 契约 |
 | `message-api/src/main/resources/application.yml` | `service/message/src/main/resources/application.yml` | 1:1 | yaml 里 `UserAuth` / `AdminAuth` 两段逐字搬到 C 的 `message-api.user-auth` / `message-api.admin-auth` |
@@ -107,7 +107,7 @@
 #### 1.2.1 handler / logic / Controller / Service
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `message-api/.../controller/MessageController.java`（8 个 `@PostMapping`） | `service/message/src/main/java/com/rag/message/controller/MessageController.java` | 1:N | B 侧 8 个 `@PostMapping` → B/C 各 1 个 Controller |
 | `message-api/.../controller/MessageAdminController.java` | `service/message/src/main/java/com/rag/message/controller/MessageAdminController.java` | 1:N | admin 组独立 Controller（两套 JWT ⇒ 两套前缀） |
 | `message-api/.../service/Message<Case>Service.java` × 8 + `service/AbstractMessageApiService.java` | `service/message/src/main/java/com/rag/message/service/MessageApiService.java` | N:1 | 13 用例内聚为 1 个 Service（判据见《完全spring化的文件树》§5.4，五条全中） |
@@ -118,7 +118,7 @@
 #### 1.2.2 DTO（B 侧 17 个 DTO 类 ⇒ C 17 个 immutable record）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `message-api/.../dto/*.java` × 18 | `service/message/src/main/java/com/rag/message/dto/{chat,common,conversation,notification,read}/*.java` × 17（**D11** 按业务对象拆 5 个子包） | 1:N | C 去掉 B 侧的 `GoStyleStringInt64`（降级到 `common/src/main/java/com/rag/common/web/`） |
 | `dto/AdminSendChatReq.java` | `service/message/src/main/java/com/rag/message/dto/chat/AdminSendChatReq.java` | 1:1 | `recipient_id` / `conversation_id` 带 `,string` |
 | `dto/AdminSendNotificationReq.java` | `service/message/src/main/java/com/rag/message/dto/notification/AdminSendNotificationReq.java` | 1:1 | `broadcast` / `target_id` / `kind` / `extra` 均 `optional` |
@@ -161,7 +161,7 @@
 ### 1.3 RPC / 领域层
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `message-rpc/.../MessageRpcApplication.java` + `rpc/bootstrap/NacosRegistration.java` | `service/message/src/main/java/com/rag/message/MessageServiceApplication.java` + `service/message/src/main/java/com/rag/message/wiring/NacosRegistration.java` | 1:N | C 侧入口 1 个（合并 D1）；Nacos 显式注册保留（B 侧 `rpc/bootstrap/NacosRegistration.java`，替代 etcd 自动注册） |
 | `message-rpc/src/main/resources/application.yml` + `rpc/config/MessageProperties.java` | `service/message/src/main/resources/application.yml` + `service/message/src/main/java/com/rag/message/config/MessageProperties.java` | 1:1 | `List{DefaultLimit:20, MaxLimit:100}` + `Broadcast{PageSize:200}` 逐字对齐 |
 | `message-rpc/.../config/MessageProperties.java` | `service/message/src/main/java/com/rag/message/config/MessageProperties.java` | 1:1 | ⚠️ B 侧**没有** `*RpcProperties` 这种命名，类名是 `MessageProperties`；B/C 都用 `@ConfigurationProperties(prefix="message")` 承载。`Postgres` / `UserRpc` / `AdminRpc` 由 `spring.datasource` / `grpc.client.*` 接管 |
@@ -201,7 +201,7 @@
 ### 1.4 错误契约（`message-common/.../errmsg/`）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `message-common/.../errmsg/MessageErrorCode.java` + `MessageErrorMessages.java` + `MessageGrpcError.java` | `service/message/src/main/java/com/rag/message/contract/ErrCodes.java` + `ErrMsg.java` + `CodeError.java` + `GrpcErrorMapper.java` | 1:N | ⚠️ **文案是英文**（`"service busy"` / `"internal server error"` / `"unauthorized"`）⇒ 与 article / comment / favorite / like / user 域的中文文案**逐域隔离，不可统一化**；C 侧 4 个类的 javadoc 已把这条写成硬约束（⚠️ 本行旧版把 C 路径误写成 `service/users/common/...` ⇒ 那是 **users 域**的路径，message 域的错误契约在**域内 `contract/` 包**（D7）· 核对日期 2026-11-02） |
 | `MessageGrpcError.CodeError`（内部类） | `service/message/src/main/java/com/rag/message/contract/CodeError.java`（顶层类） | 1:1 | C 把它提到顶层 ⇒ 与 C 侧统一错误模型（`BusinessException`）并存 |
 | `MessageGrpcError.bizCodeFromError(Throwable)` | `service/message/src/main/java/com/rag/message/contract/GrpcErrorMapper.java` | 1:1 | 反查顺序：先按 message 反查 code → 查不到才按 gRPC 标准码 fallback（`InvalidArgument→5003` / `Unauthenticated→5004` / `PermissionDenied→5005` / `AlreadyExists→5006` / `NotFound→5002` / `Internal→5001` / default→`1015`） |
@@ -224,7 +224,7 @@
 ### 1.5 B 有、C 无 / B 有、C 换位置（共享件下沉清单）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `message-api/.../config/GoStyleMapStringValueDeserializer.java` | `common/src/main/java/com/rag/common/web/MapStringValueDeserializer.java` | 1:1 | D3：下沉到根级 starter |
 | `message-api/.../config/MessageGoStyleCoercion.java` | `common/src/main/java/com/rag/common/web/Coercion.java` + `common/src/main/java/com/rag/common/autoconfigure/JsonBodyConverterAutoConfiguration.java` | 1:N | 同上；C 侧改成 **Jackson 2** 的 `CoercionConfig` 装配点（D14：全项目 = Jackson 2 + Boot 3.5）|
 | `message-rpc/.../mapper/JsonbMapTypeHandler.java` | `common/src/main/java/com/rag/common/persistence/JsonbMapTypeHandler.java` | 1:1 | ⚠️ **本表旧版写「→ `common/.../JsonbTypeHandler.java`（D3 上提）」= 不成立**：共享层那份是 **jsonb ↔ `String`**（`BaseTypeHandler<String>`），B 侧这份是 **jsonb ↔ `Map<String,String>`** ⇒ **类型不兼容**，顶替会编译不过。✅ **D-11 已收口（2026-11-03）**：共享层**新增** `common/persistence/JsonbMapTypeHandler.java`（照抄 B 侧 118 行原类，代码体逐行一致）＋ **域内副本已删** ⇒ 副本数 1 → 0；⚠️ **类名保持不变** ⇒ 本域只需改 import（`@TableField(typeHandler=…)` 与 `insertBatch` 里的全限定名同改）；🔴 **与共享层 `JsonbValueTypeHandler` 的 Map 版<b>不合并</b>**（写 null 路径 / 非 null 绑定 / 读空白串三处行为不同 ⇒ 合并即漂移） |
@@ -242,7 +242,7 @@
 > 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `message-api/…/auth/MessageJwtAuthFilter.java` ＋ `message-api/…/auth/MessageJwtSignatureVerifier.java` | `service/message/src/main/java/com/rag/message/interceptor/MessageJwtAuthInterceptor.java` ＋ `service/message/src/main/java/com/rag/message/interceptor/MessageAdminJwtAuthInterceptor.java` | 1:N | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-MESSAGEAPI-009②`）：B 侧 `MessageJwtAuthFilter`（**Servlet Filter**）先验一次、**只记录不写响应**、无条件放行（来源标记 `SOURCE_FILTER` = 「验签在 **3s 预算之外**」）；最终 401 由 `HandlerInterceptor` 抛，**该处会再兜底验签一次**（来源标记 `SOURCE_INLINE` = 「验签在 **3s 预算之内**」）⇒ ⇒ **B 侧验签执行两次（预算外 + 预算内）** ⇒ C 侧**只有 2 个 `HandlerInterceptor`**（user / admin 各一）⇒ ⇒ **C 侧验签执行一次（只在预算内）** ⇒ 🔴 **C 侧缺口**：验签**次数**面与 B 侧不同（响应面逐条相同：401 + 空 body）⇒ 已**显式登记为签字偏离**（配套报告 §六·6-6 · 2026-11-02 已更正「B 侧在预算外」的不准确表述）。<br>⚠️ **2026-11-02 补记**：本域 `application.yml` 曾**完全没有 `observability` 段** ⇒ 3s HTTP 预算与 2s gRPC 超时**都不存在**（缺省即 `Duration.ZERO` = 不限时）⇒ 已补 `http-timeout: 3s` ＋ `rpc-timeout: 2s`（B 侧逐字对齐）⇒ **预算本身现已存在**（配套报告 §五·5-⑩）。⚠️ **两把 key（`UserAuth.AccessSecret` / `AdminAuth.AccessSecret`）＋ 两段路由表是 L1**；⚠️ user 拦截器必须 `excludePathPatterns("/message/v1/admin/**")`，否则 admin token 会被 user key 先拒一遍 |
 
 ---

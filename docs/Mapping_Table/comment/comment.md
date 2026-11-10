@@ -42,7 +42,7 @@
 ## 0. 顶层模块对照
 
 | B RAG 目录 | C RAG-V1 目录 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `service/comment/comment-api/`（37 个 `.java`） | `service/comment/`（api 部分：`service/comment/src/main/java/com/rag/comment/{advice,config,controller,dto,interceptor,service}/**`） | 1:1 | **D1**：api 与 rpc 合并进 `comment-service` 单 app ⇒ C 的 api 侧不再独立进程 |
 | `service/comment/comment-rpc/`（42 个 `.java`） | `service/comment/`（rpc 部分：`service/comment/src/main/java/com/rag/comment/{wiring,client,config,domain/entity,domain/service,exception,grpc,mapper,messaging,metrics,service}/**`） | 1:1 | 同上 |
 | `service/comment/comment-common/`（4 个 `.java`） | `service/comment/src/main/java/com/rag/comment/contract/`（5 个 `.java`） | 1:1 | ⚠️ C 把错误契约放进 **contract 模块**（合并后 api/rpc 同进程共享，且与 proto 同模块）；命名从 `errmsg` → `contract` |
@@ -86,7 +86,7 @@
 ### 1.1 契约层（proto + 错误契约 + Kafka 载荷）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `comment-proto/…/comment.proto` | `proto/src/main/proto/comment.proto` | 1:1 | 7 RPC / 4 enum / 16 message，字段号逐条一致。表达层差异：**B↔C 的 diff 只差 `java_package` 一行**（B = `com.rag.comment.comment.proto` ⇒ C = `com.rag.proto.comment`，实测 diff 仅此一行）；两侧 `package` 均已归一为 `comment;`（已签字 `SD-2026-10-23-04`），option 块均只有 `java_package` + `java_multiple_files` |
 | `comment-proto/target/generated-sources/…`（生成物） | `proto/target/generated-sources/…`（生成物） | 1:1 | 生成物不迁移；Java 侧由 protoc 插件重新生成（实测产出 `CommentServiceGrpc` + 16 message 类） |
 | （B 无独立文件 —— `comment-api/…/api/client/CommentRpcClient.java` 直接用 devh `@GrpcClient`） | （C 无独立文件 —— 跨域 client `service/comment/src/main/java/com/rag/comment/client/ArticleRpcClient.java` 同款） | 1:1 | 生成物不迁移 |
@@ -113,7 +113,7 @@
 ### 1.2 api 侧：入口 / 路由 / 鉴权 / 响应 / DTO / 用例编排
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `comment-api/…/api/CommentApiApplication.java` + `comment-api/…/api/advice/CommentGlobalResponseAdvice.java` + `comment-api/…/api/advice/CommentGlobalExceptionHandler.java` | `service/comment/src/main/java/com/rag/comment/CommentServiceApplication.java` + `service/comment/src/main/java/com/rag/comment/advice/CommentApiResponseAdvice.java` + `service/comment/src/main/java/com/rag/comment/advice/CommentApiExceptionHandler.java` | 1:N | B 侧的 1 个 `SetOkHandler` + 1 个 `SetErrorHandler` 拆成 C 的 2 个 advice；类名去 `Global` 前缀（域内隔离） |
 | `comment-api/…/api/controller/CommentController.java` + `comment-api/…/api/config/WebMvcConfig.java` | `service/comment/src/main/java/com/rag/comment/controller/CommentController.java` + `service/comment/src/main/java/com/rag/comment/config/WebMvcConfig.java` | 1:N | 路由声明进 Controller 注解；前缀与拦截器注册进 `WebMvcConfig`。⚠️ 路径里的 `comment` 出现**两次**（B 侧原样，勿「顺手改好」） |
 | `comment-api/…/api/controller/CommentController.java`（7 个 `@PostMapping`） | `service/comment/src/main/java/com/rag/comment/controller/CommentController.java`（7 个 `@PostMapping`） | N:1 | 7 个 handler 无独立依赖边界 / 生命周期 / 契约 ⇒ 合 1 个 Controller |
@@ -150,7 +150,7 @@
 ### 1.3 rpc 侧：入口 / gRPC 实现 / 装配 / 配置
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `comment-rpc/…/rpc/CommentRpcApplication.java` | `service/comment/src/main/java/com/rag/comment/CommentServiceApplication.java` | 1:1 | ⚠️ B 侧的可观测面靠 `comment-rpc/src/main/resources/application.yml:339-362` 的 `management` 段收敛（`:354-356` 关掉 `management.metrics.enable.{jvm,process}` ⇒ 只暴露 `comment_*` 向量）⇒ C 侧走 actuator `/actuator/prometheus` 时**必须复刻同一组开关**，否则多出 `jvm_*` / `process_*` ⇒ **可观测面差异待拍板**；另 `CommentRpcApplication.java:91-100` 显式 `server.intercept(...)` 挂 gRPC 拦截器（devh starter 不自动挂）⇒ 该装配点**不可省** |
 | `comment-rpc/…/rpc/service/impl/CommentServiceGrpcImpl.java` | `service/comment/src/main/java/com/rag/comment/grpc/CommentGrpcService.java` | 1:1 | `@GrpcService` + `extends CommentServiceGrpc.CommentServiceImplBase` |
 | `comment-rpc/…/rpc/service/impl/PbCommentServiceAlias.java` | `service/comment/src/main/java/com/rag/comment/grpc/PbCommentServiceAlias.java` | 1:1 | **`pb.` 前缀兼容别名**：把同一实现再挂到 `/pb.CommentService/*`（B 侧 `PbCommentServiceAlias.java:13` 自记该别名的用途；C 目前是空壳，待填）。⚠️ 只解决**连通性**，不解决业务码（grpc-java 发不出越界 `grpc-status`） |
@@ -177,7 +177,7 @@
 ### 1.4 rpc 侧：领域服务 / 事务 / 缓存 / 指标 / 事实链路 / `cmd/fact-*`
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `comment-rpc/…/rpc/service/CommentDomainService.java`（7 个 public 方法） | `service/comment/src/main/java/com/rag/comment/domain/service/CommentDomainService.java` | N:1 | 7 个 logic 合 1 个 DomainService；**本类刻意不含 `@Transactional`**（B 侧 7 个 logic 无一开事务） |
 | `comment-rpc/…/rpc/service/CommentDomainService.java`（类内方法） | `service/comment/src/main/java/com/rag/comment/domain/service/CommentDomainService.java`（类内方法） | 1:1 | 跨域回落；⚠️ B 侧 `create` 逻辑出错时返回的是原始 `err` 而非 `fallbackErr`（当前结果等价，意图不显式） |
 | `comment-rpc/…/rpc/service/CommentTransactionalService.java` | `service/comment/src/main/java/com/rag/comment/domain/service/CommentTransactionalService.java` | 1:1 | 事务边界是独立 L3 关注点 ⇒ **保留独立类**（§5.4 修正：事务边界类不参与用例合并） |
@@ -213,7 +213,7 @@
 ### 1.5 rpc 侧：持久层（模型 / 表 / Mapper / DDL）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `comment-rpc/…/rpc/domain/SubjectEntity.java`（`@TableName("subject")`） | `service/comment/src/main/java/com/rag/comment/domain/entity/SubjectEntity.java` | 1:1 | 评论区主体表；⚠️ B 侧基线 DDL **不含** `report_record` |
 | `comment-rpc/…/rpc/domain/CommentIndexEntity.java` | `service/comment/src/main/java/com/rag/comment/domain/entity/CommentIndexEntity.java` | 1:1 | 评论索引表；主键**不自增**（值来自雪花算法，由 Kafka 消息携带落库） |
 | `comment-rpc/…/rpc/domain/CommentContentEntity.java` | `service/comment/src/main/java/com/rag/comment/domain/entity/CommentContentEntity.java` | 1:1 | 评论正文表 |
@@ -244,7 +244,7 @@
 > 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `comment-api/…/auth/CommentJwtAuthPaths.java` ＋ `comment-api/…/auth/CommentJwtSignatureVerifier.java` ＋ `comment-api/…/auth/CommentJwtVerificationResult.java` ＋ `comment-api/…/auth/GoStyleJwtAuthFilter.java` | `service/comment/src/main/java/com/rag/comment/interceptor/CommentJwtAuthInterceptor.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-USERAPI-009②` 的修法）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 1 个 `HandlerInterceptor`** ⇒ 🔴 **C 侧缺口**：要么补 1 个 `OncePerRequestFilter` 承载验签，要么显式登记为签字偏离。⚠️ **受保护路由表 ＋ public 前缀集合是 L1** |
 | `comment-rpc/…/service/CommentSpans.java` | `service/comment/src/main/java/com/rag/comment/metrics/CommentRpcMetrics.java` | 1:1 | B 侧把 span 名常量从指标类里**拆出** ⇒ C 侧并回 `CommentRpcMetrics`；⚠️ 指标**完整名**带 `comment_service_` 前缀，**不许补全** |
 
@@ -320,7 +320,7 @@
 > 本节只写 comment 域**与 `service/common`（C 列的 `common/` starter）** 的边界。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `service/common/…/response/Response.java` | `common/src/main/java/com/rag/common/contract/ApiResponse.java` | 1:1 | **L1**：客户端按 `{code,msg,data}` 解析 ⇒ 不得用 `ProblemDetail` 替换 |
 | `service/common/…/exception/BusinessException.java` | `common/src/main/java/com/rag/common/exception/BusinessException.java` | 1:1 | B 侧的 `CodeError{Code,Msg}` 与 `BusinessException(code,msg)` **形状同构** ⇒ 不自建异常类 |
 | `service/common/…/snowflake/Snowflake.java` + `spring/SnowflakeBean` | `common/src/main/java/com/rag/common/snowflake/Snowflake.java` + `common/src/main/java/com/rag/common/autoconfigure/SnowflakeAutoConfiguration.java` | 1:1 | epoch / 位段是业务契约（游标依赖 `>>22`） |

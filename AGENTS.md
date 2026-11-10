@@ -25,7 +25,7 @@
 | proto / `application.yml` | **10 / 10**（10 个 `.proto` 集中在**根级 `proto/` 模块**，pb 包名 `com.rag.proto.<域>`；内容与 B 侧逐字节一致，仅 `java_package` 属表达层） |
 | `AutoConfiguration.imports` | **2**（`common/` 14 个 auto-config ＋ `service/article/` **1 个域内 auto-config** · **与 B 侧同款** —— B 侧 article-rpc 亦有一份域内 `.imports`） |
 | `docs/File_Tree/` · 两方对照 | **13 份 + `_INDEX.md`** 文件树 · **13 份**域文档（C **645/645**、B **752/752** 覆盖 **100%**；**90 条落点缺口** 🔴11） |
-| 三档台账 | DRIFT **10 域全部建立** · Intentional_Deviations **49 条**（2026-11-09 机器复算）· Pitfalls **P-01~P-27**（`_cross/`）＋ 域内 **35** 条（users 18 · hot 13 · follow 4） |
+| 三档台账 | DRIFT **10 域全部建立** · Intentional_Deviations **49 条**（2026-11-09 机器复算）· Pitfalls **P-01~P-28**（`_cross/` 21 份）＋ 域内 **35** 条（users 18 · hot 13 · follow 4） |
 
 **已完成**：树结构、pom、proto、application.yml、断言清单（**A1–A17**）、两方对照、**GitHub 仓**、**工具链（Jackson 2 + Boot 3.5）**、**共享层 `common/`**、**10 个业务域的实现**。**当前读数（2026-11-11 · 合并 5 条域分支后复测）**：**串行全仓回归 BUILD SUCCESS · 16/16 模块 · 1615 例 · 0/0/0**（耗时 **11:40** · 隔离工作树 `_probe`）· 三道守门 **EXIT=0**（断言 **PASS 15 · FAIL 0 · N/A 2 · PENDING 0**，共 **17** 条）· JSON 键序探针 **22/22 BYTE-EQ**。**未完成**：各域台账里仍标 `NOT_VERIFIED` 的条目（⇒ §1.0c）。
 ✅ **决策时间线**：**2026-10-26 · D7/D10/D11**（proto 集中/模块打平/包压平 · `bootstrap`→`wiring` · `dto/` 拆子包）· **2026-11-01 · D13**（L2 以 RAG 为基准）· **2026-11-02 · D14**（工具链 = Jackson 2 + Boot 3.5）· **2026-11-02 · D16**（判定基准 = B 侧）· **2026-11-02 · D17**（users 不用 Flyway）· **2026-11-02 · D18**（**Lombok 允许 + 鼓励 · 展开注释强制**）· **2026-11-09 用户拍板 3 项**（① **Nacos namespace/group 全仓统一到 `public`/`DEFAULT_GROUP`** ⇒ 偏离面 9 域 → **1 域（users）** ② **JSON 响应键序「全用 jackson2」** ⇒ **不开字母序** ⇒ 新增守门 **A17** ＋ 运行时探针 `tools/difftest/jackson-key-order/` ③ **IDE 输出目录与 `target/` 隔开**（P-27 根治 · `tools/ide/isolate-ide-output-dir.sh`））⇒ 全文见 [`docs/决策记录.md`](docs/决策记录.md)。
@@ -234,7 +234,7 @@ B 侧 RAG 仓路径见 §1.0b（**只读**，不接受写入）。RAG-V1 不是�
 | **[`docs/Worktree.md`](docs/Worktree.md)** —— 并发工作树方法论 | 并行开工前 |
 | **[`docs/Lombok-使用规范.md`](docs/Lombok-使用规范.md)** —— **D18** 展开注释强制 | 写实体 / 用 Lombok 时 |
 
-**三档台账**（§五.3）：[`docs/DRIFT/`](docs/DRIFT/_INDEX.md) · [`docs/Pitfalls/`](docs/Pitfalls/_INDEX.md)（P-01~P-27 ＋ 域内 35 条）· [`docs/Intentional_Deviations/`](docs/Intentional_Deviations/_INDEX.md)
+**三档台账**（§五.3）：[`docs/DRIFT/`](docs/DRIFT/_INDEX.md) · [`docs/Pitfalls/`](docs/Pitfalls/_INDEX.md)（P-01~P-28 ＋ 域内 35 条）· [`docs/Intentional_Deviations/`](docs/Intentional_Deviations/_INDEX.md)
 **结构产物**：[`docs/File_Tree/`](docs/File_Tree/_INDEX.md) · [`docs/L3-降级清单.md`](docs/L3-降级清单.md) · [`docs/第二轮深挖-契约盘点.md`](docs/第二轮深挖-契约盘点.md)（G-1~G-4）
 
 ### 7.3 工具与孤儿

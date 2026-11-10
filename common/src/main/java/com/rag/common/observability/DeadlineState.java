@@ -116,8 +116,19 @@ public final class DeadlineState {
      * （绝对时刻 = 调用开始 ＋ {@code rpc-timeout}，与 B 侧同形）
      * ⇒ ⇒ 在途 SQL 拿得到 {@code setQueryTimeout} ⇒ ⇒ 预算到点 PG 收到 CancelRequest
      * ⇒ ⇒ 事务回滚 ⇒ ⇒ <b>在途写不再落库</b>（客户端取消 / 服务端预算到点，都是 0 行）。
-     * <br>⚠️ <b>只补了「入向」载体</b>：出向载体 {@code GoStyleRequestDeadline}
-     * （跨域 gRPC 调用的出向预算）<b>仍未绑</b> ⇒ ⇒ 爆炸半径更大 ⇒ ⇒ 另案。
+     * <br>⚠️ <b>【本段已于 2026-11-04 订正 —— 原写「只补了入向载体、出向
+     * {@code GoStyleRequestDeadline} 仍未绑 ⇒ 爆炸半径更大 ⇒ 另案」是<b>假断言</b>】</b>：
+     * <b>出向载体已绑</b> —— {@code ObservabilityAutoConfiguration.GrpcObservationInterceptor}
+     * 的 {@code withDeadline(...).onHalfClose()} 里<b>两个载体绑同一个绝对时刻</b>
+     * （{@code DeadlineState.bindAbsoluteNanos(absoluteDeadlineNanos)}
+     * ＋ {@code GoStyleRequestDeadline.bindAbsoluteNanos(absoluteDeadlineNanos)}）
+     * ⇒ ⇒ 与 B 侧 {@code RpcInterceptor.java:516-522} <b>同形</b>；
+     * 且<b>有效期限</b> = {@code min(服务端 rpc-timeout, 客户端 deadline 剩余)}
+     * ⇒ 客户端 deadline 也参与 ⇒ ⇒ 「另案」<b>已于 DRIFT-COMMON-V20 收口</b>
+     * （见 {@code docs/DRIFT/common/verification-common-2026-11-02.md}）。
+     * <br>⚠️ <b>订正缘由</b>：comment 域 lane 于 2026-11-11 指出本段与
+     * {@code ObservabilityAutoConfiguration.java:352} 的实际绑定<b>直接矛盾</b>
+     * ⇒ <b>源码里的假断言比台账陈旧更危险</b>（下一个人照着它读会得出错结论）⇒ 故就地改正。
      *
      * <p>对应 B 侧版 ctx 触发 cancel 后，handler ctx 立即 Done() 的语义。
      */

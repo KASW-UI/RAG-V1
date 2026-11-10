@@ -187,7 +187,7 @@ bash tools/difftest/run-parity.sh like    # 派发入口
 | target | 用途 | 为什么必须分开 |
 |---|---|---|
 | `9007199254740994` | 阶段 A 的 8 条用例 + E60 + 恢复轮 | 冻结锚的基准（`likeaction` ⇒ `like_count=3`；`likeaction_double_failure` ⇒ `4`） |
-| `9007199254740995` | **wire 读路径**（`wire_get_target_liker_list`） | `likeaction` 往 ZSet 里写的 score = **游标 ID**（`(now << 22) | …`）⇒ 读出的 timestamp = **墙钟毫秒** ⇒ 两侧的 likeaction 发生在**不同时刻** ⇒ 毫秒不同 ⇒ **wire 字节必然不同** ⇒ **与对拍无关的假红** ⇒ 用一个「只有种子成员」的专属 target ⇒ timestamp 恒为 413843 |
+| `9007199254740995` | **wire 读路径**（`wire_get_target_liker_list`） | `likeaction` 往 ZSet 里写的 score = **游标 ID**（`(now << 22) \| …`）⇒ 读出的 timestamp = **墙钟毫秒** ⇒ 两侧的 likeaction 发生在**不同时刻** ⇒ 毫秒不同 ⇒ **wire 字节必然不同** ⇒ **与对拍无关的假红** ⇒ 用一个「只有种子成员」的专属 target ⇒ timestamp 恒为 413843 |
 | `9007199254740996` | **wire 写路径**（`wire_like_action`） | 全新 target ⇒ `like_count` 恒为 1（确定性） |
 | `9007199254740997` | **并发轮** | 并发写主 target 会把冻结锚的计数打乱 |
 
@@ -296,7 +296,7 @@ AGENTS.md §3.3.3：新增的每个探针都必须配一个**能真正触发它*
 | # | 现象 | 根因 | 修法 |
 |---|---|---|---|
 | 1 | 🔴 **C 侧真 jar 起不来**：`NoClassDefFoundError: io/grpc/inprocess/InProcessChannelBuilder` | `service/like/pom.xml` 曾把 `grpc-inprocess` 写成 `test` scope ⇒ 运行时 classpath 缺 artifact | **主 lane 已修**（去掉 `<scope>test</scope>` · B 出处 = B 侧 `like-rpc/pom.xml:313-344`）⇒ 探针现在**直接 `java -jar` 起**；探针保留 `PropertiesLauncher + -Dloader.path` **兜底分支** ⇒ **命中即说明修法回退** |
-| 2 | 🔴 **wire 层「字节不一致」但两边看起来都对** | `likeaction` 写的 score 是**游标 ID**（`(now << 22) | …`）⇒ 读出的 timestamp = **墙钟毫秒** ⇒ 两侧差几十毫秒 | wire 读路径改用**专属 target**（只播 ZSet 一个键）⇒ timestamp 恒为 413843 |
+| 2 | 🔴 **wire 层「字节不一致」但两边看起来都对** | `likeaction` 写的 score 是**游标 ID**（`(now << 22) \| …`）⇒ 读出的 timestamp = **墙钟毫秒** ⇒ 两侧差几十毫秒 | wire 读路径改用**专属 target**（只播 ZSet 一个键）⇒ timestamp 恒为 413843 |
 | 3 | 🔴 **收尾报「端口仍有残留」** | 容器发布端口时是 **docker-proxy** 持有 ⇒ `docker rm -f` 之后 proxy 还会 linger 几秒 | 收尾**先删容器**、再**轮询**端口（≤20s）⇒ 不删就查 ⇒ **恒红的假信号** |
 | 4 | 🔴 **B 侧 `like-api` 找不到下游** | B 侧 `like-rpc` 注册组**硬编码 `DEFAULT_GROUP`**，而 `like-api` 的 yml **没有 `group:` 键** ⇒ 两者天然对上 ⇒ 探针**不能**改 | 探针按事实走：B 侧 like-rpc 注册进 DEFAULT_GROUP，`message-rpc` 的**客户端**查找走 E5B |
 | 5 | 🔴 **两侧 `likeaction` 的计数永远不同** | 两侧**共用一个 Redis** ⇒ B 侧写完计数变 3、C 侧再写变 4 | 两侧**各起一个 Redis 容器**（18218 / 18219）⇒ 物理隔离 |

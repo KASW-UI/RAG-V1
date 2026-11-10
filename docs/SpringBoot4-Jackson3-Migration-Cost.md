@@ -87,7 +87,7 @@
 
 | # | 阻塞项 | 证据 | 处理 | 人天 |
 |---|---|---|---|---:|
-| **B1** | ~~MinIO 传递 Jackson 2（compile）~~ ⇒ **✅ 已由隔离实验关闭** | [`MinIO-Jackson2-Isolation-Experiment.md`](MinIO-Jackson2-Isolation-Experiment.md)：真实 MinIO 服务端实测，变体 B（排除后）**8/8 绿**；对象读写全流程正常，`ObjectMapper` 不可加载 ⇒ **运行时零 Jackson 2 可达**（限「7 个已验证 API」范围；桶通知/表单直传/SSE-KMS/IAM 凭证仍需 Jackson 2） | **0.2~0.5**（仅剩 `<exclusion>` + 依赖树断言） |
+| **B1** | ~~MinIO 传递 Jackson 2（compile）~~ ⇒ **✅ 已由隔离实验关闭** | [`MinIO-Jackson2-Isolation-Experiment.md`](MinIO-Jackson2-Isolation-Experiment.md)：真实 MinIO 服务端实测，变体 B（排除后）**8/8 绿**；对象读写全流程正常，`ObjectMapper` 不可加载 ⇒ **运行时零 Jackson 2 可达**（限「7 个已验证 API」范围；桶通知/表单直传/SSE-KMS/IAM 凭证仍需 Jackson 2） | 仅剩 `<exclusion>` + 依赖树断言 | **0.2~0.5** |
 | **B2** | **JJWT `jjwt-jackson:0.13.0` 依赖 `com.fasterxml.jackson.core:jackson-databind`** | Maven Central `jjwt-jackson-0.13.0.pom` | 换 `jjwt-gson` / `jjwt-orgjson`，或自写 `io.jsonwebtoken.io.Serializer`（`tools.jackson.databind.ObjectMapper`） | 0.5~1.0 |
 | **B3** | **`FAIL_ON_TRAILING_TOKENS`：Jackson 2 默认 false → Jackson 3 默认 true** | RAG `docs/DRIFT/like/api.md`（DRIFT-LIKEAPI-014）+ `docs/Pitfalls/like/api.md` | 影响 **10 处独立 mapper** + 5 个 TypeHandler + `Wire.MAPPER` 的解析路径 | 0.5~1.0 |
 | **B4** | **coercion 语义不等价**：Jackson 3 只 LogicalType 级生效（类级无效）· `1e400` 溢出**不报错**给 `Infinity` | RAG `docs/DRIFT/like/api.md`（DRIFT-LIKEAPI-012）+ `docs/Pitfalls/like/api.md` | `CommentDeliveryValidator` / `LikeDeliveryValidator` 可能需**新增元素级解析器**（≠ 改包名） | 1.0~2.5 |

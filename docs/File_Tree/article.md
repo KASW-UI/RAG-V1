@@ -122,7 +122,6 @@
 │   │   │               ├── service/
 │   │   │               │   ├── ArticleApiService.java    # article 域的 API 层业务入口 —— 合并 B 侧 7 个 {@code *Service}。
 │   │   │               │   └── ArticleApiSupport.java    # API 层的公共支撑 —— 身份解析、作者昵称补全、proto → DTO 投影、文案查表。
-│   │   │               ├── web/
 │   │   │               ├── wiring/
 │   │   │               │   ├── ArticleSchemaGate.java    # 职责：启动期校验 article 域的五张表与不可变触发器确实存在 ——
 │   │   │               │   ├── MinioBucketBootstrap.java    # 职责：启动期幂等创建对象存储桶并设置公开读策略 —— 失败不阻止启动。

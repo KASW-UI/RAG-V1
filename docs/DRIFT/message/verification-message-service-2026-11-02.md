@@ -496,6 +496,8 @@
 > ⇒ ⚠️ **连带影响**：本条的前提是「C 侧存在 3s 预算」——
 > 而本轮新发现的 **5-⑩**（`observability` 段缺失）恰恰让这个前提**不成立** ⇒ **5-⑩ 修完后本条才真正成立**。
 > ⇒ 📌 **顺序依赖**：先补 `observability.http-timeout: 3s`（5-⑩）⇒ 本条才从「连预算都没有」升级为「预算内的验签次数少一次」。
+| # | 项 | 性质 | 依据 | 影响面 | 状态 |
+|---|---|---|---|---|---|
 | 6-7 | **Bean Validation 替换 `GoRequiredFieldException`**（D5） | **L3 降级** | 响应**形状**一致（**HTTP 200 + `{code:5001}`**）⇒ 仅**错误文本**不同（Go 是 `field "x" is not set` ⇒ C 是 Hibernate Validator 的文案） | 错误文本 | 🏷 已登记（D-01） |
 | 6-8 | **415 / 404 / 405 保留 Spring / 共享层的框架级裸响应** | **框架差异** | B 侧 go-zero 没有媒体类型协商（`withJsonBody` 只判 Content-Type **包含** `application/json`）⇒ 两侧都是**拒绝**、都不产生业务副作用 | 仅在客户端 Content-Type 写错时 | 🏷 已登记 |
 | 6-9 | **D2：域内 gRPC 往返被消掉** —— B 侧 `message-api` → `message-rpc` 的那一跳 gRPC **不再存在**（api 直连领域层，`MessageRpcClient` 删除） | **传输层删除**（D2 决策锁） | D2 决策（api 直连领域层 · gRPC 层薄转发）⇒ 协议 §8.3 第 ⑤ 项「原有域内 RPC 往返是否按既定设计调整」的登记项 | **调用栈少一跳**；错误映射落点从「网络边界」移到「进程内」⇒ **业务码与响应形状逐条不变**（错误码仍走同一套 `ErrCodes` + 同一套 gRPC fallback 表） | 🏷 已登记 |

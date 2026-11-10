@@ -37,7 +37,7 @@
 ## 0. 顶层模块对照
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `like-api/` | `service/like/src/main/java/com/rag/like/`（`com.rag.like.{controller,advice,interceptor,dto,config,metrics,service}`） | 1:N | **D1 + 包压平**：api 与 rpc 合并为单 app，并按技术角色压平为单层包树（HTTP 边界包 `controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service`） |
 | `like-rpc/` | `service/like/src/main/java/com/rag/like/`（`com.rag.like.{grpc,service,domain/entity,domain/service,messaging,mapper,config,client,wiring,metrics,exception}`） | 1:N | 同上；**`rpc.*` 包名随包压平取消**（服务端能力包 `grpc` / `service` / `domain` / `messaging` / `mapper` / `config` / `client` / `wiring` / `metrics` / `exception`） |
 | `like-rpc/src/main/java/com/rag/like/like/rpc/mq/` | `service/like/src/main/java/com/rag/like/domain/service + service/like/src/main/java/com/rag/like/messaging + service/like/src/main/java/com/rag/like/service` + `service/like/src/main/java/com/rag/like/wiring` | 1:N | 进程 P3 被拆散到 `service/`（业务）与 `wiring/`（装配）；**消费入口与发件箱中继无落点 ⇒ 见 §1.4 的 GAP-1 / GAP-2** |
@@ -90,7 +90,7 @@
 ### 1.1 契约（域内 `contract/` 包 + 根级 `proto/` 模块）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `like-common/src/main/java/com/rag/like/like/common/errmsg/CodeError.java` | `service/like/src/main/java/com/rag/like/contract/CodeError.java` | 1:1 | 根包由 `com.rag.like.like.common.errmsg` → `com.rag.like.contract`；`CodeError{Code,Msg}` 字段逐字保留 |
 | `like-common/.../errmsg/LikeErrorCode.java` | `service/users/common/src/main/java/com/rag/users/common/ErrCodes.java` | 1:1 | **改名**；⚠️ 错误码空间**逐域隔离**，不可跨域统一（RAG-V1 AGENTS §1.1b） |
 | `like-common/.../errmsg/LikeErrorMessages.java` | `service/users/common/src/main/java/com/rag/users/common/ErrMsg.java` | 1:1 | **改名**；`GetErrMsg` 查不到时回退 `codeMsg[Error]`（"FAIL"），**不是空串** |
@@ -103,7 +103,7 @@
 ### 1.2 API 侧（HTTP 边界）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `like-api/src/main/java/com/rag/like/like/api/LikeApiApplication.java` | `service/like/src/main/java/com/rag/like/LikeServiceApplication.java` | 1:N | **D1**：api 入口与 rpc 入口合并为 1 个 `@SpringBootApplication`；`DisableNativeRestTimeout` 由 Spring 侧无对应默认超时 ⇒ 语义自动满足 |
 | `like-api/.../advice/GlobalResponseAdvice.java` | `service/like/src/main/java/com/rag/like/advice/LikeApiResponseAdvice.java` | 1:N | **改名 + 逐域隔离**；只包一层（`body instanceof ApiResponse` 放行） |
 | `like-api/.../advice/GlobalExceptionHandler.java` | `service/like/src/main/java/com/rag/like/advice/LikeApiExceptionHandler.java` | 1:N | **改名**；非 `CodeError` 异常 → 5001 兜底；HTTP 状态码恒 200 是 L1 |
@@ -124,7 +124,7 @@
 ### 1.3 RPC 侧 —— 领域层
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `like-rpc/src/main/java/com/rag/like/like/rpc/LikeRpcApplication.java` | `service/like/src/main/java/com/rag/like/LikeServiceApplication.java` | 1:N | **D1**：与 api 入口合并；⚠️ `DisableNativeRpcTimeout` 只在 `RpcServerInterceptorFactory` **真的被注册**时才成立（C 侧由 common starter 的 auto-config 承担） |
 | `like-rpc/.../config/LikeRpcProperties.java` | `service/like/src/main/java/com/rag/like/config/LikeRpcProperties.java` | 1:1 | ⚠️ **C 的 `application.yml` 当前没有 `like:` 段** ⇒ `cache-ttl` / `list-ttl` / kafka topic / `fact.dispatch-enabled` / `authority.*` 等键待补（见 §3） |
 | `like-rpc/.../service/impl/LikeServiceGrpcImpl.java` | `service/like/src/main/java/com/rag/like/grpc/LikeGrpcService.java` | 1:1 | `@GrpcService`；6 个方法签名与 proto 逐条一致 |
@@ -151,7 +151,7 @@
 > ⚠️ **本节是 like 域最容易漏的一段** —— B 侧 `service/like/` 是 **2 个进程**（`like-api` / `like-rpc`），把 fact-dispatch / fact-authority 两个独立 cmd 合并成域内组件（`mq/` 包）；RAG-V1 **继续合并**（D1）但把落点从 `mq/` 挪到 `wiring`。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `like-rpc/src/main/java/com/rag/like/like/rpc/mq/LikeFactDispatchScheduler.java` | `service/like/src/main/java/com/rag/like/wiring/LikeFactDispatchScheduler.java` | 1:1 | ★ **独立进程 → 域内组件**（D1 不设例外，依据 `RAG/docs/FileTree/like/rpc.md:84-97`）。⚠️ **落点变了**：B 在 `mq/` 包，C 在 `wiring/` 包 |
 | `like-rpc/src/main/java/com/rag/like/like/rpc/mq/LikeAuthorityEndpointConfig.java` | `service/like/src/main/java/com/rag/like/wiring/LikeAuthorityEndpointConfig.java` | 1:1 | ★ **独立进程 → 域内组件**；落点同上。⚠️ B 侧该类**仍是骨架占位**（暴露形态未实现，监听地址与端口 UNKNOWN；「独立进程 vs 同进程独立端口」待拍板）⇒ C 侧并入主 app 后端口归属仍是待拍板项（RAG-V1 决策记录 **P6-b**） |
 | `like-rpc/src/main/java/com/rag/like/like/rpc/bootstrap/LikeFactProcessLogging.java` | `service/like/src/main/java/com/rag/like/wiring/LikeFactProcessLogging.java` | 1:1 | B 侧该类**是骨架占位**（计划建 3 份 `ProcessLogger`：`like-rpc` / `rtw-like-fact-dispatch` / `rtw-like-fact-authority`）⇒ C 侧合并后必须保住这几份独立 logger 名，**不得用 SLF4J 全局 MDC**（会跨线程插值） |
@@ -204,7 +204,7 @@
 > 补齐后 `tools/check-mapping-coverage.py` 的 **B 列双向对账归零**。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `like-api/…/auth/LikeJwtAuthFilter.java` ＋ `like-api/…/auth/LikeJwtSignatureVerifier.java` | `service/like/src/main/java/com/rag/like/interceptor/LikeJwtAuthInterceptor.java` | N:1 | ⚠️ RAG 把 JWT **验签**拆成两段（`DRIFT-LIKEAPI-009②`）：验签在 **Servlet Filter**（3s 预算**之外**）＋ 黑名单/响应在 **HandlerInterceptor**（预算**之内**）⇒ C 侧**只有 1 个 `HandlerInterceptor`** ⇒ 🔴 **C 侧缺口**：要么补 1 个 `OncePerRequestFilter` 承载验签，要么显式登记为签字偏离。⚠️ like 域只有 2 类（**无 `*JwtAuthPaths` / `*JwtVerificationResult`**）⇒ 路由判据内联在 Filter 里 |
 | `like-rpc/…/service/LikeSpans.java` | `service/like/src/main/java/com/rag/like/metrics/LikeRpcMetrics.java` | 1:1 | B 侧把 span 名常量从指标类里**拆出** ⇒ C 侧并回 `LikeRpcMetrics`；⚠️ 指标**完整名**带 `like_service_` 前缀，**不许补全** |
 
@@ -222,7 +222,7 @@
 | 迁移脚本 | `resources/db/migration/V1..V6`（6 个） | **空** | ⚠️ C 侧需补：5 张表的 DDL + `NOT VALID CHECK` + 不可变触发器 |
 | DDL 脚本写法约束 | — | — | ⚠️ RAG-V1 AGENTS R6：`db/*.sql` **只能单条语句**（`ScriptUtils` 按 `;` 切分，**不支持 `$$`**）；`timestamptz` 转换须用 `SET TIME ZONE 'UTC'; … RESET TIME ZONE;` 包裹 |
 | 事务边界 | `service/LikeMessageIngestService`（**inbox + record + fact 单事务提交**） | `service/like/src/main/java/com/rag/like/service/LikeMessageIngestService.java` + `service/like/src/main/java/com/rag/like/service/LikeActionScript.java` | ⚠️ 事务边界是独立 L3 关注点 ⇒ **独立成类**，不并进用例类 |
-| 行锁 / 幂等 | `FOR UPDATE SKIP LOCKED` + `NOT EXISTS predecessor`（B 侧迁移脚本与 `LikeFactDispatchService`）；`uk_user_target`；`uk_event_key`；`uk_like_fact_stream` | 同语义（MP + 手写 SQL） | 待实现 | ⚠️ 幂等键 `last_operation_id` 单调性判定依赖 Kafka 消息 `msg_id`（十进制雪花字符串） |
+| 行锁 / 幂等 | `FOR UPDATE SKIP LOCKED` + `NOT EXISTS predecessor`（B 侧迁移脚本与 `LikeFactDispatchService`）；`uk_user_target`；`uk_event_key`；`uk_like_fact_stream` | 同语义（MP + 手写 SQL） | 待实现；⚠️ 幂等键 `last_operation_id` 单调性判定依赖 Kafka 消息 `msg_id`（十进制雪花字符串） |
 | 游标编码 | `service/LikeCursorIdGenerator.java`（域内自实现）：`(unixMilli << 22) \| (nodeId << 12) \| seq`，读侧 `score >> 22` 取**裸 Unix 毫秒** | `service/like/src/main/java/com/rag/like/service/LikeCursorIdGenerator.java` | ⚠️ **禁止复用 `common/src/main/java/com/rag/common/snowflake/Snowflake.java`**（减过 epoch，还原差 15 年） |
 | Redis（无 ORM 对应） | Spring Data Redis（Lettuce）+ `RedisCallback` 直发 | 同 B | ⚠️ 带 min/max/limit 的 ZSet 倒序取分值**不是标准 `ZSetOperations` 方法** ⇒ B 侧用 `RedisCallback` 直发 |
 | 连接池 | `hikari.maximum-pool-size: 100 / minimum-idle: 10` | `service/like/src/main/resources/application.yml` **当前未配 hikari** | ⚠️ 合并后 P3 的 dispatch 事务**持有行锁跨网络 IO**，与 gRPC 请求共池 ⇒ 故障域耦合 |
@@ -305,7 +305,7 @@
 > like 域的 **communityfact 事件协议本体**（`Event` / `TechnicalReceipt` / `SubjectRef` / `AuthorityFact` / `Dispatcher` / `AuthorityHandler` / `ProcessLogger`）归 `common.md`，本表**只写 like 侧的接线**。
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `service/common/.../communityfact/Wire.java` | `common/src/main/java/com/rag/common/communityfact/`（`Wire` / `Event` / `TechnicalReceipt` / `SubjectRef` / `AuthorityFact` / `CanonicalHash` / `DeliveryStatus`） | 1:N | like 域**只接线不重写**；`likeFact` payload（19 字段）是 like 特有 ⇒ 属域内 `contract/` 包 |
 | `service/common/.../communityfact/Dispatcher.java` | `common/src/main/java/com/rag/common/communityfact/Dispatcher.java` | 1:1 | **like 侧接线点** = `wiring/LikeFactDispatchScheduler.java` |
 | `service/common/.../communityfact/ProcessLogger.java` | `common/src/main/java/com/rag/common/communityfact/ProcessLogger.java` | 1:1 | **like 侧接线点** = `wiring/LikeFactProcessLogging.java`（4 个进程级 logger 身份） |

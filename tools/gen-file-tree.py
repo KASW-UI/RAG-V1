@@ -20,9 +20,13 @@
 
 脚本幂等：每次运行先清掉不再产出的陈旧 `.md` 与空目录，再重新生成。
 """
-import os, pathlib, re, shutil
+import os, pathlib, re, shutil, subprocess
 
-ROOT = pathlib.Path("/Users/pr/Documents/GitHub/RAG-V1")
+# ⚠️ ROOT 必须**跟着脚本走**（2026-11-11 修 · `global` 收口域）——
+#    此前**硬编码主仓绝对路径** ⇒ 在域工作树里跑本脚本 ⇒ 验的是**主仓 main 分支**，
+#    域的改动根本没被验到 ⇒ **假绿**（favorite 域实测撞出）。
+#    样板：tools/difftest/check-docs-vs-tree.py · tools/difftest/check-arch-invariants.py
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT  = ROOT / "docs/File_Tree"
 
 # ⚠️ **D16（2026-11-02）**：B 侧 RAG 仓 = **唯一真理源** ⇒ 这里的「B 侧出处」是
@@ -139,6 +143,35 @@ def read_first_note(path):
             return s
     return None
 
+def _tracked_dirs():
+    """**含至少一个版本控制文件的目录**集合（相对 ROOT 的路径前缀）。
+
+    ⚠️ **为什么需要它（2026-11-11 · `global` 收口域 · hot 域上报）** ——
+    本脚本扫的是**文件系统**，而 **git 不跟踪空目录** ⇒ ⇒ 磁盘上残留的空壳目录
+    （例：`service/article/src/main/java/com/rag/article/web/` —— D-10 把类上收共享层后
+    只剩一个 `.DS_Store`）**根本不在仓里** ⇒ ⇒ 却会被渲进 `docs/File_Tree/article.md`
+    ⇒ ⇒ **fresh clone 里那一行根本不存在** ⇒ ⇒ **文件树不可复现**。
+
+    ⇒ 判据沿用本脚本已有的原则（见 `walk()` 里的注释）：
+      「**判据依据 = 它不在版本控制里 ⇒ 不是源码 ⇒ 不属于源码树**」
+      —— 只不过这次把判据从**文件名黑名单**升级成**「有没有版本控制文件」的白名单**。
+    """
+    out = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"],
+                         capture_output=True).stdout.decode("utf-8", "replace")
+    dirs = set()
+    for f in out.split("\0"):
+        if not f:
+            continue
+        p = pathlib.PurePosixPath(f)
+        for parent in p.parents:
+            if str(parent) not in (".", "/"):
+                dirs.add(str(parent))
+    return dirs
+
+
+TRACKED_DIRS = _tracked_dirs()
+
+
 def tree_of(base, pkg_root):
     """生成带职责注释的目录树。"""
     lines = []
@@ -162,6 +195,25 @@ def tree_of(base, pkg_root):
         dirs  = [e for e in entries if e.is_dir()]
         files = [e for e in entries if e.is_file()]
         items = dirs + files
+        # ⚠️ **空壳目录不进文件树**（2026-11-11）—— git 不跟踪空目录 ⇒
+        #    磁盘上残留的空目录在 fresh clone 里不存在 ⇒ 渲进去 = 文件树不可复现。
+        #    判据 = 该目录下**没有任何版本控制文件**（`TRACKED_DIRS` 是预计算的）。
+        #
+        # 🔴 **必须在这里（建 items 时）就剔掉，不能在渲染循环里 `continue`** ——
+        #    否则被剔掉的目录**仍然占着 items 的位置** ⇒ 它的**前一个兄弟**会拿到
+        #    `├──`（可它其实是最后一个渲染项）⇒ **树形标记与实际渲染结果不一致**。
+        #    ⇒ 实测症状（2026-11-11 · 提交态复核时暴露）：主仓 `proto/src/` 下残留
+        #    空壳 `test/` ⇒ 生成出 `├── main/`（应为 `└── main/`）⇒ **该文件树只在
+        #    本机可复现、fresh clone 里重生成必变** ⇒ ⇒ `check-docs-vs-tree.py` 的
+        #    **幂等校验**在隔离工作树里红 ⇒ **提交态与工作区态不一致**。
+        #    ⇒ 教训：**「跳过一项」必须同时把它从「计数」里去掉**，否则标记算错。
+        def _skip_dir(e):
+            try:
+                rel = str(e.relative_to(ROOT))
+            except ValueError:
+                return False
+            return rel not in TRACKED_DIRS
+        items = [e for e in items if not (e.is_dir() and _skip_dir(e))]
         for i, e in enumerate(items):
             last = (i == len(items) - 1)
             conn = "└── " if last else "├── "

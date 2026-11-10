@@ -105,8 +105,32 @@ class DeadlineBudgetPersistencePgTest {
         beanFactory.registerSingleton("observabilityProperties", properties);
         propertiesProvider = beanFactory.getBeanProvider(ObservabilityProperties.class);
 
-        // ② 连接池 + BPP（收紧 connectionTimeout + 包一层翻译）
+        // ② 连接池 + BPP（收紧 connectionTimeout + 包一层翻译）+ ③ 真 MyBatis + 建表
+        //    ⇒ 抽成可重入方法（**容器 restart 后必须整体重建**，见该方法 javadoc）
+        rebuildAgainstLiveContainer();
+    }
+
+    /**
+     * **对着「当前活着的容器」重建整条链路**（连接池 → BPP 装饰 → SqlSessionFactory → 建表）。
+     *
+     * <p>⚠️ <b>为什么必须可重入</b>（2026-11-11 修 · `global` 收口域 · article 域上报）——
+     * 本类的 {@code connectionAcquisitionTimeoutBecomesDeadlineExceeded} 用例会
+     * <b>{@code PG.stop()}</b> 把容器停掉、再在 {@code finally} 里 {@code PG.start()} 起来。
+     * <ul>
+     *   <li>容器 <b>stop/start</b> ⇒ <b>映射端口可能变</b> ⇒ ⇒ 静态缓存的 {@code jdbcUrl}
+     *       <b>指向旧端口</b> ⇒ ⇒ 池里的连接全是废的；</li>
+     *   <li>容器 <b>start</b> ⇒ 是<b>全新的库</b> ⇒ ⇒ {@code probe_row} 表<b>不存在</b>。</li>
+     * </ul>
+     * ⇒ ⇒ 若不整体重建 ⇒ ⇒ <b>后续用例</b>（同类内顺序在后）拿到的池/表全是坏的
+     * ⇒ ⇒ 症状 = 「<b>单跑绿 / 全量跑红</b>」（与被测对象无关的**跨用例污染**）。
+     */
+    private static void rebuildAgainstLiveContainer() throws Exception {
+        // ⚠️ 必须在容器**停之前**取（Testcontainers：停机后取 mapped port 会抛 IllegalState）。
         jdbcUrl = PG.getJdbcUrl();
+        if (hikari != null) {
+            hikari.close();
+            hikari = null;
+        }
         hikari = new HikariDataSource();
         hikari.setJdbcUrl(jdbcUrl);
         hikari.setUsername(PG.getUsername());
@@ -118,7 +142,7 @@ class DeadlineBudgetPersistencePgTest {
                 .postProcessAfterInitialization(hikari, "dataSource");
         effectiveDataSource = (DataSource) processed;
 
-        // ③ 真 MyBatis：两个拦截器 + 被装饰的工厂
+        // 真 MyBatis：两个拦截器 + 被装饰的工厂
         factory = buildFactory(effectiveDataSource);
 
         try (Connection connection = effectiveDataSource.getConnection();
@@ -244,6 +268,10 @@ class DeadlineBudgetPersistencePgTest {
                 deadPool.close();
             }
             PG.start();
+            // ⚠️ **容器 restart 后必须整体重建**（2026-11-11 修 · article 域上报）——
+            //    start 之后映射端口可能变 ⇒ 静态缓存的 jdbcUrl 失效；且库里是**新库** ⇒ 表没了。
+            //    ⇒ 不重建 ⇒ 后续用例拿到的池/表全是坏的 ⇒ 「单跑绿 / 全量跑红」。
+            rebuildAgainstLiveContainer();
         }
     }
 

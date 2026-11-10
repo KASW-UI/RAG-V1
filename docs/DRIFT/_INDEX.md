@@ -101,6 +101,33 @@ docs/DRIFT/
 
 ---
 
+---
+
+## ✅ 2026-11-11 · 公共面收口轮（`global` 收口域 · 10 个域 lane 交接的公共面条目）
+
+> **触发**：用户指令「这几个会话都说只剩公共面，你把公共面闭合」⇒ ⇒ **各域 lane 的会话均已停摆**（连接错误 / Token 上限 / 超时）⇒ ⇒ **无法向它们发消息** ⇒ ⇒ 全部由本会话直接改。
+> ⇒ ⇒ **交接单来源**：逐会话读出**最后一条 assistant 消息**（`~/.minimax/v2/sessions/**/messages.jsonl`）⇒ 命中「公共面 / 归 owner / 未动 / 共享层 / 收口域」等关键词。
+
+| 交接方 | 交接条目 | 落点 | 状态 |
+|---|---|---|---|
+| **follow** | `tools/README.md`（**共享**工具总表）的同类既有缺陷，**未动** —— 归 owner | `tools/README.md` | ✅ 已修（随 GFM 批量修复） |
+| **comment** | `common/…/observability/DeadlineState.java:119-120` 的**源码级假断言**（与 `ObservabilityAutoConfiguration.java:352` 的实际绑定**直接矛盾**）＋ common 台账 2 处现时陈述 | 共享层源码 ＋ common 台账 | ✅ 已订正（**源码里的假断言比台账陈旧更危险**） |
+| **favorite** | `check-mapping-coverage.py:32` ＋ `gen-file-tree.py:25` 的 **ROOT 硬编码主仓** ⇒ 工作树里跑 ⇒ **验的是主仓** ⇒ 假绿 | 两个共享脚本 | ✅ 已改（ROOT 跟着脚本走）＋ **双侧实证** |
+| **favorite** | common 台账 **F-7 行与 §11.2 自相矛盾** | common 台账 F 表 | ✅ 已订正（改为「部分闭合」＋ 写清已验/未验） |
+| **favorite** | `DRIFT-COMMON-V18`（唯一 ⚪ 真缺口） | `common/src/test/…/OutboundDeadlineExpiredBudgetTest.java` | 🟠 **部分闭合**（缺口④ 已闭合 · 3 例 · 变异红/还原绿；缺口③ **仍无网**） |
+| **hot** | `docs/File_Tree/article.md` 的**陈旧目录行** ＋ `check-docs-vs-tree.py` **查不到目录层** | 生成器 ＋ docs 守门 | ✅ 已修（生成器跳过空壳目录 ＋ 守门新增 **⑦ 目录层校验**，单独验证有牙齿） |
+| **article** | `common/` 两处**测试隔离缺陷**（`jdbcUrl` 缓存 ＋ static worker 池） | 两个测试类 | ✅ 已修（消除顺序依赖）⚠️ **本机未复现**（改前改后都 258 例 0/0/0）⇒ **如实标注「未复现」** |
+| **like / task / admin / message / user** | **无**公共面交接 | — | — |
+
+### 🔴 本会话自查发现（不在任何域的交接单里）
+
+- **GFM 表格形状缺陷 99 处 / 26 份** ⇒ 整张表在 GitHub 上**塌成段落** ⇒ ⇒ **新增守门 A17 之外的第 4 个文档守门** `tools/difftest/check-gfm-tables.py`（`--self-test` **8/8**）＋ 修复器 `tools/difftest/fix-gfm-tables.py` ⇒ ⇒ 复扫 **0 处** ⇒ **表格数 +60 张** ⇒ **实义字符零丢失**（逐文件 `pandoc -f gfm -t plain` 渲染后**字符级比对**）⇒ ⇒ 新增 ~1400 字**全部来自「原本被 GFM 丢弃的格」被找回** ⇒ 详见 **DRIFT-COMMON-V28** ＋ **`docs/Pitfalls/_cross/P-28-*.md`**。
+- **`docs/Mapping_Table/_INDEX.md:22` 的 C 侧文件数陈旧**（写 **624** ⇒ 实测 **645**）⇒ 本轮**未改**（该数由 `sync-mapping-index.py` 统一刷 ⇒ 属另一条工作线）⇒ **登记在此待收**。
+- 🔴 **「提交态复核」暴露的生成器缺陷（2026-11-11 · 收尾时）** —— 本轮为 hot 域交接引入的「**跳过空壳目录**」判据，**实现方式错了**：在渲染循环里用 `continue` 跳过 ⇒ **被跳过的目录仍然占着 `items` 的位置** ⇒ 它的**前一个兄弟**拿到 `├──`（可它其实是最后一个渲染项）⇒ **树形标记与实际渲染结果不一致**。
+  ⇒ **症状**：`proto/src/` 下残留空壳 `test/` ⇒ 生成出 `├── main/`（应为 `└── main/`）⇒ **该文件树只在本机可复现、fresh clone 里重生成必变** ⇒ ⇒ `check-docs-vs-tree.py` 的**幂等校验在隔离工作树里红** ⇒ ⇒ **工作区态绿 / 提交态红**（若只看工作区就读不出来）。
+  ⇒ ✅ **已修**（把过滤**前移到建 `items` 时** ⇒ 被跳过的项**同时从计数里消失**）⇒ 影响面 = **1 份文件树**（`docs/File_Tree/proto.md`）⇒ 其余 12 份逐字节不变。
+  ⇒ ⇒ **元教训**：**「跳过一项」必须同时把它从「计数」里去掉**，否则标记算错；⇒ 且**文件树类产物必须按「提交态 / fresh clone」复核**，不能只在当前工作区验。
+
 ## 纪律
 
 1. **开工前必读**本域台账 —— 否则会重复已修项、误把签字偏离当新漂移「顺手修回」。

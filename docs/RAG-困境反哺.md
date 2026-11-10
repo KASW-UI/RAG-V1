@@ -63,6 +63,8 @@
 | 配置属性前缀写错 | 落到**不存在的** `@ConfigurationProperties` ⇒ Spring Boot 对未知属性**静默接受** | 同上 |
 | **gRPC 拦截器没挂上 server** | `hot-rpc` 缺 `GrpcServerConfigurer` ⇒ **无 span / 无 deadline 传播 / SQL 不注入 queryTimeout**；`@Import` 只保证 Bean 存在，grpc starter 3.1.0 **从不自动注册**用户 `ServerInterceptor` | `DRIFT/hot/rpc.md` 第十二轮；`DRIFT/_cross/open-items.md:18` |
 
+| 项 | 内容 |
+|---|---|
 | **RAG-V1 处置** | ✅ AGENTS.md §1.3 已覆盖前四类。<br>⇒ **补第五类**：RAG-V1 的 `common/` 用 `AutoConfiguration.imports`，**启动期必须有一条断言「拦截器真的进了 server 的 intercept 链」**的测试（不是「Bean 存在」）。<br>⇒ **D3 的连带风险**：`@AutoConfiguration` 与 `@Import` 不能并存（AGENTS.md §二 已记）—— RAG 的教训是**两者都存在时，`@Import` 那份按 user config 更早求值**，会改掉 `@ConditionalOnMissingBean` 语义。 |
 
 ### F-04 🔴 Flyway 账本撞号 —— **当前态（2026-11-02 核对）：本仓已改用 Flyway ⇒ 该坑重新生效**
@@ -88,6 +90,8 @@
 | 4 | 布尔字段叫 `isRead` | **MP lambda 与手写 OGNL 是两套解析规则**：`E::isRead` 按字段名，`#{isRead}` 按 JavaBeans 属性名 ⇒ 改字段名会**同时打挂 5 条既有测试** | `fix-round-lessons.md:30-36` |
 | 5 | （**B 侧已无 mapper XML** ⇒ 0 个 `.xml`） | `<where>` 在已有 `WHERE` 的基础 SQL 上会生成**两个 `WHERE`** ⇒ PG 语法错；且被更早的 typo 挡在后面 ⇒ **修掉外层才露出内层，一轮只能走一层** ⇒ **B 侧亦无此写法 ⇒ 本仓不实现** | `fix-round-lessons.md:11-13` |
 
+| 项 | 内容 |
+|---|---|
 | **RAG-V1 处置** | ⇒ **新增一张「B 侧 MP 写法 → 本仓 MP 写法」对照表**（§二·R3），**作为填实现的强制参考**，而不是让 10 个域各自踩一遍。<br>⇒ §六 检查清单加一条：「**写路径用哪种形态？判据是实体形态，不是习惯**」 |
 
 ### F-06 🔴 守门脚本的**排除清单是架构假设** ⇒ 假阳性（与假绿互为镜像）

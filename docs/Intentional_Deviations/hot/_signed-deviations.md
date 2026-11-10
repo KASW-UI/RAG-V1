@@ -219,8 +219,8 @@ C 侧上收共享层后**拆成两处**：
 | | **B 侧** | **RAG-V1（C）· 改前** | **RAG-V1（C）· 改后（2026-11-09）** |
 |---|---|---|---|
 | `namespace` | `public` | `${NACOS_NAMESPACE:sea-rtw}` | `${NACOS_NAMESPACE:public}` ✅ **= B 侧逐字** |
-| `group` | `DEFAULT_GROUP` | `${NACOS_GROUP:DEFAULT_GROUP}`（**同值**） |
-| 服务注册名 | `hot-rpc` | `hot-rpc`（**逐字相同**） |
+| `group` | `DEFAULT_GROUP` | `${NACOS_GROUP:DEFAULT_GROUP}`（**同值**） | `${NACOS_GROUP:DEFAULT_GROUP}` ✅ **= B 侧逐字** |
+| 服务注册名 | `hot-rpc` | `hot-rpc`（**逐字相同**） | `hot-rpc` ✅ **= B 侧逐字** |
 
 ### 为什么「不是行为漂移」（B 侧那两个值**不承载行为**）
 

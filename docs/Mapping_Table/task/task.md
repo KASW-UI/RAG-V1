@@ -37,7 +37,7 @@
 ## 0. 顶层模块对照
 
 | B (RAG，判定基准) | C (RAG-V1, Spring 目标) | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `service/task/task-api/` | `service/task/`（`service/task/src/main/java/com/rag/task/advice + service/task/src/main/java/com/rag/task/config + service/task/src/main/java/com/rag/task/controller + service/task/src/main/java/com/rag/task/dto + service/task/src/main/java/com/rag/task/service` 子树） | 1:N | C 把 api 侧并进单 app；B 侧的 `api/{advice,client,config,controller,dto,service}` 六个角色包被 C 的 `@ConfigurationProperties` / `@RestController` / `@Service` / 构造注入取代（`client/` 因 D2 域内直连而消失） |
 | `service/task/task-rpc/` | `service/task/`（`service/task/src/main/java/com/rag/task/wiring + service/task/src/main/java/com/rag/task/config + service/task/src/main/java/com/rag/task/domain/entity + service/task/src/main/java/com/rag/task/domain/service + service/task/src/main/java/com/rag/task/grpc + service/task/src/main/java/com/rag/task/mapper + service/task/src/main/java/com/rag/task/messaging + service/task/src/main/java/com/rag/task/service` 子树） | 1:N | 同上；B 侧 `rpc/{bootstrap,config,domain,mapper,mq,service}` 六个角色包收敛为 C 的 `rpc/{config,domain,mapper,service,wiring,messaging}` |
 | `task-api/src/main/resources/application.yml` | `service/task/src/main/resources/application.yml` | N:1 | api + rpc 两个 yml 合成 1 份；**B 侧已是 Spring 标准键**（`server.port` / `grpc.server.port` / `spring.datasource` / `task.*`），C 侧合并进同一份并改挂 `spring.cloud.nacos.discovery` |
@@ -83,7 +83,7 @@
 ### 1.1 api 侧（`advice + config + controller + dto + service`）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `task-api/.../TaskApiApplication.java` | `service/task/src/main/java/com/rag/task/TaskServiceApplication.java` | 1:N | C 把 api 的 main 与 rpc 的 main **合并成唯一入口**（D1）；`@SpringBootApplication` + `@EnableDiscoveryClient`；**C 的这一个类同时承载 HTTP 端口与 gRPC 端口** |
 | `task-api/src/main/resources/application.yml`（**无 `Properties` 类**） | `service/task/src/main/java/com/rag/task/config/TaskRewardProperties.java` + `application.yml` | 1:N | C 显式建 `@ConfigurationProperties` 类（**B 侧 `task-api` 没有任何 `Properties` 类**，配置全在 yml）。⚠️ B 侧 `Auth` 段**零消费点**（`grep` 全 `api/` 只命中结构体与 yaml 4 行）⇒ **不迁**；`TaskRpc` → `grpc.client.*`、`Telemetry` → `otel.*`<br>⚠️ **2026-11-03 改名**：原 `TaskApiProperties.java`（prefix `task.api`）在 api+rpc 合并后**零消费点（哑弹）** ⇒ 改名为 **`TaskRewardProperties.java`**（prefix `task.reward`，**键名逐字不变**）—— 它是本域唯一「**B 侧有配置 ＋ C 侧有真实消费点 ＋ B 侧无 Properties 类**」的块 |
 | `task-api/.../controller/TaskController.java` | `service/task/src/main/java/com/rag/task/controller/TaskController.java` | 1:1 | ⚠️ **前缀是 `/taskcenter/v1`，不是 `/task/v1`**；**B 侧无任何 JWT 依赖、无 `interceptor/` 包** ⇒ 本域端点**零鉴权** |
@@ -101,7 +101,7 @@
 ### 1.2 rpc 侧（`wiring + config + domain/entity + domain/service + grpc + mapper + messaging + service`）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `task-rpc/.../TaskRpcApplication.java` | `service/task/src/main/java/com/rag/task/TaskServiceApplication.java`（与 api 合并） | 1:N | C 的入口**只剩 1 个**；**B 侧 `task-rpc` 也没有 reward worker**（只有 `TaskRewardPublisher` 这个生产端，worker 从未启动）⇒ reward 消费侧永不启动 |
 | `task-rpc/.../bootstrap/NacosRegistration.java` | `service/task/src/main/java/com/rag/task/wiring/NacosRegistration.java` | 1:1 | 启动后显式注册到 Nacos（服务名 `task-rpc`），**不依赖自动注册**（自动注册依赖 Spring Web，纯 gRPC 进程会被拉起 web 容器）。⚠️ **Bean 名必须显式指定** —— `NacosServiceRegistryAutoConfiguration` 也会注册一个名为 `nacosRegistration` 的 Bean，裸 `@Component` 会撞名 ⇒ Boot 默认 `allow-bean-definition-overriding=false` ⇒ **上下文直接起不来** |
 | `task-rpc/src/main/resources/application.yml` + `config/TaskKafkaTopics.java` + `config/TaskSinkProperties.java` | `service/task/src/main/java/com/rag/task/messaging/TaskKafkaTopics.java` + `service/task/src/main/java/com/rag/task/config/TaskSinkProperties.java` + `application.yml` | 1:N | ⚠️ **B 侧 `task-rpc` 也没有 `client/` 包**（`PointsRpc`/`UserRpc` 从未落地）⇒ **不建 `client/` 包**；`LikeRedis` 段名是历史遗留（本服务里没有 like） |
@@ -126,7 +126,7 @@
 ### 1.3 契约 —— ⚠️ task 域**无错误契约**（proto 在根级 `proto/` 模块）
 
 | B RAG 文件 | C RAG-V1 文件 | 映射类型 | 备注 |
-|---|---|---|
+|---|---|---|---|
 | `service/task/task-proto/src/main/proto/task.proto` | `proto/src/main/proto/task.proto` | 1:1 | 两侧 `package task` 完全相同 ⇒ **零偏离**；仅 option 块不同（B 侧 `java_package="com.rag.task.task.proto"` → C 侧 `java_package="com.rag.proto.task"`；`java_multiple_files=true` 两侧都有）；字段号 / 字段名 / 类型 5+1+1 逐条一致 |
 | **B 侧无 `task-common` 模块**（`service/task/pom.xml` 的 `<modules>` 只有 `task-api`/`task-rpc`/`task-proto` 三项） | **C 侧无 `contract` 模块 / 无 `contract` 包（没有任何 `.java`）**；`.proto` 集中在根级 `proto/src/main/proto/task.proto` | 1:1 | ⚠️⚠️ **B 侧 task 没有错误码空间（无 common 包）⇒ C 列该模块无 Java 类（刻意）** —— **不是缺漏**。若将来 task 域要引入业务码，参照 `service/like/src/main/java/com/rag/like/contract/` 的 `CodeError`/`ErrCodes`/`ErrMsg`/`GrpcErrFactory` 四件套新建即可；**在此之前不建** |
 

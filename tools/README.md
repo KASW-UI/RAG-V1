@@ -11,9 +11,11 @@
 | `difftest/follow/` | 🆕 **follow 域 E-4 双侧活体对拍探针**（2026-11-02）—— **C 侧（RAG-V1/Boot 3.5）↔ B 侧（RAG/Boot 4）↔ 冻结的 Go 真源字节** 三方逐字节比对：两侧**同时起真进程**（真 Tomcat + 真 gRPC + 真 PG + 真 Redis + 真 Nacos）＋ 两侧各自播种同一批行 ⇒ **HTTP 21/21 三方一致 ＋ gRPC wire 13/13 双边一致 ＋ 场景轮 6 类双侧一致**（超时 / 恢复 / 外部依赖失败 / 恢复 / 并发 / 事务回滚）。⚠️ **Go 侧不活体**（本机无 `Sea-etcd` 容器）⇒ 用 B 侧已冻结的 `expected.txt` 作第三方锚。配套 `mutate-parity.sh`（M1~M7 变异验证 ⇒ 证明探针非假绿） | 改 follow 域行为后；发版前；`docs/DRIFT/follow/verification-follow-2026-11-02.md` §八·六 的复核入口 |
 | `difftest/favorite/` | 🆕 **favorite 域 E-4 双侧活体对拍探针**（2026-11-04）—— **C 侧（RAG-V1/Boot 3.5 · D1 合并单进程）↔ B 侧（RAG/Boot 4 · 双进程 favorite-api+favorite-rpc）↔ 冻结的 Go 真源字节** **三方逐字节比对**：两侧**同时起真进程**（真 Tomcat + 真 gRPC + 真 PG + 真 Redis）＋ **两侧各自独立库**（`first_db` / `fav_c_db`）＋ **共用同一个 Redis**（⇒ 顺带验黑名单 key 拼法）⇒ **HTTP 面 32 case × 8 组三方一致**（SAME 25 · SAME_CODE 1 · SAME_BODY 2 · SAME_STATUS 4）⚠️ **Go 侧不活体**（本机无 `Sea-etcd` 容器）⇒ 用 B 侧已冻结的 `expected.txt` 作第三方锚（**每次运行核对 B 侧原件 sha256** ⇒ 副本漂了即中止）🔴 **本探针自伤过一次**：黑名单对照组与正常 token 在**同一秒签发** ⇒ 两枚 token **逐字节相同** ⇒ 「所有带 token 的用例都 401」（**症状长得像产品回归**）⇒ 现用 `--iat-offset` 错开配套 `mutate-parity.sh`（变异 `ORDER BY create_time DESC ⇒ ASC` ⇒ **红（精确命中 `s01_list_folders`）→ 还原 → 绿** ⇒ 证明判据非假绿）✅ **2026-11-05 补齐 gRPC 面**（`difftest/favorite/grpc-wire/`）—— **rpc 对 rpc** 的 **36 case × 3 方**：Go 真源的 **gRPC 级可观测契约**冻结锚（status code + description + **protobuf 响应字节** + 响应头/trailer 的 metadata key 集合）↔ B 侧 `favorite-rpc` 活体 ↔ C 侧 `favorite-service` 活体 ⇒ **锚校验 SAME 33 / SAME_CODE 2 / OBS 1**（B 侧 == Go 冻结锚 ⇒ 有锚）＋ **BC 校验 SAME 36 / SAME_CODE 0 / OBS 0**（**C 侧 == B 侧逐字节全等**）🔴 **判据分两段**（锚里的 OBS 是「Go ≠ Java」⇒ 拿它判 Java↔Java 会**判反** ⇒ 另立 `kinds-bc.txt`）⚠️ **探针不用任何 pb 生成码**（手构 proto3 字节 + `byte[]` marshaller ⇒ 两侧 pb 包名不同也不污染证据）⚠️ **classpath 取自 C 侧 fat jar 的 `BOOT-INF/lib`** ⇒ 「量到的是哪一版依赖」不是问题 配套 `mutate-grpc-parity.sh`（`SKIP_HTTP=1` 只跑 gRPC 面 ⇒ **红（精确命中 `c11_list_folders_ok` 且红在「BC 校验」段）→ 还原 → 绿**）⚠️ **证据边界**：HTTP 面 + **gRPC 面的单请求契约面**；**create 成功路径 / 真源下游在场 / 并发 / 超时 / 部分成功 / Redis 故障 / 重复请求（幂等重放）** 仍只有 E-3<br>✅ **2026-11-05 另加一层「场景轮」**（`difftest/favorite/scenarios/` + `stub/DownstreamStub.java`）—— **6 类场景**（create 成功路径 / 并发 / 超时 / 部分成功 / Redis 故障 / **重复请求（幂等重放）**）⇒ **B↔C 双侧活体**（**无第三方锚** ⇒ **强度低于三方** ⇒ 不得混称「E-4 三方」）⇒ 判据 = **绝对断言 + 两侧对称**（两条都要过 ⇒ 只比相等是假绿）⇒ 配套 `mutate-scenarios.sh`（**两轮**：① 删 C 侧唯一索引 ⇒ 红（精确命中 S2 C 侧分布）→ 还原 → 绿；② 改掉 C 侧 9002 的名字 ⇒ 红（精确命中 S6 `update_time` 被推进）→ 还原 → 绿 ⇒ **证明「同名改名不写库」那条断言不是恒真**）✅ **2026-11-05 修复 DRIFT-FAV-014**（慢下游时 api 面业务码 B=1015 / C=5001 ⇒ **用户拍板「方向 ②」** ⇒ C 侧 api 面自持同值 2s 上界（复用同一配置键）+ 领域层保留 gRPC cause ⇒ **两侧同为 1015** ⇒ `KNOWN_DIFFS` 已清空 ⇒ 载体差异登记为 `DEV-FAV-API-003`）| 改 favorite 域行为后；发版前；`docs/DRIFT/favorite/verification-favorite-service-2026-11-04.md` §八·8.4 / §八·8.5 / §八·8.7 的复核入口 |
 | `difftest/check-docs-vs-tree.py` | **`docs/` ↔ 当前文件树对账**（与 `check-mapping-coverage.py` 互补：后者查「类名有没有被提到」，本脚本查「文档说的**路径与数字**对不对得上」）：① File_Tree **双向**覆盖（磁盘 .java 必在文件树里 · 文件树提到的 .java 必在磁盘上）② File_Tree **幂等**（重生成无 diff ⇒ 不与代码漂）③ 文档中的**路径引用有效性**（C 列 / 正文里的 .java 路径 → 磁盘存在）④ 落点表**计数守恒**（汇总数 == 磁盘主代码数）⑤ 落点表**分项求和** == 汇总数（防「补总数忘补分项」）⑥ **包名**有效性（`com.rag.*` → 磁盘存在） | 改完 `docs/` 任一文档后；改完目录结构后（EXIT=0 才算通过）|
+| `difftest/check-gfm-tables.py` | 🆕 **GFM 表格形状守门**（2026-11-11 · `global` 收口域）—— 判「这份 markdown 里的表格，**GitHub 上到底渲不渲染**」：① 表块**缺分隔行** ② **分隔行格数 ≠ 表头格数**（⇒ 整表被当普通段落）③ **数据行格数 ≠ 表头格数**（⇒ 多出的格被**静默丢弃**、少的补空）④ **inline code 内裸竖线**（⇒ 竖线被当列分隔符）。**判据来源 = 实测渲染**（`pandoc -f gfm -t html` 对照实验：4 格表头 + 3 格分隔行 ⇒ 输出 `<p>` **不是** `<table>`）。⚠️ **认代码围栏**（围栏里的 `find … \| xargs`、依赖树 `\|  \-` 不是 markdown ⇒ 不认 ⇒ 假红）⇒ **4 类缺陷 + 围栏豁免逐类可红**（`--self-test`） | 改完 `docs/` 任一文档后；提交前（EXIT=0 才算通过）|
+| `difftest/fix-gfm-tables.py` | 🆕 **GFM 表格形状修复器**（2026-11-11）—— 只做**形状**修复、**不碰任何断言内容**：② 重建分隔行（格数对齐表头）④ 转义 inline code 内裸竖线（`\|` ⇒ GFM 还原成 `\|` ⇒ 显示不变）。⚠️ **① 缺分隔行 / ③ 数据行格数不符一律跳过**（要判断「是不是表 / 该补格还是并格」）⇒ 只报不改。`--dry-run` 预演 · `--apply` 落盘 | 发现 `check-gfm-tables.py` 报红时（先 `--dry-run` 看清单，再 `--apply`）|
 | `sync-mapping-index.py` | 同步 `docs/Mapping_Table/_INDEX.md` §二/§三 两张表的**覆盖度数字**（行数 / C 覆盖 / B 覆盖 / 映射行）—— **数字从文件系统实测**，不手填；不带 `--apply` 只做 dry-run | 改完任一域映射表后（`--apply` 落地）|
 | `recount-ledger-status.py` | **台账状态表复算器** —— 把「审核项 / 状态」表里的状态**按行机器复算**（PASS / INTENTIONALLY_CHANGED / NOT_VERIFIED / FAIL）⇒ **不是手数**（手数必然漂：users-user 台账曾手数成 24 ⇒ 被机器复算当场纠正 · P-08；2026-11-09 又抓到 `article` 域「汇总 77 / 明细 76」的**口径混用**）⇒ 🔴 **2026-11-09 重写**（旧版按「状态在第 2 列」定位 ⇒ 对本仓现行台账形状**全部失配** ⇒ 连 `common` 台账都报「没找到状态表」）：① **状态列按【内容】定位**（不依赖列名 / 位置 / 表形状；并列时用列名语义 + 状态种类数破平手 · `--state-col N` 可人工兜底）② **按表头签名分组**（同一张逻辑表被拆成多块也能合并计数）③ **`--compare-summary`**：汇总表**只与「行数相等」的那一组**对照 ⇒ 行数对不上 ⇒ 明说「**口径不同 ⇒ 跳过**」而不是误报「不一致」 ④ **定向跑严格 / 全局跑仅诊断**（`--header` / `--table-line` 锁定的表里出现**词表外的状态** ⇒ EXIT=1）⑤ 输出为**完整普查（含 0 值）** ⇒ 台账引用「机器输出逐字」不会因某状态恰为 0 而失真 | 改完任一域台账的状态表后；提交前（`--table-line`/`--header` 锁定目标表 ＋ `--compare-summary --expect-total N` 全绿才算通过）|
-| `check-mapping-coverage.py` | **两方对照文档（B RAG ↔ C RAG-V1）的八重校验**：① **B / C 列覆盖率**（从文件系统反查，不采信文档自报数字）② **`_INDEX.md` 自报数字对账**（行数 / 覆盖 / 映射行 vs 实测值）③ 映射行计数（扫全行找类型词，避开多列表的列位陷阱）④ **小节标题自报条数 == 表内实际行数**（P-08 同病 ⇒ 机器复算）⑤ **B 列双向对账**（B1 正向：B 列引用的类必须在 RAG 磁盘真实存在；B2 反向：RAG 侧每个业务类都必须被 B 列覆盖 ⇒ 否则抄写路线图会漏掉它）⑥ **B↔C 指代消解后可判定性**（「同上」是确定性指代 ⇒ 消解后每行 B/C 都必须读得出）⑦ **主表行形状**（列数必须为 4 ⇒ 单元格里的 `|` 未转义会被静默吞掉整行的 B 列）⑧ **`_INDEX.md` 合计行对账**（合计行此前无人核对 ⇒ 唯一漂移的盲区） | 改完 `docs/Mapping_Table/` 任一域文档后；提交前（EXIT=0 才算通过） |
+| `check-mapping-coverage.py` | **两方对照文档（B RAG ↔ C RAG-V1）的八重校验**：① **B / C 列覆盖率**（从文件系统反查，不采信文档自报数字）② **`_INDEX.md` 自报数字对账**（行数 / 覆盖 / 映射行 vs 实测值）③ 映射行计数（扫全行找类型词，避开多列表的列位陷阱）④ **小节标题自报条数 == 表内实际行数**（P-08 同病 ⇒ 机器复算）⑤ **B 列双向对账**（B1 正向：B 列引用的类必须在 RAG 磁盘真实存在；B2 反向：RAG 侧每个业务类都必须被 B 列覆盖 ⇒ 否则抄写路线图会漏掉它）⑥ **B↔C 指代消解后可判定性**（「同上」是确定性指代 ⇒ 消解后每行 B/C 都必须读得出）⑦ **主表行形状**（列数必须为 4 ⇒ 单元格里的 `\|` 未转义会被静默吞掉整行的 B 列）⑧ **`_INDEX.md` 合计行对账**（合计行此前无人核对 ⇒ 唯一漂移的盲区） | 改完 `docs/Mapping_Table/` 任一域文档后；提交前（EXIT=0 才算通过） |
 
 ## ⚠️ 在**域工作树**里跑守门脚本的约定（2026-11-05 · favorite 域实测撞出）
 
@@ -23,24 +25,19 @@
 |---|---|---|
 | `difftest/check-arch-invariants.py` | `pathlib.Path(__file__).resolve().parents[2]` ⇒ **跟着脚本走** | ✅ **工作树** |
 | `difftest/check-docs-vs-tree.py` | 同上 | ✅ **工作树** |
-| `check-mapping-coverage.py` | **硬编码** `ROOT = pathlib.Path("/Users/pr/Documents/GitHub/RAG-V1")` | 🔴 **主仓 `main` 分支** |
-| `gen-file-tree.py` | 同上（硬编码） | 🔴 **主仓 `main` 分支** |
+| `difftest/check-gfm-tables.py` | 同上（**2026-11-11 新增**） | ✅ **工作树** |
+| `check-mapping-coverage.py` | ✅ **已改为跟着脚本走**（2026-11-11 · `pathlib.Path(__file__).resolve().parent.parent`） | ✅ **工作树** |
+| `gen-file-tree.py` | ✅ **已改为跟着脚本走**（2026-11-11 · 同上） | ✅ **工作树**（**且输出也写回工作树**） |
 
-⇒ ⇒ **在工作树（`RAG-V1.worktrees/<域>`）里跑后两个 ⇒ 验的是主仓 ⇒ 域的改动根本没被验到 ⇒ 假绿。**
-（favorite 域实测：工作树已加 2 个主代码（61 → 63），而工作树里跑的 `check-mapping-coverage.py` 仍报 **C 61/61 = 100% · EXIT=0** ⇒ 读数看着是绿的，**但它量的是主仓的 61 个文件**。）
+⇒ ⇒ **在工作树（`RAG-V1.worktrees/<域>`）里跑这几个脚本 ⇒ 验的就是工作树 ⇒ 域的改动真被验到。**
 
-⇒ ⇒ **在域工作树里跑这两个脚本的标准姿势**（**不修改仓内脚本** —— 它们属 `global` 收口域的写权）：
+> ✅ **2026-11-11 已根治（`global` 收口域 · favorite 域 2026-11-05 上报）** —— 上表原先有 **2 个脚本**（`check-mapping-coverage.py` / `gen-file-tree.py`）是**硬编码主仓绝对路径**
+> ⇒ ⇒ **在工作树里跑 ⇒ 验的是主仓 `main` 分支 ⇒ 域的改动根本没被验到 ⇒ 假绿**。
+> （favorite 域当时实测：工作树已加 2 个主代码（61 → 63），而工作树里跑的 `check-mapping-coverage.py` 仍报 **C 61/61 = 100% · EXIT=0** ⇒ 读数看着是绿的，**但它量的是主仓的 61 个文件**。）
+> ⇒ ⇒ **修法**：`ROOT` 改为 `pathlib.Path(__file__).resolve().parent.parent`（**跟着脚本走**）⇒ 与另外两个脚本同款 ⇒ **下表的 sed 副本姿势不再需要**。
+> ⇒ ⇒ **修后双侧实证**（2026-11-11 · 隔离工作树 `_rootprobe`）：在**工作树**里把 article 映射表一个 C 列类名改坏 ⇒ **EXIT=1**（并报出 `C 列 645/646` ⇒ 连工作树里新增的探针类都量到了 ⇒ **量的是工作树**）；同一时刻**主仓**跑同一脚本 ⇒ **EXIT=0**（量的是主仓）⇒ ⇒ **假绿洞闭合**。
 
-```bash
-# ① 造一份改过 ROOT 的副本
-sed 's|^ROOT = pathlib.Path("/Users/pr/Documents/GitHub/RAG-V1")$|ROOT = pathlib.Path("/Users/pr/Documents/GitHub/RAG-V1.worktrees/<域>")|' \
-  tools/check-mapping-coverage.py > /tmp/<域>-ft/check-mapping-coverage.py
-# ② 跑副本（读的是工作树的 docs/ + 工作树的 service/）
-python3 /tmp/<域>-ft/check-mapping-coverage.py
-```
-
-⇒ ⇒ 🔴 **判据**：**「读数里出现的文件数」必须与工作树磁盘上的实际文件数一致** ⇒ 若对不上 ⇒ **你跑的是主仓** ⇒ **读数作废**。
-⇒ ⇒ **收口域待办**（登记给 `global` 收口域 / 主会话）：给这两个脚本加**「ROOT 可用环境变量 / argv 覆盖」**的口子（`RAGV1_ROOT`），或在脚本启动时**断言** `ROOT` 与脚本所在仓一致 ⇒ 不然每个域工作树都会踩这个坑。
+> ⚠️ **判据（仍然有效，只是换了形态）**：**读数里的文件数必须与「你所在那棵树」的磁盘实际文件数一致** ⇒ 若对不上 ⇒ **你跑的不是这棵树** ⇒ **读数作废**。
 
 ---
 
