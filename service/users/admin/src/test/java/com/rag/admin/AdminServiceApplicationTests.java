@@ -210,9 +210,33 @@ class AdminServiceApplicationTests {
      *           覆盖它 ⇒ 只可能是 yml 给的）；</li>
      *   <li>桩 {@link NamingService} 上 <b>只被注册了 1 次</b>，且那次的端口
      *       <b>等于 gRPC 端口</b>、<b>不等于 web 端口</b>
-     *       ⇒ 若 yml 少了那一行 ⇒ {@code registerEnabled} 回落默认值 {@code true}
-     *       ⇒ 自动注册会<b>再注册一次 web 端口</b> ⇒ <b>本条断言会红</b>。</li>
+     *       ⇒ ⇒ 域内那次显式注册<b>确实发生了</b>，且<b>注册的是 gRPC 端口</b>。</li>
      * </ol>
+     *
+     * <h2>🔴 2026-11-10 订正：<b>本条原注释里的「反证」不成立</b>（原文已删）</h2>
+     * <p>原文写的是「若 yml 少了 {@code register-enabled} 那一行 ⇒ {@code registerEnabled} 回落默认
+     * {@code true} ⇒ 自动注册会<b>再注册一次 web 端口</b> ⇒ 本条断言会红」。
+     * <p>⚠️ <b>该反证经字节码实测是错的</b>（SCA 2025.0.0.0）：
+     * <pre>
+     * NacosRegistration#getServiceId() → NacosDiscoveryProperties#getService()
+     *      ⇒ 读的就是 {@code spring.cloud.nacos.discovery.service} 键
+     *      ⇒ 而 admin 的 application.yml <b>没有这个键</b> ⇒ null
+     *
+     * NacosServiceRegistry#register(Registration)：
+     *   0: registration.getServiceId()
+     *   6: StringUtils.isEmpty(...)  → ifeq 23
+     *  12: log.warn("No service to register for nacos client...")
+     *  22: return                   ← 服务名为空 ⇒ <b>直接返回，什么都不注册</b>
+     * </pre>
+     * ⇒ ⇒ <b>今天 admin 域的自动注册是「哑火」的</b>（与服务名为空有关，<b>与
+     * {@code register-enabled} 无关</b>）⇒ ⇒ 「只被注册了 1 次」这条断言<b>并不</b>能证明
+     * {@code register-enabled} 起了作用 ⇒ ⇒ <b>它今天是一条「弱断言」</b>。
+     * <p>⇒ ⇒ <b>这条开关的真判据已移到</b> {@link com.rag.admin.wiring.AdminNacosRealRegistrationTest}：
+     * 它对着<b>真 Nacos</b>，并<b>显式注入</b> {@code spring.cloud.nacos.discovery.service=admin-rpc}
+     * 把自动注册链路「武装」起来 ⇒ ⇒ 此时唯一的拦截者就是 {@code register-enabled: false}
+     * ⇒ ⇒ 删掉那一行 ⇒ <b>真 Nacos 上会出现第 2 个实例（web 端口）</b> ⇒ 判据变红（有牙齿）。
+     * <p>📌 本条断言<b>仍然保留</b>：它验的是「域内那次显式注册<b>只发生一次</b>、且端口是 gRPC 端口」
+     * —— 这件事本身有效（不是假绿），只是<b>不能</b>用它证明 {@code register-enabled}。
      */
     @Test
     @DisplayName("启动期：Nacos 自动注册被关掉，注册到 Nacos 的只有 gRPC 端口（web 端口从未被注册）")

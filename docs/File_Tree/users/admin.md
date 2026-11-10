@@ -158,6 +158,7 @@
 │                       ├── service/
 │                       │   └── AdminSpanWiringTest.java    # 🔴 DRIFT-ARPC-006 守门 —— admin-rpc 的手写 span 必须真的被导出。
 │                       ├── wiring/
+│                       │   ├── AdminNacosRealRegistrationTest.java    # 🔴 V-3 闭合守卫：对着「真 Nacos」逐字断言 admin 域的注册结果。
 │                       │   └── AdminRpcNacosGroupTest.java    # 🔴 DRIFT-G1-001 守门 —— admin-rpc 注册到 Nacos 的 group 必须来自配置，
 │                       └── AdminServiceApplicationTests.java    # admin 域「真启动」契约测试 —— 进程起得来这件事本身就是契约。
 └── pom.xml    # Maven 模块描述
@@ -174,5 +175,5 @@
 | 项 | 状态 |
 |---|---|
 | 目录结构 | ✅ 已落地（本文件由 `tools/gen-file-tree.py` **按磁盘实际生成** ⇒ 不与代码漂） |
-| 文件内容 | ✅ **无空壳** —— 本模块 **80** 个 `.java`（含测试源）· **待填空壳 0 个**（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**） |
+| 文件内容 | ✅ **无空壳** —— 本模块 **81** 个 `.java`（含测试源）· **待填空壳 0 个**（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**） |
 | B 侧 ↔ Java 逐文件对照 | 📄 [`../../Mapping_Table/users/admin/admin.md`](../../Mapping_Table/users/admin/admin.md) —— 逐文件对照的**唯一权威副本**；由 `tools/check-mapping-coverage.py` **机器双向核验**（B 列 ⇄ C 列 ⇄ 磁盘） |
