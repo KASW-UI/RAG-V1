@@ -56,7 +56,7 @@ service/article                     →  File_Tree/article.md
 
 | 模块路径 | artifactId | 类型 | 文件树 | B 侧出处 |
 |---|---|---|---|---|
-| `service/hot` | `hot-service` | 应用 | [`hot.md`](hot.md) | `service/hot/` |
+| `service/hot` | `hot-domain` | 应用 | [`hot.md`](hot.md) | `service/hot/` |
 
 ### **like 域**
 
@@ -74,14 +74,14 @@ service/article                     →  File_Tree/article.md
 
 | 模块路径 | artifactId | 类型 | 文件树 | B 侧出处 |
 |---|---|---|---|---|
-| `service/task` | `task-service` | 应用 | [`task.md`](task.md) | `service/task/` |
+| `service/task` | `task-domain` | 应用 | [`task.md`](task.md) | `service/task/` |
 
 ### **users 域**（一个域，两个子域 user / admin）
 
 | 模块路径 | artifactId | 类型 | 文件树 | B 侧出处 |
 |---|---|---|---|---|
 | `service/users/common` | `users-common` | 公共库 | [`users/common.md`](users/common.md) | `service/users/users-common/` |
-| `service/users/user` | `user-service` | 应用 | [`users/user.md`](users/user.md) | `service/users/user/` |
+| `service/users/user` | `user-domain` | 应用 | [`users/user.md`](users/user.md) | `service/users/user/` |
 | `service/users/admin` | `admin-service` | 应用 | [`users/admin.md`](users/admin.md) | `service/users/admin/` |
 
 ## 说明

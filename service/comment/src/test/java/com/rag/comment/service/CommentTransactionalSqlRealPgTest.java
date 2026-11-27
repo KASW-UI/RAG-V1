@@ -516,7 +516,7 @@ class CommentTransactionalSqlRealPgTest {
 
     private static Properties moduleYaml() throws IOException {
         List<PropertySource<?>> sources = new YamlPropertySourceLoader()
-                .load("comment-module-app", new ClassPathResource("application.yml"));
+                .load("comment-module-app", new ClassPathResource("application-comment.yml"));
         Properties p = new Properties();
         for (PropertySource<?> s : sources) {
             if (s instanceof EnumerablePropertySource<?> enumerable) {

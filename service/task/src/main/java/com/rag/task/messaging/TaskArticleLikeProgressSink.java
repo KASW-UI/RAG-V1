@@ -170,7 +170,7 @@ public class TaskArticleLikeProgressSink {
             //    ⇒ 本处写的 latest 此前**从未生效**（「碰巧对」：全局默认恰好也是 latest）。
             //    详见 {@link TaskRawLogRouter} 同名注解处的完整说明。
             properties = "auto.offset.reset=latest",
-            containerFactory = "kafkaListenerContainerFactory")
+            containerFactory = "taskKafkaListenerContainerFactory")
     public void onMessage(ConsumerRecord<String, String> record) {
         String key = record.key() == null ? "" : record.key();
         String value = record.value();

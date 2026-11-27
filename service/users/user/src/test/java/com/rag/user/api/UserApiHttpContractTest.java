@@ -65,7 +65,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 「B 侧此刻真的产出同样形状」属于<b>双侧活体对拍</b>的范畴（见本域 DRIFT 台账的证据强度列），
  * 本类**不冒充**该证据。
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(classes = com.rag.user.UserServiceApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 @Import(UserApiHttpContractTest.JwtVerificationProbeConfiguration.class)
 class UserApiHttpContractTest {

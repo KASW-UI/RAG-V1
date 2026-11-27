@@ -71,6 +71,7 @@
 │   │   │               │   ├── GoStyleOtelAutoConfiguration.java    # 🔴 **全局 OpenTelemetry 的装配点** —— 对应 B 侧
 │   │   │               │   ├── GrpcExceptionMapperAutoConfiguration.java    # D2 / D5「统一错误模型」的 gRPC 边界适配器 ——
 │   │   │               │   ├── JsonBodyConverterAutoConfiguration.java    # Jackson 侧的共享装配点 —— 把「K-01 强转规则」与「K-02 请求体判据」两条
+│   │   │               │   ├── KafkaDefaultFactoryAutoConfiguration.java    # 移除 Boot 自动配置的「默认 Kafka 容器工厂」 ——
 │   │   │               │   ├── LoggerAutoConfiguration.java    # 共享日志门面的装配点 —— 产出 {@link LoggerFactoryBean}。
 │   │   │               │   ├── MybatisPlusOrderingBridgeAutoConfiguration.java    # B 出处：无 —— B 侧用 GORM，没有「MyBatis-Plus 自动配置排序」这个概念
 │   │   │               │   ├── ObservabilityAutoConfiguration.java    # 观测层的共享装配点 —— 把 {@link ObservabilityCustomizer}（业务标记的唯一载体）
@@ -270,5 +271,5 @@
 | 项 | 状态 |
 |---|---|
 | 目录结构 | ✅ 已落地（本文件由 `tools/gen-file-tree.py` **按磁盘实际生成** ⇒ 不与代码漂） |
-| 文件内容 | ✅ **无空壳** —— 本模块 **158** 个 `.java`（含测试源）· **待填空壳 0 个**（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**） |
+| 文件内容 | ✅ **无空壳** —— 本模块 **162** 个 `.java`（含测试源）· **待填空壳 0 个**（待填空壳 = 类型体为空 **且** 留有 `TODO`；**有意为空**的类型 —— 空 struct DTO（决策 D5）· MP `BaseMapper` 接口 · 无成员 auto-config —— **不计**） |
 | B 侧 ↔ Java 逐文件对照 | 📄 [`../Mapping_Table/common.md`](../Mapping_Table/common.md) —— 逐文件对照的**唯一权威副本**；由 `tools/check-mapping-coverage.py` **机器双向核验**（B 列 ⇄ C 列 ⇄ 磁盘） |

@@ -1,10 +1,16 @@
 package com.rag.admin;
 
+import com.rag.common.mybatis.AdminMapperBeanNameGenerator;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.context.TypeExcludeFilter;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Configuration;
 
 /**
  * <p><b>职责</b>：admin 域的<b>唯一启动入口</b> —— 一个进程内同时起 Tomcat（HTTP 面）与 gRPC server（业务面）。
@@ -55,9 +61,29 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
  * <p><b>⚠️ gRPC server 由 devh starter 自动装配</b>：{@code grpc/AdminGrpcService} 上的
  * {@code @GrpcService} 由 starter 扫描注册 ⇒ <b>本类不手写任何 gRPC 注册代码</b>。
  */
-@SpringBootApplication
+@Configuration
+@EnableAutoConfiguration
+/*
+ * ⚠️ **`excludeFilters` 必须显式补回（S1 · 5 进程形态 · 实测）** ——
+ * `@SpringBootApplication` 的 `@ComponentScan` **隐含**两个排除过滤器：
+ *   ① `TypeExcludeFilter`（Boot 的测试类型排除机制）
+ *   ② `AutoConfigurationExcludeFilter`（**排除 `@AutoConfiguration` 类**）
+ * ⇒ ⇒ 降级成裸 `@ComponentScan` 时这两个**一起丢** ⇒ ⇒ 实测症状：
+ *   域内 `ContentAuditAutoConfiguration` 被**组件扫描**扫到（bean 名 = 短名
+ *   `contentAuditAutoConfiguration`）⇒ ⇒ 绕过了 `META-INF/spring/…AutoConfiguration.imports`
+ *   ⇒ ⇒ A5 断言「auto-config 的 bean 名必须是 FQCN」红。
+ * ⇒ ⇒ 本处**逐字补回** `@SpringBootApplication` 原本的那两个过滤器。
+ */
+@ComponentScan(basePackages = "com.rag.admin",
+        excludeFilters = {
+                @ComponentScan.Filter(type = FilterType.CUSTOM,
+                        classes = TypeExcludeFilter.class),
+                @ComponentScan.Filter(type = FilterType.CUSTOM,
+                        classes = AutoConfigurationExcludeFilter.class)
+        })
 @ConfigurationPropertiesScan("com.rag.admin.config")
-@MapperScan("com.rag.admin.mapper")
+@MapperScan(basePackages = "com.rag.admin.mapper",
+        nameGenerator = AdminMapperBeanNameGenerator.class)
 @EnableDiscoveryClient
 public class AdminServiceApplication {
 

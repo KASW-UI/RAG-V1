@@ -41,7 +41,15 @@ import org.springframework.stereotype.Component;
  * <p>{@code AdminSeederBootstrap} 依赖 {@code Snowflake.nextId()} 生成默认 admin uid，
  * 所以 Snowflake 必须先初始化（Order.HIGHEST_PRECEDENCE）。
  */
-@Component
+/* adminSnowflakeBootstrap
+ * ⚠️ **bean 名显式指定（S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `SnowflakeBootstrap`
+ * ⇒ ⇒ **多个域各有一个同名 `SnowflakeBootstrap`**（实测：article / user）
+ * ⇒ ⇒ 合并进同一上下文后 **bean 名撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'SnowflakeBootstrap' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`adminSnowflakeBootstrap`**（加域前缀）⇒ **零行为变化**（只改 bean 名）。
+ */
+@Component("adminSnowflakeBootstrap")
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class SnowflakeBootstrap {
 

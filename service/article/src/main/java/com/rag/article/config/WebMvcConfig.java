@@ -83,7 +83,19 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  *
  * <p><b>只动 MVC 这一个 mapper</b>：gRPC 用 protobuf marshaller，不走 Jackson。
  */
-@Configuration
+/*
+ * ⚠️ **bean 名显式指定（`articleWebMvcConfig` · S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `webMvcConfig`
+ * ⇒ ⇒ **10 个域各有一个同名 `WebMvcConfig`**（实测：article / comment / favorite /
+ * follow / hot / like / message / task / users-user / users-admin）
+ * ⇒ ⇒ 合并进同一上下文时 **bean 名全部撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'webMvcConfig' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`articleWebMvcConfig`**（加域前缀）。
+ *
+ * ⚠️ **零行为变化**：只改 bean 名，`addInterceptors` 的内容与路径前缀**逐字未动**
+ * ⇒ ⇒ 各域的拦截器路径仍靠**路径前缀互斥**来隔离（见计划书 S3-6）。
+ */
+@Configuration("articleWebMvcConfig")
 public class WebMvcConfig implements WebMvcConfigurer {
 
     /** B 侧的 {@code rest.WithPrefix("/v1")}（{@code routes.go}）—— 唯一的前缀。 */

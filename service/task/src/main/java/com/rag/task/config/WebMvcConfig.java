@@ -66,7 +66,19 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * public 路径白名单 ⇒ 后人照抄别的域时会<b>顺手</b>把鉴权层搬过来 ⇒
  * ⇒ 本类就是那条「<b>这里刻意没有</b>」的落点。
  */
-@Configuration(proxyBeanMethods = false)
+/*
+ * ⚠️ **bean 名显式指定（`taskWebMvcConfig` · S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `webMvcConfig`
+ * ⇒ ⇒ **10 个域各有一个同名 `WebMvcConfig`**（实测：article / comment / favorite /
+ * follow / hot / like / message / task / users-user / users-admin）
+ * ⇒ ⇒ 合并进同一上下文时 **bean 名全部撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'webMvcConfig' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`taskWebMvcConfig`**（加域前缀）。
+ *
+ * ⚠️ **零行为变化**：只改 bean 名，`addInterceptors` 的内容与路径前缀**逐字未动**
+ * ⇒ ⇒ 各域的拦截器路径仍靠**路径前缀互斥**来隔离（见计划书 S3-6）。
+ */
+@Configuration(value = "taskWebMvcConfig", proxyBeanMethods = false)
 public class WebMvcConfig implements WebMvcConfigurer {
 
     /**

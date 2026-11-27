@@ -83,6 +83,29 @@ import java.util.regex.Pattern;
  * <h2>环境依赖</h2>
  * <p>需要 Docker（真 PG 容器）⇒ 本类<b>刻意不用</b> {@code disabledWithoutDocker}
  * （AGENTS.md §五.8 ③：禁静默跳过）⇒ 无 Docker 时<b>如实变红</b>。
+ *
+ * <h2>🔴 S1（5 进程形态）：被测对象从「comment 域进程」变成「interaction 进程」</h2>
+ * <p>域模块<b>不再 repackage</b>（产普通库 jar，见 {@code P-30}）⇒ <b>可执行 jar 由 boot 模块产出</b>
+ * ⇒ comment 域归属 {@code interaction} 进程 ⇒ 本类起的是
+ * {@code service/boot/interaction/target/interaction-service-1.0-SNAPSHOT.jar}
+ * （见 {@link CommentArtifactClasspathGateTest#BOOT_MODULE_PATH}）。
+ * <p>⇒ ⇒ <b>守门对象没变</b>：仍是「comment 域跑起来所依赖的<b>真 classpath + 真 yaml</b> 能不能起」
+ * ⇒ ⇒ 判据等价（仍然验 {@code NoClassDefFoundError} / gRPC 两斜杠 URI / gRPC 端口真在监听）。
+ * <p>⚠️ <b>连带的三处调整</b>（都不是放宽判据，是「被测对象换了」的必然结果）：
+ * <ol>
+ *   <li><b>工作目录</b>：从域模块目录改成 boot 模块目录；</li>
+ *   <li><b>三组 secret</b>：进程装了 5 个域 ⇒ {@code USER_JWT_SECRET} /
+ *       {@code ADMIN_JWT_SECRET} / {@code FAVORITE_JWT_SECRET} 都要给
+ *       （缺一个 ⇒ 对应域的 fail-closed 守卫抛「access-secret 不能为空」⇒ 启动即失败）；</li>
+ *   <li><b>Flyway</b>：本进程装 5 个域，各域的 {@code locations} 都是
+ *       {@code classpath:db/migration} ⇒ 合并 classpath 上出现 <b>5 个 V1</b>
+ *       ⇒ Flyway 抛「Found more than one migration with version 1」
+ *       ⇒ ⇒ 本类<b>关闭 Flyway</b>（{@code spring.flyway.enabled=false}）
+ *       ⇒ ⇒ ⚠️ <b>这是已知的 D2 阻断</b>（Flyway 退出 ⇒ 改幂等 DDL · 计划书 S3-2/S3-10）
+ *       ⇒ ⇒ 本类的判据<b>不受影响</b>：它验的是「<b>classpath 与 yaml</b>能不能起」，
+ *       <b>不验</b>「表建出来没有」⇒ ⇒ Flyway 关闭后，Mapper 仍会装配（Spring Boot 的
+ *       {@code flywayInitializer} 缺席 ⇒ {@code sqlSessionTemplate} 仍可用）⇒ 启动面完整。</li>
+ * </ol>
  */
 class CommentRuntimeBootGateTest {
 
@@ -107,7 +130,7 @@ class CommentRuntimeBootGateTest {
     private static final long LOG_WAIT_SECONDS = 30;
 
     @Test
-    @DisplayName("真 fat jar 起真 CommentServiceApplication：gRPC 端口真的在监听（生产 classpath + 生产 yaml）")
+    @DisplayName("真 fat jar 起真进程：gRPC 端口真的在监听（生产 classpath + 生产 yaml）")
     void realFatJarProcessBootsAndListens() throws Exception {
         Path jar = CommentArtifactClasspathGateTest.fatJar();
         int port = pickFreePort();
@@ -117,10 +140,18 @@ class CommentRuntimeBootGateTest {
                 "--grpc.server.port=" + port,
                 // ⚠️ C 侧是 **web app**（D1 合并）⇒ Tomcat 与 gRPC 同时起
                 //    ⇒ HTTP 口用 0（随机）⇒ 避免与其它 lane / 其它模块撞端口。
-                "--server.port=0"));
+                "--server.port=0",
+                // ⚠️ **S1：关闭 Flyway**（已知 D2 阻断 · 计划书 S3-2/S3-10）
+                //    interaction 进程装 5 个域 ⇒ 各域 `locations: classpath:db/migration`
+                //    ⇒ 合并 classpath 上有 5 个 `V1` ⇒ Flyway 抛
+                //    「Found more than one migration with version 1」⇒ 启动即失败。
+                //    ⇒ ⇒ 本类<b>关掉它</b>：本类验的是「classpath + yaml 能不能起」，
+                //    <b>不验</b>「表建出来没有」⇒ ⇒ 判据不受影响。
+                //    ⇒ 迁移机制本身归 D2（Flyway 退出 ⇒ 幂等 DDL）处理，不在本类的职责内。
+                "--spring.flyway.enabled=false"));
         ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(CommentArtifactClasspathGateTest.repoRoot()
-                        .resolve(CommentArtifactClasspathGateTest.MODULE_PATH).toFile())
+                        .resolve(CommentArtifactClasspathGateTest.BOOT_MODULE_PATH).toFile())
                 .redirectErrorStream(true);
 
         Map<String, String> env = builder.environment();
@@ -132,6 +163,14 @@ class CommentRuntimeBootGateTest {
         // ⚠️ C 侧 JWT 密钥 fail-closed 守卫（CommentApiProperties 的 @PostConstruct）
         //    ⇒ 缺这个变量 ⇒ 启动即失败 ⇒ 必须给一个**真密钥**（与测试夹具同源）。
         env.put("USER_JWT_SECRET", CommentTestSupport.SECRET);
+        // ⚠️ **S1（5 进程形态）：本进程装 5 个域 ⇒ 三组 secret 都要给**
+        //    （实测各域的 `access-secret` 裸占位符：
+        //      like/comment/follow/message-user ⇒ ${USER_JWT_SECRET}
+        //      message-admin                    ⇒ ${ADMIN_JWT_SECRET}
+        //      favorite                         ⇒ ${FAVORITE_JWT_SECRET}（独立 secret · DEV-FAV-API-001）
+        //    ⇒ 少给一个 ⇒ 对应域的 fail-closed 守卫抛「access-secret 不能为空」⇒ 启动即失败。
+        env.put("ADMIN_JWT_SECRET", CommentTestSupport.SECRET);
+        env.put("FAVORITE_JWT_SECRET", CommentTestSupport.SECRET);
         // ⚠️ 下面三个指向**不可达**地址：它们只用于把「依赖在线」这个变量固定住，
         //    使本类只验「本模块自己的配置与 classpath 能不能起」。
         env.put("NACOS_ADDR", "127.0.0.1:1");

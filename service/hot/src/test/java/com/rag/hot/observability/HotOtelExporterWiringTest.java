@@ -56,8 +56,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class HotOtelExporterWiringTest {
 
-    /** 本域 {@code application.yml} 的真实路径（读的是<b>真配置</b>，不是副本）。 */
-    private static final String APPLICATION_YML = "src/main/resources/application.yml";
+    /**
+     * 本域<b>真配置</b>的磁盘路径（读的是真配置，不是副本）。
+     *
+     * <p>⚠️ <b>S1（5 进程形态）：域的真配置已改名为 {@code application-hot.yml}</b>
+     * （原 {@code application.yml} 只剩一行 {@code spring.config.import} 入口）
+     * ⇒ ⇒ 本断言读的是<b>真配置</b>那份 ⇒ 读入口文件会读到「没有 otel 段」。
+     */
+    private static final String APPLICATION_YML = "src/main/resources/application-hot.yml";
 
     @Test
     @DisplayName("① 配置在：本域 yml 的 otel 段存在 ⇒ 共享层真的读到了端点")
@@ -65,7 +71,7 @@ class HotOtelExporterWiringTest {
         StandardEnvironment env = new StandardEnvironment();
         List<PropertySource<?>> sources = new YamlPropertySourceLoader()
                 .load("hot-application-yml", new FileSystemResource(APPLICATION_YML));
-        assertThat(sources).as("本域的 application.yml 必须能被 yaml loader 读到").isNotEmpty();
+        assertThat(sources).as("本域的 application-hot.yml 必须能被 yaml loader 读到").isNotEmpty();
         sources.forEach(s -> env.getPropertySources().addFirst(s));
 
         GoStyleOtelConfig config = GoStyleOtelConfig.from(env);

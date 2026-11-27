@@ -2,9 +2,14 @@ package com.rag.message;
 
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.context.TypeExcludeFilter;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Configuration;
 
 /**
  * <p><b>职责</b>：message 域的<b>唯一启动入口</b> —— 一个进程内同时起 Tomcat（HTTP 面 8883）
@@ -76,7 +81,26 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
  *
  * <p><b>⚠️ 本类不引入 Lombok</b>：它没有任何字段与样板方法（只有 {@code main}）⇒ 无可消除的样板。
  */
-@SpringBootApplication
+@Configuration
+@EnableAutoConfiguration
+/*
+ * ⚠️ **`excludeFilters` 必须显式补回（S1 · 5 进程形态 · 实测）** ——
+ * `@SpringBootApplication` 的 `@ComponentScan` **隐含**两个排除过滤器：
+ *   ① `TypeExcludeFilter`（Boot 的测试类型排除机制）
+ *   ② `AutoConfigurationExcludeFilter`（**排除 `@AutoConfiguration` 类**）
+ * ⇒ ⇒ 降级成裸 `@ComponentScan` 时这两个**一起丢** ⇒ ⇒ 实测症状：
+ *   域内 `ContentAuditAutoConfiguration` 被**组件扫描**扫到（bean 名 = 短名
+ *   `contentAuditAutoConfiguration`）⇒ ⇒ 绕过了 `META-INF/spring/…AutoConfiguration.imports`
+ *   ⇒ ⇒ A5 断言「auto-config 的 bean 名必须是 FQCN」红。
+ * ⇒ ⇒ 本处**逐字补回** `@SpringBootApplication` 原本的那两个过滤器。
+ */
+@ComponentScan(basePackages = "com.rag.message",
+        excludeFilters = {
+                @ComponentScan.Filter(type = FilterType.CUSTOM,
+                        classes = TypeExcludeFilter.class),
+                @ComponentScan.Filter(type = FilterType.CUSTOM,
+                        classes = AutoConfigurationExcludeFilter.class)
+        })
 @ConfigurationPropertiesScan("com.rag.message.config")
 @MapperScan("com.rag.message.mapper")
 @EnableDiscoveryClient

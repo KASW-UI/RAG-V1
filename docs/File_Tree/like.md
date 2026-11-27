@@ -149,6 +149,7 @@
 │   │       │       ├── V4__create_like_domain_fact_outbox.sql
 │   │       │       ├── V5__create_like_fact_stream.sql
 │   │       │       └── V6__align_like_domain_fact_outbox_with_go.sql
+│   │       ├── application-like.yml
 │   │       └── application.yml
 │   └── test/
 │       ├── java/

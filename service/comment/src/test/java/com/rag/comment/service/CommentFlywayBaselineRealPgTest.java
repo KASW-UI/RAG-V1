@@ -505,7 +505,7 @@ class CommentFlywayBaselineRealPgTest {
     /** 读本模块 classpath 上的 {@code application.yml}（扁平化后的属性）。 */
     private static Properties moduleYaml() throws IOException {
         List<PropertySource<?>> sources = new YamlPropertySourceLoader()
-                .load("comment-module-app", new ClassPathResource("application.yml"));
+                .load("comment-module-app", new ClassPathResource("application-comment.yml"));
         Properties p = new Properties();
         for (PropertySource<?> s : sources) {
             // ⚠️ getPropertyNames() 只在 EnumerablePropertySource 上（PropertySource 基类没有）

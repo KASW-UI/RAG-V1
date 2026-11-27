@@ -51,7 +51,21 @@ import org.springframework.stereotype.Component;
  * 用 AsyncStub 会把调用变成 fire-and-forget，<b>改变可观察行为</b>
  * （Go 会一直等到 RPC 返回或超时，之后才继续）。
  */
-@Component
+/*
+ * ⚠️ **bean 名显式指定（`likeMessageRpcClient` · S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `messageRpcClient`
+ * ⇒ ⇒ **comment 域与 like 域各有一个同名 `MessageRpcClient`**（实测）
+ * ⇒ ⇒ 两者都归入 `interaction-service` 进程后 **bean 名撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'messageRpcClient' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`likeMessageRpcClient`**（加域前缀）。
+ *
+ * ⚠️ **零行为变化**：只改 bean 名；`@GrpcClient("message-rpc")` 的通道名**逐字未动**
+ * ⇒ ⇒ gRPC 寻址契约不变。
+ *
+ * 📌 **后续**：计划书 **S3-9** 会把这两条边（comment→message、like→message）改成
+ * **进程内直调** ⇒ ⇒ 那时本类将被**删除**（不再走 gRPC）。
+ */
+@Component("likeMessageRpcClient")
 public class MessageRpcClient {
 
     private static final Logger LOG = LoggerFactory.getLogger(MessageRpcClient.class);

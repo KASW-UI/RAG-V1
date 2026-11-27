@@ -125,9 +125,9 @@ A14_DOMAINS = [
     ("follow", "follow-service"),
     ("like", "like-service"),
     ("message", "message-service"),
-    ("task", "task-service"),
+    ("task", "task-domain"),
     ("users-admin", "admin-service"),
-    ("users-user", "user-service"),
+    ("users-user", "user-domain"),
 ]
 # ⚠️ **一个「已登记但不在清单内」的域**（**不是漏写**，有确切理由）：
 #   · `hot`（hot-service）⇒ **实现尚未合入 main**（主干里还是空壳 + 48 行的 yml 桩）
@@ -281,7 +281,20 @@ def module_java(root: pathlib.Path, module: pathlib.Path):
 
 
 def module_yml(module: pathlib.Path):
-    return module / "src" / "main" / "resources" / "application.yml"
+    """域的配置文件路径。
+
+    ⚠️ **S1 · 5 进程形态后文件名变了**：10 个域的 `application.yml` 改名为
+    `application-<域>.yml`（实测根因：classpath 上多个**同名** `application.yml`
+    只有一份生效 ⇒ 多域合并后其它域的配置段静默丢失）⇒ ⇒ boot 模块用
+    `spring.config.import` 导入它们。
+
+    ⇒ ⇒ 本函数**先找新名，找不到再回退旧名**（兼容旧树自检）。
+    """
+    res = module / "src" / "main" / "resources"
+    for cand in sorted(res.glob("application-*.yml")):
+        return cand
+    legacy = res / "application.yml"
+    return legacy if legacy.exists() else res / "application.yml"
 
 
 def pom_text(module: pathlib.Path) -> str:
@@ -950,7 +963,7 @@ def check_a14(root: pathlib.Path, contract: str) -> Result:
         rel = module.relative_to(root).as_posix()
         yml = module_yml(module)
         if not yml.exists():
-            viol.append(f"{rel}/src/main/resources/application.yml ⇒ 不存在")
+            viol.append(f"{rel}/src/main/resources/application-*.yml ⇒ 不存在")
             continue
         checked += 1
         text = yml.read_text(encoding="utf-8")
@@ -1119,7 +1132,7 @@ def check_a16(root: pathlib.Path, contract: str) -> Result:
     不同层的同名键（如 `spring.application.name` 与 `otel.service.name`）是**正常**的。
     """
     viol, checked = [], 0
-    for yml in sorted(root.glob("service/**/src/main/resources/application.yml")):
+    for yml in sorted(root.glob("service/**/src/main/resources/application*.yml")):
         if "target" in yml.parts:
             continue
         checked += 1
@@ -1379,7 +1392,7 @@ def build_fixture(base: pathlib.Path) -> pathlib.Path:
            "public class GrpcClientUse {\n"
            "  @GrpcClient(\"foo-rpc\")\n"
            "  private Object foo;\n}\n")                                # A4 违规①
-    _write(root / "service/x/x-service/src/main/resources/application.yml",
+    _write(root / "service/x/x-service/src/main/resources/application-x.yml",
            "grpc:\n"
            "  client:\n"
            "    bar-rpc:\n"
@@ -1415,7 +1428,7 @@ def build_fixture(base: pathlib.Path) -> pathlib.Path:
            "package com.rag.comment.wiring;\npublic class CommentAuthorityEndpointConfig { }\n")
     # A14 违规：`comment-service` 的 application.yml **缺 `otel:` 段**
     #   ⇒ 端点为空 ⇒ 共享层不装 exporter ⇒ 该域的 span 一条都导不出去（静默失效）
-    _write(root / "service/comment/src/main/resources/application.yml",
+    _write(root / "service/comment/src/main/resources/application-comment.yml",
            "spring:\n  application:\n    name: comment-service\n"
            "otel:\n  service:\n    name: comment-service\n"
            "otel:\n  service:\n    name: comment-rpc\n")   # A16 违规：顶层 `otel:` 重复两次

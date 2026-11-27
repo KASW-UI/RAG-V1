@@ -277,7 +277,7 @@ class CommentApiPropertiesSecretGuardTest {
         new ApplicationContextRunner()
                 .withInitializer(context -> {
                     try {
-                        Resource yaml = new ClassPathResource("application.yml");
+                        Resource yaml = new ClassPathResource("application-comment.yml");
                         new YamlPropertySourceLoader().load("main-yaml", yaml)
                                 .forEach(ps -> context.getEnvironment().getPropertySources().addLast(ps));
                     } catch (IOException e) {
@@ -312,7 +312,7 @@ class CommentApiPropertiesSecretGuardTest {
         new ApplicationContextRunner()
                 .withInitializer(context -> {
                     try {
-                        Resource yaml = new ClassPathResource("application.yml");
+                        Resource yaml = new ClassPathResource("application-comment.yml");
                         new YamlPropertySourceLoader().load("main-yaml", yaml)
                                 .forEach(ps -> context.getEnvironment().getPropertySources().addLast(ps));
                     } catch (IOException e) {
@@ -336,7 +336,7 @@ class CommentApiPropertiesSecretGuardTest {
         new ApplicationContextRunner()
                 .withInitializer(context -> {
                     try {
-                        Resource yaml = new ClassPathResource("application.yml");
+                        Resource yaml = new ClassPathResource("application-comment.yml");
                         new YamlPropertySourceLoader().load("main-yaml", yaml)
                                 .forEach(ps -> context.getEnvironment().getPropertySources().addLast(ps));
                     } catch (IOException e) {

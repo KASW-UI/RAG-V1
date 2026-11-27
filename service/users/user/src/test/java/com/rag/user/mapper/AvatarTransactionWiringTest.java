@@ -62,7 +62,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>⚠️ <b>禁 {@code @EnabledIfDockerAvailable}</b>（AGENTS.md §五.8 守门硬规则 ③）
  * ⇒ 容器不可用时直接失败，不静默跳过（跳过 = 假绿）。
  */
-@SpringBootTest
+@SpringBootTest(classes = com.rag.user.UserServiceApplication.class)
 @ActiveProfiles("test")
 class AvatarTransactionWiringTest {
 

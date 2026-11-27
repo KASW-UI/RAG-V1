@@ -72,7 +72,7 @@ import org.springframework.core.io.ClassPathResource;
 class FavoriteOutboundDeadlineContractTest {
 
     /** 生产 yaml 在 classpath 上的位置（= {@code src/main/resources/application.yml}）。 */
-    private static final String PRODUCTION_YAML = "application.yml";
+    private static final String PRODUCTION_YAML = "application-favorite.yml";
 
     /** B 侧 zrpc 客户端的硬上界（毫秒）。 */
     private static final long B_SIDE_ZRPC_CAP_MILLIS = 2000L;

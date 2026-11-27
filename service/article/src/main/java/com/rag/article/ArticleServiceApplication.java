@@ -4,11 +4,16 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.context.TypeExcludeFilter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.listener.CommonErrorHandler;
@@ -90,7 +95,26 @@ import org.springframework.util.backoff.FixedBackOff;
  * <p><b>⚠️ gRPC server 由 devh starter 自动装配</b>：{@code grpc/ArticleGrpcService} 上的
  * {@code @GrpcService} 由 starter 扫描注册 ⇒ <b>本类不手写任何 gRPC 注册代码</b>。
  */
-@SpringBootApplication
+@Configuration
+@EnableAutoConfiguration
+/*
+ * ⚠️ **`excludeFilters` 必须显式补回（S1 · 5 进程形态 · 实测）** ——
+ * `@SpringBootApplication` 的 `@ComponentScan` **隐含**两个排除过滤器：
+ *   ① `TypeExcludeFilter`（Boot 的测试类型排除机制）
+ *   ② `AutoConfigurationExcludeFilter`（**排除 `@AutoConfiguration` 类**）
+ * ⇒ ⇒ 降级成裸 `@ComponentScan` 时这两个**一起丢** ⇒ ⇒ 实测症状：
+ *   域内 `ContentAuditAutoConfiguration` 被**组件扫描**扫到（bean 名 = 短名
+ *   `contentAuditAutoConfiguration`）⇒ ⇒ 绕过了 `META-INF/spring/…AutoConfiguration.imports`
+ *   ⇒ ⇒ A5 断言「auto-config 的 bean 名必须是 FQCN」红。
+ * ⇒ ⇒ 本处**逐字补回** `@SpringBootApplication` 原本的那两个过滤器。
+ */
+@ComponentScan(basePackages = "com.rag.article",
+        excludeFilters = {
+                @ComponentScan.Filter(type = FilterType.CUSTOM,
+                        classes = TypeExcludeFilter.class),
+                @ComponentScan.Filter(type = FilterType.CUSTOM,
+                        classes = AutoConfigurationExcludeFilter.class)
+        })
 @ConfigurationPropertiesScan("com.rag.article.config")
 @MapperScan("com.rag.article.mapper")
 @EnableScheduling

@@ -8,7 +8,7 @@
 | 项 | 值 |
 |---|---|
 | 模块路径 | `service/users/user` |
-| artifactId | `user-service` |
+| artifactId | `user-domain` |
 | 根包 | `com.rag.user` |
 | B 侧出处 | `service/users/user/` |
 | 说明 | api + rpc 合并后的单一 Spring Boot 应用，**域内包已压平为单层技术角色包树**（`controller` / `advice` / `interceptor` / `dto` / `config` / `metrics` / `service` / `grpc` / `domain` / `messaging` / `mapper` / `client` / `wiring` / `exception`）；域内错误契约与事件 DTO 在 `com.rag.<域>.contract` 包；**`dto/` 内按业务对象再拆一级子包**（D11：全仓 136 个 DTO → 26 个业务对象子包，判据 = B 侧 rpc 用例的 DTO 引用图 + 类型所在聚合） |
@@ -116,6 +116,7 @@
 │   │       ├── db/
 │   │       │   └── migration/
 │   │       │       └── .gitkeep
+│   │       ├── application-user.yml
 │   │       └── application.yml
 │   └── test/
 │       ├── java/

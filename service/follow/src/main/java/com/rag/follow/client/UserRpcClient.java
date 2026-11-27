@@ -56,7 +56,15 @@ import org.springframework.stereotype.Component;
  * ⇒ ⇒ <b>不得</b>在调用点自己套 {@code CallOptions.withDeadlineAfter(...)}
  * （那会把「可 env 覆盖」架空成写死的 2000ms）。
  */
-@Component
+/* followUserRpcClient
+ * ⚠️ **bean 名显式指定（S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `UserRpcClient`
+ * ⇒ ⇒ **多个域各有一个同名 `UserRpcClient`**（实测：favorite / message）
+ * ⇒ ⇒ 合并进同一上下文后 **bean 名撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'UserRpcClient' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`followUserRpcClient`**（加域前缀）⇒ **零行为变化**（只改 bean 名）。
+ */
+@Component("followUserRpcClient")
 public class UserRpcClient {
 
     /**

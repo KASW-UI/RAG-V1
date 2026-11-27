@@ -130,6 +130,7 @@
 │   │       │       ├── V3__create_message_conversation_message.sql
 │   │       │       ├── V4__conversation_pair_unique_index.sql
 │   │       │       └── V5__message_time_columns_timestamptz.sql
+│   │       ├── application-message.yml
 │   │       └── application.yml
 │   └── test/
 │       └── java/

@@ -277,11 +277,14 @@ class CommentGrpcInterceptorWiringRealTest {
     // ==================================================================
 
     @Test
-    @DisplayName("🔴 配置：生产 application.yml 的 observability.rpc-timeout 必须是 2s"
+    @DisplayName("🔴 配置：生产 application-comment.yml 的 observability.rpc-timeout 必须是 2s"
             + "（Go: comment.go:33 未配 Timeout ⇒ go-zero zrpc/config.go 默认 2000ms）")
     void productionTimeoutMatchesGoZeroDefault() throws Exception {
-        try (InputStream in = getClass().getResourceAsStream("/application.yml")) {
-            assertThat(in).as("application.yml 必须随 jar 打包").isNotNull();
+        // ⚠️ S1（5 进程形态）：域的真配置已改名为 `application-comment.yml`
+        //    （原 `application.yml` 只剩一行 `spring.config.import` 入口）⇒
+        //    本断言读的是**真配置**那份 ⇒ 读入口文件会找不到键。
+        try (InputStream in = getClass().getResourceAsStream("/application-comment.yml")) {
+            assertThat(in).as("application-comment.yml 必须随 jar 打包").isNotNull();
             String yml = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             assertThat(yml)
                     .as("Go 侧 etc/comment.yaml 未配 Timeout ⇒ 走 go-zero zrpc/config.go 的 default=2000ms；"

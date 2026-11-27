@@ -68,7 +68,7 @@ public class TaskRawDiagnosticConsumer {
             //    ⇒ 本处写的 latest 此前**从未生效**（「碰巧对」：全局默认恰好也是 latest）。
             //    详见 {@link TaskRawLogRouter} 同名注解处的完整说明。
             properties = "auto.offset.reset=latest",
-            containerFactory = "kafkaListenerContainerFactory")
+            containerFactory = "taskKafkaListenerContainerFactory")
     public void onMessage(ConsumerRecord<String, String> record) {
         String value = record.value();
         // Go 侧唯一那行 log.Printf 是被注释掉的；这里只留一个 debug，

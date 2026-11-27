@@ -154,7 +154,7 @@ class FavoriteApiPropertiesSecretGuardTest {
         new ApplicationContextRunner()
                 .withInitializer(context -> {
                     try {
-                        Resource yaml = new ClassPathResource("application.yml");
+                        Resource yaml = new ClassPathResource("application-favorite.yml");
                         new YamlPropertySourceLoader().load("main-yaml", yaml)
                                 .forEach(ps -> context.getEnvironment().getPropertySources().addLast(ps));
                     } catch (IOException e) {
@@ -189,7 +189,7 @@ class FavoriteApiPropertiesSecretGuardTest {
         new ApplicationContextRunner()
                 .withInitializer(context -> {
                     try {
-                        Resource yaml = new ClassPathResource("application.yml");
+                        Resource yaml = new ClassPathResource("application-favorite.yml");
                         new YamlPropertySourceLoader().load("main-yaml", yaml)
                                 .forEach(ps -> context.getEnvironment().getPropertySources().addLast(ps));
                     } catch (IOException e) {
@@ -213,7 +213,7 @@ class FavoriteApiPropertiesSecretGuardTest {
         new ApplicationContextRunner()
                 .withInitializer(context -> {
                     try {
-                        Resource yaml = new ClassPathResource("application.yml");
+                        Resource yaml = new ClassPathResource("application-favorite.yml");
                         new YamlPropertySourceLoader().load("main-yaml", yaml)
                                 .forEach(ps -> context.getEnvironment().getPropertySources().addLast(ps));
                     } catch (IOException e) {

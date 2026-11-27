@@ -200,7 +200,7 @@ class UserNacosRegistrationWiringTest {
     private static List<PropertySource<?>> loadApplicationYaml() {
         try {
             return new YamlPropertySourceLoader()
-                    .load("user-application", new ClassPathResource("application.yml"));
+                    .load("user-application", new ClassPathResource("application-user.yml"));
         } catch (IOException e) {
             throw new IllegalStateException("读不到 classpath:application.yml", e);
         }

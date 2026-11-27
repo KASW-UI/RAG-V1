@@ -8,7 +8,7 @@
 ```
 docs/Pitfalls/
 ├── _INDEX.md
-├── _cross/            # 跨模块踩坑（P-01 ~ P-28）
+├── _cross/            # 跨模块踩坑（P-01 ~ P-32）
 ├── users/             # users 域专属（本域写权面）
 ├── follow/            # follow 域专属（本域写权面）
 └── hot/               # hot 域专属（本域写权面）
@@ -46,6 +46,10 @@ docs/Pitfalls/
 | **P-26** | **IDE 的增量构建器写进 `target/classes`** ⇒ 编译错误指向**共享层**，真凶是**构建产物被外部覆盖** | 实测 Eclipse JDT 语言服务器的 `.classpath` 写着 `output="target/classes"` ⇒ ⇒ **IDE 与 Maven 抢同一个输出目录** ⇒ ⇒ IDE 那套**通常不跑 Lombok** ⇒ ⇒ 它编出的类**缺** Lombok 生成的成员 ⇒ ⇒ **覆盖**掉 Maven 编好的 class ⇒ ⇒ 下游模块**不重编**（源没变）⇒ ⇒ 却链接到**残缺类** ⇒ ⇒ 报「共享层某个类缺构造器/方法」⇒ ⇒ **错误指向完全无辜的地方**；🔴 **三重伪装**：① 那个类源码里**明明有** `@AllArgsConstructor` ⇒ 看着像共享层被改坏 ② **只在有跨模块变更时出现** ⇒ 平时全绿 ⇒ 极易被误判成「本次改动引入的回归」③ **偶发**（取决于 IDE 何时写）⇒ 同两条命令一次绿一次红 ⇒ 看着像 flaky ⇒ ⇒ **判定式（三步）**：① 先问「源码里真的缺吗」（有 ⇒ 不是源码问题）② **`javap` 看产物**（缺 Lombok 生成的方法 ⇒ 产物被外部写了）③ `mvn -pl <被指认的模块> clean compile` 重编后**单独复跑** ⇒ 绿 ⇒ ⇒ **坐实环境面**；⚠️ **不要因为「报错说共享层坏了」就去改共享层** （P-18 老毛病换马甲）；⇒ **根治** = IDE 输出目录与 `target/classes` 隔开（改 `.classpath` 的 `output=` ⇒ 属**本机环境动作**、**不为它提交文件**、但**必须登记**）；⇒ ⇒ **同源另一面**：生成器直接扫文件系统 ⇒ 把**未跟踪的 IDE 垃圾**渲进 12 个域的文件树 ⇒ ⇒ **写侧**（IDE 覆盖构建产物）· **读侧**（生成器把 IDE 垃圾当源码）⇒ ⇒ 通用判据 = **`git ls-files` 查得到的才是仓库内容** |
 | **P-27** | **IDE 的增量构建器「擦除并重写」`target/classes`** ⇒ **jar 被静默打残** ⇒ 报错指向**无辜的下游域**（**P-26 的同源姊妹条**） | 本机 Eclipse JDT（Neovim `jdtls`）的 `.classpath` 写着 `output="target/classes"` ⇒ ⇒ **IDE 与 Maven 抢同一个输出目录** ⇒ ⇒ IDE 做的是「**先整体擦除、再整体重写**」⇒ ⇒ **三张脸同源**：① **覆盖**单个 class（不跑 Lombok ⇒ 缺构造器）＝ **P-26** ② **擦除**发生在「Maven 编译完」与「jar 打包」之间 ⇒ ⇒ **jar 只装进部分 class**（实测 **221 / 760**，**0 个 `*Grpc.class`**）⇒ ⇒ 下游 `article-service` 编译报「找不到符号 `MessageServiceGrpc`」⇒ ⇒ **零报错** ⇒ **错误指向完全无辜的下游域** ③ IDE 在 `target/` 内的活动撞上 **Maven 插件的临时目录清理** ⇒ ⇒ `protobuf-maven-plugin` 报「Unable to clean up temporary proto file directory」⇒ ⇒ **构建在 proto 模块夭折**（**失败的是「清理」不是「生成」** ⇒ 产物已生成好）；🔴 **取证（可直接复跑）**：① **Maven 不在场**时采样 `find <模块>/target/classes -name '*.class' \| wc -l` ⇒ 恒定 ⇒ 「不是 Maven 自己在改」② **构建中**采样 ⇒ 抓到 jar 打好之后数字**掉到 0** 再回来 ⇒ ⇒ **第三方写入者** ⇒ `pgrep -fl jdtls\|eclipse` 逮到它；🔴 **判定式（四步）**：① 看失败面（「找不到符号 `XxxGrpc`」⇒ **查 jar 完整性**（jar 内 class 数 **对比** `target/classes` 里的 class 数）⇒ 不等 ⇒ **jar 被打残**，不是下游域的错；「Unable to clean up…」⇒ **是清理步骤** ⇒ 与代码无关）② **看产物不看源码** ③ **采样找写入者** ④ **换路径对照**（本仓 `.classpath` **不进版本控制** ⇒ **新工作树天然隔离** ⇒ 「从零验收」本就该在隔离工作树里做）；⚠️ **不要因为「报错说下游域 / proto 坏了」就去改那儿的代码**（P-18 老毛病换马甲）；⇒ **根治** = IDE 输出目录与 `target/` 隔开（`.classpath` 的 `output=` ⇒ **本机环境动作、不为它提交文件、但必须登记**）⇒ ✅ **2026-11-09 已落地**（用户拍板「改 IDE 输出目录，与 `target/` 隔开」）⇒ 脚本 `tools/ide/isolate-ide-output-dir.sh`（幂等 · 可 `--verify`）⇒ 取值 `.jdtls-build/classes`（**必须在 `target/` 之外** ⇒ 初版建议的 `target/eclipse-classes` **是错的**）⇒ 实测：m2e 重新导入**不**回改 · `mvn clean` **擦不到**它 ⇒ 详见 **P-27 §5**；⇒ **新增操作面纪律**：**取全量读数前先 `pgrep -fl jdtls\|eclipse`**（⚠️ 用户的 Neovim `jdtls` 在用 ⇒ **杀不杀由用户定**）|
 | **P-28** | **GFM 表格的形状缺陷让整张表在 GitHub 上塌成一段普通文字** —— 而**既有守门对它完全隐形** | 本仓实测（2026-11-11）：**110 份 markdown ⇒ 26 份命中 / 99 处** ⇒ 其中 **`docs/Mapping_Table/` 全套主表**（common / article / comment / favorite / hot / like / message / task）**分隔行一律 3 格、表头却是 4 格** ⇒ ⇒ 按 GFM §4.10 Ex.200 **整块不被识别为表格** ⇒ ⇒ 「**抄写路线图**」在 GitHub 上**整张表塌成段落**；🔴 **四类缺陷**：① 表块**缺分隔行** ② **分隔行格数 ≠ 表头格数**（⇒ 整块不是表）③ **数据行格数 ≠ 表头格数**（⇒ 多出的格**静默丢弃**）④ **inline code 内裸竖线**（⇒ 竖线被当列分隔符）；🔴 **为什么既有守门盖不住**：`check-mapping-coverage.py` 查**内容** · `check-docs-vs-tree.py` 查**路径/数字** ⇒ ⇒ 两者**自己解析表格行、不经 GFM 渲染器** ⇒ ⇒ **结构性地看不见「渲不渲染」** ⇒ ⇒ 「**内容对**」与「**渲染对**」是**两个正交维度** ⇒ ⇒ **补一个新维度**就抓到 99 处；⚠️ **检查器自己也会骗你**：**代码围栏内的行不是 markdown**（`find … \| xargs` 的 shell 管道、依赖树的 `\|  \-` 行**都以 `\|` 开头**）⇒ ⇒ 不认围栏 ⇒ **假红**（首跑把 6 处围栏内容报成「缺分隔行」）⇒ ⇒ 检查器**必须先标出围栏内的行**；🔴 **判据要有牙齿**：用**实测渲染**兜底（`pandoc -f gfm -t html` ⇒ 「渲成 `<table>`」还是「渲成 `<p>`」）；⇒ ✅ **2026-11-11 已闭合**（`global` 收口域）⇒ 新增守门 `tools/difftest/check-gfm-tables.py`（**4 类缺陷 + 围栏豁免逐类可红** ⇒ `--self-test` **8/8**）＋ 修复器 `tools/difftest/fix-gfm-tables.py`（**只做形状修复**）⇒ **99 处已修** ⇒ 复扫 **0 处** ⇒ **表格数 +60 张** ⇒ **实义字符零丢失**（逐文件用 `pandoc -f gfm -t plain` 渲染后**字符级比对**）⇒ ⇒ 新增的 **~1400 字全部来自「原本被 GFM 丢弃的格」被找回** |
+| **P-29** | **多域合并的「同名 bean」与「同名 yml」双重撞车** | 10 个域各有 1 份 `application.yml` ⇒ classpath 上**只有第一份生效**（实测 `admin-api.*` 整段丢失 ⇒ fail-closed 守卫抛「access-secret 不能为空」）· 各域各有同名 `WebMvcConfig` ⇒ `ConflictingBeanDefinitionException` ⇒ ⇒ **配置与 bean 两张表同时撞车**，且**编译期全绿** |
+| **P-30** | **域 jar 被 `repackage` ⇒ 类在编译期不可被依赖** | Boot jar 的类在 `BOOT-INF/classes/` 下 ⇒ boot 模块 `import com.rag.task.controller.TaskController;` ⇒ javac 报「程序包不存在」⇒ ⇒ **域 = 普通库 jar**，**只有 boot 产可执行 jar** ⇒ 连带 `tools/difftest/*/run.sh` 的 `C_JAR` 全部改指 boot jar |
+| **P-31** | **配置文件改名 ⇒ **三类「不跟随」的消费者** | ① 走 Spring 配置体系的（✅ 自动跟随）② **直接读 yml 文件**的（`YamlPropertySourceLoader` / `getResourceAsStream`）⇒ ❌ **不跟随** ⇒ 读到的是**入口文件** ③ `@SpringBootTest` **向上搜索**的 ⇒ ❌ 降级 `@SpringBootApplication` 后**失效** ⇒ ⇒ **改配置名必须逐类点名** |
+| **P-32** | **改 bean 名 ⇒ Boot 的「按名字判空」自动配置失效 ⇒ 冒出一个**语义相反**的默认 bean | 各域 Kafka 工厂加域前缀后，Boot 的 `@ConditionalOnMissingBean(name=["kafkaListenerContainerFactory"])`（**按名字**）不再命中 ⇒ ⇒ **Boot 默认工厂冒出来** ⇒ ⇒ 按类型取 bean 变歧义（`NoUniqueBeanDefinition`）⇒ ⇒ 🔴 **更严重的是语义**：Boot 默认工厂的错误处理器**与 B 侧位点提交契约方向相反** ⇒ ⇒ **静默翻转、零报错** ⇒ ⇒ 正解 = 共享层 `KafkaDefaultFactoryAutoConfiguration` 用 `BeanDefinitionRegistryPostProcessor` **精准删那一个 bean 定义**（整体排除会连带删掉 `Configurer` ⇒ hot 域启动即失败；域 factory 自己挂条件 ⇒ 合并进程里只有一方能注册） |
 | **P-USER-01~12** | `users-user` 子域的 **12 条**域内踩坑 | 「只有注释的 YAML 键」解析成**空串**而不是 `null`（全仓启动雷）· in-process server 名字是 **JVM 全局注册**的 · `-pl <module>` 单模块跑测解析不到兄弟模块 · 「测试写错了」与「实现写错了」长得一模一样 · 守门脚本 `ROOT` 有三种形态只有一种对 · `@Transactional` 挂在 **MP mapper 接口的 `default` 方法**上（本仓最易静默失效的形态）· 默认 `mvn clean verify` 是 **fail-fast** ⇒ 失败面被截断 ⇒ 跨树对照会得出**错误结论** · **测试类路径 ≠ 生产 jar 类路径** ⇒ 「`mvn test` 全绿」证不了「fat jar 起得来」· Bean Validation 的**违规集合是 `HashSet`** ⇒ `findFirst()` **不确定** · Python 打 HTTP ⇒ **1xx 中间响应**被当成最终响应 · bash `( cd … && java … ) &` 的 `$!` 是**子 shell 的 PID** ⇒ cleanup 杀不到 java ⇒ 端口残留 · 拿**屏蔽后的规范化文本**去断言**原始值** ⇒ 断言恒 false ⇒ 两侧同时挂却不是行为差异 |
 | **P-FOLLOW-01~04** | `follow` 域的 **4 条**域内踩坑 | 下游被**外力 SIGKILL** ⇒ 探针照样绿灯 ⇒ **读数测的是另一个场景**（探针跑着跑着下游被杀掉 ⇒ 后面所有阶段跑在坏环境上 ⇒ 却给出「看起来很干净」的分布）· 等待「服务发现条目回来」的**嵌套重试** ⇒ 下游已死时**死等 7.5 分钟** · 生成器在 **worktree** 里跑 ⇒ 与 main 的差异是**假差异**（**git 不跟踪空目录**）· 变异脚本的备份是**启动时一次性取的** ⇒ 运行期间改靶点文件会被**还原冲掉** |
 
@@ -59,6 +63,10 @@ docs/Pitfalls/
 [`_cross/P-26-IDE增量构建写进target-classes导致编译错误指向共享层.md`](_cross/P-26-IDE增量构建写进target-classes导致编译错误指向共享层.md) ·
 [`_cross/P-27-IDE增量构建器擦除重写target-classes导致jar静默残缺.md`](_cross/P-27-IDE增量构建器擦除重写target-classes导致jar静默残缺.md) ·
 [`_cross/P-28-GFM表格形状缺陷让整张表在GitHub上塌成段落且对现有守门完全隐形.md`](_cross/P-28-GFM表格形状缺陷让整张表在GitHub上塌成段落且对现有守门完全隐形.md) ·
+[`_cross/P-29-多域合并的同名bean与同名yml双重撞车.md`](_cross/P-29-多域合并的同名bean与同名yml双重撞车.md) ·
+[`_cross/P-30-域jar被repackage后类不可被依赖.md`](_cross/P-30-域jar被repackage后类不可被依赖.md) ·
+[`_cross/P-31-配置改名的三类不跟随消费者.md`](_cross/P-31-配置改名的三类不跟随消费者.md) ·
+[`_cross/P-32-改bean名导致Boot按名字判空的自动配置失效.md`](_cross/P-32-改bean名导致Boot按名字判空的自动配置失效.md) ·
 > [`_cross/P-09-批量替换的三个静默失效.md`](_cross/P-09-批量替换的三个静默失效.md) ·
 [`_cross/P-12-变异没变红等于那条断言没覆盖到.md`](_cross/P-12-变异没变红等于那条断言没覆盖到.md) ·
 > [`_cross/P-18-域还是空壳导致repackage找不到main方法.md`](_cross/P-18-域还是空壳导致repackage找不到main方法.md) ·
@@ -74,7 +82,7 @@ docs/Pitfalls/
 > ✅ **2026-11-05（`global` 收口域 · 合并工作树轮）· 本索引补登** —— 合并 hot / task / comment / favorite 四域实现后，
 > **`hot/` 域内踩坑档（13 条）首次进入主干** ⇒ ⇒ **此前未登记进本索引** ⇒ **已补**（含「档位结构」段补 `hot/` 一行）
 > ⇒ ⇒ 另订正 `users` 域的条数（**P-USER-01~12 ⇒ 实为 P-USER-01~18**，按 `## P-USER-*` 标题机器复算）
-> ⇒ ⇒ **跨域坑 = P-01 ~ P-28**（`_cross/` **21** 份文件 · **2026-11-05 新增 P-26 / P-27** · **2026-11-11 新增 P-28**）· **域内坑 = users 18 · hot 13 · follow 4**。
+> ⇒ ⇒ **跨域坑 = P-01 ~ P-32**（`_cross/` **25** 份文件 · **2026-11-05 新增 P-26 / P-27** · **2026-11-11 新增 P-28** · **2026-11-28 新增 P-29 ~ P-32（S1 · 5 进程形态）**）· **域内坑 = users 18 · hot 13 · follow 4**。
 
 ## 纪律
 

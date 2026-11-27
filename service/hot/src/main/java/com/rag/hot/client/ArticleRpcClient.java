@@ -64,7 +64,15 @@ import java.util.concurrent.TimeUnit;
  *       文章<b>不会</b>被 {@code status != PUBLISHED} 这条过滤误杀。</li>
  * </ul>
  */
-@Component
+/* hotArticleRpcClient
+ * ⚠️ **bean 名显式指定（S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `ArticleRpcClient`
+ * ⇒ ⇒ **多个域各有一个同名 `ArticleRpcClient`**（实测：comment / favorite）
+ * ⇒ ⇒ 合并进同一上下文后 **bean 名撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'ArticleRpcClient' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`hotArticleRpcClient`**（加域前缀）⇒ **零行为变化**（只改 bean 名）。
+ */
+@Component("hotArticleRpcClient")
 public class ArticleRpcClient {
 
     /** B 侧 {@code PublicOnly: true} —— 见类注释。 */

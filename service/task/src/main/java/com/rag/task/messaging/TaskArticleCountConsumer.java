@@ -95,7 +95,7 @@ public class TaskArticleCountConsumer {
             //    ⇒ 此前这里写的 earliest **从未生效**，实际是全局的 latest。
             //    详见 {@link TaskRawLogRouter} 同名注解处的完整说明。
             properties = "auto.offset.reset=earliest",
-            containerFactory = "kafkaListenerContainerFactory")
+            containerFactory = "taskKafkaListenerContainerFactory")
     public void onMessage(ConsumerRecord<String, String> record) {
         String key = record.key() == null ? "" : record.key();
         String value = record.value();

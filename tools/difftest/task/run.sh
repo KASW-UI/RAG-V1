@@ -178,7 +178,7 @@ say "   · C 侧：mvn -o -pl service/task -am package"
 
 B_API_JAR="${B_REPO}/service/task/task-api/target/task-api-0.0.1-SNAPSHOT.jar"
 B_RPC_JAR="${B_REPO}/service/task/task-rpc/target/task-rpc-0.0.1-SNAPSHOT.jar"
-C_JAR="${C_ROOT}/service/task/target/task-service-1.0-SNAPSHOT.jar"
+C_JAR="${C_ROOT}/service/boot/task/target/task-service-1.0-SNAPSHOT.jar"
 [ -f "${B_API_JAR}" ] || die "B 侧 task-api jar 不存在：${B_API_JAR}"
 [ -f "${B_RPC_JAR}" ] || die "B 侧 task-rpc jar 不存在：${B_RPC_JAR}"
 [ -f "${C_JAR}" ]     || die "C 侧 task-service jar 不存在：${C_JAR}"

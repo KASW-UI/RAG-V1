@@ -204,10 +204,13 @@ class CommentOversizedBodyRealTomcatTest {
     // ====================================================================================
 
     @Test
-    @DisplayName("🔴 生产 application.yml 的 rag.protection.max-bytes 必须是 1048576（go-zero rest/config.go 的 default）")
+    @DisplayName("🔴 生产 application-comment.yml 的 rag.protection.max-bytes 必须是 1048576（go-zero rest/config.go 的 default）")
     void productionMaxBytesMatchesGoZeroDefault() throws IOException {
-        try (InputStream in = getClass().getResourceAsStream("/application.yml")) {
-            assertThat(in).as("application.yml 必须随 jar 打包").isNotNull();
+        // ⚠️ S1（5 进程形态）：域的真配置已改名为 `application-comment.yml`
+        //    （原 `application.yml` 只剩一行 `spring.config.import` 入口）⇒
+        //    本断言读的是**真配置**那份 ⇒ 读入口文件会找不到键。
+        try (InputStream in = getClass().getResourceAsStream("/application-comment.yml")) {
+            assertThat(in).as("application-comment.yml 必须随 jar 打包").isNotNull();
             String yml = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             assertThat(yml)
                     .as("⚠️ B 侧 comment-api/…/application.yml:145 没写 MaxBytes ⇒ 生效值来自"

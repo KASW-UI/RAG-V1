@@ -853,7 +853,7 @@ class CommentOutboundDeadlineCapGateTest {
 
     /** 本域 {@code application.yml} 的<b>磁盘路径</b>。 */
     private static Path domainYamlPath() {
-        return moduleRoot().resolve("src").resolve("main").resolve("resources").resolve("application.yml");
+        return moduleRoot().resolve("src").resolve("main").resolve("resources").resolve("application-comment.yml");
     }
 
     /**

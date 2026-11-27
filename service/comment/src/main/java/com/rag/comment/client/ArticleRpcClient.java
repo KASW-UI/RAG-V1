@@ -61,7 +61,15 @@ import org.springframework.stereotype.Component;
  * authorId 解析失败、authorId ≤ 0）一律折叠成同一个 {@code ErrorSubjectNotFound}，
  * <b>不区分原因</b>。调用方据此走 1012。本类保持同样的折叠。
  */
-@Component
+/* commentArticleRpcClient
+ * ⚠️ **bean 名显式指定（S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `ArticleRpcClient`
+ * ⇒ ⇒ **多个域各有一个同名 `ArticleRpcClient`**（实测：favorite / hot）
+ * ⇒ ⇒ 合并进同一上下文后 **bean 名撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'ArticleRpcClient' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`commentArticleRpcClient`**（加域前缀）⇒ **零行为变化**（只改 bean 名）。
+ */
+@Component("commentArticleRpcClient")
 public class ArticleRpcClient {
 
     private static final Logger LOG = LoggerFactory.getLogger(ArticleRpcClient.class);

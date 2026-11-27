@@ -89,6 +89,21 @@ class CommentArtifactClasspathGateTest {
     /** 本模块在仓库里的路径（相对仓库根）。 */
     static final String MODULE_PATH = "service/comment";
 
+    /**
+     * 🔴 <b>可执行 fat jar 所在模块的路径（S1 · 5 进程形态）</b>。
+     *
+     * <p>⚠️ <b>为什么不再是 {@link #MODULE_PATH} 本身</b>：
+     * S1 起**域模块不再 {@code repackage}**（域 jar 是<b>普通库 jar</b>，类在
+     * {@code BOOT-INF/classes/} 下 ⇒ 编译期不可被依赖，见 {@code P-30}）
+     * ⇒ ⇒ 可执行 jar 由 <b>boot 模块</b>产出 ⇒ comment 域归属
+     * {@code interaction} 进程 ⇒ fat jar 在 {@code service/boot/interaction/target/}。
+     *
+     * <p>⇒ ⇒ 本类的第 ②③ 条守门点<b>守的对象没变</b>（仍是「comment 域跑起来所依赖的
+     * <b>真产物</b>里有没有 grpc-inprocess / 排序桥」）⇒ 只是<b>产物位置</b>从域模块
+     * 挪到了 boot 模块 ⇒ ⇒ <b>判据等价</b>。
+     */
+    static final String BOOT_MODULE_PATH = "service/boot/interaction";
+
     /** 共享层模块路径（fat jar 内嵌的是它构建出来的 jar ⇒ 新鲜度要一起算）。 */
     static final String SHARED_LAYER_PATH = "common";
 
@@ -253,15 +268,20 @@ class CommentArtifactClasspathGateTest {
         return Files.readString(outputFile, StandardCharsets.UTF_8);
     }
 
-    /** 取本模块的 fat jar；缺失或比源码旧时重新构建（构建产物必须与当前源码一致）。 */
+    /**
+     * 取<b>可执行 fat jar</b>；缺失或比源码旧时重新构建（构建产物必须与当前源码一致）。
+     *
+     * <p>⚠️ <b>S1 起产物在 boot 模块</b>（域模块不再 repackage）⇒ 这里查
+     * {@code service/boot/interaction/target/} ⇒ 见 {@link #BOOT_MODULE_PATH}。
+     */
     static Path fatJar() throws Exception {
-        Path moduleDir = repoRoot().resolve(MODULE_PATH);
+        Path moduleDir = repoRoot().resolve(BOOT_MODULE_PATH);
         Path jar = newestFatJar(moduleDir.resolve("target"));
         if (jar == null || isStale(jar, moduleDir)) {
             buildFatJar();
             jar = newestFatJar(moduleDir.resolve("target"));
         }
-        assertNotNull(jar, "找不到本模块的 fat jar（" + moduleDir.resolve("target") + " 下没有 *.jar）");
+        assertNotNull(jar, "找不到本进程的 fat jar（" + moduleDir.resolve("target") + " 下没有 *.jar）");
         return jar;
     }
 
@@ -287,6 +307,11 @@ class CommentArtifactClasspathGateTest {
      * fat jar 里内嵌的是 {@code BOOT-INF/lib/common-*.jar}
      * ⇒ 共享层改了而本模块没改时，本模块的 fat jar <b>不会</b>自动重建
      * ⇒ ⇒ 内嵌的那份是旧的 ⇒ ⇒ 第 ③ 条守门会读到过期内容（假绿/假红都可能出现）。
+     *
+     * <p>🔴 <b>S1：comment 域自己的源码也要算进「新鲜度」</b> ——
+     * fat jar 里内嵌的是 {@code BOOT-INF/lib/comment-service-*.jar}
+     * ⇒ comment 域改了而 boot 模块没改时，boot 的 fat jar <b>不会</b>自动重建
+     * ⇒ ⇒ 内嵌的那份是旧的 ⇒ ⇒ 第 ③ 条守门会读到过期内容。
      */
     private static boolean isStale(Path jar, Path moduleDir) throws IOException {
         long jarTime = jar.toFile().lastModified();
@@ -295,6 +320,15 @@ class CommentArtifactClasspathGateTest {
         Path main = moduleDir.resolve("src").resolve("main");
         if (Files.isDirectory(main)) {
             try (Stream<Path> files = Files.walk(main)) {
+                files.filter(Files::isRegularFile).forEach(inputs::add);
+            }
+        }
+        // 🔴 comment 域自身的源码与 pom（它以 jar 形式嵌进 boot 的 fat jar）
+        Path domainDir = repoRoot().resolve(MODULE_PATH);
+        inputs.add(domainDir.resolve("pom.xml"));
+        Path domainMain = domainDir.resolve("src").resolve("main");
+        if (Files.isDirectory(domainMain)) {
+            try (Stream<Path> files = Files.walk(domainMain)) {
                 files.filter(Files::isRegularFile).forEach(inputs::add);
             }
         }
@@ -320,10 +354,14 @@ class CommentArtifactClasspathGateTest {
      * <p>🔴 <b>命令必须带 {@code -am}</b>：不带 ⇒ 共享层 {@code common} <b>不在 reactor 里</b>
      * ⇒ ⇒ fat jar 内嵌的 {@code BOOT-INF/lib/common-*.jar} 来自 <b>{@code ~/.m2}</b>
      * ⇒ ⇒ 那是<b>旧的</b>共享层包 ⇒ ⇒ 第 ③ 条守门会读到过期内容。
+     *
+     * <p>🔴 <b>S1：构建目标是 boot 模块</b>（{@code -pl service/boot/interaction}）
+     * ⇒ 域模块不再 repackage ⇒ 可执行 jar 由 boot 模块产出（见 {@link #BOOT_MODULE_PATH}）。
+     * ⇒ {@code -am} 同时把 comment 域与共享层拉进 reactor ⇒ 内嵌的两份 jar 都是新的。
      */
     private static void buildFatJar() throws Exception {
         ProcessBuilder builder = new ProcessBuilder(List.of(
-                "mvn", "-o", "-q", "package", "-Dmaven.test.skip=true", "-am", "-pl", MODULE_PATH))
+                "mvn", "-o", "-q", "package", "-Dmaven.test.skip=true", "-am", "-pl", BOOT_MODULE_PATH))
                 .directory(repoRoot().toFile())
                 .redirectErrorStream(true);
         Process process = builder.start();

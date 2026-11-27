@@ -1,0 +1,89 @@
+# =============================================================================
+# user-service 进程的配置文件（S1 · 5 进程形态）
+#
+# 【职责】**进程级配置** —— 本文件只放「进程维度」的键（端口 / 应用名 / 追踪服务名）；
+#          **域维度的配置键一律留在各域自己的 `application-<域>.yml`** ⇒ 由下面的
+#          `spring.config.import` 导入 ⇒ ⇒ **域配置零丢失、零改写**。
+#
+# 【为什么必须这样拆】（实测根因，S1 落地时撞到）
+#   Spring Boot 只加载 classpath 上**第一个** `application.yml` ⇒
+#   10 个域各有 1 份 `application.yml` 时，合并进程里**只有一份生效**
+#   ⇒ ⇒ 实测症状：`user-service` 进程里 `user-api.*` 段生效，但
+#            `admin-api.admin-auth.access-secret` **整段丢失** ⇒
+#            `AdminApiProperties` 的 fail-closed 守卫抛「access-secret 不能为空」。
+#   ⇒ ⇒ 解法：域 yml 改名 `application-<域>.yml`（避免同名）＋ 本文件 import 全部。
+#
+# 【import 顺序 = 后导入的覆盖先导入的】（实测：PS 顺序 b → a → 主文件）
+#   ⇒ ⇒ 各域之间若真有同键不同值，**靠 import 顺序**决定谁赢；
+#   ⇒ ⇒ **进程级键写在主文件里** ⇒ 主文件优先级**高于**所有 imported 文件
+#      ⇒ ⇒ 端口 / 应用名等进程级配置**必然生效**，不会被域 yml 覆盖。
+#
+# 【本进程的域构成】
+#   · users/user  （主域 · HTTP 8881 / gRPC 8081）
+#   · users/admin （副域 · 原 HTTP 8889 / gRPC 8082 ⇒ **本进程内被 user 独占**）
+# =============================================================================
+spring:
+  config:
+    import:
+      - classpath:application-user.yml
+      - classpath:application-admin.yml
+  application:
+    # ⚠️ **进程级**：两个子域合并成一个进程 ⇒ 只有一个应用名
+    #   （B 侧 user-api / user-rpc / admin-api / admin-rpc 各有一个 ⇒ 合并后只能填一个
+    #     ⇒ 取 user 侧的 `user-service` —— 已登记为 D1 连带偏离）
+    name: user-service
+  data:
+    redis:
+      # ⚠️ **两域的环境变量名不同**（实测）：
+      #   user 侧用 `REDIS_ADDR`（B 出处：user-api/application.yml）
+      #   admin 侧用 `REDIS_HOST`
+      #   ⇒ ⇒ 本进程**同时兼容两个变量名**（`${REDIS_ADDR:${REDIS_HOST:redis}}`）
+      #   ⇒ ⇒ 部署侧用哪个都能生效 ⇒ **不丢任何一侧的部署口径**。
+      host: ${REDIS_ADDR:${REDIS_HOST:redis}}
+  cloud:
+    nacos:
+      discovery:
+        # ⚠️ **进程级**：自动注册必须关（否则会注册 web 端口 ⇒ 与显式 gRPC 端口注册叠加）
+        register-enabled: false
+
+server:
+  # ⚠️ **进程级**（§2.6 P4 · 每进程保留「主域」现端口）：
+  #   user 进程 HTTP = 8881（users/user 的现端口）
+  #   ⇒ admin 原 8889 **被释放**（admin 与 user 同进程 ⇒ 端口由 user 独占）
+  #   ⚠️ 仍保留 `${ENV:默认}` 形式 ⇒ 部署侧可覆盖，**不要写死**（AGENTS §五）
+  port: ${USER_HTTP_PORT:8881}
+
+grpc:
+  server:
+    # ⚠️ **进程级**（§2.6 P4）：user 进程 gRPC = 8081（users/user 的现端口）
+    #   ⇒ admin 原 8082 **被释放**
+    port: ${USER_GRPC_PORT:8081}
+
+otel:
+  service:
+    # ⚠️ **进程级**：两个子域合并 ⇒ 追踪服务名只能填一个
+    #   （取 user 侧；已登记为 D1 连带偏离）
+    name: user-service
+  exporter:
+    otlp:
+      # ⚠️ **进程级**：端点 / 协议属**进程维度**（不是域维度）⇒ 放本文件
+      #   ⇒ ⇒ 共享层 `GoStyleOtelConfig` 读到它们 ⇒ exporter 真装上
+      #      （endpoint 空 ⇒ 共享层不装 ⇒ 该进程 span 一条都导不出去 ⇒ 静默失效）
+      #   ⚠️ 端点**带 scheme**（共享层按 B 侧 `if len(c.Endpoint) > 0` 口径判定；
+      #     scheme 缺失时共享层自己补 `http://` = B 的 WithInsecure() 明文）
+      endpoint: http://${OTEL_ADDR:jaeger}:${OTLP_PORT:4317}
+      # ⚠️ protocol 必须是 `grpc`（= B 侧 `Telemetry.Batcher: otlpgrpc`）
+      protocol: grpc
+  resource:
+    attributes:
+      service.name: user-service
+  traces:
+    # ⚠️ 共享层 `GoStyleOtelConfig#toRatio` 把 `always_on` 与 `parentbased_always_on`
+    #   **都**映射成 ratio = 1.0 ⇒ ⇒ 取 C 侧统一写法 `always_on`（与各域一致）
+    sampler: always_on
+
+management:
+  metrics:
+    tags:
+      # ⚠️ **进程级**：Prometheus 的 application 标签（域级只影响各自域的指标名）
+      application: user-service

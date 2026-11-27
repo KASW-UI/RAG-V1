@@ -46,7 +46,15 @@ import org.springframework.stereotype.Component;
  *       所以也不该设 ⇒ 保持未设置。</li>
  * </ul>
  */
-@Component
+/* favoriteArticleRpcClient
+ * ⚠️ **bean 名显式指定（S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `ArticleRpcClient`
+ * ⇒ ⇒ **多个域各有一个同名 `ArticleRpcClient`**（实测：comment / hot）
+ * ⇒ ⇒ 合并进同一上下文后 **bean 名撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'ArticleRpcClient' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`favoriteArticleRpcClient`**（加域前缀）⇒ **零行为变化**（只改 bean 名）。
+ */
+@Component("favoriteArticleRpcClient")
 public class ArticleRpcClient {
 
     @GrpcClient("article-rpc")

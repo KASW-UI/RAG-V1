@@ -134,7 +134,7 @@ public class CommentAuditListener {
             topics = "${comment.kafka.audit-topic}",
             groupId = "${spring.kafka.consumer.group-id}",
             concurrency = "${comment.kafka.audit-concurrency:8}",
-            containerFactory = "kafkaListenerContainerFactory")
+            containerFactory = "commentKafkaListenerContainerFactory")
     public void onMessage(String key, String value) {
         Map<String, Object> attrs = new LinkedHashMap<>();
         attrs.put("messaging.system", "kafka");

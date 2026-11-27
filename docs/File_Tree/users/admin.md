@@ -124,6 +124,7 @@
 │   │       ├── db/
 │   │       │   └── migration/
 │   │       │       └── .gitkeep
+│   │       ├── application-admin.yml
 │   │       └── application.yml
 │   └── test/
 │       └── java/

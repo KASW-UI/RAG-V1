@@ -35,7 +35,19 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * <p>⚠️ <b>但 Boot 3.5 上的注册方式不同</b>：Boot 3.5 的 builder <b>没有</b> {@code withCoercionConfig}
  * ⇒ 走 {@code postConfigurer} 路线（与 like 域 {@code WebMvcConfig} 同款）。
  */
-@Configuration
+/*
+ * ⚠️ **bean 名显式指定（`commentWebMvcConfig` · S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `webMvcConfig`
+ * ⇒ ⇒ **10 个域各有一个同名 `WebMvcConfig`**（实测：article / comment / favorite /
+ * follow / hot / like / message / task / users-user / users-admin）
+ * ⇒ ⇒ 合并进同一上下文时 **bean 名全部撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'webMvcConfig' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`commentWebMvcConfig`**（加域前缀）。
+ *
+ * ⚠️ **零行为变化**：只改 bean 名，`addInterceptors` 的内容与路径前缀**逐字未动**
+ * ⇒ ⇒ 各域的拦截器路径仍靠**路径前缀互斥**来隔离（见计划书 S3-6）。
+ */
+@Configuration("commentWebMvcConfig")
 public class WebMvcConfig implements WebMvcConfigurer {
 
     /** 受保护路径前缀（B 侧 {@code COMMENT_V1_PATTERN}，逐字一致）。 */

@@ -30,7 +30,19 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * （{@code com.rag.common.web.Coercion}）⇒ ⇒ 域内再注册一次 = <b>同一条规则施加两遍</b>
  * ⇒ ⇒ 本类<b>刻意不注册</b>（不是「忘了」，是共享层已收口）。
  */
-@Configuration
+/*
+ * ⚠️ **bean 名显式指定（`userWebMvcConfig` · S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `webMvcConfig`
+ * ⇒ ⇒ **10 个域各有一个同名 `WebMvcConfig`**（实测：article / comment / favorite /
+ * follow / hot / like / message / task / users-user / users-admin）
+ * ⇒ ⇒ 合并进同一上下文时 **bean 名全部撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'webMvcConfig' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`userWebMvcConfig`**（加域前缀）。
+ *
+ * ⚠️ **零行为变化**：只改 bean 名，`addInterceptors` 的内容与路径前缀**逐字未动**
+ * ⇒ ⇒ 各域的拦截器路径仍靠**路径前缀互斥**来隔离（见计划书 S3-6）。
+ */
+@Configuration("userWebMvcConfig")
 public class WebMvcConfig implements WebMvcConfigurer {
 
     private final JwtAuthInterceptor jwtAuthInterceptor;

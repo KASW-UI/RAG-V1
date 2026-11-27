@@ -51,7 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       ⇒ 与其它测试上下文并存不冲突。</li>
  * </ul>
  */
-@SpringBootTest
+@SpringBootTest(classes = com.rag.user.UserServiceApplication.class)
 @ActiveProfiles("test")
 class UserServiceApplicationTests {
 

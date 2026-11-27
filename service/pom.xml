@@ -23,5 +23,28 @@
         <module>message</module>
         <module>task</module>
         <module>users</module>
+
+        <!--
+            ══════════════════════════════════════════════════════════════════════
+            **5 进程形态的启动壳**（§2.6 P1 + §一 1.2 · S1 · 方案 A「不搬源码」）
+            ══════════════════════════════════════════════════════════════════════
+            ⚠️ **这 5 个模块是「进程级启动壳」，不是新的代码模块**：
+              · 业务代码**一行未搬** ⇒ 域模块（10 个）**零改动** ⇒ diff 可读、可回退；
+              · 产物 = 10 个域 jar + 5 个 boot jar = **15 个 artifact**
+                ⇒ ⇒ 最终说明必须讲清「**代码模块 10 个 ≠ 部署进程 5 个**」。
+
+            ⚠️ **依赖方向**：boot 模块 **依赖** 域模块（`article-service` 等），
+              **不反向** ⇒ ⇒ 域模块**不认识** boot 模块 ⇒ ⇒ 域模块的测试**完全不受影响**
+              （域测试仍指向各自域启动类）。
+
+            ⚠️ **boot 聚合层**：本目录下 5 个 boot 模块各自独立（无共享代码）⇒
+              故**不建** `service/boot/pom.xml` 聚合 pom（避免多一层无内容的间接层），
+              直接在 `service/pom.xml` 的 `<modules>` 里列 5 条。
+        -->
+        <module>boot/content</module>
+        <module>boot/user</module>
+        <module>boot/interaction</module>
+        <module>boot/hot</module>
+        <module>boot/task</module>
     </modules>
 </project>

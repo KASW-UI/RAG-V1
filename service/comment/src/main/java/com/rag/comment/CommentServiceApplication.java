@@ -7,10 +7,15 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.context.TypeExcludeFilter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.listener.DefaultErrorHandler;
@@ -93,7 +98,26 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * <p>{@code grpc/CommentGrpcService} 上的 {@code @GrpcService} 由 starter 扫描注册
  * ⇒ <b>本类不手写任何 gRPC 注册代码</b>。
  */
-@SpringBootApplication
+@Configuration
+@EnableAutoConfiguration
+/*
+ * ⚠️ **`excludeFilters` 必须显式补回（S1 · 5 进程形态 · 实测）** ——
+ * `@SpringBootApplication` 的 `@ComponentScan` **隐含**两个排除过滤器：
+ *   ① `TypeExcludeFilter`（Boot 的测试类型排除机制）
+ *   ② `AutoConfigurationExcludeFilter`（**排除 `@AutoConfiguration` 类**）
+ * ⇒ ⇒ 降级成裸 `@ComponentScan` 时这两个**一起丢** ⇒ ⇒ 实测症状：
+ *   域内 `ContentAuditAutoConfiguration` 被**组件扫描**扫到（bean 名 = 短名
+ *   `contentAuditAutoConfiguration`）⇒ ⇒ 绕过了 `META-INF/spring/…AutoConfiguration.imports`
+ *   ⇒ ⇒ A5 断言「auto-config 的 bean 名必须是 FQCN」红。
+ * ⇒ ⇒ 本处**逐字补回** `@SpringBootApplication` 原本的那两个过滤器。
+ */
+@ComponentScan(basePackages = "com.rag.comment",
+        excludeFilters = {
+                @ComponentScan.Filter(type = FilterType.CUSTOM,
+                        classes = TypeExcludeFilter.class),
+                @ComponentScan.Filter(type = FilterType.CUSTOM,
+                        classes = AutoConfigurationExcludeFilter.class)
+        })
 @EnableConfigurationProperties({CommentApiProperties.class, CommentRpcProperties.class,
         CommentKafkaTopics.class})
 @MapperScan("com.rag.comment.mapper")
@@ -130,7 +154,27 @@ public class CommentServiceApplication {
      * 那两个域的 B 侧语义是 {@code ForceCommit=true}（失败也提交位点、消息丢弃），
      * 而本域的 B 侧语义是<b>「落库失败 ⇒ 不提交 ⇒ 重投」</b> ⇒ ⇒ 两者方向相反，不可照抄。
      */
-    @Bean
+/*
+ * ⚠️ **bean 名显式指定（S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 方法名 ⇒ 本方法原本注册为 `kafkaListenerContainerFactory`
+ * ⇒ ⇒ **comment / like / task 三个域各有同名 `@Bean`**（实测）
+ * ⇒ ⇒ 合并进同一上下文后 **bean 名撞车** ⇒
+ * `BeanDefinitionOverrideException: Invalid bean definition with name 'kafkaListenerContainerFactory' …`
+ * ⇒ ⇒ 本方法显式命名为 **`commentKafkaListenerContainerFactory`**（加域前缀）⇒ **零行为变化**（只改 bean 名）。
+ *
+ * 📌 **配套（S1 已落地）**：本域的 `@KafkaListener` 已同步改成
+ * {@code containerFactory = "commentKafkaListenerContainerFactory"}
+ * （见 {@code CommentAuditListener#onMessage}）——
+ * ⚠️ **不改会静默退化成 Boot 的默认工厂**：
+ * 本 bean 改名前恰好与 Boot 自动配置 {@code KafkaAnnotationDrivenConfiguration}
+ * 注册的默认 {@code kafkaListenerContainerFactory} **同名** ⇒
+ * listener 仍写旧名 ⇒ 指向的是 **Boot 的默认工厂**（无本域的错误处理器）
+ * ⇒ ⇒ 本域「落库失败 ⇒ 不提交位点 ⇒ 重投」的契约**静默失效**。
+ *
+ * 📌 **为什么这个改名是必须的**：5 进程形态下 comment / like / task 三域进同一上下文
+ * ⇒ 三个域各有一个同名 {@code @Bean} ⇒ 必然撞车 ⇒ 必须域前缀。
+ */
+    @Bean("commentKafkaListenerContainerFactory")
     public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
             ConsumerFactory<String, String> consumerFactory) {
         ConcurrentKafkaListenerContainerFactory<String, String> factory =

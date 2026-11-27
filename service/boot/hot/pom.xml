@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project
+  xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+>
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.rag</groupId><artifactId>service</artifactId><version
+    >1.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>hot-service</artifactId>
+    <name>hot-service</name>
+    <description
+  >hot-service —— **5 进程形态**（§2.6 P1 + §一 1.2）的 hot 进程启动壳。hot 进程启动壳。含 hot 域。**只做启动壳，不含业务代码**（方案 A · S1-1）</description>
+
+    <dependencies>
+        <!--
+            ══ 本模块只做「启动壳」══
+            ⚠️ **不搬源码**（§2.6.1「S1 模块形态」已定）：article 域的业务代码、DDL、
+            `application.yml`、错误码契约**全部留在 `service/article/`** ⇒ 域模块 **零改动** ⇒
+            diff 可读、可一个域一个域切、可回退。
+            ⚠️ **代价**：产物是 10 个域 jar + 5 个 boot jar = 15 个 artifact ⇒
+            最终说明里必须讲清「**代码模块 10 个 ≠ 部署进程 5 个**」。
+        -->
+        <dependency>
+            <groupId>com.rag</groupId><artifactId>hot-domain</artifactId><version
+      >${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.rag</groupId><artifactId>common</artifactId><version
+      >${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.rag</groupId><artifactId>proto</artifactId><version
+      >${project.version}</version>
+        </dependency>
+
+        <!--
+            ⚠️ **domain 依赖用 `provided` 还是默认 compile？**
+            ⇒ **默认 compile**（不写 scope）：article 的 jar 必须**进最终 fat jar 的 BOOT-INF/lib**，
+            否则 `com.rag.article.**` 的 controller / mapper / gRPC service **全部不在运行时 classpath 上**
+            ⇒ 启动即 `NoClassDefFoundError`。
+            ⇒ `spring-boot-maven-plugin` 的 `repackage` 会把 compile 作用域的依赖打进 BOOT-INF/lib。
+        -->
+
+        <!-- ============ 测试基础设施（test 作用域**不传递给下游**） ============ -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

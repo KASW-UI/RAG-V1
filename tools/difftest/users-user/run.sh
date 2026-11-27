@@ -202,7 +202,7 @@ say "   ✅ ${C_PG_CONTAINER} :${C_PG_PORT} / ${PG_DB_C}"
 step "准备两侧产物"
 B_API_JAR="${B_REPO}/service/users/user/user-api/target/user-api-0.0.1-SNAPSHOT.jar"
 B_RPC_JAR="${B_REPO}/service/users/user/user-rpc/target/user-rpc-0.0.1-SNAPSHOT.jar"
-C_JAR="${C_ROOT}/service/users/user/target/user-service-1.0-SNAPSHOT.jar"
+C_JAR="${C_ROOT}/service/boot/user/target/user-service-1.0-SNAPSHOT.jar"
 # 🔴 **陈旧产物检测**（2026-11-03 实测踩过）：「jar 存在 ⇒ 跳过构建」是**危险的**
 #    ⇒ jar 存在但**比源码旧**时 ⇒ 探针量到的是**上一次的代码** ⇒ 读数是假的
 #    ⇒ （实测：共享层的 timeout 修复已进 main，但 jar 还是旧的 ⇒ 量出了「假的 503」）

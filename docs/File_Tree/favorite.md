@@ -142,6 +142,7 @@
 │   │       │       ├── V5__add_favorite_fact_delivery.sql
 │   │       │       ├── V6__align_favorite_schema_with_go.sql
 │   │       │       └── V7__align_favorite_outbox_time_columns_with_go.sql
+│   │       ├── application-favorite.yml
 │   │       └── application.yml
 │   └── test/
 │       └── java/

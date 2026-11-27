@@ -100,7 +100,7 @@ public class TaskRawLogRouter {
             //    ⇒ 后果：**「group 首次消费无位点」时 RAG 从队尾开始、Go 从队头开始** ⇒ 行为分叉。
             //    （此前的对拍全绿是因为它们都是「先起消费者、后灌消息」⇒ latest/earliest 无差别。）
             properties = "auto.offset.reset=earliest",
-            containerFactory = "kafkaListenerContainerFactory")
+            containerFactory = "taskKafkaListenerContainerFactory")
     public void route(ConsumerRecord<String, String> record) {
         // ⚠️ value 必须是 raw 原文（见类注释）
         String value = record.value() == null ? "" : record.value();

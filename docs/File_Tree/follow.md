@@ -109,6 +109,7 @@
 │   │       │       ├── .gitkeep
 │   │       │       ├── V1__create_follow_relation.sql
 │   │       │       └── V2__create_block_relation.sql
+│   │       ├── application-follow.yml
 │   │       └── application.yml
 │   └── test/
 │       ├── java/

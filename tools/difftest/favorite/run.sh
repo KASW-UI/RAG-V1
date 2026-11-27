@@ -176,7 +176,7 @@ B_API_JAR="${B_REPO}/service/favorite/favorite-api/target/favorite-api-0.0.1-SNA
 say "构建 C 侧 favorite-service（fat jar = 可部署产物本身）"
 ( cd "${C_ROOT}" && mvn -o -q -pl service/favorite -am package -Dmaven.test.skip=true ) > "${TMP}/mvn-c.log" 2>&1 \
   || { bad "C 侧 jar 构建失败"; tail -40 "${TMP}/mvn-c.log"; exit 2; }
-C_JAR="${C_ROOT}/service/favorite/target/favorite-service-1.0-SNAPSHOT.jar"
+C_JAR="${C_ROOT}/service/boot/interaction/target/interaction-service-1.0-SNAPSHOT.jar"
 [ -f "${C_JAR}" ] || die "C 侧 jar 不存在：${C_JAR}"
 ok "两侧可部署产物就绪"
 

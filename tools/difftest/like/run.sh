@@ -340,7 +340,7 @@ B_API_JAR="${B_REPO}/service/like/like-api/target/like-api-0.0.1-SNAPSHOT.jar"
 B_RPC_JAR="${B_REPO}/service/like/like-rpc/target/like-rpc-0.0.1-SNAPSHOT.jar"
 [ -f "${B_API_JAR}" ] && [ -f "${B_RPC_JAR}" ] || die "B 侧 jar 没产出"
 ( cd "${C_ROOT}" && mvn -o -q -pl service/like -am package -DskipTests ) || die "C 侧构建失败"
-C_JAR="${C_ROOT}/service/like/target/like-service-1.0-SNAPSHOT.jar"
+C_JAR="${C_ROOT}/service/boot/interaction/target/interaction-service-1.0-SNAPSHOT.jar"
 [ -f "${C_JAR}" ] || die "C 侧 jar 没产出：${C_JAR}"
 # ⚠️ **顺带取 C 侧的运行时 classpath**：gRPC wire 探针要用它编译/运行
 #    （wire 探针**只用 grpc 的原始字节 marshaller** ⇒ 不依赖任何 pb 生成码

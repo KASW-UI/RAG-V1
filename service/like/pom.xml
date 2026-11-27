@@ -210,10 +210,31 @@
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
+            <!--
+                ⚠️ **本模块刻意不执行 `spring-boot-maven-plugin` 的 repackage**（S1 · 5 进程形态）
+                ══════════════════════════════════════════════════════════════════════
+                理由（**实测**，非推断）：
+                  `spring-boot-maven-plugin:repackage` 会把本模块的产物**重写**成一个
+                  **可执行 Boot jar** ⇒ 业务类被搬到 `BOOT-INF/classes/` 下
+                  ⇒ ⇒ **别的模块无法在编译期引用这些类**。
+
+                实测症状（S1 落地时撞到）：
+                  boot 模块的测试里写 `import com.rag.task.controller.TaskController;`
+                  ⇒ javac 报「程序包 com.rag.task.controller 不存在」
+                  ⇒ 原因 = 依赖的域 jar 里的类在 `BOOT-INF/classes/` 下，不是标准 jar 布局。
+
+                ⇒ ⇒ **5 进程形态下的分工**（Spring Boot 多模块的标准做法）：
+                  · **域模块** = 库 ⇒ 产**普通 jar**（类在根 `com/rag/**`）⇒ 可被依赖、可被编译期引用；
+                  · **boot 模块** = 可执行单元 ⇒ 产**可执行 Boot jar**（域 jar 作为普通 jar 嵌进
+                    `BOOT-INF/lib/`）⇒ ⇒ **只有 5 个进程能跑**，与「部署进程 = 5」一致。
+
+                ⚠️ **连带后果（已同步处理）**：域不再是部署单元 ⇒ `tools/difftest/*/run.sh` 里
+                指向「域 jar」的路径**改指 boot jar**（见各脚本的 `C_JAR`）。
+
+                ⚠️ **本仓的 `main` 方法仍在**（域启动类的 `main` 没删）⇒
+                「直接 `java -cp <域 jar> com.rag.xxx.XxxServiceApplication` 跑域」这条路仍然通，
+                但**不再产出可执行 jar**。
+            -->
         </plugins>
     </build>
 </project>

@@ -2,11 +2,17 @@ package com.rag.user;
 
 import com.rag.user.config.UserApiProperties;
 import com.rag.user.config.UserRpcProperties;
+import com.rag.common.mybatis.UserMapperBeanNameGenerator;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.context.TypeExcludeFilter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Configuration;
 
 /**
  * <p><b>user 域唯一入口</b> —— B 侧 {@code user-api} / {@code user-rpc} <b>两个进程</b>合并后的单一 app（D1）。
@@ -88,10 +94,30 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
  * {@code docs/Intentional_Deviations/users/}（D1 合并 + D3 starter 化）；
  * 行为层（L1/L2）无偏离。
  */
-@SpringBootApplication
+@Configuration
+@EnableAutoConfiguration
+/*
+ * ⚠️ **`excludeFilters` 必须显式补回（S1 · 5 进程形态 · 实测）** ——
+ * `@SpringBootApplication` 的 `@ComponentScan` **隐含**两个排除过滤器：
+ *   ① `TypeExcludeFilter`（Boot 的测试类型排除机制）
+ *   ② `AutoConfigurationExcludeFilter`（**排除 `@AutoConfiguration` 类**）
+ * ⇒ ⇒ 降级成裸 `@ComponentScan` 时这两个**一起丢** ⇒ ⇒ 实测症状：
+ *   域内 `ContentAuditAutoConfiguration` 被**组件扫描**扫到（bean 名 = 短名
+ *   `contentAuditAutoConfiguration`）⇒ ⇒ 绕过了 `META-INF/spring/…AutoConfiguration.imports`
+ *   ⇒ ⇒ A5 断言「auto-config 的 bean 名必须是 FQCN」红。
+ * ⇒ ⇒ 本处**逐字补回** `@SpringBootApplication` 原本的那两个过滤器。
+ */
+@ComponentScan(basePackages = "com.rag.user",
+        excludeFilters = {
+                @ComponentScan.Filter(type = FilterType.CUSTOM,
+                        classes = TypeExcludeFilter.class),
+                @ComponentScan.Filter(type = FilterType.CUSTOM,
+                        classes = AutoConfigurationExcludeFilter.class)
+        })
 @EnableConfigurationProperties({UserApiProperties.class, UserRpcProperties.class})
 @EnableDiscoveryClient
-@MapperScan("com.rag.user.mapper")
+@MapperScan(basePackages = "com.rag.user.mapper",
+        nameGenerator = UserMapperBeanNameGenerator.class)
 public class UserServiceApplication {
 
     public static void main(String[] args) {

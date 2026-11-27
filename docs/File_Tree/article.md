@@ -15,11 +15,6 @@
 
 ## 二、依赖
 
-- `org.springframework.boot:spring-boot-starter-web`
-- `org.springframework.boot:spring-boot-starter-validation`
-- `org.springframework.boot:spring-boot-starter-actuator`
-- `io.micrometer:micrometer-registry-prometheus`
-- `com.alibaba.cloud:spring-cloud-starter-alibaba-nacos-discovery`
 - `org.flywaydb:flyway-core`
 - `org.flywaydb:flyway-database-postgresql`
 - `io.minio:minio`
@@ -31,13 +26,11 @@
 - `org.testcontainers:junit-jupiter`
 - `org.testcontainers:kafka`
 - `io.grpc:grpc-core`
-- `net.devh:grpc-server-spring-boot-starter`
-- `net.devh:grpc-client-spring-boot-starter`
-- `com.baomidou:mybatis-plus-spring-boot3-starter`
+- `net.devh:grpc-core`
+- `net.devh:grpc-core`
 - `org.postgresql:postgresql`
 - `com.rag:proto`
 - `com.rag:common`
-- `org.springframework.kafka:spring-kafka`
 - `org.projectlombok:lombok`
 
 ## 三、目录树
@@ -138,6 +131,7 @@
 │   │       │       ├── V10__create_article_community_revision.sql
 │   │       │       ├── V8__create_article.sql
 │   │       │       └── V9__create_article_sync_outbox.sql
+│   │       ├── application-article.yml
 │   │       └── application.yml
 │   └── test/
 │       └── java/

@@ -73,7 +73,7 @@ public class LikeUpdateKafkaListener {
     @KafkaListener(id = "like-update-consumer",
             topics = "${like.kafka.like-topic}",
             groupId = "${spring.kafka.consumer.group-id}",
-            containerFactory = "kafkaListenerContainerFactory")
+            containerFactory = "likeKafkaListenerContainerFactory")
     public void onMessage(ConsumerRecord<String, String> record, String value) {
         Throwable failure = MqConsumer.traceConsumer(
                 observationRegistry,

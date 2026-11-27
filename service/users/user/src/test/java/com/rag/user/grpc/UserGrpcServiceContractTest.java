@@ -67,7 +67,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * （与 B 侧把 {@code UserRpcClient} 替掉同型）。<b>领域服务自身的行为</b>由本域 HTTP 契约测试
  * （真 PG + 真 bcrypt）覆盖 ⇒ 两者合起来是完整证据链。
  */
-@SpringBootTest(properties = "grpc.server.in-process-name=user-grpc-contract-test")
+@SpringBootTest(classes = com.rag.user.UserServiceApplication.class, properties = "grpc.server.in-process-name=user-grpc-contract-test")
 @ActiveProfiles("test")
 class UserGrpcServiceContractTest {
 

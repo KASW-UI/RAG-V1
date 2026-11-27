@@ -148,6 +148,7 @@
 │   │       │       ├── V6__create_comment_domain_fact_outbox.sql
 │   │       │       ├── V7__create_comment_fact_stream.sql
 │   │       │       └── V8__align_comment_fact_delivery_with_go.sql
+│   │       ├── application-comment.yml
 │   │       └── application.yml
 │   └── test/
 │       ├── java/

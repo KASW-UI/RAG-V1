@@ -62,7 +62,15 @@ import org.springframework.stereotype.Component;
  * ⇒ 本类在<b>整个 app</b> 生效 ⇒ 触发时机与 B 侧 rpc 进程<b>完全相同</b>（都是 {@code ApplicationReadyEvent}）
  * ⇒ ⇒ <b>UID 生成的可观察时机不变</b>。
  */
-@Component
+/* userSnowflakeBootstrap
+ * ⚠️ **bean 名显式指定（S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `SnowflakeBootstrap`
+ * ⇒ ⇒ **多个域各有一个同名 `SnowflakeBootstrap`**（实测：admin / article）
+ * ⇒ ⇒ 合并进同一上下文后 **bean 名撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'SnowflakeBootstrap' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`userSnowflakeBootstrap`**（加域前缀）⇒ **零行为变化**（只改 bean 名）。
+ */
+@Component("userSnowflakeBootstrap")
 public class SnowflakeBootstrap {
 
     private static final Logger log = LoggerFactory.getLogger(SnowflakeBootstrap.class);

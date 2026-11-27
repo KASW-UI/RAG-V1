@@ -378,7 +378,7 @@ class CommentRuntimeConfigContractTest {
     void packagedApplicationYmlMustBeByteIdenticalToSourceTree() throws IOException {
         Path source = locateModuleYml();
         Path packaged = locateModuleDir()
-                .resolve("target").resolve("classes").resolve("application.yml");
+                .resolve("target").resolve("classes").resolve("application-comment.yml");
 
         assertThat(Files.exists(packaged))
                 .as("target/classes/application.yml 不存在（" + packaged + "）—— "
@@ -478,7 +478,7 @@ class CommentRuntimeConfigContractTest {
     private static Map<String, String> readClientAddresses(Path yml) throws IOException {
         Map<String, String> out = new LinkedHashMap<>();
         List<PropertySource<?>> sources =
-                new YamlPropertySourceLoader().load("application.yml", new FileSystemResource(yml));
+                new YamlPropertySourceLoader().load("application-comment.yml", new FileSystemResource(yml));
         for (PropertySource<?> source : sources) {
             if (!(source instanceof EnumerablePropertySource<?> enumerable)) {
                 continue;
@@ -532,14 +532,14 @@ class CommentRuntimeConfigContractTest {
      * ⇒ 改为<b>要求 pom 的 artifactId 是 {@code comment-service}</b> ⇒ 定位唯一。
      */
     private static Path locateModuleYml() {
-        return locateModuleDir().resolve("src").resolve("main").resolve("resources").resolve("application.yml");
+        return locateModuleDir().resolve("src").resolve("main").resolve("resources").resolve("application-comment.yml");
     }
 
     /** 本模块根目录（由 pom 的 artifactId 唯一确定）。 */
     private static Path locateModuleDir() {
         Path dir = Paths.get("").toAbsolutePath();
         for (int i = 0; i < 10 && dir != null; i++) {
-            Path candidate = dir.resolve("src").resolve("main").resolve("resources").resolve("application.yml");
+            Path candidate = dir.resolve("src").resolve("main").resolve("resources").resolve("application-comment.yml");
             Path pom = dir.resolve("pom.xml");
             if (Files.exists(candidate) && Files.exists(pom) && isThisModule(pom)) {
                 return dir;

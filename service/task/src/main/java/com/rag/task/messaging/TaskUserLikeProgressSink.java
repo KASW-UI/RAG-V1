@@ -167,7 +167,7 @@ public class TaskUserLikeProgressSink {
             //      全局默认恰好也是 latest ⇒ **属于碰巧对，不是配置生效**。
             //    ⇒ 显式写成点分形式后，即使全局默认将来改成 earliest，本处也仍是 latest。
             properties = "auto.offset.reset=latest",
-            containerFactory = "kafkaListenerContainerFactory")
+            containerFactory = "taskKafkaListenerContainerFactory")
     public void onMessage(ConsumerRecord<String, String> record) {
         String key = record.key() == null ? "" : record.key();
         String value = record.value();

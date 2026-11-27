@@ -119,7 +119,15 @@ import org.springframework.web.servlet.HandlerInterceptor;
  * {@code @ExceptionHandler} 仍然管得到）；「413 压过 401」也不变
  * （本 Filter <b>绝不写响应</b> ⇒ 401 仍发生在所有 Filter 之后）。
  */
-@Component
+/* articleJwtAuthInterceptor
+ * ⚠️ **bean 名显式指定（S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `JwtAuthInterceptor`
+ * ⇒ ⇒ **多个域各有一个同名 `JwtAuthInterceptor`**（实测：user）
+ * ⇒ ⇒ 合并进同一上下文后 **bean 名撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'JwtAuthInterceptor' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`articleJwtAuthInterceptor`**（加域前缀）⇒ **零行为变化**（只改 bean 名）。
+ */
+@Component("articleJwtAuthInterceptor")
 public class JwtAuthInterceptor implements HandlerInterceptor {
 
     private static final Logger log = LoggerFactory.getLogger(JwtAuthInterceptor.class);

@@ -1,0 +1,165 @@
+# =============================================================================
+# User 域 —— 完全 Spring 化形态（api + rpc 合并为单一进程）
+#
+# 【B 出处】service/users/user/user-api/src/main/resources/application.yml
+#          ＋ service/users/user/user-rpc/src/main/resources/application.yaml
+# 【基准】D16：B 侧（RAG）是唯一行为判定基准 ⇒ 配置键名逐条一致
+# =============================================================================
+spring:
+  application:
+    name: user-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:first_db}
+    username: ${POSTGRES_USER:admin}
+    password: ${POSTGRES_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      host: ${REDIS_ADDR:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      # ⚠️ 下面两个超时是 **L1 配置键**（B 侧 user-api/user-rpc 两份 yml 都写了）：
+      #   timeout: 3s          ← go-redis/v9 v9.20.0 的 ReadTimeout 默认 3s（options.go:364-370）
+      #   connect-timeout: 5s  ← go-redis/v9 v9.20.0 的 DialTimeout 默认 5s（options.go:338-339）
+      # ⇒ 两侧写死成 Go 的默认值，而不是用 Lettuce 的默认（读 60s / 连 10s）⇒ 否则超时行为与 B 不一致。
+      timeout: 3s
+      connect-timeout: 5s
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:nacos}:${NACOS_PORT:8848}
+        # 🔴 **2026-11-09 全仓统一决策（`global` 收口域 · 用户拍板）**：namespace / group 统一为
+        #    **`public` / `DEFAULT_GROUP`** ⇒ ⇒ **本域是全仓唯一的偏离域**：
+        #    ⚠️ **B 侧本域写的是 `sea-rtw` / `USER_GROUP`**
+        #    （B 出处：`service/users/user/user-api/src/main/resources/application.yml:52`）
+        #    ⇒ ⇒ **偏离已登记**（签字偏离 · **部署面 · 非行为面**）⇒ 见
+        #    `docs/Intentional_Deviations/users/_signed-deviations.md`。
+        #    ⇒ ⇒ **为什么仍这么改**：① **全仓一致性优先** —— C 侧其余 9 个域与 B 侧都是
+        #    `public` / `DEFAULT_GROUP` ⇒ 只让本域偏离 ⇒ 偏离面 = **1 个域**（不是 9 个）；
+        #    ② 跨域 gRPC 寻址（`discovery:///user-rpc` 的**对端**是 message 域）
+        #    **必须同 namespace + group** ⇒ 全仓统一 ⇒ 链路恒成立；
+        #    ③ `public` 是 Nacos **内建**命名空间 ⇒ 部署侧不需要额外建命名空间。
+        #    ⚠️ **注意**：B 侧 users 的 `sea-rtw` 在 B 侧**不承载任何行为**
+        #    （B 侧 message→user 的调用走 **etcd key `user.rpc`** ⇒ etcd 无 namespace/group 概念）⇒
+        #    ⇒ 这是一处**纯部署面**取值差异，**不是行为漂移**。
+        namespace: ${NACOS_NAMESPACE:public}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+        # ⚠️ **必须关掉 Spring Cloud 的自动注册**（映射表锁决策「Nacos 注册项：2 个/子域 → 1 个/子域」）：
+        #   合并进程有 web 容器 ⇒ 自动注册会再冒出一个 `user-service`@HTTP 端口 的条目
+        #   ⇒ 与 `wiring/NacosRegistration` 显式注册的 `user-rpc`@gRPC 端口 叠加 ⇒ 变成 2 个 ⇒ 违反锁决策。
+        #   ⇒ 关掉后全进程**恰好 1 个** Nacos 注册项 = `user-rpc`（gRPC 端口）。
+        #   ⚠️ B 侧的 `user-api`（HTTP 端口）条目**全仓无消费者**（无 `discovery://user-api`；
+        #      admin-api 的 `grpc.client.user-rpc` 是死配置 —— B 侧 `AdminRpcClient.java:85-86` 自述）
+        #      ⇒ HTTP 客户端直连端口 ⇒ 关掉自动注册**不损失任何活行为**（登记为签字偏离）。
+        register-enabled: false
+
+# =============================================================================
+# 业务配置（L1 配置键名 · 与 B 侧两份 yml 逐条一致）
+#
+# ⚠️ **为什么合并成一个进程后还要保留两份键**：
+#   B 侧 api 与 rpc 是两个进程 ⇒ 同一把密钥在两份 yml 里各写一遍；
+#   C 侧按 D1+D7 合并成一个进程 ⇒ **两个键都还在**（键名是 L1，不可改）
+#   ⇒ 但两者都指向**同一个环境变量** ⇒ 不可能只改一边而漏掉另一边。
+#
+# ⚠️ **两个键都没有明文默认值**（B 出处：user-api/application.yml:162-165 · user-rpc/application.yaml §5）：
+#   缺变量 ⇒ 绑上的是占位符字面量 "${USER_JWT_SECRET}"
+#   ⇒ 由 `UserApiProperties` / `UserRpcProperties` 的 `@PostConstruct` **判掉** ⇒ **启动失败**。
+#   ⇒ 这是 B 侧的 fail-closed 纪律，**不得**在本仓偷偷加默认值。
+# =============================================================================
+user-api:
+  user-auth:
+    access-secret: ${USER_JWT_SECRET}
+    access-expire: ${USER_JWT_EXPIRE:2592000}    # 30 天，与 B 侧 etc/user.yaml 一致
+
+user-rpc:
+  user-auth:
+    access-secret: ${USER_JWT_SECRET}
+    access-expire: ${USER_JWT_EXPIRE:2592000}    # 30 天，与 B 侧 etc/user.yaml 一致
+
+# =============================================================================
+# observability（B 侧 user-api/application.yml:215-216 · user-rpc/application.yaml §10）
+#   http-timeout: 3s  ← B 侧 rest.RestConf.Timeout（3s 预算，共享层 HttpMiddleware 消费）
+#   rpc-timeout:  2s  ← B 侧 zrpc.RpcServerConf.Timeout 默认 2000ms（go-zero config.go:46）
+# ⚠️ **这两个键缺失 = 机制静默不生效**（AGENTS.md §3.3.1）：
+#   `ObservabilityProperties` 的两个 timeout **没有 env 兜底**，缺省即 `Duration.ZERO`（不限时）
+#   ⇒ 不配 = 3s 预算与 2s RPC 超时**都不存在** ⇒ 必须显式写。
+# =============================================================================
+observability:
+  http-timeout: 3s
+  rpc-timeout: 2s
+
+server:
+  port: ${USER_HTTP_PORT:8881}
+
+grpc:
+  server:
+    port: ${USER_GRPC_PORT:8081}
+    address: 0.0.0.0
+    reflection-service-enabled: false
+  # ⚠️ `client` 必须是**合法空 map**（`{}`），不能写成「只有注释的空键」。
+  #    写成空键时 YAML 把它解析成**空串**，Spring 的 relaxed binding 会拿 String 去转
+  #    `Map<String, GrpcChannelProperties>` ⇒ `ConverterNotFoundException`
+  #    ⇒ **整个上下文启动失败**（本域首次真启动时被本域的上下文测试当场抓到）。
+  #    ⚠️ 本域**无跨域 gRPC 调用**（users 域无 `rpc/client/`）⇒ 该段恒为空 ⇒ 写成 `{}` 即可。
+  #    ⚠️ negotiation-type 必须显式写 plaintext：devh 默认 TLS，而上游 zrpc 是明文 gRPC。
+  #       不写会静默变 TLS —— 见《完全spring化的文件树》§9.1 断言 A4。
+  client: {}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+# =============================================================================
+# OpenTelemetry OTLP exporter（对齐 B 侧 Telemetry.*）
+# =============================================================================
+# ⚠️ **2026-11-05 补齐（`global` 收口域统一处置 · 6 域一起补）**：本段此前**整段缺失**
+#    ⇒ 共享层 `GoStyleOtelConfig` 读到的 `otel.exporter.otlp.endpoint` = null
+#    ⇒ ⇒ 按 B 侧的 `if len(c.Endpoint) > 0` 口径**不装 exporter**
+#    ⇒ ⇒ 本域的 span **一条都导不出去**（跨域链路在 Jaeger 侧断链）。
+#    ⇒ 同款缺失共 **6 个域**：hot（hot 域已补）＋ comment / favorite / message / task / user-service
+#    ⇒ ⇒ 由收口域**统一补齐**（避免各域各补各的再漂）⇒ 形状与 like / hot **逐条同构**。
+# ⚠️ 共享层 `GoStyleOtelConfig` 读的是 **B 侧那套键名**：
+#    `otel.service.name` / `otel.resource.attributes.service.name`（两套拼法都认）·
+#    `otel.exporter.otlp.endpoint` / `otel.exporter.otlp.protocol` /
+#    `otel.traces.sampler` / `otel.traces.sampler.arg`
+# ⇒ 端点**没有 scheme** 时共享层会补 `http://`（= B 的 WithInsecure() 明文）。
+otel:
+  # B 侧 rpc 侧的拼法（Go: Telemetry.Name = user-rpc）—— D1 合并后只能填**一个**值
+  service:
+    name: user-service
+  exporter:
+    otlp:
+      # 🔴 **合并裁决（scheme）**：B 侧 api 写 `http://${{OTEL_ADDR}}:${{OTLP_PORT}}`（带 scheme）、
+      #    B 侧 rpc 写裸 `${{OTEL_EXPORTER_OTLP_ENDPOINT:jaeger:4317}}`（不带 scheme）
+      #    ⇒ 共享层两种都认 ⇒ 取**带 scheme** 的那一侧（显式优于隐式）。
+      #    protocol=grpc 同样取 api 侧写法。
+      endpoint: http://${{OTEL_ADDR:jaeger}}:${{OTLP_PORT:4317}}
+      protocol: grpc
+  resource:
+    attributes:
+      # B 侧 api 侧的拼法（Go: Telemetry.Name = user-api）
+      # ⚠️ **D1 合并的连带偏离**：B 侧 api 填 `user-api`、rpc 填 `user-rpc`（两个值）
+      #    ⇒ 合并成一个进程后只能填**一个** ⇒ 取 `user-service`（= `spring.application.name`）
+      #    ⇒ **登记为 D1 连带偏离**（值侧；键名与形状逐条对齐 B 侧）。
+      service.name: user-service
+  traces:
+    # B 侧 api 写 `always_on`（favorite 的 api 侧写 `parentbased_always_on`）· rpc 侧写 `parentbased_always_on`
+    # ⇒ 共享层 `GoStyleOtelConfig#toRatio` 把 `always_on` 与 `parentbased_always_on`
+    #    **都**映射成 ratio = 1.0 ⇒ ⇒ **行为等价**
+    # ⇒ ⇒ 取 C 侧既有的统一写法 `always_on`（article / follow / like / hot 同款）。
+    sampler: always_on
+
+logging:
+  level:
+    com.rag: INFO

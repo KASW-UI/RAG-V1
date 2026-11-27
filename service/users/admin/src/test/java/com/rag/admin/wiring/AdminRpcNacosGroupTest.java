@@ -109,7 +109,7 @@ import static org.mockito.Mockito.when;
  *       ⇒ C 侧 {@code application.yml:41} 是 {@code group: ${NACOS_GROUP:USER_GROUP}} ✓。</li>
  *   <li><b>yml 读取路径</b>：B 侧读的是 admin-rpc 模块自己的 {@code application.yml}；
  *       C 侧 D1 把两份 yml 合并成一份（{@code service/users/admin/src/main/resources/application.yml}）
- *       ⇒ {@code ClassPathResource("application.yml")} 命中的是<b>同一份</b>文件
+ *       ⇒ {@code ClassPathResource("application-admin.yml")} 命中的是<b>同一份</b>文件
  *       （本仓 {@code common} / {@code users-common} 两个 jar 内<b>没有</b> {@code application.yml}
  *       ⇒ classpath 上只有这一份 ⇒ 读到的就是 admin 域那份）。</li>
  * </ol>
@@ -267,7 +267,7 @@ class AdminRpcNacosGroupTest {
     private static List<PropertySource<?>> loadApplicationYml() {
         try {
             return new YamlPropertySourceLoader()
-                    .load("admin-rpc-application", new ClassPathResource("application.yml"));
+                    .load("admin-rpc-application", new ClassPathResource("application-admin.yml"));
         } catch (IOException e) {
             throw new IllegalStateException("读不到 classpath:application.yml", e);
         }

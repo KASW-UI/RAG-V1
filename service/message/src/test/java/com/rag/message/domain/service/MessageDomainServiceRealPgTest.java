@@ -208,7 +208,7 @@ class MessageDomainServiceRealPgTest {
      */
     private static FlywayProperties bindFlywayProperties() throws Exception {
         YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
-        List<PropertySource<?>> sources = loader.load("application.yml", new ClassPathResource("application.yml"));
+        List<PropertySource<?>> sources = loader.load("application-message.yml", new ClassPathResource("application-message.yml"));
         Binder binder = new Binder(
                 org.springframework.boot.context.properties.source.ConfigurationPropertySources.from(sources));
         return binder.bind("spring.flyway", FlywayProperties.class).orElseGet(FlywayProperties::new);

@@ -55,7 +55,15 @@ import org.springframework.stereotype.Component;
  * <p><b>不阻止启动</b>：与桶 bootstrap 同理，ID 只在写入路径用到；
  * 且 {@code Snowflake} 自身在 {@code nextId()} 时还有 workerId 兜底。
  */
-@Component
+/* articleSnowflakeBootstrap
+ * ⚠️ **bean 名显式指定（S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `SnowflakeBootstrap`
+ * ⇒ ⇒ **多个域各有一个同名 `SnowflakeBootstrap`**（实测：admin / user）
+ * ⇒ ⇒ 合并进同一上下文后 **bean 名撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'SnowflakeBootstrap' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`articleSnowflakeBootstrap`**（加域前缀）⇒ **零行为变化**（只改 bean 名）。
+ */
+@Component("articleSnowflakeBootstrap")
 public class SnowflakeBootstrap {
 
     private static final Logger log = LoggerFactory.getLogger(SnowflakeBootstrap.class);

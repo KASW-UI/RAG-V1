@@ -52,7 +52,15 @@ import org.springframework.web.servlet.HandlerInterceptor;
  * 以便把验签移出 3s 预算；JWT 算法 HS256 ＋ HMAC-SHA256（与共享层 {@code JwtUtil} 1:1）；
  * Redis key 格式 {@code user:jwt_blacklist:<token>} 1:1 对齐 Go 端。
  */
-@Component
+/* userJwtAuthInterceptor
+ * ⚠️ **bean 名显式指定（S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `JwtAuthInterceptor`
+ * ⇒ ⇒ **多个域各有一个同名 `JwtAuthInterceptor`**（实测：article）
+ * ⇒ ⇒ 合并进同一上下文后 **bean 名撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'JwtAuthInterceptor' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`userJwtAuthInterceptor`**（加域前缀）⇒ **零行为变化**（只改 bean 名）。
+ */
+@Component("userJwtAuthInterceptor")
 public class JwtAuthInterceptor implements HandlerInterceptor {
 
     private static final Logger log = LoggerFactory.getLogger(JwtAuthInterceptor.class);

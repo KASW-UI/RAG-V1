@@ -32,7 +32,15 @@ import org.springframework.stereotype.Component;
  * 且两条都翻译成同一个 {@code NotFound/5101}。本 client 返回原始响应，
  * 由 {@code FavoriteUserGuard} 逐条翻译。
  */
-@Component
+/* favoriteUserRpcClient
+ * ⚠️ **bean 名显式指定（S1 · 5 进程形态）** ——
+ * Spring 的默认 bean 名 = 简单类名首字母小写 ⇒ 本类原本叫 `UserRpcClient`
+ * ⇒ ⇒ **多个域各有一个同名 `UserRpcClient`**（实测：follow / message）
+ * ⇒ ⇒ 合并进同一上下文后 **bean 名撞车** ⇒
+ * `ConflictingBeanDefinitionException: Annotation-specified bean name 'UserRpcClient' … conflicts with existing`
+ * ⇒ ⇒ 本类显式命名为 **`favoriteUserRpcClient`**（加域前缀）⇒ **零行为变化**（只改 bean 名）。
+ */
+@Component("favoriteUserRpcClient")
 public class UserRpcClient {
 
     @GrpcClient("user-rpc")
