@@ -130,11 +130,11 @@
 │                       ├── service/
 │                       │   └── TaskRedisPipelineRealRedisTest.java    # Redis pipeline 的结果形状（真 Redis） —— 钉住
 │                       ├── support/
-│                       │   ├── GrpcServerPortCapture.java    # 捕获 devh 真 netty gRPC server 的「实际绑定端口」与「实际 server 实现类」。
-│                       │   ├── NacosStubConfiguration.java    # Nacos 桩 —— 让 task 域的测试能起真实 Spring 上下文，而不连 Nacos。
+│                       │   ├── GrpcServerPortCaptureTask.java    # 捕获 devh 真 netty gRPC server 的「实际绑定端口」与「实际 server 实现类」。
+│                       │   ├── NacosStubConfigurationTask.java    # Nacos 桩 —— 让 task 域的测试能起真实 Spring 上下文，而不连 Nacos。
 │                       │   ├── TaskRealInfraTestBase.java    # task 域真上下文的共享底座 —— 真 Spring 上下文 + 真 PG + 真 Redis + 真 Tomcat
-│                       │   ├── TestPostgres.java    # 测试用真 PostgreSQL（进程内单例容器）。
-│                       │   └── TestRedis.java    # 测试用真 Redis（进程内单例容器）。
+│                       │   ├── TestPostgresTask.java    # 测试用真 PostgreSQL（进程内单例容器）。
+│                       │   └── TestRedisTask.java    # 测试用真 Redis（进程内单例容器）。
 │                       └── TaskServiceApplicationTests.java    # task 域上下文装配自检 —— 证明 D1（api+rpc 合并）后的唯一入口
 └── pom.xml    # Maven 模块描述
 ```

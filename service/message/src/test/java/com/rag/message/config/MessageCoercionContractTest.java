@@ -7,7 +7,7 @@ import com.rag.common.contract.ApiResponse;
 import com.rag.message.advice.MessageApiExceptionHandler;
 import com.rag.message.dto.common.PageReq;
 import com.rag.message.dto.notification.AdminSendNotificationReq;
-import com.rag.message.support.NacosStubConfiguration;
+import com.rag.message.support.NacosStubConfigurationMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,7 +65,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <h2>⚠️ 本类**不使用** Lombok / {@code @Disabled} / {@code @EnabledIfDockerAvailable}</h2>
  */
 @SpringBootTest(
-        classes = {com.rag.message.MessageServiceApplication.class, NacosStubConfiguration.class})
+        classes = {com.rag.message.MessageServiceApplication.class, NacosStubConfigurationMessage.class})
 class MessageCoercionContractTest {
 
     /** gRPC 端口 —— 取一个真实空闲端口（与 {@code MessageServiceApplicationTests} 同款理由）。 */
@@ -81,9 +81,9 @@ class MessageCoercionContractTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", com.rag.message.support.TestPostgres::jdbcUrl);
-        registry.add("spring.datasource.username", com.rag.message.support.TestPostgres::username);
-        registry.add("spring.datasource.password", com.rag.message.support.TestPostgres::password);
+        registry.add("spring.datasource.url", com.rag.message.support.TestPostgresMessage::jdbcUrl);
+        registry.add("spring.datasource.username", com.rag.message.support.TestPostgresMessage::username);
+        registry.add("spring.datasource.password", com.rag.message.support.TestPostgresMessage::password);
         // 两把 JWT 密钥（message-api 的 yml 里是裸占位符 ⇒ 不给值上下文就起不来）
         registry.add("USER_JWT_SECRET", () -> "message-boot-test-user-secret-0123456789");
         registry.add("ADMIN_JWT_SECRET", () -> "message-boot-test-admin-secret-0123456789");

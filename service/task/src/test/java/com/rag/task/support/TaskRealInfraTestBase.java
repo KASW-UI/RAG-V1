@@ -42,7 +42,7 @@ import org.springframework.test.context.DynamicPropertySource;
  * </ul>
  */
 @SpringBootTest(
-        classes = {TaskServiceApplication.class, NacosStubConfiguration.class},
+        classes = {TaskServiceApplication.class, NacosStubConfigurationTask.class},
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 // ── Nacos 不触网 ──
@@ -69,8 +69,8 @@ public abstract class TaskRealInfraTestBase {
      */
     @DynamicPropertySource
     static void infra(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresTask.register(registry);
+        TestRedisTask.register(registry);
         registry.add("POSTGRES_PASSWORD", () -> "password");
     }
 }

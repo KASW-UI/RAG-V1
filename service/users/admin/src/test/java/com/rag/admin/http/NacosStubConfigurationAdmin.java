@@ -1,4 +1,4 @@
-package com.rag.message.support;
+package com.rag.admin.http;
 
 import com.alibaba.cloud.nacos.NacosServiceManager;
 import com.alibaba.nacos.api.naming.NamingService;
@@ -8,43 +8,41 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
 /**
- * <p><b>Nacos 桩</b> —— 让 message 域的测试能起真实 Spring 上下文，而<b>不连 Nacos</b>。
+ * <p><b>Nacos 桩</b> —— 让 admin 域的测试能起真实 Spring 上下文，而<b>不连 Nacos</b>。
  *
- * <h2>⚠️ 为什么 message 域<b>必须</b>有它（与 users/admin 相比多一条理由）</h2>
- * <p>message 域是<b>本仓第一个带 {@code @GrpcClient} 的域</b>
- * （{@code client/UserRpcClient} 的 {@code @GrpcClient("user-rpc")} ＋
- * {@code client/AdminRpcClient} 的 {@code @GrpcClient("admin-rpc")}）
- * ⇒ ⇒ devh 的 {@code GrpcClientBeanPostProcessor} 会<b>立刻</b>为这两个通道建
- * {@code ManagedChannel} ⇒ ⇒ 建通道要过
- * {@code net/devh/boot/grpc/client/nameresolver/DiscoveryClientResolverFactory#newNameResolver}
- * ⇒ ⇒ 它<b>要一个 {@code DiscoveryClient}</b> ⇒ ⇒ 而 {@code NacosDiscoveryClient} 的构造器
- * 会调 {@code nacosServiceManager.getNamingService()} ⇒ ⇒ <b>不桩就会真的去连 Nacos</b>。
+ * <p><b>为什么需要它</b>：域内 {@code wiring/NacosRegistration} 的构造器依赖
+ * {@link NacosServiceManager}，而真实实现会连 Nacos（{@code server-addr} 默认 {@code nacos:8848}）。
+ * <p>本桩把 {@code getNamingService()} 指向一个<b>空操作</b>的 {@link NamingService} mock
+ * ⇒ 注册调用是空操作 ⇒ <b>不碰网络</b>，
+ * 但域内那个 bean <b>照常被创建</b>（⇒ 它的构造契约仍被真实校验）。
  *
- * <h2>⚠️ 为什么桩 bean <b>要改名 + {@code @Primary}</b></h2>
+ * <h2>⚠️ 为什么它是<b>顶层类</b>而不是测试类的嵌套类</h2>
+ * <p><b>Boot 3.4 起，嵌套 {@code @TestConfiguration} 默认<b>不再被自动发现</b></b>
+ * —— 开关是 {@code spring.test.nested-test-configuration}，默认值是 {@code INHERIT}
+ * （含义 = 「继承父上下文的嵌套配置」，= <b>本类不被注册</b>）
+ * ⇒ ⇒ 嵌套写法在本仓（Boot 3.5）会<b>静默不注册</b> ⇒ 表现为
+ * 「No qualifying bean of type 'NacosServiceManager'」⇒ 上下文起不来。
+ * <p>⇒ 本类改成<b>顶层 {@code @TestConfiguration}</b>，并在
+ * {@code AdminHttpContractRealTomcatTest} 的 {@code classes = {...}} 里<b>显式点名</b>
+ * ⇒ 不依赖任何默认值。
+ *
+ * <h2>⚠️ 为什么桩 bean <b>要改名 + @Primary</b>（2026-11-02 实测）</h2>
  * <p>SCA 2025.0.0.0 的 {@code NacosServiceAutoConfiguration#nacosServiceManager()} 会创建
- * <b>同名</b>的 {@code NacosServiceManager} bean（gating =
+ * <b>同名</b>的 {@code NacosServiceManager} bean（它的 gating 是
  * {@code @ConditionalOnDiscoveryEnabled} + {@code @ConditionalOnNacosDiscoveryEnabled}
  * ⇒ 只要<b>不禁用</b> nacos discovery 就会存在）
  * ⇒ ⇒ 若桩还用默认 bean 名 {@code nacosServiceManager} ⇒ <b>BeanDefinitionOverrideException</b>
  * ⇒ ⇒ 上下文起不来。
  * <p>⇒ 所以：桩的 bean 名改成 {@code testNacosServiceManager} + 标 {@link Primary}
  * ⇒ ⇒ 类型注入（域内 {@code wiring/NacosRegistration}、SCA 的
- * {@code nacosServiceRegistry(...)} / {@code nacosServiceDiscovery(...)} / 通道的 name resolver）
- * <b>都拿到桩</b> ⇒ ⇒ 真 bean 存在但<b>没人用</b> ⇒ ⇒ <b>不触网</b>。
- *
- * <h2>⚠️ 为什么它是<b>顶层类</b>而不是测试类的嵌套类</h2>
- * <p><b>Boot 3.4 起，嵌套 {@code @TestConfiguration} 默认<b>不再被自动发现</b></b>
- * —— 开关是 {@code spring.test.nested-test-configuration}，默认值是 {@code INHERIT}
- * ⇒ ⇒ 嵌套写法在本仓（Boot 3.5）会<b>静默不注册</b> ⇒ 表现为
- * 「No qualifying bean of type 'NacosServiceManager'」⇒ 上下文起不来。
- * <p>⇒ 本类改成<b>顶层 {@code @TestConfiguration}</b>，并在测试类的
- * {@code classes = {...}} 里<b>显式点名</b> ⇒ 不依赖任何默认值。
+ * {@code nacosServiceRegistry(...)} / {@code nacosServiceDiscovery(...)}）<b>都拿到桩</b>
+ * ⇒ ⇒ 真 bean 存在但<b>没人用</b> ⇒ <b>不触网</b>。
  *
  * <p>⚠️ 本类只服务于<b>测试</b>：它<b>不</b>改变生产代码路径
- * （生产环境下 {@code wiring/NacosRegistration} 用的是真 {@code NacosServiceManager}）。
+ * （生产环境下 {@code NacosRegistration} 用的是真 {@code NacosServiceManager}）。
  */
 @TestConfiguration(proxyBeanMethods = false)
-public class NacosStubConfiguration {
+public class NacosStubConfigurationAdmin {
 
     /**
      * <p>桩 {@link NacosServiceManager} —— <b>bean 名刻意与自动配置的真 bean 错开</b>

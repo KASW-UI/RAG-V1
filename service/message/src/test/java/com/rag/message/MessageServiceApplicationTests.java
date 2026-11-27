@@ -17,8 +17,8 @@ import com.rag.message.interceptor.MessageJwtAuthInterceptor;
 import com.rag.message.mapper.ConversationMapper;
 import com.rag.message.mapper.ConversationMessageMapper;
 import com.rag.message.mapper.NotificationMapper;
-import com.rag.message.support.NacosStubConfiguration;
-import com.rag.message.support.TestPostgres;
+import com.rag.message.support.NacosStubConfigurationMessage;
+import com.rag.message.support.TestPostgresMessage;
 import net.devh.boot.grpc.server.serverfactory.GrpcServerLifecycle;
 import io.grpc.ServerInterceptor;
 import org.junit.jupiter.api.DisplayName;
@@ -86,7 +86,7 @@ import static org.mockito.Mockito.verify;
  * ⇒ ⇒ 这个缺陷一直藏着（守门脚本 A4 也只能查「配了没有」，查不出「配了但没生效」）。
  * <p>⇒ ⇒ 本类就是那道防线。
  *
- * <p><b>测试环境摘依赖</b>：Nacos 用 {@link NacosStubConfiguration} 桩（不连网络）·
+ * <p><b>测试环境摘依赖</b>：Nacos 用 {@link NacosStubConfigurationMessage} 桩（不连网络）·
  * PG 走 Testcontainers 真容器（DDL 里有 {@code TIMESTAMPTZ} / {@code JSONB}
  * ⇒ H2 认不了 ⇒ H2 上「跑绿」是假绿）· gRPC 走一个<b>真实空闲端口</b>
  * （要能区分「注册的是 gRPC 端口还是 web 端口」⇒ 端口必须是两个可区分的真值）。
@@ -97,11 +97,11 @@ import static org.mockito.Mockito.verify;
  * ⇒ {@code NacosDiscoveryProperties} bean <b>不存在</b>
  * ⇒ ① {@code NacosServiceRegistryAutoConfiguration#nacosServiceRegistry(...)} 缺参数
  * ⇒ <b>上下文起不来</b> ⇒ ② 也<b>读不到</b> {@code register-enabled} 的值 ⇒ 无法断言。
- * <p>⇒ 改为<b>保留</b> discovery 开关、用 {@link NacosStubConfiguration} 的桩接管
+ * <p>⇒ 改为<b>保留</b> discovery 开关、用 {@link NacosStubConfigurationMessage} 的桩接管
  * {@code NacosServiceManager}（bean 名错开 + {@code @Primary}）⇒ 既不触网，又能真触发地观察注册行为。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {MessageServiceApplication.class, NacosStubConfiguration.class})
+        classes = {MessageServiceApplication.class, NacosStubConfigurationMessage.class})
 class MessageServiceApplicationTests {
 
     /**
@@ -123,9 +123,9 @@ class MessageServiceApplicationTests {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", TestPostgres::jdbcUrl);
-        registry.add("spring.datasource.username", TestPostgres::username);
-        registry.add("spring.datasource.password", TestPostgres::password);
+        registry.add("spring.datasource.url", TestPostgresMessage::jdbcUrl);
+        registry.add("spring.datasource.username", TestPostgresMessage::username);
+        registry.add("spring.datasource.password", TestPostgresMessage::password);
         // 两把 JWT 密钥：message-api 的 yml 里是裸占位符 ${USER_JWT_SECRET} / ${ADMIN_JWT_SECRET}
         // ⇒ 不给值 ⇒ 占位符解析不了 ⇒ 上下文起不来（B 侧同款：空密钥 = 任何人都能伪造 token）。
         registry.add("USER_JWT_SECRET", () -> "message-boot-test-user-secret-0123456789");
@@ -172,7 +172,7 @@ class MessageServiceApplicationTests {
     private NacosDiscoveryProperties nacosDiscoveryProperties;
 
     @Autowired
-    private NacosStubConfiguration.NacosNamingServiceSpy namingServiceSpy;
+    private NacosStubConfigurationMessage.NacosNamingServiceSpy namingServiceSpy;
 
     @LocalServerPort
     private int webPort;

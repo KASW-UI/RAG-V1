@@ -5,8 +5,8 @@ import com.rag.follow.contract.ErrCodes;
 import com.rag.follow.contract.GrpcErrorMapper;
 import com.rag.follow.domain.service.FollowDomainService;
 import com.rag.follow.support.FakeUserRpcServer;
-import com.rag.follow.support.NacosStubConfiguration;
-import com.rag.follow.support.TestPostgres;
+import com.rag.follow.support.NacosStubConfigurationFollow;
+import com.rag.follow.support.TestPostgresFollow;
 
 import com.rag.proto.follow.BaseResp;
 import com.rag.proto.follow.FollowServiceGrpc;
@@ -65,7 +65,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *       <b>5202</b>（而不是 switch 兜底的 5005）。</li>
  * </ol>
  */
-@SpringBootTest(classes = {FollowServiceApplication.class, NacosStubConfiguration.class},
+@SpringBootTest(classes = {FollowServiceApplication.class, NacosStubConfigurationFollow.class},
         properties = {
                 "spring.cloud.nacos.discovery.enabled=false",
                 "spring.cloud.service-registry.auto-registration.enabled=false",
@@ -84,7 +84,7 @@ class FollowGrpcServiceContractTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresFollow.register(registry);
         registry.add("grpc.client.user-rpc.address", FakeUserRpcServer::address);
     }
 

@@ -77,7 +77,7 @@ import java.util.TimeZone;
  *       （由 C 侧 {@code service/comment/src/main/resources/application.yml:26-32} 承接）。</li>
  * </ol>
  */
-public final class TestPostgres {
+public final class TestPostgresComment {
 
     /**
      * 会话时区 —— 与本域 {@code application.yml:32} 的 URL 参数、以及 B 侧
@@ -96,7 +96,7 @@ public final class TestPostgres {
         PG.start();
     }
 
-    private TestPostgres() {
+    private TestPostgresComment() {
     }
 
     /**
@@ -108,7 +108,7 @@ public final class TestPostgres {
      * ⇒ ⇒ 主 yml 那条 {@code ${POSTGRES_PASSWORD}} 根本不会被解析到（也就不会因缺变量而炸）。
      */
     public static void register(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", TestPostgres::jdbcUrl);
+        registry.add("spring.datasource.url", TestPostgresComment::jdbcUrl);
         registry.add("spring.datasource.username", PG::getUsername);
         registry.add("spring.datasource.password", PG::getPassword);
     }

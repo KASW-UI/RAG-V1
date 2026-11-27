@@ -79,7 +79,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <h2>⚠️ 测试环境怎么把外部依赖摘掉</h2>
  * <ul>
  *   <li><b>Nacos</b>：{@code spring.cloud.nacos.discovery.enabled=false} ⇒ Nacos 自动配置整体不生效
- *       ⇒ 本类自带一个 {@code NacosServiceManager} 桩（{@link NacosStubConfiguration}）
+ *       ⇒ 本类自带一个 {@code NacosServiceManager} 桩（{@link NacosStubConfigurationAdmin}）
  *       ⇒ 域内 {@code wiring/NacosRegistration} 的构造依赖被满足，但<b>不会真去注册</b>
  *       （桩的 {@code NamingService} 是 mock ⇒ 注册调用是空操作）。</li>
  *   <li><b>gRPC 端口</b>：{@code grpc.server.port=0} ⇒ 随机端口 ⇒ 不与本机其它域撞端口。</li>
@@ -90,9 +90,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {AdminServiceApplication.class, NacosStubConfiguration.class},
+        classes = {AdminServiceApplication.class, NacosStubConfigurationAdmin.class},
         properties = {
-                // Nacos 整体不生效 ⇒ 自动配置不注册 NacosServiceManager ⇒ 由 NacosStubConfiguration 补上
+                // Nacos 整体不生效 ⇒ 自动配置不注册 NacosServiceManager ⇒ 由 NacosStubConfigurationAdmin 补上
                 "spring.cloud.nacos.discovery.enabled=false",
                 // 服务注册自动注册关掉（否则需要真的 ServiceRegistry + Nacos）
                 "spring.cloud.service-registry.auto-registration.enabled=false",

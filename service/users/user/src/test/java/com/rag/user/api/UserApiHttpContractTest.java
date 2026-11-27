@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rag.common.security.JwtUtil;
 import com.rag.user.interceptor.JwtAuthFilter;
-import com.rag.user.support.TestPostgres;
+import com.rag.user.support.TestPostgresUser;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -77,7 +77,7 @@ class UserApiHttpContractTest {
 
     @DynamicPropertySource
     static void datasource(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresUser.register(registry);
     }
 
     @Autowired

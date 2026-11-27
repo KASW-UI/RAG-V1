@@ -65,7 +65,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Spring Cloud 的 {@code DiscoveryClient} bean ⇒ ⇒ 用
  * {@code spring.cloud.discovery.client.simple.instances.message-rpc[0].host/port}
  * 把 {@code message-rpc} 指到 {@code 127.0.0.1:18291} ⇒ <b>不碰 Nacos</b>。
- * <p>⚠️ {@code NacosStubConfiguration} 只打桩了 {@code NacosServiceManager#getNamingService()}，
+ * <p>⚠️ {@code NacosStubConfigurationLike} 只打桩了 {@code NacosServiceManager#getNamingService()}，
  * <b>没有</b>打桩 {@code DiscoveryClient} ⇒ ⇒ 两条路互不干扰。
  */
 public final class FakeMessageRpcServer {

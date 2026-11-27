@@ -1,9 +1,9 @@
 package com.rag.comment.grpc;
 
 import com.rag.comment.CommentServiceApplication;
-import com.rag.comment.support.NacosStubConfiguration;
-import com.rag.comment.support.TestPostgres;
-import com.rag.comment.support.TestRedis;
+import com.rag.comment.support.NacosStubConfigurationComment;
+import com.rag.comment.support.TestPostgresComment;
+import com.rag.comment.support.TestRedisComment;
 
 import com.rag.common.observability.DeadlineState;
 import com.rag.common.observability.GoStyleRequestDeadline;
@@ -160,11 +160,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>不用 {@code @EnabledIfDockerAvailable}（容器不可用时<b>直接失败</b>⇒ 不静默跳过）；</li>
  *   <li>不用 {@code @Slf4j} / {@code @SneakyThrows}；</li>
  *   <li>不用 {@code tools.jackson.*}；</li>
- *   <li>容器地址<b>不落 OS 临时端口段</b>（走本仓 {@code TestPostgres} / {@code TestRedis} 的进程内单例）。</li>
+ *   <li>容器地址<b>不落 OS 临时端口段</b>（走本仓 {@code TestPostgresComment} / {@code TestRedisComment} 的进程内单例）。</li>
  * </ul>
  */
 @SpringBootTest(
-        classes = {CommentServiceApplication.class, NacosStubConfiguration.class},
+        classes = {CommentServiceApplication.class, NacosStubConfigurationComment.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 // 指到必然拒连的地址：NacosRegistration 捕获 NacosException 只记日志不中断启动。
@@ -228,8 +228,8 @@ class CommentOutboundDeadlineCarrierGateTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresComment.register(registry);
+        TestRedisComment.register(registry);
         // ⚠️ gRPC server **不起 TCP 端口**（-1 ⇒ in-process）⇒ 不与本类自己起的真 server 抢端口。
         registry.add("grpc.server.port", () -> -1);
         // ⚠️ 本域**真实的出向方向**（article-rpc）⇒ 指到本类自己起的慢服务端

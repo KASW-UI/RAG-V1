@@ -9,7 +9,7 @@ import com.rag.comment.mapper.CommentContentMapper;
 import com.rag.comment.mapper.CommentIndexMapper;
 import com.rag.comment.mapper.SubjectMapper;
 import com.rag.comment.metrics.CommentRpcMetrics;
-import com.rag.comment.support.TestPostgres;
+import com.rag.comment.support.TestPostgresComment;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -54,7 +54,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <h2>1. 比 B 侧多做了什么</h2>
  * <ul>
  *   <li><b>探针库隔离</b>：B 侧 {@code CommentCacheRedisMetricGateTest} 自起一个 PG 容器并直接用
- *       默认库 {@code first_db}；C 侧共用<b>进程内单例</b> PG 容器（{@link TestPostgres}）
+ *       默认库 {@code first_db}；C 侧共用<b>进程内单例</b> PG 容器（{@link TestPostgresComment}）
  *       ⇒ 本类在同容器里另开一个探针库 {@code comment_cache_gate_probe}，
  *       与本域其它测试类的数据互不冲突（AGENTS.md §五.2 的唯一 uid 纪律在库一级落地）。</li>
  *   <li><b>账本表名独立</b>：本类用 {@code flyway_schema_history_comment_cache_gate}
@@ -180,7 +180,7 @@ class CommentCacheRedisMetricGateTest {
         migrateWithIndependentLedger(PROBE_DB);
 
         DataSource dataSource = new DriverManagerDataSource(
-                containerJdbcUrl(PROBE_DB), TestPostgres.username(), TestPostgres.password());
+                containerJdbcUrl(PROBE_DB), TestPostgresComment.username(), TestPostgresComment.password());
         jdbc = new JdbcTemplate(dataSource);
 
         // --- 真 MyBatis：与生产同构的「mapUnderscoreToCamelCase」+ Spring 事务感知的会话模板
@@ -462,7 +462,7 @@ class CommentCacheRedisMetricGateTest {
 
     private static void migrateWithIndependentLedger(String database) {
         Flyway.configure()
-                .dataSource(containerJdbcUrl(database), TestPostgres.username(), TestPostgres.password())
+                .dataSource(containerJdbcUrl(database), TestPostgresComment.username(), TestPostgresComment.password())
                 .locations("classpath:db/migration")
                 .schemas("public")
                 // ⚠️ 账本表名独立 ⇒ 不与本模块生产账本（flyway_schema_history_comment）撞号
@@ -476,7 +476,7 @@ class CommentCacheRedisMetricGateTest {
     private static void createProbeDatabase(String database) {
         String adminUrl = containerJdbcUrl("postgres");
         try (Connection conn = DriverManager.getConnection(adminUrl,
-                TestPostgres.username(), TestPostgres.password());
+                TestPostgresComment.username(), TestPostgresComment.password());
              Statement st = conn.createStatement()) {
             st.execute("DROP DATABASE IF EXISTS " + database + " WITH (FORCE)");
             st.execute("CREATE DATABASE " + database);
@@ -486,7 +486,7 @@ class CommentCacheRedisMetricGateTest {
     }
 
     private static String containerJdbcUrl(String database) {
-        String base = TestPostgres.jdbcUrl();
+        String base = TestPostgresComment.jdbcUrl();
         int q = base.indexOf('?');
         String bare = q >= 0 ? base.substring(0, q) : base;
         int slash = bare.lastIndexOf('/');

@@ -1,7 +1,7 @@
 package com.rag.comment.artifact;
 
 import com.rag.comment.support.CommentTestSupport;
-import com.rag.comment.support.TestPostgres;
+import com.rag.comment.support.TestPostgresComment;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -158,8 +158,8 @@ class CommentRuntimeBootGateTest {
         env.put("POSTGRES_HOST", postgresHost());
         env.put("POSTGRES_PORT", String.valueOf(postgresPort()));
         env.put("POSTGRES_DB", "first_db");
-        env.put("POSTGRES_USER", TestPostgres.username());
-        env.put("POSTGRES_PASSWORD", TestPostgres.password());
+        env.put("POSTGRES_USER", TestPostgresComment.username());
+        env.put("POSTGRES_PASSWORD", TestPostgresComment.password());
         // ⚠️ C 侧 JWT 密钥 fail-closed 守卫（CommentApiProperties 的 @PostConstruct）
         //    ⇒ 缺这个变量 ⇒ 启动即失败 ⇒ 必须给一个**真密钥**（与测试夹具同源）。
         env.put("USER_JWT_SECRET", CommentTestSupport.SECRET);
@@ -261,20 +261,20 @@ class CommentRuntimeBootGateTest {
         }
     }
 
-    /** 从 {@link TestPostgres#jdbcUrl()} 里取 PG 主机名。 */
+    /** 从 {@link TestPostgresComment#jdbcUrl()} 里取 PG 主机名。 */
     private static String postgresHost() {
-        Matcher matcher = Pattern.compile("jdbc:postgresql://([^:/?]+)").matcher(TestPostgres.jdbcUrl());
+        Matcher matcher = Pattern.compile("jdbc:postgresql://([^:/?]+)").matcher(TestPostgresComment.jdbcUrl());
         if (!matcher.find()) {
-            throw new IllegalStateException("解析 TestPostgres 的 JDBC URL 失败：" + TestPostgres.jdbcUrl());
+            throw new IllegalStateException("解析 TestPostgresComment 的 JDBC URL 失败：" + TestPostgresComment.jdbcUrl());
         }
         return matcher.group(1);
     }
 
-    /** 从 {@link TestPostgres#jdbcUrl()} 里取 PG 端口。 */
+    /** 从 {@link TestPostgresComment#jdbcUrl()} 里取 PG 端口。 */
     private static int postgresPort() {
-        Matcher matcher = Pattern.compile("jdbc:postgresql://[^:/?]+:(\\d+)").matcher(TestPostgres.jdbcUrl());
+        Matcher matcher = Pattern.compile("jdbc:postgresql://[^:/?]+:(\\d+)").matcher(TestPostgresComment.jdbcUrl());
         if (!matcher.find()) {
-            throw new IllegalStateException("解析 TestPostgres 的 JDBC URL 失败：" + TestPostgres.jdbcUrl());
+            throw new IllegalStateException("解析 TestPostgresComment 的 JDBC URL 失败：" + TestPostgresComment.jdbcUrl());
         }
         return Integer.parseInt(matcher.group(1));
     }

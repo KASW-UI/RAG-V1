@@ -51,7 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <h3>本实现比 B 侧更精确的一处</h3>
  * <p>B 侧用 {@code application_name = 'article-lockorder'} 过滤被阻塞会话
  * （靠给 JDBC URL 加 {@code ApplicationName=} 实现）。
- * ⇒ C 侧<b>不改共享的 {@code support/TestPostgres}</b>（那个类的 {@code jdbcUrl()}
+ * ⇒ C 侧<b>不改共享的 {@code support/TestPostgresArticle}</b>（那个类的 {@code jdbcUrl()}
  * 被 {@code ArticleSchemaGateFailFastTest} 引用，改它会波及别处）
  * ⇒ 改用 <b>更精确</b>的定位：{@code pg_blocking_pids(pid)}
  * —— 直接问 PG「<b>谁在挡我</b>」，于是「被我的 holder 连接挡住」这件事

@@ -47,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <h2>本类补的是哪一条缺口</h2>
  * <p>域内既有的 Nacos 断言（{@code AdminServiceApplicationTests}）全部走
- * {@code NacosStubConfiguration} 桩 ⇒ <b>不触网</b> ⇒ 它验的是「<b>本进程调了桩几次</b>、参数是什么」，
+ * {@code NacosStubConfigurationAdmin} 桩 ⇒ <b>不触网</b> ⇒ 它验的是「<b>本进程调了桩几次</b>、参数是什么」，
  * <b>不是</b>「Nacos 上真的有了这个实例」。
  * <p>⇒ ⇒ 台账 §7.3 的 V-3「对真 Nacos 的注册结果未逐字断言」此前一直是 🟡 NOT_VERIFIED ⇒ <b>本类闭合它</b>。
  *

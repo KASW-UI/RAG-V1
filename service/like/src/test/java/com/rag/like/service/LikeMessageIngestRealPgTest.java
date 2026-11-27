@@ -1,9 +1,9 @@
 package com.rag.like.service;
 
 import com.rag.like.LikeServiceApplication;
-import com.rag.like.support.NacosStubConfiguration;
-import com.rag.like.support.TestPostgres;
-import com.rag.like.support.TestRedis;
+import com.rag.like.support.NacosStubConfigurationLike;
+import com.rag.like.support.TestPostgresLike;
+import com.rag.like.support.TestRedisLike;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,7 +52,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>跑的是 <b>C 侧单侧</b>：断言「C 侧的事务与幂等行为与 B 侧源码记录的期望一致」。
  * 「B 侧此刻真的同样回滚」属于<b>双侧活体对拍</b>（本类不冒充该证据）。
  */
-@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfiguration.class})
+@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfigurationLike.class})
 @ActiveProfiles("test")
 class LikeMessageIngestRealPgTest {
 
@@ -61,8 +61,8 @@ class LikeMessageIngestRealPgTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresLike.register(registry);
+        TestRedisLike.register(registry);
     }
 
     @Autowired

@@ -1,8 +1,8 @@
 package com.rag.comment.http;
 
 import com.rag.comment.CommentServiceApplication;
-import com.rag.comment.support.NacosStubConfiguration;
-import com.rag.comment.support.TestPostgres;
+import com.rag.comment.support.NacosStubConfigurationComment;
+import com.rag.comment.support.TestPostgresComment;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -99,7 +99,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
-        classes = {CommentServiceApplication.class, NacosStubConfiguration.class},
+        classes = {CommentServiceApplication.class, NacosStubConfigurationComment.class},
         properties = {
                 // 绕过 Nacos（注册与发现都不做）
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:1",
@@ -135,7 +135,7 @@ class CommentOversizedBodyRealTomcatTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresComment.register(registry);
         // ⚠️ gRPC server **不起 TCP 端口**（-1 ⇒ in-process）⇒ 不与本类的 HTTP 端口抢口。
         registry.add("grpc.server.port", () -> -1);
         registry.add("server.port", () -> HTTP_PORT);

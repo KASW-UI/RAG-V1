@@ -177,12 +177,12 @@
 │       │               │   └── LikeUnitSemanticsTest.java    # like 域「纯逻辑协作者」的逐条断言（纯单元，不起 Spring 上下文）。
 │       │               ├── support/
 │       │               │   ├── FakeMessageRpcServer.java    # 假 message-rpc 的真 netty server —— 给 like 域测「跨域通知」用。
-│       │               │   ├── GrpcServerPortCapture.java    # 捕获 devh 真 netty gRPC server 的「实际绑定端口」与「实际 server 实现类」。
+│       │               │   ├── GrpcServerPortCaptureLike.java    # 捕获 devh 真 netty gRPC server 的「实际绑定端口」与「实际 server 实现类」。
 │       │               │   ├── LikeTestSupport.java    # like 域测试用 JWT 构造器。
-│       │               │   ├── NacosStubConfiguration.java    # Nacos 桩 —— 让 like 域的测试能起真实 Spring 上下文，而不连 Nacos。
-│       │               │   ├── PrometheusTestRegistryConfiguration.java    # 测试上下文里注入「真 Prometheus registry」 —— 让 Micrometer 真正吐出
-│       │               │   ├── TestPostgres.java    # 测试用真 PostgreSQL（进程内单例容器）。
-│       │               │   └── TestRedis.java    # 测试用真 Redis（进程内单例容器） —— like 域的 Redis 用途是
+│       │               │   ├── NacosStubConfigurationLike.java    # Nacos 桩 —— 让 like 域的测试能起真实 Spring 上下文，而不连 Nacos。
+│       │               │   ├── PrometheusTestRegistryConfigurationLike.java    # 测试上下文里注入「真 Prometheus registry」 —— 让 Micrometer 真正吐出
+│       │               │   ├── TestPostgresLike.java    # 测试用真 PostgreSQL（进程内单例容器）。
+│       │               │   └── TestRedisLike.java    # 测试用真 Redis（进程内单例容器） —— like 域的 Redis 用途是
 │       │               └── LikeServiceApplicationTests.java    # like 域应用上下文能真正起来（真 PG ＋ 真 Redis ＋ 真 Flyway ＋ 真 Tomcat）。
 │       └── resources/
 │           └── application-test.properties

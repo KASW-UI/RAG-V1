@@ -80,6 +80,50 @@ class ContentServiceApplicationAssemblyTest extends BootAssemblyTestBase {
     }
 
     /**
+     * 🔴 <b>域内 auto-config 的 bean 名必须是 FQCN</b>（不是短名）。
+     *
+     * <h2>为什么这条必须钉住（S2 · 实测）</h2>
+     * <p>article 域有一个<b>域内</b> auto-config：
+     * {@code com.rag.article.client.ContentAuditAutoConfiguration}
+     * （注册在 {@code service/article/src/main/resources/META-INF/spring/
+     * org.springframework.boot.autoconfigure.AutoConfiguration.imports}）。
+     * <p>⚠️ <b>两种启动入口 ⇒ 两种 bean 名</b>：
+     * <ul>
+     *   <li>用<b>域启动类</b>起上下文 ⇒ bean 名 = <b>FQCN</b>
+     *       （{@code com.rag.article.client.ContentAuditAutoConfiguration}）✅</li>
+     *   <li>用<b>boot 启动类</b>起上下文 ⇒ 若 boot 的 {@code @ComponentScan}
+     *       <b>没带</b> {@code AutoConfigurationExcludeFilter}
+     *       ⇒ 该类被<b>组件扫描</b>扫到 ⇒ bean 名 = <b>短名</b>
+     *       {@code contentAuditAutoConfiguration} ❌
+     *       ⇒ ⇒ <b>绕过了</b> {@code .imports} 机制</li>
+     * </ul>
+     * <p>⇒ ⇒ <b>这是真实的机制差异，不是风格问题</b>（实测两个启动入口跑同一份域代码，
+     * bean 名不同）⇒ ⇒ 必须钉住。
+     *
+     * <p>⚠️ <b>为什么既有守门盖不住</b>：A5 只查「{@code @Import} 清单必须为空」
+     * ⇒ ⇒ <b>不查</b>「auto-config 的 bean 名是不是 FQCN」⇒ ⇒ 这条只能靠本类钉。
+     *
+     * <p>🔴 <b>判据要点</b>：不能只断言「短名<b>不存在</b>」⇒ 还要断言「FQCN <b>存在</b>」
+     * ⇒ ⇒ 否则「两个都不存在」（auto-config 压根没装配）也会绿 ⇒ ⇒ **两条都要**。
+     */
+    @Test
+    @DisplayName("🔴 域内 auto-config 的 bean 名必须是 FQCN（boot 启动类的 @ComponentScan 必须带 excludeFilters）")
+    void domainAutoConfigurationBeanNameIsFqcn() {
+        org.junit.jupiter.api.Assertions.assertTrue(
+                ctx.containsBean("com.rag.article.client.ContentAuditAutoConfiguration"),
+                () -> "article 域内 auto-config 的 bean 名必须是 FQCN"
+                        + "（com.rag.article.client.ContentAuditAutoConfiguration）"
+                        + " ⇒ boot 启动类的 @ComponentScan 丢了 AutoConfigurationExcludeFilter"
+                        + " ⇒ 该类被组件扫描扫到 ⇒ bean 名变成短名 contentAuditAutoConfiguration"
+                        + " ⇒ ⇒ 绕过了 .imports 机制");
+        org.junit.jupiter.api.Assertions.assertFalse(
+                ctx.containsBean("contentAuditAutoConfiguration"),
+                () -> "出现了**短名** bean（contentAuditAutoConfiguration）"
+                        + " ⇒ 该 auto-config 是被组件扫描扫到的，不是 .imports 机制装配的"
+                        + " ⇒ ⇒ bean 名与域启动类起上下文时不一致");
+    }
+
+    /**
      * 断言某个 bean 名不存在。
      *
      * <p>⚠️ 用 {@code containsBean} 而非 {@code getBean}：后者在缺失时会抛

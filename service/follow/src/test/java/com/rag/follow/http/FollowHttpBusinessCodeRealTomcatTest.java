@@ -5,10 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rag.follow.FollowServiceApplication;
 import com.rag.follow.support.FakeUserRpcServer;
 import com.rag.follow.support.FollowTestSupport;
-import com.rag.follow.support.NacosStubConfiguration;
-import com.rag.follow.support.PrometheusTestRegistryConfiguration;
-import com.rag.follow.support.TestPostgres;
-import com.rag.follow.support.TestRedis;
+import com.rag.follow.support.NacosStubConfigurationFollow;
+import com.rag.follow.support.PrometheusTestRegistryConfigurationFollow;
+import com.rag.follow.support.TestPostgresFollow;
+import com.rag.follow.support.TestRedisFollow;
 
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
@@ -62,7 +62,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>跑的是 <b>C 侧单侧</b>：断言「C 侧产出的码值与 B 侧源码记录的期望一致」。
  * 「B 侧此刻真的产出同样码值」属于<b>双侧活体对拍</b>（本类不冒充该证据）。
  *
- * <h2>⚠️ 为什么注入 {@link PrometheusTestRegistryConfiguration}</h2>
+ * <h2>⚠️ 为什么注入 {@link PrometheusTestRegistryConfigurationFollow}</h2>
  * <p>本类有一条<b>指标桶边界</b>断言（Go {@code DefBuckets} ⇒ Micrometer
  * {@code serviceLevelObjectives}）。被测对象是<b>主代码里那串 SLO 边界</b>，
  * registry 类型只决定「用什么文本格式把边界吐出来」⇒ ⇒ 注入一个 Prometheus registry
@@ -73,8 +73,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code docs/DRIFT/follow/verification-follow-2026-11-02.md} §5.6。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {FollowServiceApplication.class, NacosStubConfiguration.class,
-                PrometheusTestRegistryConfiguration.class},
+        classes = {FollowServiceApplication.class, NacosStubConfigurationFollow.class,
+                PrometheusTestRegistryConfigurationFollow.class},
         properties = {
                 "spring.cloud.nacos.discovery.enabled=false",
                 "spring.cloud.service-registry.auto-registration.enabled=false",
@@ -90,8 +90,8 @@ class FollowHttpBusinessCodeRealTomcatTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresFollow.register(registry);
+        TestRedisFollow.register(registry);
         registry.add("grpc.client.user-rpc.address", FakeUserRpcServer::address);
     }
 

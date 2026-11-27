@@ -12,7 +12,7 @@ import com.rag.message.mapper.ConversationMapper;
 import com.rag.message.mapper.ConversationMessageMapper;
 import com.rag.message.mapper.NotificationMapper;
 import com.rag.message.metrics.MessageRpcMetrics;
-import com.rag.message.support.TestPostgres;
+import com.rag.message.support.TestPostgresMessage;
 import com.rag.proto.message.ConversationListReq;
 import com.rag.proto.message.ConversationListResp;
 import com.rag.proto.message.ConversationStatus;
@@ -127,14 +127,14 @@ class MessageDomainServiceRealPgTest {
     @BeforeAll
     static void setUp() throws Exception {
         DataSource ds = new DriverManagerDataSource(
-                TestPostgres.jdbcUrl(), TestPostgres.username(), TestPostgres.password());
+                TestPostgresMessage.jdbcUrl(), TestPostgresMessage.username(), TestPostgresMessage.password());
         jdbc = new JdbcTemplate(ds);
 
         // ── ① Flyway：配置**直接取自 C 侧 application.yml 的 spring.flyway 段** ──
         //    ⇒ 断言的对象是「yml 里那几行配置」本身，而不是测试里另抄一份。
         flywayProperties = bindFlywayProperties();
         Flyway flyway = Flyway.configure()
-                .dataSource(TestPostgres.jdbcUrl(), TestPostgres.username(), TestPostgres.password())
+                .dataSource(TestPostgresMessage.jdbcUrl(), TestPostgresMessage.username(), TestPostgresMessage.password())
                 .locations(flywayProperties.getLocations().toArray(new String[0]))
                 .baselineOnMigrate(flywayProperties.isBaselineOnMigrate())
                 .baselineVersion(flywayProperties.getBaselineVersion())

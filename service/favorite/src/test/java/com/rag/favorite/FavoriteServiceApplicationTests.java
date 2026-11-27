@@ -29,7 +29,7 @@ import org.springframework.context.ApplicationContext;
  *   <li>🔴 手写的 {@code wiring/FavoriteNacosRegistration} 依赖
  *       {@code NacosServiceManager} ⇒ Nacos 不可达时它 NPE ⇒ <b>上下文直接起不来</b>
  *       （B 侧同款缺口 ⇒ 继承 ⇒ 本域不修 ⇒ 测试侧用
- *       {@link com.rag.favorite.support.NacosStubConfiguration} 绕开）。</li>
+ *       {@link com.rag.favorite.support.NacosStubConfigurationFavorite} 绕开）。</li>
  * </ul>
  * ⇒ ⇒ 所以这条用例把「上下文起得来 + 两个面的入口 Bean 都在」钉成**可执行断言**。
  *
@@ -42,7 +42,7 @@ import org.springframework.context.ApplicationContext;
  */
 @SpringBootTest(
         classes = {FavoriteServiceApplication.class,
-                com.rag.favorite.support.NacosStubConfiguration.class},
+                com.rag.favorite.support.NacosStubConfigurationFavorite.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:1",

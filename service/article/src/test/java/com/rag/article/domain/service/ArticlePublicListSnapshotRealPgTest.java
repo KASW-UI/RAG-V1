@@ -3,8 +3,8 @@ package com.rag.article.domain.service;
 import com.rag.article.ArticleServiceApplication;
 import com.rag.article.domain.entity.ArticleEntity;
 import com.rag.article.mapper.ArticlePublicMapper;
-import com.rag.article.support.NacosStubConfiguration;
-import com.rag.article.support.TestPostgres;
+import com.rag.article.support.NacosStubConfigurationArticle;
+import com.rag.article.support.TestPostgresArticle;
 import com.rag.proto.article.ListArticlesRequest;
 import com.rag.proto.article.ListArticlesResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -83,7 +83,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>本类行 id 前缀 {@code 911001}；作者号 {@code 911000001}。
  */
 @SpringBootTest(
-        classes = {ArticleServiceApplication.class, NacosStubConfiguration.class,
+        classes = {ArticleServiceApplication.class, NacosStubConfigurationArticle.class,
                 PublicListSnapshotProbeConfiguration.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
@@ -134,7 +134,7 @@ class ArticlePublicListSnapshotRealPgTest {
      */
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresArticle.register(registry);
         registry.add("POSTGRES_PASSWORD", () -> "password");
         registry.add("USER_JWT_SECRET", () -> "test-only-article-jwt-secret-at-least-32-bytes-long");
         registry.add("grpc.client.message-rpc.address", () -> "static://127.0.0.1:1");

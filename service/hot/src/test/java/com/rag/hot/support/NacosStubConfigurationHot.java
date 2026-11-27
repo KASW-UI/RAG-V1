@@ -1,4 +1,4 @@
-package com.rag.article.support;
+package com.rag.hot.support;
 
 import com.alibaba.cloud.nacos.NacosServiceManager;
 import com.alibaba.nacos.api.naming.NamingService;
@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
 /**
- * <p><b>Nacos 桩</b> —— 让 article 域的测试能起真实 Spring 上下文，而<b>不连 Nacos</b>。
+ * <p><b>Nacos 桩</b> —— 让 hot 域的测试能起真实 Spring 上下文，而<b>不连 Nacos</b>。
  *
  * <h2>为什么需要它</h2>
  * <p>域内 {@code wiring/NacosRegistration} 的构造器依赖 {@link NacosServiceManager}，
@@ -33,15 +33,17 @@ import org.springframework.context.annotation.Primary;
  * <p>⇒ 所以：桩的 bean 名改成 {@code testNacosServiceManager} + 标 {@link Primary}
  * ⇒ ⇒ 类型注入（域内 {@code wiring/NacosRegistration}、SCA 的
  * {@code nacosServiceRegistry(...)} / {@code nacosServiceDiscovery(...)}）<b>都拿到桩</b>
- * ⇒ ⇒ 真 bean 存在但<b>没人用</b> ⇒ <b>不触网</b>。
+ * ⇒ ⇒ 真 bean 存在但<b>没人用</b> ⇒ ⇒ <b>不触网</b>。
  *
  * <p>⚠️ 本类只服务于<b>测试</b>：它<b>不</b>改变生产代码路径。
  */
 @TestConfiguration(proxyBeanMethods = false)
-public class NacosStubConfiguration {
+public class NacosStubConfigurationHot {
 
     /**
      * <p>桩 {@link NacosServiceManager} —— <b>bean 名刻意与自动配置的真 bean 错开</b>。
+     *
+     * @return 桩 bean
      */
     @Bean
     @Primary

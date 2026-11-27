@@ -50,7 +50,7 @@ import org.springframework.context.annotation.Bean;
  * </ol>
  */
 @TestConfiguration(proxyBeanMethods = false)
-public class PrometheusTestRegistryConfiguration {
+public class PrometheusTestRegistryConfigurationComment {
 
     @Bean
     public PrometheusMeterRegistry prometheusMeterRegistry() {

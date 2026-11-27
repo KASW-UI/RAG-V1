@@ -10,7 +10,7 @@ import com.rag.message.mapper.ConversationMapper;
 import com.rag.message.mapper.ConversationMessageMapper;
 import com.rag.message.mapper.NotificationMapper;
 import com.rag.message.metrics.MessageRpcMetrics;
-import com.rag.message.support.TestPostgres;
+import com.rag.message.support.TestPostgresMessage;
 import com.rag.proto.message.ConversationListReq;
 import com.rag.proto.message.ConversationListResp;
 import com.rag.proto.message.ConversationMessageListReq;
@@ -114,7 +114,7 @@ import static org.mockito.Mockito.mock;
  *   <li><b>删掉 {@code @EnabledIfDockerAvailable}</b>（B 侧 :76）⇒ 容器不可用直接失败。
  *       <b>为什么</b>：AGENTS.md §五.8 守门硬规则 ③ —— 禁止 {@code @EnabledIfDockerAvailable}
  *       ⇒ 跳过 = 假绿。</li>
- *   <li><b>真 PG 改用共享单例 {@code TestPostgres}</b>（B 侧 :79-107 的自建容器 +
+ *   <li><b>真 PG 改用共享单例 {@code TestPostgresMessage}</b>（B 侧 :79-107 的自建容器 +
  *       {@code RealContainerPort} / {@code GrpcTestPort} 固定口）
  *       ⇒ <b>C 侧没有这两个类</b>，且本域已有共享单例容器 ⇒ 同一个 JVM 里多个测试类共用一个库。</li>
  *   <li><b>清表改成 {@code @BeforeEach} + {@code @AfterEach} 各清一次</b>（B 侧只有 :116-121 的
@@ -151,14 +151,14 @@ class MessageSemanticEquivalenceTest {
     @BeforeAll
     static void setUp() throws Exception {
         DataSource ds = new DriverManagerDataSource(
-                TestPostgres.jdbcUrl(), TestPostgres.username(), TestPostgres.password());
+                TestPostgresMessage.jdbcUrl(), TestPostgresMessage.username(), TestPostgresMessage.password());
         jdbc = new JdbcTemplate(ds);
 
         // ── ① Flyway：配置**直接取自 C 侧 application.yml 的 spring.flyway 段** ──
         //    ⇒ 断言的对象是「yml 里那几行配置」本身，而不是测试里另抄一份。
         FlywayProperties flywayProperties = bindFlywayProperties();
         Flyway flyway = Flyway.configure()
-                .dataSource(TestPostgres.jdbcUrl(), TestPostgres.username(), TestPostgres.password())
+                .dataSource(TestPostgresMessage.jdbcUrl(), TestPostgresMessage.username(), TestPostgresMessage.password())
                 .locations(flywayProperties.getLocations().toArray(new String[0]))
                 .baselineOnMigrate(flywayProperties.isBaselineOnMigrate())
                 .baselineVersion(flywayProperties.getBaselineVersion())

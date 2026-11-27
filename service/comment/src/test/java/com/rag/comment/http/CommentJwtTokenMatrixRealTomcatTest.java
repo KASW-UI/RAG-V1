@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rag.comment.CommentServiceApplication;
 import com.rag.comment.config.CommentApiProperties;
-import com.rag.comment.support.NacosStubConfiguration;
-import com.rag.comment.support.TestPostgres;
+import com.rag.comment.support.NacosStubConfigurationComment;
+import com.rag.comment.support.TestPostgresComment;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -101,7 +101,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {CommentServiceApplication.class, NacosStubConfiguration.class})
+        classes = {CommentServiceApplication.class, NacosStubConfigurationComment.class})
 @ActiveProfiles("test")
 class CommentJwtTokenMatrixRealTomcatTest {
 
@@ -115,7 +115,7 @@ class CommentJwtTokenMatrixRealTomcatTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresComment.register(registry);
         registry.add("spring.data.redis.host", () -> "127.0.0.1");
         registry.add("spring.data.redis.port", () -> 1);
     }

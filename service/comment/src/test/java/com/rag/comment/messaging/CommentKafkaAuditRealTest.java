@@ -5,9 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rag.comment.CommentServiceApplication;
 import com.rag.comment.contract.CommentKafkaMsg;
 import com.rag.comment.domain.service.CommentDomainService;
-import com.rag.comment.support.NacosStubConfiguration;
-import com.rag.comment.support.TestPostgres;
-import com.rag.comment.support.TestRedis;
+import com.rag.comment.support.NacosStubConfigurationComment;
+import com.rag.comment.support.TestPostgresComment;
+import com.rag.comment.support.TestRedisComment;
 
 import com.rag.proto.comment.CreateCommentReq;
 import com.rag.proto.comment.CreateCommentResp;
@@ -143,7 +143,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>不 mock Kafka（真 broker ＋ 真 listener ＋ 真 PG）。</li>
  * </ul>
  */
-@SpringBootTest(classes = {CommentServiceApplication.class, NacosStubConfiguration.class},
+@SpringBootTest(classes = {CommentServiceApplication.class, NacosStubConfigurationComment.class},
         properties = {
                 // 🔴 测试专属消费组 ⇒ 不与别的 lane / 探针抢同一 group 的分区（见类注释）
                 "spring.kafka.consumer.group-id=comment-audit-group-kafkaaudit",
@@ -176,8 +176,8 @@ class CommentKafkaAuditRealTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresComment.register(registry);
+        TestRedisComment.register(registry);
         // ⚠️ 只在本类里覆盖 broker 地址（不改 application-test.properties —— 别人的写权）
         registry.add("spring.kafka.bootstrap-servers", () -> BOOTSTRAP);
     }

@@ -7,7 +7,7 @@ import com.rag.user.interceptor.JwtAuthFilter;
 import com.rag.user.interceptor.JwtAuthInterceptor;
 import com.rag.user.mapper.UserAvatarHistoryMapper;
 import com.rag.user.mapper.UserMapper;
-import com.rag.user.support.TestPostgres;
+import com.rag.user.support.TestPostgresUser;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,7 +57,7 @@ class UserServiceApplicationTests {
 
     @DynamicPropertySource
     static void datasource(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresUser.register(registry);
     }
 
     @Autowired

@@ -3,9 +3,9 @@ package com.rag.comment;
 import com.rag.comment.config.CommentApiProperties;
 import com.rag.comment.config.CommentRpcProperties;
 import com.rag.comment.messaging.CommentKafkaTopics;
-import com.rag.comment.support.NacosStubConfiguration;
-import com.rag.comment.support.TestPostgres;
-import com.rag.comment.support.TestRedis;
+import com.rag.comment.support.NacosStubConfigurationComment;
+import com.rag.comment.support.TestPostgresComment;
+import com.rag.comment.support.TestRedisComment;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -47,14 +47,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li><b>fail-closed 的 JWT 密钥真的被读到</b>（{@code CommentApiProperties} 的校验没炸）。</li>
  * </ol>
  */
-@SpringBootTest(classes = {CommentServiceApplication.class, NacosStubConfiguration.class})
+@SpringBootTest(classes = {CommentServiceApplication.class, NacosStubConfigurationComment.class})
 @ActiveProfiles("test")
 class CommentServiceApplicationTests {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresComment.register(registry);
+        TestRedisComment.register(registry);
     }
 
     @Autowired

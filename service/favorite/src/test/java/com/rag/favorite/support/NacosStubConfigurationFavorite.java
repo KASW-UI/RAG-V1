@@ -55,7 +55,7 @@ import org.springframework.context.annotation.Primary;
  * <b>逐字同款</b> ⇒ ⇒ 属**继承的 B 侧行为**（D16：B 侧已有的差异一律继承）⇒ ⇒ 本域<b>不修</b>。
  */
 @TestConfiguration(proxyBeanMethods = false)
-public class NacosStubConfiguration {
+public class NacosStubConfigurationFavorite {
 
     /**
      * <p>桩 {@link NacosServiceManager} —— <b>bean 名刻意与自动配置的真 bean 错开</b>。

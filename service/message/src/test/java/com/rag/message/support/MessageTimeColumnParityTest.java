@@ -70,7 +70,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       {@code com.rag.message.MessageServiceApplication}），且<b>不允许</b>为了一个 DDL 断言
  *       把整个 app 上下文（Tomcat + gRPC + Nacos + Actuator + OTel）拉起来。</li>
  *   <li>⇒ 改为<b>轻量形态</b>：复用本域共享的<b>进程内单例容器</b>
- *       {@link TestPostgres}（<b>不起自己的容器</b>）＋ {@code DriverManagerDataSource}
+ *       {@link TestPostgresMessage}（<b>不起自己的容器</b>）＋ {@code DriverManagerDataSource}
  *       ＋ {@link JdbcTemplate} 直连；Flyway 迁移<b>先跑</b>（否则表不存在）。</li>
  *   <li>Flyway 的配置（独立账本表 {@code flyway_schema_history_message} ＋
  *       {@code baseline-on-migrate} ＋ {@code baseline-version: 0} ＋ {@code locations}
@@ -102,7 +102,7 @@ class MessageTimeColumnParityTest {
     @BeforeAll
     static void setUp() throws Exception {
         DriverManagerDataSource ds = new DriverManagerDataSource(
-                TestPostgres.jdbcUrl(), TestPostgres.username(), TestPostgres.password());
+                TestPostgresMessage.jdbcUrl(), TestPostgresMessage.username(), TestPostgresMessage.password());
         jdbcTemplate = new JdbcTemplate(ds);
 
         // ── Flyway：配置**直接取自 C 侧 application.yml 的 spring.flyway 段** ──
@@ -110,7 +110,7 @@ class MessageTimeColumnParityTest {
         //    （照抄 MessageDomainServiceRealPgTest#setUp 的 ① 段 —— 逐字。）
         FlywayProperties flywayProperties = bindFlywayProperties();
         Flyway flyway = Flyway.configure()
-                .dataSource(TestPostgres.jdbcUrl(), TestPostgres.username(), TestPostgres.password())
+                .dataSource(TestPostgresMessage.jdbcUrl(), TestPostgresMessage.username(), TestPostgresMessage.password())
                 .locations(flywayProperties.getLocations().toArray(new String[0]))
                 .baselineOnMigrate(flywayProperties.isBaselineOnMigrate())
                 .baselineVersion(flywayProperties.getBaselineVersion())

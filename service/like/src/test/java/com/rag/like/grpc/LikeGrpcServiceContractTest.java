@@ -3,9 +3,9 @@ package com.rag.like.grpc;
 import com.rag.like.LikeServiceApplication;
 import com.rag.like.contract.ErrCodes;
 import com.rag.like.contract.GrpcErrFactory;
-import com.rag.like.support.NacosStubConfiguration;
-import com.rag.like.support.TestPostgres;
-import com.rag.like.support.TestRedis;
+import com.rag.like.support.NacosStubConfigurationLike;
+import com.rag.like.support.TestPostgresLike;
+import com.rag.like.support.TestRedisLike;
 
 import com.rag.proto.like.ActionType;
 import com.rag.proto.like.GetLikeCountReq;
@@ -67,7 +67,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>跑的是 <b>C 侧单侧</b>：断言「C 侧产出的 gRPC 形状与 B 侧源码记录的期望一致」。
  * 「B 侧此刻真的产出同样形状」属于<b>双侧活体对拍</b>（本类不冒充该证据）。
  */
-@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfiguration.class},
+@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfigurationLike.class},
         properties = {
                 "spring.cloud.nacos.discovery.enabled=false",
                 "spring.cloud.service-registry.auto-registration.enabled=false",
@@ -86,8 +86,8 @@ class LikeGrpcServiceContractTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresLike.register(registry);
+        TestRedisLike.register(registry);
     }
 
     @BeforeAll

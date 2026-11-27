@@ -424,7 +424,7 @@ class FavoriteSchemaParityTest extends FavoritePgParityTestBase {
  * （本域各测试类的 id 段见各自文件的 {@code @BeforeEach} 注释）。
  *
  * <h2>容器管理形态：抄 like 域</h2>
- * <p>形态抄 {@code service/like/src/test/java/com/rag/like/support/TestPostgres.java:29-68}
+ * <p>形态抄 {@code service/like/src/test/java/com/rag/like/support/TestPostgresLike.java:29-68}
  * （进程内单例 + 静态块启动 + {@code register(DynamicPropertyRegistry)} 注入）。
  *
  * <h3>§3.2 三段式留痕</h3>
@@ -452,7 +452,7 @@ class FavoriteSchemaParityTest extends FavoritePgParityTestBase {
  *       对<b>产品行为</b>零影响（AGENTS.md §3.2：测试设施不是产品行为 ⇒ 不存在语义对照义务）。</li>
  *   <li><b>B 出处</b>：B 侧 {@code service/favorite/favorite-rpc/src/test/java/com/rag/favorite/favorite/rpc/
  *       FavoriteSchemaParityTest.java:65-87}（容器与 {@code @DynamicPropertySource} 形态）；
- *       形态先例：{@code service/like/src/test/java/com/rag/like/support/TestPostgres.java:29-68}。</li>
+ *       形态先例：{@code service/like/src/test/java/com/rag/like/support/TestPostgresLike.java:29-68}。</li>
  * </ol>
  *
  * <h2>🔴 禁 {@code @EnabledIfDockerAvailable}</h2>

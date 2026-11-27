@@ -72,9 +72,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * ② 对照组：200 JSON 路径的 Content-Type 是否正常（B 侧<b>不断言</b>，只取证）。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {AdminServiceApplication.class, NacosStubConfiguration.class},
+        classes = {AdminServiceApplication.class, NacosStubConfigurationAdmin.class},
         properties = {
-                // Nacos 整体不生效 ⇒ 自动配置不注册 NacosServiceManager ⇒ 由 NacosStubConfiguration 补上
+                // Nacos 整体不生效 ⇒ 自动配置不注册 NacosServiceManager ⇒ 由 NacosStubConfigurationAdmin 补上
                 "spring.cloud.nacos.discovery.enabled=false",
                 // 服务注册自动注册关掉（否则需要真的 ServiceRegistry + Nacos）
                 "spring.cloud.service-registry.auto-registration.enabled=false",

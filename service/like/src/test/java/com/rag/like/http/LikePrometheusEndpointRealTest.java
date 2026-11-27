@@ -2,9 +2,9 @@ package com.rag.like.http;
 
 import com.rag.like.LikeServiceApplication;
 import com.rag.like.support.LikeTestSupport;
-import com.rag.like.support.NacosStubConfiguration;
-import com.rag.like.support.TestPostgres;
-import com.rag.like.support.TestRedis;
+import com.rag.like.support.NacosStubConfigurationLike;
+import com.rag.like.support.TestPostgresLike;
+import com.rag.like.support.TestRedisLike;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
@@ -80,15 +80,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * ⇒ ⇒ scrape 文本里必须出现 {@code like_api_reject_total{route="/like/likeaction",reason="token_invalid"}}。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {LikeServiceApplication.class, NacosStubConfiguration.class})
+        classes = {LikeServiceApplication.class, NacosStubConfigurationLike.class})
 @AutoConfigureObservability(metrics = true, tracing = false)
 @ActiveProfiles("test")
 class LikePrometheusEndpointRealTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresLike.register(registry);
+        TestRedisLike.register(registry);
     }
 
     @Autowired

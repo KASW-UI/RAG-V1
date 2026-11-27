@@ -133,10 +133,10 @@
 │       │               ├── support/
 │       │               │   ├── FakeUserRpcServer.java    # 「假 user-rpc」—— 真 gRPC server（随机 TCP 端口）。
 │       │               │   ├── FollowTestSupport.java    # follow 域测试用 JWT 构造器。
-│       │               │   ├── NacosStubConfiguration.java    # Nacos 桩 —— 让 follow 域的测试能起真实 Spring 上下文，而不连 Nacos。
-│       │               │   ├── PrometheusTestRegistryConfiguration.java    # 测试上下文里注入「真 Prometheus registry」 —— 让 Micrometer 真正吐出
-│       │               │   ├── TestPostgres.java    # 测试用真 PostgreSQL（进程内单例容器）。
-│       │               │   └── TestRedis.java    # 测试用真 Redis（进程内单例容器） —— follow 域唯一的 Redis 用途是
+│       │               │   ├── NacosStubConfigurationFollow.java    # Nacos 桩 —— 让 follow 域的测试能起真实 Spring 上下文，而不连 Nacos。
+│       │               │   ├── PrometheusTestRegistryConfigurationFollow.java    # 测试上下文里注入「真 Prometheus registry」 —— 让 Micrometer 真正吐出
+│       │               │   ├── TestPostgresFollow.java    # 测试用真 PostgreSQL（进程内单例容器）。
+│       │               │   └── TestRedisFollow.java    # 测试用真 Redis（进程内单例容器） —— follow 域唯一的 Redis 用途是
 │       │               └── FollowServiceApplicationTests.java    # follow 域上下文装配自检 —— 证明 D1 合并后的唯一入口真能把全链条装配起来。
 │       └── resources/
 │           └── application-test.properties

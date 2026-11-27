@@ -189,8 +189,8 @@
 │                       │   ├── AssemblyTestBase.java    # 真 PostgreSQL + 真 Spring 上下文（含真 Tomcat 与真 gRPC server） ——
 │                       │   ├── HttpRealTomcatTestBase.java    # article 域 HTTP 层的「真 Tomcat」测试底座 —— 真 Spring 上下文 + 真 Tomcat
 │                       │   ├── KafkaTestBase.java    # 真 Kafka 容器 + 真 PostgreSQL + 真 Spring 上下文 —— 本仓 article 域
-│                       │   ├── NacosStubConfiguration.java    # Nacos 桩 —— 让 article 域的测试能起真实 Spring 上下文，而不连 Nacos。
-│                       │   └── TestPostgres.java    # 测试用真 PostgreSQL（进程内单例容器）。
+│                       │   ├── NacosStubConfigurationArticle.java    # Nacos 桩 —— 让 article 域的测试能起真实 Spring 上下文，而不连 Nacos。
+│                       │   └── TestPostgresArticle.java    # 测试用真 PostgreSQL（进程内单例容器）。
 │                       └── ArticleServiceApplicationTests.java    # article 域上下文装配自检 —— 证明 D1/D7 合并后的唯一入口真能把全链条装配起来。
 └── pom.xml    # Maven 模块描述
 ```

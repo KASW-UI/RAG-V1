@@ -2,7 +2,7 @@ package com.rag.user.mapper;
 
 import com.rag.user.domain.entity.UserAvatarHistoryEntity;
 import com.rag.user.exception.UserExceptions.AvatarHistoryNotFoundException;
-import com.rag.user.support.TestPostgres;
+import com.rag.user.support.TestPostgresUser;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -68,7 +68,7 @@ class AvatarTransactionWiringTest {
 
     @DynamicPropertySource
     static void datasource(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresUser.register(registry);
     }
 
     /** uid 序号器：与其它测试类共用同一个库 ⇒ uid / username / history_id 必须全局唯一。 */

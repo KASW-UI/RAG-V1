@@ -3,8 +3,8 @@ package com.rag.comment.grpc;
 import com.rag.comment.CommentServiceApplication;
 import com.rag.comment.domain.service.CommentDomainService;
 import com.rag.comment.metrics.CommentRpcMetrics;
-import com.rag.comment.support.NacosStubConfiguration;
-import com.rag.comment.support.TestPostgres;
+import com.rag.comment.support.NacosStubConfigurationComment;
+import com.rag.comment.support.TestPostgresComment;
 
 import com.rag.proto.comment.CommentServiceGrpc;
 import com.rag.proto.comment.CreateCommentReq;
@@ -116,7 +116,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * </ul>
  */
 @SpringBootTest(
-        classes = {CommentServiceApplication.class, NacosStubConfiguration.class},
+        classes = {CommentServiceApplication.class, NacosStubConfigurationComment.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:1",
@@ -138,7 +138,7 @@ class CommentSpanExportRealTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresComment.register(registry);
         registry.add("grpc.server.port", () -> -1);
     }
 

@@ -4,9 +4,9 @@ import com.rag.like.LikeServiceApplication;
 import com.rag.like.contract.ArticleHotEvent;
 import com.rag.like.contract.KafkaLikeMsg;
 import com.rag.like.domain.service.LikeDomainService;
-import com.rag.like.support.NacosStubConfiguration;
-import com.rag.like.support.TestPostgres;
-import com.rag.like.support.TestRedis;
+import com.rag.like.support.NacosStubConfigurationLike;
+import com.rag.like.support.TestPostgresLike;
+import com.rag.like.support.TestRedisLike;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rag.proto.like.ActionType;
@@ -132,7 +132,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 「B 侧此刻真的产出同样字节」属<b>双侧活体对拍</b>（{@code tools/difftest/like/} 的
  * <b>两侧对称关掉了 listener</b> ⇒ 该探针**不覆盖**消费面）⇒ ⇒ 本类与该探针**互补**，不重复。
  */
-@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfiguration.class},
+@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfigurationLike.class},
         properties = {
                 // ⚠️ Sea-kafka 的 EXTERNAL 发布口（容器内 9092 对宿主不可用）
                 "spring.kafka.bootstrap-servers=127.0.0.1:49992",
@@ -265,8 +265,8 @@ class LikeKafkaThreeFaceRealTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresLike.register(registry);
+        TestRedisLike.register(registry);
         // 🔴🔴 **consumer group 必须每 JVM 唯一**（DRIFT-LIKE-024）⇒
         //    ⇒ 动态注册 ⇒ 每次 JVM 启动都是**零已提交位点**的新 group
         //    ⇒ ⇒ `auto-offset-reset=latest` 生效 ⇒ listener 只读「本轮定位之后」的消息

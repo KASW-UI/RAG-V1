@@ -7,7 +7,7 @@ import com.alibaba.nacos.api.naming.NamingService;
 import com.alibaba.nacos.api.naming.pojo.Instance;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.rag.admin.domain.entity.AdminEntity;
-import com.rag.admin.http.NacosStubConfiguration;
+import com.rag.admin.http.NacosStubConfigurationAdmin;
 import com.rag.admin.mapper.AdminMapper;
 import com.rag.common.security.PasswordUtil;
 import net.devh.boot.grpc.server.serverfactory.GrpcServerLifecycle;
@@ -70,7 +70,7 @@ import static org.mockito.Mockito.verify;
  * ⇒ 而此前<b>一个 {@code @SpringBootTest} 上下文测试都没有</b> ⇒ 这个缺陷一直藏着。
  * ⇒ ⇒ 本类就是那道防线。
  *
- * <p><b>测试环境摘依赖</b>：Nacos 用 {@link NacosStubConfiguration} 桩（不连网络）·
+ * <p><b>测试环境摘依赖</b>：Nacos 用 {@link NacosStubConfigurationAdmin} 桩（不连网络）·
  * PG / Redis 走 Testcontainers 真容器 · gRPC 走随机端口（不与本机其它域撞端口）。
  *
  * <h2>⚠️ 为什么<b>不</b>关掉 {@code spring.cloud.nacos.discovery.enabled}</h2>
@@ -78,11 +78,11 @@ import static org.mockito.Mockito.verify;
  * 的唯一 bean 定义处）整个不生效 ⇒ {@code NacosDiscoveryProperties} bean <b>不存在</b>
  * ⇒ ① {@code NacosServiceRegistryAutoConfiguration#nacosServiceRegistry(...)} 缺参数 ⇒ <b>上下文起不来</b>
  * ⇒ ② 也<b>读不到</b> {@code register-enabled} 的值 ⇒ 无法断言。
- * <p>⇒ 改为<b>保留</b> discovery 开关、用 {@link NacosStubConfiguration} 的桩接管
+ * <p>⇒ 改为<b>保留</b> discovery 开关、用 {@link NacosStubConfigurationAdmin} 的桩接管
  * {@code NacosServiceManager}（bean 名错开 + {@code @Primary}）⇒ 既不触网，又能真触发地观察注册行为。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {AdminServiceApplication.class, NacosStubConfiguration.class},
+        classes = {AdminServiceApplication.class, NacosStubConfigurationAdmin.class},
         properties = {
                 "grpc.server.address=127.0.0.1"
         })
@@ -140,7 +140,7 @@ class AdminServiceApplicationTests {
     private GrpcServerLifecycle grpcServerLifecycle;
 
     @Autowired
-    private NacosStubConfiguration.NacosNamingServiceSpy namingServiceSpy;
+    private NacosStubConfigurationAdmin.NacosNamingServiceSpy namingServiceSpy;
 
     @Autowired
     private NacosDiscoveryProperties nacosDiscoveryProperties;

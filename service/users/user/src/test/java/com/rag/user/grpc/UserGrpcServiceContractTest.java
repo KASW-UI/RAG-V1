@@ -21,7 +21,7 @@ import com.rag.proto.user.UploadAvatarResp;
 import com.rag.proto.user.UserInfo;
 import com.rag.proto.user.UserServiceGrpc;
 import com.rag.user.domain.service.UserDomainService;
-import com.rag.user.support.TestPostgres;
+import com.rag.user.support.TestPostgresUser;
 import io.grpc.ManagedChannel;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
@@ -85,7 +85,7 @@ class UserGrpcServiceContractTest {
 
     @DynamicPropertySource
     static void datasource(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresUser.register(registry);
     }
 
     @MockitoBean

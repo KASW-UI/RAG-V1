@@ -89,7 +89,7 @@ import java.util.UUID;
  * </ul>
  */
 @SpringBootTest(
-        classes = {ArticleServiceApplication.class, NacosStubConfiguration.class},
+        classes = {ArticleServiceApplication.class, NacosStubConfigurationArticle.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:1",
@@ -193,7 +193,7 @@ public abstract class KafkaTestBase {
         registry.add("article-rpc.article-sync-pusher-conf.brokers", KafkaTestBase::bootstrapServers);
         registry.add("article-rpc.article-sync-result-consumer-conf.brokers",
                 KafkaTestBase::bootstrapServers);
-        TestPostgres.register(registry);
+        TestPostgresArticle.register(registry);
         // 🔴 裸占位符必须能被解析（application.yml:35 / :221 / :305）
         registry.add("POSTGRES_PASSWORD", () -> "password");
         registry.add("USER_JWT_SECRET", () -> "test-only-article-jwt-secret-at-least-32-bytes-long");

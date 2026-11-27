@@ -2,7 +2,7 @@ package com.rag.admin.service;
 
 import com.rag.admin.AdminServiceApplication;
 import com.rag.admin.domain.service.AdminDomainService;
-import com.rag.admin.http.NacosStubConfiguration;
+import com.rag.admin.http.NacosStubConfigurationAdmin;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -86,7 +86,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li><b>{@code AdminDomainService}</b>：{@code com.rag.users.admin.rpc.service.AdminDomainService}
  *       → {@code com.rag.admin.domain.service.AdminDomainService}（D7：实体/服务下沉到 {@code domain.service}）。</li>
  *   <li><b>启动类</b>：B 侧 {@code AdminRpcApplication} → C 侧 {@code AdminServiceApplication}（D1）
- *       ＋ 本模块既有的顶层 {@link NacosStubConfiguration}（<b>不触网</b>）。</li>
+ *       ＋ 本模块既有的顶层 {@link NacosStubConfigurationAdmin}（<b>不触网</b>）。</li>
  *   <li><b>⛔ 删掉 {@code @org.testcontainers.junit.jupiter.EnabledIfDockerAvailable}</b>
  *       （AGENTS.md §五.8 守门硬规则 ③：禁止用「Docker 不可用就跳过」掩盖失败）——
  *       B 侧 {@code AdminSpanWiringTest.java:73} 有，本移植<b>必须删</b>。</li>
@@ -126,7 +126,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(
-        classes = {AdminServiceApplication.class, NacosStubConfiguration.class},
+        classes = {AdminServiceApplication.class, NacosStubConfigurationAdmin.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:1",

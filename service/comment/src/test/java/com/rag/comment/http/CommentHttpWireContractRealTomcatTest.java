@@ -5,8 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rag.comment.CommentServiceApplication;
 import com.rag.comment.domain.service.CommentDomainService;
 import com.rag.comment.exception.CommentExceptions;
-import com.rag.comment.support.NacosStubConfiguration;
-import com.rag.comment.support.TestPostgres;
+import com.rag.comment.support.NacosStubConfigurationComment;
+import com.rag.comment.support.TestPostgresComment;
 import com.rag.common.security.JwtUtil;
 
 import io.jsonwebtoken.Jwts;
@@ -108,7 +108,7 @@ import static org.mockito.Mockito.when;
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {CommentServiceApplication.class, NacosStubConfiguration.class})
+        classes = {CommentServiceApplication.class, NacosStubConfigurationComment.class})
 @ActiveProfiles("test")
 class CommentHttpWireContractRealTomcatTest {
 
@@ -138,7 +138,7 @@ class CommentHttpWireContractRealTomcatTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresComment.register(registry);
         // ⚠️ Redis：Lettuce 是**懒连接** ⇒ 指向一个必然拒连的本机端口即可
         //    （B 侧原测试同样这么做：{@code spring.data.redis.host=127.0.0.1} + {@code port=1}）。
         //    ⇒ 缓存读失败会「打点后回源 DB」（B 侧 {@code comment_subject_cache.go:31-35}），

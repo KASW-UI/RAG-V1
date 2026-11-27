@@ -1,6 +1,6 @@
 package com.rag.comment.service;
 
-import com.rag.comment.support.TestPostgres;
+import com.rag.comment.support.TestPostgresComment;
 
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
@@ -104,7 +104,7 @@ class CommentFlywayBaselineRealPgTest {
 
         // ① 非空 schema：先建一张**别的域的表** ⇒ 制造「schema 非空 + 本域账本不存在」
         try (Connection conn = DriverManager.getConnection(containerJdbcUrl(PROBE_DB_NONEMPTY),
-                TestPostgres.username(), TestPostgres.password());
+                TestPostgresComment.username(), TestPostgresComment.password());
              Statement st = conn.createStatement()) {
             st.execute("CREATE TABLE IF NOT EXISTS unrelated_other_module_table (id BIGINT PRIMARY KEY)");
         }
@@ -114,7 +114,7 @@ class CommentFlywayBaselineRealPgTest {
         flywayConfiguredByModuleYaml(PROBE_DB_FRESH).migrate();
 
         jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                containerJdbcUrl(PROBE_DB_FRESH), TestPostgres.username(), TestPostgres.password()));
+                containerJdbcUrl(PROBE_DB_FRESH), TestPostgresComment.username(), TestPostgresComment.password()));
     }
 
     // ====================================================================================
@@ -125,7 +125,7 @@ class CommentFlywayBaselineRealPgTest {
     @DisplayName("🔴 非空 schema 下 V1 必须真执行 ⇒ 7 张表必须全部存在")
     void v1MustRunEvenOnNonEmptySchema() throws IOException {
         JdbcTemplate nonempty = new JdbcTemplate(new DriverManagerDataSource(
-                containerJdbcUrl(PROBE_DB_NONEMPTY), TestPostgres.username(), TestPostgres.password()));
+                containerJdbcUrl(PROBE_DB_NONEMPTY), TestPostgresComment.username(), TestPostgresComment.password()));
 
         // 前置事实：schema 确实非空（预置了别的域的表）⇒ Flyway 必然走 baseline-on-migrate 分支
         assertThat(nonempty.queryForObject(
@@ -145,7 +145,7 @@ class CommentFlywayBaselineRealPgTest {
     @DisplayName("🔴 账本的 BASELINE 行版本必须是 0（否则 V1 被整条跳过），且 V1..V8 全是 SQL 行")
     void ledgerBaselineMustSitBelowV1() throws IOException {
         JdbcTemplate nonempty = new JdbcTemplate(new DriverManagerDataSource(
-                containerJdbcUrl(PROBE_DB_NONEMPTY), TestPostgres.username(), TestPostgres.password()));
+                containerJdbcUrl(PROBE_DB_NONEMPTY), TestPostgresComment.username(), TestPostgresComment.password()));
 
         List<String> versions = nonempty.queryForList(
                 "SELECT version FROM " + LEDGER + " ORDER BY installed_rank", String.class);
@@ -179,7 +179,7 @@ class CommentFlywayBaselineRealPgTest {
     @DisplayName("🔴 账本表名必须是本域独立的 flyway_schema_history_comment（不得用 schema 级账本）")
     void ledgerTableNameIsDomainScoped() throws IOException {
         JdbcTemplate nonempty = new JdbcTemplate(new DriverManagerDataSource(
-                containerJdbcUrl(PROBE_DB_NONEMPTY), TestPostgres.username(), TestPostgres.password()));
+                containerJdbcUrl(PROBE_DB_NONEMPTY), TestPostgresComment.username(), TestPostgresComment.password()));
 
         assertThat(tableExists(nonempty, LEDGER))
                 .as("账本表 %s 必须存在（各域独立账本 ⇒ 共享 schema 下不撞号）", LEDGER)
@@ -489,7 +489,7 @@ class CommentFlywayBaselineRealPgTest {
                 .isEqualTo("public");
 
         FluentConfiguration cfg = Flyway.configure()
-                .dataSource(containerJdbcUrl(database), TestPostgres.username(), TestPostgres.password())
+                .dataSource(containerJdbcUrl(database), TestPostgresComment.username(), TestPostgresComment.password())
                 .locations(p.getProperty("spring.flyway.locations", "classpath:db/migration"))
                 .schemas(p.getProperty("spring.flyway.schemas", "public"))
                 .table(p.getProperty("spring.flyway.table", "flyway_schema_history"))
@@ -528,7 +528,7 @@ class CommentFlywayBaselineRealPgTest {
      * （{@code application.yml:32}）⇒ 落库时间列在 wire 上要渲染成墙钟时间。
      */
     private static String containerJdbcUrl(String database) {
-        String base = TestPostgres.jdbcUrl();
+        String base = TestPostgresComment.jdbcUrl();
         int q = base.indexOf('?');
         String bare = q >= 0 ? base.substring(0, q) : base;
         int slash = bare.lastIndexOf('/');
@@ -540,7 +540,7 @@ class CommentFlywayBaselineRealPgTest {
     private static void createProbeDatabase(String database) {
         String adminUrl = containerJdbcUrl("postgres");
         try (Connection conn = DriverManager.getConnection(adminUrl,
-                TestPostgres.username(), TestPostgres.password());
+                TestPostgresComment.username(), TestPostgresComment.password());
              Statement st = conn.createStatement()) {
             st.execute("DROP DATABASE IF EXISTS " + database + " WITH (FORCE)");
             st.execute("CREATE DATABASE " + database);

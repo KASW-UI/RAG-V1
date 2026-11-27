@@ -66,7 +66,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * </ul>
  *
  * <h2>数据隔离</h2>
- * <p>PG 容器是<b>进程内单例</b>（{@code support/TestPostgres}）⇒ 本类用专属 uid 段
+ * <p>PG 容器是<b>进程内单例</b>（{@code support/TestPostgresArticle}）⇒ 本类用专属 uid 段
  * {@code 904xxxxx}（其它测试类用 901/902/903/905/906/907/908）。
  * <br>⚠️ {@code article_revision} 上有 {@code BEFORE UPDATE OR DELETE} 触发器
  * ⇒ 清理只能用 {@code TRUNCATE}，不能用 {@code DELETE}。

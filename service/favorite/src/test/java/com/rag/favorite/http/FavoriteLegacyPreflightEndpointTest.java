@@ -64,7 +64,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @SpringBootTest(
         classes = {com.rag.favorite.FavoriteServiceApplication.class,
-                com.rag.favorite.support.NacosStubConfiguration.class},
+                com.rag.favorite.support.NacosStubConfigurationFavorite.class},
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
         properties = {
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:1",

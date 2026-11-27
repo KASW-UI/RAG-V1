@@ -20,6 +20,7 @@
 | Bean 名 | 每域独立进程 ⇒ 无撞名问题 | **同进程内多域 ⇒ 需显式命名**（`articleWebMvcConfig` / `commentMessageRpcClient` / …） |
 | Mapper bean 名 | 每域独立进程 ⇒ 无撞名问题 | 同进程内多域 ⇒ **加域前缀**（`userUserMapper` / `adminUserMapper`） |
 | Kafka 容器工厂 | 每域独立进程 ⇒ Boot 自动配置的默认工厂被**域 bean 抑制**（**按名字**判空） | 同进程内多域 ⇒ 各域 factory **加域前缀** ⇒ ⇒ Boot 的默认工厂**冒出来** ⇒ ⇒ 共享层 `KafkaDefaultFactoryAutoConfiguration` **精准删掉它**（见 §五 #6） |
+| **测试 support 类名** | 每域独立进程 ⇒ 各域的 `support/TestPostgres` / `support/TestRedis` / `support/NacosStubConfiguration` **同名不撞** | 同进程内多域 ⇒ **同名撞车** ⇒ ⇒ **按域后缀改名**（`TestPostgresLike` / `TestRedisComment` / `NacosStubConfigurationTask` …）⇒ ⇒ **零行为变化**（只改测试类的类名） |
 
 ---
 
@@ -85,11 +86,39 @@
 | 8 | 2 个直读 yml 的测试（`CommentOversizedBodyRealTomcatTest` / `CommentGrpcInterceptorWiringRealTest`） | 资源路径 `application.yml` ⇒ `application-comment.yml` ⇒ ⚠️ 这类测试**不走 Spring 配置体系** ⇒ 配置改名它们**不会自动跟随** |
 | 9 | 2 个产物层守门（`CommentArtifactClasspathGateTest` / `CommentRuntimeBootGateTest`） | 守门对象从「域 fat jar」改指「**interaction 进程**的 fat jar」（域模块不再 repackage ⇒ 域 jar 无 `BOOT-INF/lib/`）⇒ ⇒ **判据等价**（仍验「comment 域跑起来所依赖的真 classpath + 真 yaml 能不能起」） |
 
+### S2 追加（第 10–13 行）
+
+| # | 位置 | 改动 |
+|---|---|---|
+| 10 | **26 个测试 support 类** ＋ **200 处引用点** | 🔴 **D4 · 按域后缀改名**：`TestPostgresXxx`（7 域）/ `TestRedisXxx`（5 域）/ `NacosStubConfigurationXxx`（9 域）/ `PrometheusTestRegistryConfigurationXxx`（3 域）/ `GrpcServerPortCaptureXxx`（2 域）⇒ ⇒ **零行为变化**（只改测试类的类名与文件路径）⇒ ⇒ 带**守恒断言**（代码里的旧名残留 = 0） |
+| 11 | **5 个 boot 启动类**（`service/boot/*/src/main/java/.../*ServiceApplication.java`） | 🔴 **补回 `@ComponentScan` 的隐含 `excludeFilters`**（`TypeExcludeFilter` ＋ `AutoConfigurationExcludeFilter`）⇒ ⇒ 实测：修前 boot 启动类下 `ContentAuditAutoConfiguration` 的 bean 名 = **短名** `contentAuditAutoConfiguration` ⇒ ⇒ **绕过 `.imports` 机制**；修后 = **FQCN** `com.rag.article.client.ContentAuditAutoConfiguration`（与域启动类一致） |
+| 12 | `service/boot/content/.../ContentServiceApplicationAssemblyTest.java` | 新增永久断言 `domainAutoConfigurationBeanNameIsFqcn` ⇒ **正反两条都断言**（FQCN **存在** ＋ 短名 **不存在** ⇒ 否则「两个都不存在」也会绿）⇒ ⇒ ✅ **变异实测**：临时撤掉 `excludeFilters` ⇒ 断言**如实转红** ⇒ ⇒ **不是假绿** |
+| 13 | **域测试归属**（P3 的落地口径修正） | ⚠️ **P3 原文的「指向 boot 启动类」在 Maven 里不可实现**（实测 `ProjectCycleException` ⇒ **连 test scope 也拒**）⇒ ⇒ 改判为：**域测试留域模块**（测「单域上下文能不能起」）＋ **boot 模块另立装配层测试**（测「合并上下文里域 bean 在不在、他域有没有串进来」）⇒ ⇒ **保住 P3 的意图**（域测试仍可独立跑）**换掉不可行的手法** |
+
 ### 附：为什么「删掉 Boot 默认 Kafka 工厂」也算「偏离」
 
 B 侧是 **10 个独立进程** ⇒ 每个进程里只有本域一个 factory ⇒ **不存在**同名撞车、也不存在 Boot 默认工厂
 ⇒ ⇒ C 侧的 5 进程形态**必然引入**这两个问题 ⇒ ⇒ 修法（域前缀命名 ＋ 精准删除 Boot 默认 factory）
 **是形态合并的必然产物** ⇒ 登记在此。
+
+### 附二：为什么「测试 support 类改名」也算「偏离」
+
+B 侧**没有**测试 support 层（测试形态不同）⇒ ⇒ C 侧这层是 C 独有的
+⇒ ⇒ 而 5 进程形态让**多个域的同名 support 类进同一 classpath** ⇒ ⇒ **必须改名**
+⇒ ⇒ 改名是**形态合并的必然产物** ⇒ 登记在此（D4 · 2026-11-27 用户拍板「统一改名，按域后缀」）。
+
+⚠️ **可观测面**：**测试类的类名与文件路径变了** ⇒ ⇒ 任何**按类名/路径引用**这些类的外部脚本
+（如 CI 里单独跑某个测试类、IDE 的 run configuration）需同步改。
+⇒ ⇒ 仓库内已全部同步（**26 个文件 + 200 处引用**，并带**守恒断言**：代码里的旧名残留 = 0）。
+
+### 附三：为什么「boot 启动类补 `excludeFilters`」也算「偏离」
+
+⚠️ **不是偏离，是「补回 S1 漏掉的隐含语义」** —— 记录在此是为了说明
+**S1 与 S2 两次都踩了同一条坑**（`P-31` §五 ＋ §九）：
+⇒ ⇒ **域启动类**（S1 降级）与 **boot 启动类**（S2 新建）**都需要**逐字补回
+`@SpringBootApplication` 的 `@ComponentScan` 隐含的两个 `excludeFilters`
+⇒ ⇒ 漏了 ⇒ ⇒ **auto-config 的 bean 名从 FQCN 变短名** ⇒ ⇒ **绕过 `.imports` 机制**
+⇒ ⇒ **同一份域代码、两种启动入口、两种机制** ⇒ ⇒ 已加永久断言钉住（变异实测能转红）。
 
 ---
 

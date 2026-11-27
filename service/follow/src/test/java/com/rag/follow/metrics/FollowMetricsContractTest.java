@@ -5,9 +5,9 @@ import com.rag.follow.contract.ErrCodes;
 import com.rag.follow.contract.GrpcErrorMapper;
 import com.rag.follow.domain.service.FollowDomainService;
 import com.rag.follow.support.FakeUserRpcServer;
-import com.rag.follow.support.NacosStubConfiguration;
-import com.rag.follow.support.PrometheusTestRegistryConfiguration;
-import com.rag.follow.support.TestPostgres;
+import com.rag.follow.support.NacosStubConfigurationFollow;
+import com.rag.follow.support.PrometheusTestRegistryConfigurationFollow;
+import com.rag.follow.support.TestPostgresFollow;
 
 import com.rag.proto.follow.ListReq;
 import com.rag.proto.follow.RelationReq;
@@ -58,8 +58,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * {@code DoubleFormat} 也把整数值写成 {@code "1"} ⇒ 本类按<b>浮点</b>解析后比较
  * （不看文本形态）⇒ 语义等价即可。
  */
-@SpringBootTest(classes = {FollowServiceApplication.class, NacosStubConfiguration.class,
-        PrometheusTestRegistryConfiguration.class},
+@SpringBootTest(classes = {FollowServiceApplication.class, NacosStubConfigurationFollow.class,
+        PrometheusTestRegistryConfigurationFollow.class},
         properties = {
                 "spring.cloud.nacos.discovery.enabled=false",
                 "spring.cloud.service-registry.auto-registration.enabled=false",
@@ -76,7 +76,7 @@ class FollowMetricsContractTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresFollow.register(registry);
         registry.add("grpc.client.user-rpc.address", FakeUserRpcServer::address);
     }
 
@@ -235,7 +235,7 @@ class FollowMetricsContractTest {
     // ==================================================================
 
     private String scrape() {
-        // ⚠️ 上下文里注入的是**真 Prometheus registry**（见 PrometheusTestRegistryConfiguration）
+        // ⚠️ 上下文里注入的是**真 Prometheus registry**（见 PrometheusTestRegistryConfigurationFollow）
         //   ⇒ 拿到的就是 Prometheus 文本格式（_bucket{le="..."} / _count / _sum）。
         return meterRegistry.scrape();
     }

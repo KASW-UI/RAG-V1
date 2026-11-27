@@ -2,8 +2,8 @@ package com.rag.follow.service;
 
 import com.rag.follow.FollowServiceApplication;
 import com.rag.follow.support.FakeUserRpcServer;
-import com.rag.follow.support.NacosStubConfiguration;
-import com.rag.follow.support.TestPostgres;
+import com.rag.follow.support.NacosStubConfigurationFollow;
+import com.rag.follow.support.TestPostgresFollow;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -60,7 +60,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>临时摘掉 {@code @Transactional(rollbackFor = Exception.class)} ⇒ 本类的
  * 「block 行必须不存在」判据必须<b>真的变红</b> ⇒ 才算「不是假绿」。
  */
-@SpringBootTest(classes = {FollowServiceApplication.class, NacosStubConfiguration.class},
+@SpringBootTest(classes = {FollowServiceApplication.class, NacosStubConfigurationFollow.class},
         properties = {
                 "spring.cloud.nacos.discovery.enabled=false",
                 "spring.cloud.service-registry.auto-registration.enabled=false",
@@ -74,7 +74,7 @@ class FollowBlockTransactionRealPgTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresFollow.register(registry);
         registry.add("grpc.client.user-rpc.address", FakeUserRpcServer::address);
     }
 

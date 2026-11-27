@@ -5,9 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rag.follow.FollowServiceApplication;
 import com.rag.follow.support.FakeUserRpcServer;
 import com.rag.follow.support.FollowTestSupport;
-import com.rag.follow.support.NacosStubConfiguration;
-import com.rag.follow.support.TestPostgres;
-import com.rag.follow.support.TestRedis;
+import com.rag.follow.support.NacosStubConfigurationFollow;
+import com.rag.follow.support.TestPostgresFollow;
+import com.rag.follow.support.TestRedisFollow;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -77,7 +77,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {FollowServiceApplication.class, NacosStubConfiguration.class},
+        classes = {FollowServiceApplication.class, NacosStubConfigurationFollow.class},
         properties = {
                 "spring.cloud.nacos.discovery.enabled=false",
                 "spring.cloud.service-registry.auto-registration.enabled=false",
@@ -99,8 +99,8 @@ class FollowConcurrencyRealPgTest {
 
     @DynamicPropertySource
     static void infrastructure(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresFollow.register(registry);
+        TestRedisFollow.register(registry);
         registry.add("grpc.client.user-rpc.address", FakeUserRpcServer::address);
     }
 

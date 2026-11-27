@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rag.task.TaskServiceApplication;
 import com.rag.task.service.TaskRedisKeys;
-import com.rag.task.support.NacosStubConfiguration;
-import com.rag.task.support.TestPostgres;
-import com.rag.task.support.TestRedis;
+import com.rag.task.support.NacosStubConfigurationTask;
+import com.rag.task.support.TestPostgresTask;
+import com.rag.task.support.TestRedisTask;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -97,7 +97,7 @@ import org.springframework.test.context.DynamicPropertySource;
 @Tag("external-env")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @SpringBootTest(
-        classes = {TaskServiceApplication.class, NacosStubConfiguration.class},
+        classes = {TaskServiceApplication.class, NacosStubConfigurationTask.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 // ---------- 真 Kafka（宿主 Sea-kafka · EXTERNAL 发布口）----------
@@ -175,8 +175,8 @@ class TaskKafkaConsumeRealTest {
      */
     @DynamicPropertySource
     static void infra(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresTask.register(registry);
+        TestRedisTask.register(registry);
         registry.add("POSTGRES_PASSWORD", () -> "password");
         registry.add("task.kafka.in-topic", () -> IN_TOPIC);
         registry.add("task.kafka.raw-user-topic", () -> RAW_USER_TOPIC);

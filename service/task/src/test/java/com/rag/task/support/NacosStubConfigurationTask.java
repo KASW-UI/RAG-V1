@@ -35,7 +35,7 @@ import org.springframework.context.annotation.Primary;
  * <p>⚠️ 本类只服务于<b>测试</b>：它<b>不</b>改变生产代码路径。</p>
  */
 @TestConfiguration(proxyBeanMethods = false)
-public class NacosStubConfiguration {
+public class NacosStubConfigurationTask {
 
     /**
      * <p>桩 {@link NacosServiceManager} —— <b>bean 名刻意与自动配置的真 bean 错开</b>。

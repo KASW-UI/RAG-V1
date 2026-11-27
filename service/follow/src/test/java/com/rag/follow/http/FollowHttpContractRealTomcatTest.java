@@ -5,9 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rag.follow.FollowServiceApplication;
 import com.rag.follow.support.FakeUserRpcServer;
 import com.rag.follow.support.FollowTestSupport;
-import com.rag.follow.support.NacosStubConfiguration;
-import com.rag.follow.support.TestPostgres;
-import com.rag.follow.support.TestRedis;
+import com.rag.follow.support.NacosStubConfigurationFollow;
+import com.rag.follow.support.TestPostgresFollow;
+import com.rag.follow.support.TestRedisFollow;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -70,9 +70,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 「B 侧此刻真的产出同样形状」属于<b>双侧活体对拍</b>的范畴（本类<b>不冒充</b>该证据）。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {FollowServiceApplication.class, NacosStubConfiguration.class},
+        classes = {FollowServiceApplication.class, NacosStubConfigurationFollow.class},
         properties = {
-                // Nacos 整体不生效 ⇒ 自动配置不注册 NacosServiceManager ⇒ 由 NacosStubConfiguration 补上
+                // Nacos 整体不生效 ⇒ 自动配置不注册 NacosServiceManager ⇒ 由 NacosStubConfigurationFollow 补上
                 "spring.cloud.nacos.discovery.enabled=false",
                 // 服务注册自动注册关掉（否则需要真的 ServiceRegistry + Nacos）
                 "spring.cloud.service-registry.auto-registration.enabled=false",
@@ -89,8 +89,8 @@ class FollowHttpContractRealTomcatTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresFollow.register(registry);
+        TestRedisFollow.register(registry);
         // ⚠️ 出向的 user-rpc 客户端：指向「假 user-rpc」真 gRPC server（随机端口）
         //    ⇒ domain 层的存在性校验（5101）走真 gRPC，而不是被 mock 掉。
         registry.add("grpc.client.user-rpc.address", FakeUserRpcServer::address);

@@ -1,9 +1,9 @@
 package com.rag.like.service;
 
 import com.rag.like.LikeServiceApplication;
-import com.rag.like.support.NacosStubConfiguration;
-import com.rag.like.support.TestPostgres;
-import com.rag.like.support.TestRedis;
+import com.rag.like.support.NacosStubConfigurationLike;
+import com.rag.like.support.TestPostgresLike;
+import com.rag.like.support.TestRedisLike;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -70,7 +70,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <b>证不了「应用真的会那样配」</b>（§3.1 自举陷阱）⇒ 迁移完全由 Spring Boot 的
  * {@code FlywayAutoConfiguration} 按 {@code spring.flyway.*} 执行。
  */
-@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfiguration.class})
+@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfigurationLike.class})
 @ActiveProfiles("test")
 class LikeFlywayBaselineRealPgTest {
 
@@ -83,8 +83,8 @@ class LikeFlywayBaselineRealPgTest {
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         // ⚠️ 顺序要紧：先注册容器的默认连接（顺带触发容器启动），再把 url 覆盖到探针库。
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresLike.register(registry);
+        TestRedisLike.register(registry);
         registry.add("spring.datasource.url", LikeFlywayBaselineRealPgTest::prepareProbeDatabase);
     }
 
@@ -98,18 +98,18 @@ class LikeFlywayBaselineRealPgTest {
      */
     private static synchronized String prepareProbeDatabase() {
         if (PROBE_DB_PREPARED) {
-            return TestPostgres.jdbcUrl().replace("/first_db", "/" + PROBE_DB);
+            return TestPostgresLike.jdbcUrl().replace("/first_db", "/" + PROBE_DB);
         }
-        String adminUrl = TestPostgres.jdbcUrl().replace("/first_db", "/postgres");
-        String probeUrl = TestPostgres.jdbcUrl().replace("/first_db", "/" + PROBE_DB);
-        try (Connection conn = DriverManager.getConnection(adminUrl, TestPostgres.username(), TestPostgres.password());
+        String adminUrl = TestPostgresLike.jdbcUrl().replace("/first_db", "/postgres");
+        String probeUrl = TestPostgresLike.jdbcUrl().replace("/first_db", "/" + PROBE_DB);
+        try (Connection conn = DriverManager.getConnection(adminUrl, TestPostgresLike.username(), TestPostgresLike.password());
              Statement st = conn.createStatement()) {
             st.execute("DROP DATABASE IF EXISTS " + PROBE_DB);
             st.execute("CREATE DATABASE " + PROBE_DB);
         } catch (Exception e) {
             throw new IllegalStateException("探针库创建失败: " + adminUrl, e);
         }
-        try (Connection conn = DriverManager.getConnection(probeUrl, TestPostgres.username(), TestPostgres.password());
+        try (Connection conn = DriverManager.getConnection(probeUrl, TestPostgresLike.username(), TestPostgresLike.password());
              Statement st = conn.createStatement()) {
             // ⚠️ 关键：预置一张**别的 app 的**表 ⇒ schema 非空 ⇒ Flyway 走 baseline-on-migrate 分支
             st.execute("CREATE TABLE probe_other_app_table (id BIGSERIAL PRIMARY KEY, note TEXT)");

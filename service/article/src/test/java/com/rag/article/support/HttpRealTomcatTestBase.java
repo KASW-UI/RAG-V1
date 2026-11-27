@@ -98,7 +98,7 @@ import java.util.Date;
  * </ul>
  */
 @SpringBootTest(
-        classes = {ArticleServiceApplication.class, NacosStubConfiguration.class},
+        classes = {ArticleServiceApplication.class, NacosStubConfigurationArticle.class},
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 // ── Nacos 不触网 ──
@@ -171,7 +171,7 @@ public abstract class HttpRealTomcatTestBase {
      */
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresArticle.register(registry);
         // 🔴 裸占位符必须能被解析（application.yml:35 / :221 / :305）
         registry.add("POSTGRES_PASSWORD", () -> "password");
         registry.add("USER_JWT_SECRET", () -> JWT_SECRET);

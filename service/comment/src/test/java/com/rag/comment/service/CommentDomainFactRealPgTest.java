@@ -9,7 +9,7 @@ import com.rag.comment.mapper.CommentContentMapper;
 import com.rag.comment.mapper.CommentDomainFactOutboxMapper;
 import com.rag.comment.mapper.CommentFactStreamMapper;
 import com.rag.comment.mapper.CommentIndexMapper;
-import com.rag.comment.support.TestPostgres;
+import com.rag.comment.support.TestPostgresComment;
 import com.rag.common.communityfact.EventSender;
 import com.rag.common.communityfact.TechnicalReceipt;
 import com.rag.common.communityfact.Wire;
@@ -168,7 +168,7 @@ class CommentDomainFactRealPgTest {
         migrateWithModuleConfig(PROBE_DB);
 
         DataSource dataSource = new DriverManagerDataSource(
-                containerJdbcUrl(PROBE_DB), TestPostgres.username(), TestPostgres.password());
+                containerJdbcUrl(PROBE_DB), TestPostgresComment.username(), TestPostgresComment.password());
         jdbc = new JdbcTemplate(dataSource);
 
         // --- 真 MyBatis：与生产同构的「mapUnderscoreToCamelCase」+ Spring 事务感知的会话模板
@@ -810,7 +810,7 @@ class CommentDomainFactRealPgTest {
                 .as("读到的必须是本模块自己的 application.yml（账本表名对不上 ⇒ 可能读串了）")
                 .isEqualTo("flyway_schema_history_comment");
         Flyway.configure()
-                .dataSource(containerJdbcUrl(database), TestPostgres.username(), TestPostgres.password())
+                .dataSource(containerJdbcUrl(database), TestPostgresComment.username(), TestPostgresComment.password())
                 .locations(p.getProperty("spring.flyway.locations", "classpath:db/migration"))
                 .schemas(p.getProperty("spring.flyway.schemas", "public"))
                 .table(p.getProperty("spring.flyway.table", "flyway_schema_history"))
@@ -839,7 +839,7 @@ class CommentDomainFactRealPgTest {
     }
 
     private static String containerJdbcUrl(String database) {
-        String base = TestPostgres.jdbcUrl();
+        String base = TestPostgresComment.jdbcUrl();
         int q = base.indexOf('?');
         String bare = q >= 0 ? base.substring(0, q) : base;
         int slash = bare.lastIndexOf('/');
@@ -850,7 +850,7 @@ class CommentDomainFactRealPgTest {
     private static void createProbeDatabase(String database) {
         String adminUrl = containerJdbcUrl("postgres");
         try (java.sql.Connection conn = java.sql.DriverManager.getConnection(adminUrl,
-                TestPostgres.username(), TestPostgres.password());
+                TestPostgresComment.username(), TestPostgresComment.password());
              java.sql.Statement st = conn.createStatement()) {
             st.execute("DROP DATABASE IF EXISTS " + database + " WITH (FORCE)");
             st.execute("CREATE DATABASE " + database);

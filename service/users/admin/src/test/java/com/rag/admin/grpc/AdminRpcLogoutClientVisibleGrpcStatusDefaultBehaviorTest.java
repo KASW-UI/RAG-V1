@@ -1,7 +1,7 @@
 package com.rag.admin.grpc;
 
 import com.rag.admin.AdminServiceApplication;
-import com.rag.admin.http.NacosStubConfiguration;
+import com.rag.admin.http.NacosStubConfigurationAdmin;
 import com.rag.proto.admin.AdminServiceGrpc;
 import com.rag.proto.admin.LogoutReq;
 import io.grpc.ManagedChannel;
@@ -78,7 +78,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li><b>包名 / pb 包名</b>（D7）：{@code com.rag.users.admin.rpc} → {@code com.rag.admin.grpc}；
  *       {@code com.rag.users.admin.proto.*} → {@code com.rag.proto.admin.*}。</li>
  *   <li><b>启动类</b>：B 侧 {@code AdminRpcApplication} → C 侧 {@code AdminServiceApplication}（D1）
- *       ＋ 本模块既有的顶层 {@link NacosStubConfiguration}（<b>不触网</b>）。</li>
+ *       ＋ 本模块既有的顶层 {@link NacosStubConfigurationAdmin}（<b>不触网</b>）。</li>
  *   <li><b>🔴 {@code LettuceClientOptionsBuilderCustomizer} 的包名变了</b>（<b>Boot 大版本差异</b>）：
  *       B 侧（Boot 4）= {@code org.springframework.boot.data.redis.autoconfigure.LettuceClientOptionsBuilderCustomizer}
  *       ⇒ C 侧（Boot 3.5.11）= {@code org.springframework.boot.autoconfigure.data.redis.LettuceClientOptionsBuilderCustomizer}
@@ -111,7 +111,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SpringBootTest(
         classes = {
                 AdminServiceApplication.class,
-                NacosStubConfiguration.class,
+                NacosStubConfigurationAdmin.class,
                 AdminRpcLogoutClientVisibleGrpcStatusDefaultBehaviorTest.DefaultDisconnectedBehaviorConfig.class
         },
         webEnvironment = SpringBootTest.WebEnvironment.NONE,

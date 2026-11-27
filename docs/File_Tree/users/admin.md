@@ -153,7 +153,7 @@
 │                       │   ├── AdminDbTimeoutBudgetRealTomcatTest.java    # admin 域 · DB 超时预算的「域级守卫」（真 PG · 真 Tomcat）。
 │                       │   ├── AdminHttpContractRealTomcatTest.java    # admin 域 HTTP 契约测试 —— 真 Tomcat · 真 PG · 真 Redis。
 │                       │   ├── AdminSemanticDriftApiRegressionTest.java    # Go↔RAG 语义一致性回归网 —— admin-api 侧（issue #71186443）。
-│                       │   └── NacosStubConfiguration.java    # Nacos 桩 —— 让 admin 域的测试能起真实 Spring 上下文，而不连 Nacos。
+│                       │   └── NacosStubConfigurationAdmin.java    # Nacos 桩 —— 让 admin 域的测试能起真实 Spring 上下文，而不连 Nacos。
 │                       ├── parity/
 │                       │   └── GrpcParityProbe.java    # admin 域 · gRPC 面双侧活体对拍探针（E-4） —— 用 **C 侧生成的 proto stub** 同时打
 │                       ├── service/

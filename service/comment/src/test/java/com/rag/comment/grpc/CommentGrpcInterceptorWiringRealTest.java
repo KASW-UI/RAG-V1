@@ -1,8 +1,8 @@
 package com.rag.comment.grpc;
 
 import com.rag.comment.CommentServiceApplication;
-import com.rag.comment.support.NacosStubConfiguration;
-import com.rag.comment.support.TestPostgres;
+import com.rag.comment.support.NacosStubConfigurationComment;
+import com.rag.comment.support.TestPostgresComment;
 
 import com.rag.common.observability.DeadlineState;
 import com.rag.proto.comment.CommentServiceGrpc;
@@ -112,7 +112,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * </ul>
  */
 @SpringBootTest(
-        classes = {CommentServiceApplication.class, NacosStubConfiguration.class},
+        classes = {CommentServiceApplication.class, NacosStubConfigurationComment.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 // 指到必然拒连的地址：NacosRegistration 捕获 NacosException 只记日志不中断启动。
@@ -139,7 +139,7 @@ class CommentGrpcInterceptorWiringRealTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresComment.register(registry);
         // ⚠️ gRPC server **不起 TCP 端口**（-1 ⇒ in-process）⇒ 不与本类自己起的真 server 抢端口。
         //    in-process server 的名字由 devh 生成全局唯一名 ⇒ 多上下文并存不撞。
         registry.add("grpc.server.port", () -> -1);

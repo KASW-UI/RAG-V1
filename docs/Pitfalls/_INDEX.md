@@ -8,7 +8,7 @@
 ```
 docs/Pitfalls/
 ├── _INDEX.md
-├── _cross/            # 跨模块踩坑（P-01 ~ P-32）
+├── _cross/            # 跨模块踩坑（P-01 ~ P-33）
 ├── users/             # users 域专属（本域写权面）
 ├── follow/            # follow 域专属（本域写权面）
 └── hot/               # hot 域专属（本域写权面）
@@ -50,6 +50,7 @@ docs/Pitfalls/
 | **P-30** | **域 jar 被 `repackage` ⇒ 类在编译期不可被依赖** | Boot jar 的类在 `BOOT-INF/classes/` 下 ⇒ boot 模块 `import com.rag.task.controller.TaskController;` ⇒ javac 报「程序包不存在」⇒ ⇒ **域 = 普通库 jar**，**只有 boot 产可执行 jar** ⇒ 连带 `tools/difftest/*/run.sh` 的 `C_JAR` 全部改指 boot jar |
 | **P-31** | **配置文件改名 ⇒ **三类「不跟随」的消费者** | ① 走 Spring 配置体系的（✅ 自动跟随）② **直接读 yml 文件**的（`YamlPropertySourceLoader` / `getResourceAsStream`）⇒ ❌ **不跟随** ⇒ 读到的是**入口文件** ③ `@SpringBootTest` **向上搜索**的 ⇒ ❌ 降级 `@SpringBootApplication` 后**失效** ⇒ ⇒ **改配置名必须逐类点名** |
 | **P-32** | **改 bean 名 ⇒ Boot 的「按名字判空」自动配置失效 ⇒ 冒出一个**语义相反**的默认 bean | 各域 Kafka 工厂加域前缀后，Boot 的 `@ConditionalOnMissingBean(name=["kafkaListenerContainerFactory"])`（**按名字**）不再命中 ⇒ ⇒ **Boot 默认工厂冒出来** ⇒ ⇒ 按类型取 bean 变歧义（`NoUniqueBeanDefinition`）⇒ ⇒ 🔴 **更严重的是语义**：Boot 默认工厂的错误处理器**与 B 侧位点提交契约方向相反** ⇒ ⇒ **静默翻转、零报错** ⇒ ⇒ 正解 = 共享层 `KafkaDefaultFactoryAutoConfiguration` 用 `BeanDefinitionRegistryPostProcessor` **精准删那一个 bean 定义**（整体排除会连带删掉 `Configurer` ⇒ hot 域启动即失败；域 factory 自己挂条件 ⇒ 合并进程里只有一方能注册） |
+| **P-33** | **「把测试挂到 boot 模块」⇒ Maven 成环 ⇒ `ProjectCycleException`（连 test scope 也拒）** | boot 模块依赖域模块（`content-service` → `article-service`）⇒ ⇒ 域测试要引用 boot 启动类 ⇒ ⇒ 域模块得**反向依赖** boot 模块 ⇒ ⇒ **成环** ⇒ 实测原文：`The projects in the reactor contain a cyclic reference: … com.rag:article-service --> com.rag:content-service --> com.rag:article-service` ⇒ ⚠️ **`scope=test` 也一样被拒**（Maven **建 reactor 图时不看 scope**）⇒ ⇒ **正解**：**两套测试各测一件事** —— 域测试留域模块（测「单域上下文能不能起」）＋ boot 模块另立装配层测试（测「合并上下文里域 bean 在不在、他域有没有串进来」）⇒ ⇒ **保住 P3 的意图**（域测试仍可独立跑）**换掉不可行的手法**（指向 boot 启动类） |
 | **P-USER-01~12** | `users-user` 子域的 **12 条**域内踩坑 | 「只有注释的 YAML 键」解析成**空串**而不是 `null`（全仓启动雷）· in-process server 名字是 **JVM 全局注册**的 · `-pl <module>` 单模块跑测解析不到兄弟模块 · 「测试写错了」与「实现写错了」长得一模一样 · 守门脚本 `ROOT` 有三种形态只有一种对 · `@Transactional` 挂在 **MP mapper 接口的 `default` 方法**上（本仓最易静默失效的形态）· 默认 `mvn clean verify` 是 **fail-fast** ⇒ 失败面被截断 ⇒ 跨树对照会得出**错误结论** · **测试类路径 ≠ 生产 jar 类路径** ⇒ 「`mvn test` 全绿」证不了「fat jar 起得来」· Bean Validation 的**违规集合是 `HashSet`** ⇒ `findFirst()` **不确定** · Python 打 HTTP ⇒ **1xx 中间响应**被当成最终响应 · bash `( cd … && java … ) &` 的 `$!` 是**子 shell 的 PID** ⇒ cleanup 杀不到 java ⇒ 端口残留 · 拿**屏蔽后的规范化文本**去断言**原始值** ⇒ 断言恒 false ⇒ 两侧同时挂却不是行为差异 |
 | **P-FOLLOW-01~04** | `follow` 域的 **4 条**域内踩坑 | 下游被**外力 SIGKILL** ⇒ 探针照样绿灯 ⇒ **读数测的是另一个场景**（探针跑着跑着下游被杀掉 ⇒ 后面所有阶段跑在坏环境上 ⇒ 却给出「看起来很干净」的分布）· 等待「服务发现条目回来」的**嵌套重试** ⇒ 下游已死时**死等 7.5 分钟** · 生成器在 **worktree** 里跑 ⇒ 与 main 的差异是**假差异**（**git 不跟踪空目录**）· 变异脚本的备份是**启动时一次性取的** ⇒ 运行期间改靶点文件会被**还原冲掉** |
 
@@ -67,6 +68,7 @@ docs/Pitfalls/
 [`_cross/P-30-域jar被repackage后类不可被依赖.md`](_cross/P-30-域jar被repackage后类不可被依赖.md) ·
 [`_cross/P-31-配置改名的三类不跟随消费者.md`](_cross/P-31-配置改名的三类不跟随消费者.md) ·
 [`_cross/P-32-改bean名导致Boot按名字判空的自动配置失效.md`](_cross/P-32-改bean名导致Boot按名字判空的自动配置失效.md) ·
+[`_cross/P-33-测试挂到boot模块会与依赖方向成环.md`](_cross/P-33-测试挂到boot模块会与依赖方向成环.md) ·
 > [`_cross/P-09-批量替换的三个静默失效.md`](_cross/P-09-批量替换的三个静默失效.md) ·
 [`_cross/P-12-变异没变红等于那条断言没覆盖到.md`](_cross/P-12-变异没变红等于那条断言没覆盖到.md) ·
 > [`_cross/P-18-域还是空壳导致repackage找不到main方法.md`](_cross/P-18-域还是空壳导致repackage找不到main方法.md) ·
@@ -82,7 +84,7 @@ docs/Pitfalls/
 > ✅ **2026-11-05（`global` 收口域 · 合并工作树轮）· 本索引补登** —— 合并 hot / task / comment / favorite 四域实现后，
 > **`hot/` 域内踩坑档（13 条）首次进入主干** ⇒ ⇒ **此前未登记进本索引** ⇒ **已补**（含「档位结构」段补 `hot/` 一行）
 > ⇒ ⇒ 另订正 `users` 域的条数（**P-USER-01~12 ⇒ 实为 P-USER-01~18**，按 `## P-USER-*` 标题机器复算）
-> ⇒ ⇒ **跨域坑 = P-01 ~ P-32**（`_cross/` **25** 份文件 · **2026-11-05 新增 P-26 / P-27** · **2026-11-11 新增 P-28** · **2026-11-28 新增 P-29 ~ P-32（S1 · 5 进程形态）**）· **域内坑 = users 18 · hot 13 · follow 4**。
+> ⇒ ⇒ **跨域坑 = P-01 ~ P-33**（`_cross/` **26** 份文件 · **2026-11-05 新增 P-26 / P-27** · **2026-11-11 新增 P-28** · **2026-11-28 新增 P-29 ~ P-32（S1 · 5 进程形态）＋ P-33（S2）**）· **域内坑 = users 18 · hot 13 · follow 4**。
 
 ## 纪律
 

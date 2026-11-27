@@ -5,8 +5,8 @@ import com.rag.follow.contract.ErrCodes;
 import com.rag.follow.contract.GrpcErrorMapper;
 import com.rag.follow.domain.service.FollowDomainService;
 import com.rag.follow.support.FakeUserRpcServer;
-import com.rag.follow.support.NacosStubConfiguration;
-import com.rag.follow.support.TestPostgres;
+import com.rag.follow.support.NacosStubConfigurationFollow;
+import com.rag.follow.support.TestPostgresFollow;
 
 import com.rag.proto.follow.ListReq;
 import com.rag.proto.follow.RecommendResp;
@@ -52,7 +52,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *       ⇒ 5101 是「下游回 NOT_FOUND ⇒ 折叠成 5101」这条真实路径的产物。</li>
  * </ul>
  */
-@SpringBootTest(classes = {FollowServiceApplication.class, NacosStubConfiguration.class},
+@SpringBootTest(classes = {FollowServiceApplication.class, NacosStubConfigurationFollow.class},
         properties = {
                 "spring.cloud.nacos.discovery.enabled=false",
                 "spring.cloud.service-registry.auto-registration.enabled=false",
@@ -65,7 +65,7 @@ class FollowDomainServiceRealPgTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresFollow.register(registry);
         registry.add("grpc.client.user-rpc.address", FakeUserRpcServer::address);
     }
 

@@ -2,7 +2,7 @@ package com.rag.article.grpc;
 
 import com.rag.article.ArticleServiceApplication;
 import com.rag.article.client.MessageRpcClient;
-import com.rag.article.support.TestPostgres;
+import com.rag.article.support.TestPostgresArticle;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -128,7 +128,7 @@ class MessageRpcAbsentPeerCrossDomainTest {
     static void properties(DynamicPropertyRegistry registry) {
         // 🔴 必须在**本上下文的 channel 创建之前**（@DynamicPropertySource 早于 context refresh）
         CrossDomainLinkSupport.unregisterGlobalDiscoveryResolverProviders();
-        TestPostgres.register(registry);
+        TestPostgresArticle.register(registry);
         registry.add("POSTGRES_PASSWORD", () -> "password");
         registry.add("USER_JWT_SECRET", () -> "test-only-article-jwt-secret-at-least-32-bytes-long");
     }

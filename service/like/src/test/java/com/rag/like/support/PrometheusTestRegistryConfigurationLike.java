@@ -29,7 +29,7 @@ import org.springframework.context.annotation.Bean;
  * registry 类型只决定「用什么文本格式把指标吐出来」。
  */
 @TestConfiguration(proxyBeanMethods = false)
-public class PrometheusTestRegistryConfiguration {
+public class PrometheusTestRegistryConfigurationLike {
 
     @Bean
     public PrometheusMeterRegistry prometheusMeterRegistry() {

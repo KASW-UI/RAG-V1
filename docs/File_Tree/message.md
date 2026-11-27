@@ -154,8 +154,8 @@
 │                       │   └── MessageRpcSupportTrimPreviewTest.java    # 移植说明（本文件来自 B 侧测试资产 · AGENTS.md §1.0c「测试资产单独一档」）。
 │                       ├── support/
 │                       │   ├── MessageTimeColumnParityTest.java    # DRIFT-MSG-V-020 的真 PG 守门：断言**运行中的库**里 8 个时间列确实是
-│                       │   ├── NacosStubConfiguration.java    # Nacos 桩 —— 让 message 域的测试能起真实 Spring 上下文，而不连 Nacos。
-│                       │   └── TestPostgres.java    # 测试用真 PostgreSQL（进程内单例容器）。
+│                       │   ├── NacosStubConfigurationMessage.java    # Nacos 桩 —— 让 message 域的测试能起真实 Spring 上下文，而不连 Nacos。
+│                       │   └── TestPostgresMessage.java    # 测试用真 PostgreSQL（进程内单例容器）。
 │                       └── MessageServiceApplicationTests.java    # message 域「真启动」契约测试 —— 进程起得来这件事本身就是契约。
 └── pom.xml    # Maven 模块描述
 ```

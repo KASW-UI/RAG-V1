@@ -182,7 +182,7 @@
 │                       ├── metrics/
 │                       │   └── FavoriteRpcMetricsResultTagTest.java    # 守门：favorite-rpc 的 {@code result} 标签必须按真实结果记
 │                       ├── support/
-│                       │   ├── NacosStubConfiguration.java    # Nacos 桩 —— 让 favorite 域的测试能起真实 Spring 上下文，而不连 Nacos。
+│                       │   ├── NacosStubConfigurationFavorite.java    # Nacos 桩 —— 让 favorite 域的测试能起真实 Spring 上下文，而不连 Nacos。
 │                       │   ├── RealContainerHostPort.java    # favorite 域 Testcontainers 宿主口段 —— 把「容器发布到宿主机的那个端口」
 │                       │   ├── RealContainerHostPortTest.java    # {@link RealContainerHostPort} 的守门测试 —— 防止「钉宿主口」这个机制自己被改坏。
 │                       │   ├── RealTomcatHttp.java    # 🔴 真 Tomcat 守门用的 HTTP 传输层 —— 只用 JDK {@link HttpClient}，刻意不回落。

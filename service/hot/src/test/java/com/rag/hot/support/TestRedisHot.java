@@ -28,7 +28,7 @@ import org.testcontainers.utility.DockerImageName;
  * <p>📌 <b>禁止 {@code @EnabledIfDockerAvailable}</b>（AGENTS.md §五.8 守门硬规则 ③）
  * ⇒ ⇒ 容器不可用时**直接失败**，而不是静默跳过（跳过 = 假绿）。
  */
-public final class TestRedis {
+public final class TestRedisHot {
 
     /** 容器镜像 —— 与本机缓存一致（离线可用）。 */
     private static final DockerImageName IMAGE = DockerImageName.parse("redis:latest");
@@ -41,7 +41,7 @@ public final class TestRedis {
         REDIS.start();
     }
 
-    private TestRedis() {
+    private TestRedisHot() {
     }
 
     /**

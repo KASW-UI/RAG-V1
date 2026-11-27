@@ -1,9 +1,9 @@
 package com.rag.like.service;
 
 import com.rag.like.LikeServiceApplication;
-import com.rag.like.support.NacosStubConfiguration;
-import com.rag.like.support.TestPostgres;
-import com.rag.like.support.TestRedis;
+import com.rag.like.support.NacosStubConfigurationLike;
+import com.rag.like.support.TestPostgresLike;
+import com.rag.like.support.TestRedisLike;
 
 import org.flywaydb.core.Flyway;
 
@@ -57,7 +57,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 「这 6 个脚本在 11.14.1 上的<b>行为</b>（baseline-version 0 / {@code $$} 块 / NOT VALID CHECK）」
  * 由 {@link LikeFlywayBaselineRealPgTest} 覆盖 ⇒ 两条证据互补，缺一不可。
  */
-@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfiguration.class})
+@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfigurationLike.class})
 @ActiveProfiles("test")
 class LikeFlywayRuntimeVersionTest {
 
@@ -72,8 +72,8 @@ class LikeFlywayRuntimeVersionTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresLike.register(registry);
+        TestRedisLike.register(registry);
     }
 
     @Autowired

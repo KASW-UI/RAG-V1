@@ -1,7 +1,7 @@
 package com.rag.admin.grpc;
 
 import com.rag.admin.AdminServiceApplication;
-import com.rag.admin.http.NacosStubConfiguration;
+import com.rag.admin.http.NacosStubConfigurationAdmin;
 import com.rag.proto.admin.AdminServiceGrpc;
 import com.rag.proto.admin.LogoutReq;
 import com.rag.proto.admin.LogoutResp;
@@ -90,7 +90,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li><b>包名 / pb 包名</b>（D7）：{@code com.rag.users.admin.rpc} → {@code com.rag.admin.grpc}；
  *       {@code com.rag.users.admin.proto.*} → {@code com.rag.proto.admin.*}。</li>
  *   <li><b>启动类</b>：B 侧 {@code AdminRpcApplication} → C 侧 {@code AdminServiceApplication}（D1）
- *       ＋ 本模块既有的顶层 {@link NacosStubConfiguration}（<b>不触网</b>）。</li>
+ *       ＋ 本模块既有的顶层 {@link NacosStubConfigurationAdmin}（<b>不触网</b>）。</li>
  *   <li><b>⛔ 删掉 {@code GoStyleHostPortPinning.pinContainerPort}</b> ——
  *       <b>C 侧不存在该辅助类</b> ⇒ 容器用 Testcontainers 的随机映射端口。</li>
  *   <li><b>{@code support/RealGrpcPort}</b> —— <b>C 侧不存在该辅助类</b>
@@ -111,7 +111,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(
-        classes = {AdminServiceApplication.class, NacosStubConfiguration.class},
+        classes = {AdminServiceApplication.class, NacosStubConfigurationAdmin.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:1",

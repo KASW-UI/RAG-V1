@@ -91,7 +91,7 @@ import static org.mockito.Mockito.mock;
  * </ol>
  *
  * <p><b>⚠️ 数据隔离</b>：本类<b>自带独立容器</b>（C 侧 admin 域<b>没有</b>共享的
- * {@code TestPostgres} 单例类）⇒ 与其它测试类<b>不共用物理库</b>；
+ * {@code TestPostgresMessage} 单例类）⇒ 与其它测试类<b>不共用物理库</b>；
  * 类内 {@code delete from users_user} 只清自己那张表 ⇒ 绝对表计数断言安全。
  */
 @Testcontainers

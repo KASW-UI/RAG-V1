@@ -3,10 +3,10 @@ package com.rag.like.grpc;
 import com.rag.like.LikeServiceApplication;
 import com.rag.like.contract.ErrCodes;
 import com.rag.like.contract.GrpcErrFactory;
-import com.rag.like.support.GrpcServerPortCapture;
-import com.rag.like.support.NacosStubConfiguration;
-import com.rag.like.support.TestPostgres;
-import com.rag.like.support.TestRedis;
+import com.rag.like.support.GrpcServerPortCaptureLike;
+import com.rag.like.support.NacosStubConfigurationLike;
+import com.rag.like.support.TestPostgresLike;
+import com.rag.like.support.TestRedisLike;
 
 import com.rag.proto.like.ActionType;
 import com.rag.proto.like.GetLikeCountReq;
@@ -101,7 +101,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <h2>⚠️ 端口用 {@code 0}（随机）而不是钉死</h2>
  * <p>本域有多个 {@code @SpringBootTest} 上下文 ⇒ 钉死端口会互相撞。
  * <p>⇒ ⇒ 用 {@code grpc.server.port=0} 让 OS 分配 ⇒ 再用
- * {@link GrpcServerPortCapture}（监听 {@code GrpcServerStartedEvent}）
+ * {@link GrpcServerPortCaptureLike}（监听 {@code GrpcServerStartedEvent}）
  * 取<b>实际</b>端口。
  * <p>⚠️ <b>不能读 {@code event.getPort()}</b> —— devh 在 port=0 时把配置的 0 原样放进事件
  * （见该类 javadoc）⇒ 真正的端口只能取 {@code event.getServer().getPort()}。
@@ -112,8 +112,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>「<b>B 侧此刻真的产出同样形状</b>」属于<b>双侧活体对拍</b>（{@code tools/difftest/like/}）
  * ⇒ <b>本类不冒充该证据</b>。
  */
-@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfiguration.class,
-        GrpcServerPortCapture.class},
+@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfigurationLike.class,
+        GrpcServerPortCaptureLike.class},
         properties = {
                 "spring.cloud.nacos.discovery.enabled=false",
                 "spring.cloud.service-registry.auto-registration.enabled=false",
@@ -134,8 +134,8 @@ class LikeGrpcNettyServerRealTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresLike.register(registry);
+        TestRedisLike.register(registry);
     }
 
     /**
@@ -145,7 +145,7 @@ class LikeGrpcNettyServerRealTest {
      */
     @BeforeEach
     void openNettyChannel() {
-        int port = GrpcServerPortCapture.port();
+        int port = GrpcServerPortCaptureLike.port();
         assertThat(port)
                 .as("必须先拿到 netty server 的实际绑定端口（>0）—— "
                         + "拿到 0 说明读的是 event.getPort()（配置值）而不是 event.getServer().getPort()")
@@ -186,13 +186,13 @@ class LikeGrpcNettyServerRealTest {
                 .contains("Netty")
                 .doesNotContain("InProcess");
 
-        assertThat(GrpcServerPortCapture.port())
+        assertThat(GrpcServerPortCaptureLike.port())
                 .as("实际绑定端口必须 > 0（in-process server 的 getPort() 恒为 -1）")
                 .isGreaterThan(0);
 
         // 🔴 真 socket 连一下 ⇒ 证明这是真的 TCP 监听（in-process 根本没有端口）
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress("127.0.0.1", GrpcServerPortCapture.port()), 3000);
+            socket.connect(new InetSocketAddress("127.0.0.1", GrpcServerPortCaptureLike.port()), 3000);
             assertThat(socket.isConnected())
                     .as("裸 TCP 连接必须成功 ⇒ 证明 netty server 真的在监听这个端口")
                     .isTrue();

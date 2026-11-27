@@ -130,8 +130,8 @@
 │                       │   ├── ArticleRpcInProcessServer.java    # 测试用「真 article-rpc」（进程内 gRPC server） —— 让 hot 域的 HTTP 端点
 │                       │   ├── HotKafkaTestBase.java    # 真 Kafka 容器 + 真 Redis + 真 Spring 上下文 —— hot 域「MQ 消息链路」测试的公共底座。
 │                       │   ├── HotRealStackTestBase.java    # hot 域「真栈」测试底座 —— 真 Spring 上下文 + 真 Tomcat + 真 Redis
-│                       │   ├── NacosStubConfiguration.java    # Nacos 桩 —— 让 hot 域的测试能起真实 Spring 上下文，而不连 Nacos。
-│                       │   ├── TestRedis.java    # 测试用真 Redis（进程内单例容器） —— hot 域的 Lua 脚本、ZSET 读写、
+│                       │   ├── NacosStubConfigurationHot.java    # Nacos 桩 —— 让 hot 域的测试能起真实 Spring 上下文，而不连 Nacos。
+│                       │   ├── TestRedisHot.java    # 测试用真 Redis（进程内单例容器） —— hot 域的 Lua 脚本、ZSET 读写、
 │                       │   └── ThrowingKafkaListenerConfiguration.java    # 「故意抛异常」的探针 listener —— 用来实测容器的错误处理策略是不是
 │                       └── HotServiceApplicationTests.java    # hot 域合并进程（D1）的装配面冒烟测试 —— 证明「api + rpc 合并成一个进程」
 └── pom.xml    # Maven 模块描述

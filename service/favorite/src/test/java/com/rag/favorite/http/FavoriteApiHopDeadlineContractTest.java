@@ -4,7 +4,7 @@ import com.rag.common.exception.BusinessException;
 import com.rag.favorite.domain.service.FavoriteDomainService;
 import com.rag.favorite.exception.FavoriteExceptions;
 import com.rag.favorite.service.FavoriteApiSupport;
-import com.rag.favorite.support.NacosStubConfiguration;
+import com.rag.favorite.support.NacosStubConfigurationFavorite;
 import com.rag.proto.user.GetUserReq;
 import com.rag.proto.user.GetUserResp;
 import com.rag.proto.user.UserServiceGrpc;
@@ -77,7 +77,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @SpringBootTest(
         classes = {com.rag.favorite.FavoriteServiceApplication.class,
-                NacosStubConfiguration.class},
+                NacosStubConfigurationFavorite.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:1",

@@ -46,10 +46,10 @@ import org.testcontainers.containers.GenericContainer;
  *   <li><b>B 出处</b>：缓存语义来自 B 侧
  *       {@code service/comment/rpc/internal/cache/keys.go:5-20}（key 族）
  *       ＋ {@code comment_subject_cache.go:16-132}（读失败降级 / 回填失败忽略）；
- *       容器形态参照本仓 like 域 {@code service/like/src/test/java/com/rag/like/support/TestRedis.java}。</li>
+ *       容器形态参照本仓 like 域 {@code service/like/src/test/java/com/rag/like/support/TestRedisComment.java}。</li>
  * </ol>
  */
-public final class TestRedis {
+public final class TestRedisComment {
 
     private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7-alpine")
             .withExposedPorts(6379);
@@ -59,7 +59,7 @@ public final class TestRedis {
         REDIS.start();
     }
 
-    private TestRedis() {
+    private TestRedisComment() {
     }
 
     /**

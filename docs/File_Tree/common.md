@@ -105,6 +105,10 @@
 │   │   │               │   ├── LogOption.java    # B 出处：{@code service/common/src/main/java/com/rag/common/logger/LogOption.java:4:32}（{@code type LogOption func(*LogOptions)}）
 │   │   │               │   ├── LogOptions.java    # B 出处：{@code service/common/src/main/java/com/rag/common/logger/LogOptions.java:4:26-29}
 │   │   │               │   └── LoggerFactoryBean.java    # {@code Logger} 的 Spring 适配 —— 把 {@code spring.application.name} 注入的
+│   │   │               ├── mybatis/
+│   │   │               │   ├── AdminMapperBeanNameGenerator.java    # users/admin 域的 Mapper bean 名生成器 —— 加 {@code admin} 前缀。
+│   │   │               │   ├── DomainPrefixedMapperBeanNameGenerator.java    # MyBatis Mapper 的 bean 名生成器 —— 加域前缀（S1 · 5 进程形态）。
+│   │   │               │   └── UserMapperBeanNameGenerator.java    # users/user 域的 Mapper bean 名生成器 —— 加 {@code user} 前缀。
 │   │   │               ├── observability/
 │   │   │               │   ├── ClientDisconnectProbe.java    # 客户端断连的主动探测 —— 往 socket 写 1xx 探针，把断连提前暴露出来。
 │   │   │               │   ├── DeadlineState.java    # 请求级 deadline 的服务端载体（ThreadLocal 绝对到期时刻，{@link System#nanoTime()} 域）。

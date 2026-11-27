@@ -3,9 +3,9 @@ package com.rag.like;
 import com.rag.like.config.LikeApiProperties;
 import com.rag.like.config.LikeRpcProperties;
 import com.rag.like.messaging.LikeKafkaTopics;
-import com.rag.like.support.NacosStubConfiguration;
-import com.rag.like.support.TestPostgres;
-import com.rag.like.support.TestRedis;
+import com.rag.like.support.NacosStubConfigurationLike;
+import com.rag.like.support.TestPostgresLike;
+import com.rag.like.support.TestRedisLike;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,14 +42,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li><b>fail-closed 的 JWT 密钥真的被读到</b>（{@code LikeApiProperties} 的 {@code @PostConstruct} 没炸）。</li>
  * </ol>
  */
-@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfiguration.class})
+@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfigurationLike.class})
 @ActiveProfiles("test")
 class LikeServiceApplicationTests {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresLike.register(registry);
+        TestRedisLike.register(registry);
     }
 
     @Autowired

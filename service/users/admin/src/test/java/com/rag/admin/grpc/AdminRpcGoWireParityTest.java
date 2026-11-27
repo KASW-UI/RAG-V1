@@ -2,7 +2,7 @@ package com.rag.admin.grpc;
 
 import com.rag.admin.AdminServiceApplication;
 import com.rag.admin.domain.service.AdminDomainService;
-import com.rag.admin.http.NacosStubConfiguration;
+import com.rag.admin.http.NacosStubConfigurationAdmin;
 import com.rag.common.security.PasswordUtil;
 import com.rag.proto.admin.BanUserReq;
 import com.rag.proto.admin.CreateAdminReq;
@@ -113,7 +113,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       （AGENTS.md §五.8 守门硬规则 ③：禁止用「Docker 不可用就跳过」掩盖失败）——
  *       B 侧 {@code AdminRpcGoWireParityTest.java:90} 有，本移植<b>必须删</b>。</li>
  *   <li><b>Nacos 桩</b>：B 侧靠 {@code spring.cloud.nacos.discovery.server-addr=127.0.0.1:1}
- *       让注册失败；C 侧改用本模块既有的顶层 {@link NacosStubConfiguration}
+ *       让注册失败；C 侧改用本模块既有的顶层 {@link NacosStubConfigurationAdmin}
  *       （<b>不触网</b>，且沿用 admin 域既有范式）。</li>
  *   <li><b>容器端口钉住</b>：B 侧用 {@code GoStyleHostPortPinning.pinContainerPort}，
  *       <b>C 侧不存在该辅助类</b> ⇒ 本移植沿用 admin 域既有范式（{@code AdminServiceApplicationTests}）：
@@ -147,7 +147,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(
-        classes = {AdminServiceApplication.class, NacosStubConfiguration.class},
+        classes = {AdminServiceApplication.class, NacosStubConfigurationAdmin.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:1",

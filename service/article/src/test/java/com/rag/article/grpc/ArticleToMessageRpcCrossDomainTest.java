@@ -2,7 +2,7 @@ package com.rag.article.grpc;
 
 import com.rag.article.ArticleServiceApplication;
 import com.rag.article.client.MessageRpcClient;
-import com.rag.article.support.TestPostgres;
+import com.rag.article.support.TestPostgresArticle;
 import com.rag.proto.message.MessageServiceGrpc;
 import com.rag.proto.message.UnreadSummaryReq;
 import org.junit.jupiter.api.AfterAll;
@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 「<b>跨域 gRPC 链路</b>（article → message-rpc）—— 承接行只管「有没有实现」，不管「对端在不在」。
  * 怎么才能闭合：<b>真 Nacos + 真 message-rpc</b>。」
  * </blockquote>
- * ⇒ 本类就是那个「怎么才能闭合」的答案：<b>真 Nacos</b>（不是 {@code support/NacosStubConfiguration}
+ * ⇒ 本类就是那个「怎么才能闭合」的答案：<b>真 Nacos</b>（不是 {@code support/NacosStubConfigurationArticle}
  * 那个空操作 mock）＋ <b>真 message-rpc 容器</b>（{@code sea/message-rpc:latest}，
  * 宿主 8086 = 容器 8086 = 对端的 {@code MESSAGE_RPC_PORT}）。
  *
@@ -145,7 +145,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         classes = ArticleServiceApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
-                // ---------- 真 Nacos（不是 support/NacosStubConfiguration 那个空操作 mock）----------
+                // ---------- 真 Nacos（不是 support/NacosStubConfigurationArticle 那个空操作 mock）----------
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:49848",
                 "spring.cloud.nacos.discovery.namespace=public",
                 // ⚠️ 隔离组（不是共享的 DEFAULT_GROUP）—— 见 CrossDomainLinkSupport 的分组隔离说明
@@ -231,7 +231,7 @@ class ArticleToMessageRpcCrossDomainTest {
     static void properties(DynamicPropertyRegistry registry) {
         // 🔴 必须在**本上下文的 channel 创建之前**（@DynamicPropertySource 早于 context refresh）
         CrossDomainLinkSupport.unregisterGlobalDiscoveryResolverProviders();
-        TestPostgres.register(registry);
+        TestPostgresArticle.register(registry);
         registry.add("POSTGRES_PASSWORD", () -> "password");
         registry.add("USER_JWT_SECRET", () -> "test-only-article-jwt-secret-at-least-32-bytes-long");
         // 安全网：@BeforeAll 已经发布过；这里再调一次是幂等的（已在就什么都不做）。

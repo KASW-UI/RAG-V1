@@ -1,8 +1,8 @@
 package com.rag.article.assembly;
 
 import com.rag.article.ArticleServiceApplication;
-import com.rag.article.support.NacosStubConfiguration;
-import com.rag.article.support.TestPostgres;
+import com.rag.article.support.NacosStubConfigurationArticle;
+import com.rag.article.support.TestPostgresArticle;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -105,8 +105,8 @@ class ArticleSchemaGateFailFastTest {
 
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("spring.datasource.url", jdbcUrl);
-        properties.put("spring.datasource.username", TestPostgres.username());
-        properties.put("spring.datasource.password", TestPostgres.password());
+        properties.put("spring.datasource.username", TestPostgresArticle.username());
+        properties.put("spring.datasource.password", TestPostgresArticle.password());
         properties.put("spring.flyway.enabled", true);
         properties.put("spring.flyway.locations", "filesystem:" + migrations.toAbsolutePath());
         properties.put("spring.cloud.nacos.discovery.server-addr", "127.0.0.1:1");
@@ -124,7 +124,7 @@ class ArticleSchemaGateFailFastTest {
         properties.put("USER_JWT_SECRET", "test-only-article-jwt-secret-at-least-32-bytes-long");
 
         Exception failure = assertThrows(Exception.class, () -> new SpringApplicationBuilder()
-                .sources(ArticleServiceApplication.class, NacosStubConfiguration.class)
+                .sources(ArticleServiceApplication.class, NacosStubConfigurationArticle.class)
                 .web(WebApplicationType.NONE)
                 // 🔴 **必须用 `initializers` + `addFirst`，不能用 `SpringApplicationBuilder#properties(Map)`**
                 //   —— 后者加进去的是 **defaultProperties（最低优先级）** ⇒ 会被 yml 里的
@@ -189,13 +189,13 @@ class ArticleSchemaGateFailFastTest {
      * ⇒ 共用库会让本用例的迁移与其它测试的迁移互相污染（AGENTS.md §六 记的「账本撞号」问题）。
      */
     private static String probeDatabaseUrl() throws Exception {
-        String base = TestPostgres.jdbcUrl();
+        String base = TestPostgresArticle.jdbcUrl();
         // ⚠️ Testcontainers 的 URL 可能带查询串（如 ?loggerLevel=OFF）⇒ 只替换库名那一段
         int idx = base.indexOf("/first_db");
-        assertTrue(idx > 0, "TestPostgres 的默认库名变了：" + base);
+        assertTrue(idx > 0, "TestPostgresArticle 的默认库名变了：" + base);
         String probeUrl = base.substring(0, idx) + "/" + PROBE_DB + base.substring(idx + "/first_db".length());
         try (Connection connection = DriverManager.getConnection(
-                base, TestPostgres.username(), TestPostgres.password());
+                base, TestPostgresArticle.username(), TestPostgresArticle.password());
              Statement statement = connection.createStatement()) {
             statement.execute("CREATE DATABASE " + PROBE_DB);
         } catch (Exception e) {

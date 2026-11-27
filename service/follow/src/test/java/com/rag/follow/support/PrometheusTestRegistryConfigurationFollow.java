@@ -39,7 +39,7 @@ import org.springframework.context.annotation.Bean;
  * 避免把一个疑似缺陷钉成「期望行为」。
  */
 @TestConfiguration(proxyBeanMethods = false)
-public class PrometheusTestRegistryConfiguration {
+public class PrometheusTestRegistryConfigurationFollow {
 
     @Bean
     public PrometheusMeterRegistry prometheusMeterRegistry() {

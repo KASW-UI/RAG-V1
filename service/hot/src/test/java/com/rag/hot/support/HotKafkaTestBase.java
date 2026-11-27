@@ -83,7 +83,7 @@ import java.util.concurrent.TimeUnit;
  * </ul>
  */
 @SpringBootTest(
-        classes = {HotServiceApplication.class, NacosStubConfiguration.class,
+        classes = {HotServiceApplication.class, NacosStubConfigurationHot.class,
                 ThrowingKafkaListenerConfiguration.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
@@ -170,7 +170,7 @@ public abstract class HotKafkaTestBase {
     @DynamicPropertySource
     static void infra(DynamicPropertyRegistry registry) {
         registry.add("spring.kafka.bootstrap-servers", HotKafkaTestBase::bootstrapServers);
-        TestRedis.register(registry);
+        TestRedisHot.register(registry);
         // ⚠️ devh 在 Bean 初始化期建 channel ⇒ discovery:// 解析不了 ⇒ 上下文起不来
         registry.add("grpc.client.article-rpc.address",
                 () -> "in-process:" + ArticleRpcInProcessServer.IN_PROCESS_NAME);

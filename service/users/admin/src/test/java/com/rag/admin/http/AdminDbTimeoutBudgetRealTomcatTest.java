@@ -71,7 +71,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * B 侧 = {@code 200 + 信封 1015「服务繁忙」} @ 2.03s ＋ {@code admin_admin} 里 {@code r2%to} 0 行。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {AdminServiceApplication.class, NacosStubConfiguration.class},
+        classes = {AdminServiceApplication.class, NacosStubConfigurationAdmin.class},
         properties = {
                 "spring.cloud.nacos.discovery.enabled=false",
                 "spring.cloud.service-registry.auto-registration.enabled=false",

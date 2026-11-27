@@ -91,9 +91,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <b>不</b>断言分号后有没有空格（那是容器渲染差异，Tomcat 上无任何写法能产出 B 侧的空格）。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {AdminServiceApplication.class, NacosStubConfiguration.class},
+        classes = {AdminServiceApplication.class, NacosStubConfigurationAdmin.class},
         properties = {
-                // Nacos 整体不生效 ⇒ 自动配置不注册 NacosServiceManager ⇒ 由 NacosStubConfiguration 补上
+                // Nacos 整体不生效 ⇒ 自动配置不注册 NacosServiceManager ⇒ 由 NacosStubConfigurationAdmin 补上
                 "spring.cloud.nacos.discovery.enabled=false",
                 // 服务注册自动注册关掉（否则需要真的 ServiceRegistry + Nacos）
                 "spring.cloud.service-registry.auto-registration.enabled=false",

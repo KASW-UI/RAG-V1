@@ -29,7 +29,7 @@ import org.springframework.test.context.DynamicPropertySource;
  *       {@code ${USER_JWT_SECRET}}，而 {@code ArticleApiProperties#verifyAccessSecret}
  *       是 fail-closed 守卫 ⇒ 缺它上下文起不来。</li>
  *   <li>{@code POSTGRES_PASSWORD} —— 同款裸占位符（{@code application.yml:35} 与 {@code :221}）。
- *       ⚠️ {@code spring.datasource.password} 被 {@link TestPostgres#register} 覆盖了，
+ *       ⚠️ {@code spring.datasource.password} 被 {@link TestPostgresArticle#register} 覆盖了，
  *       但 {@code article-rpc.postgres.password} <b>没有</b> ⇒ 它必须能解析。</li>
  *   <li>{@code grpc.client.message-rpc.address} —— 生产值是
  *       {@code discovery:///message-rpc}（{@code application.yml:199}），
@@ -44,7 +44,7 @@ import org.springframework.test.context.DynamicPropertySource;
  *       （B 侧语义是「MakeBucket 失败只 warn 不 panic」，但 DNS 解析 {@code minio} 会拖慢启动）。</li>
  * </ol>
  *
- * <h2>为什么 {@code NacosStubConfiguration} 要显式点名</h2>
+ * <h2>为什么 {@code NacosStubConfigurationArticle} 要显式点名</h2>
  * <p>Boot 3.4 起嵌套 {@code @TestConfiguration} 默认不被发现 ⇒ 必须顶层 + 在
  * {@code classes = {...}} 里<b>显式点名</b>（该类自己的 javadoc 有详述）。
  *
@@ -55,7 +55,7 @@ import org.springframework.test.context.DynamicPropertySource;
  * ⇒ <b>清理只能用 TRUNCATE，不能用 DELETE}。
  */
 @SpringBootTest(
-        classes = {ArticleServiceApplication.class, NacosStubConfiguration.class},
+        classes = {ArticleServiceApplication.class, NacosStubConfigurationArticle.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:1",
@@ -81,7 +81,7 @@ public abstract class ArticleRealPgTestBase {
      */
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
+        TestPostgresArticle.register(registry);
         // 🔴 裸占位符必须能被解析（application.yml:35 / :221 / :305）
         registry.add("POSTGRES_PASSWORD", () -> "password");
         registry.add("USER_JWT_SECRET", () -> "test-only-article-jwt-secret-at-least-32-bytes-long");

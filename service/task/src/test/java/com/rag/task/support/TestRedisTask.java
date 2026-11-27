@@ -21,7 +21,7 @@ import org.testcontainers.containers.GenericContainer;
  * <p>📌 <b>禁止 {@code @EnabledIfDockerAvailable}</b>（AGENTS.md §五.8 守门硬规则 ③）
  * ⇒ ⇒ 容器不可用时<b>直接失败</b>。</p>
  */
-public final class TestRedis {
+public final class TestRedisTask {
 
     private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7-alpine")
             .withExposedPorts(6379);
@@ -30,7 +30,7 @@ public final class TestRedis {
         REDIS.start();
     }
 
-    private TestRedis() {
+    private TestRedisTask() {
     }
 
     /**

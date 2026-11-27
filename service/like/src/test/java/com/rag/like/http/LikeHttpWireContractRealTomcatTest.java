@@ -5,10 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import com.rag.like.LikeServiceApplication;
 import com.rag.like.support.LikeTestSupport;
-import com.rag.like.support.NacosStubConfiguration;
-import com.rag.like.support.PrometheusTestRegistryConfiguration;
-import com.rag.like.support.TestPostgres;
-import com.rag.like.support.TestRedis;
+import com.rag.like.support.NacosStubConfigurationLike;
+import com.rag.like.support.PrometheusTestRegistryConfigurationLike;
+import com.rag.like.support.TestPostgresLike;
+import com.rag.like.support.TestRedisLike;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -54,8 +54,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 「B 侧此刻真的产出同样形状」属于<b>双侧活体对拍</b>（本类不冒充该证据）。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {LikeServiceApplication.class, NacosStubConfiguration.class,
-                PrometheusTestRegistryConfiguration.class})
+        classes = {LikeServiceApplication.class, NacosStubConfigurationLike.class,
+                PrometheusTestRegistryConfigurationLike.class})
 @ActiveProfiles("test")
 class LikeHttpWireContractRealTomcatTest {
 
@@ -75,8 +75,8 @@ class LikeHttpWireContractRealTomcatTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresLike.register(registry);
+        TestRedisLike.register(registry);
     }
 
     @Autowired
@@ -436,7 +436,7 @@ class LikeHttpWireContractRealTomcatTest {
      * 取 Prometheus 文本。
      *
      * <h3>⚠️ 为什么必须回退到 registry 直取（不能只打 actuator 端点）</h3>
-     * <p>本测试注入了 {@code support/PrometheusTestRegistryConfiguration}（一个真的
+     * <p>本测试注入了 {@code support/PrometheusTestRegistryConfigurationLike}（一个真的
      * {@code PrometheusMeterRegistry} bean）⇒ ⇒ Boot 的
      * {@code PrometheusMetricsExportAutoConfiguration}（<b>含其嵌套的
      * {@code PrometheusScrapeEndpointConfiguration}</b>）因
@@ -470,7 +470,7 @@ class LikeHttpWireContractRealTomcatTest {
      * ⇒ ⇒ <b>「生产上下文没有 Prometheus registry」这条已撤销</b>（它曾被登记为
      * 「跨域共性 ⇒ 归 global 收口域」—— <b>那是假阳性</b>，不需要收口）。
      * ⇒ ⇒ <b>本类的 404 仍然成立</b>，但原因不同：它来自
-     * {@code PrometheusTestRegistryConfiguration} 注入的<b>手工</b> registry
+     * {@code PrometheusTestRegistryConfigurationLike} 注入的<b>手工</b> registry
      * ⇒ Boot 的自动配置整段让位 ⇒ <b>没有</b> {@code PrometheusScrapeEndpoint} bean
      * ⇒ ⇒ 故本类仍走 {@code registry.scrape()} 回退路径。
      * <p>⚠️ 与 follow 域的既有口径<b>同款</b>（{@code FollowHttpBusinessCodeRealTomcatTest#scrapeText}

@@ -8,10 +8,10 @@ import com.rag.proto.task.GetTaskResp;
 import com.rag.proto.task.Task;
 import com.rag.proto.task.TaskServiceGrpc;
 import com.rag.task.TaskServiceApplication;
-import com.rag.task.support.GrpcServerPortCapture;
-import com.rag.task.support.NacosStubConfiguration;
-import com.rag.task.support.TestPostgres;
-import com.rag.task.support.TestRedis;
+import com.rag.task.support.GrpcServerPortCaptureTask;
+import com.rag.task.support.NacosStubConfigurationTask;
+import com.rag.task.support.TestPostgresTask;
+import com.rag.task.support.TestRedisTask;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
 import io.grpc.Status;
@@ -64,7 +64,7 @@ import org.springframework.test.context.DynamicPropertySource;
  * <h2>⚠️ 端口用 {@code 0}（随机）而不是钉死</h2>
  * <p>devh 的 gRPC server 是 {@code SmartLifecycle} ⇒ 上下文一启动就 bind 端口
  * ⇒ 固定端口在「多个上下文同时存活」时必然 {@code BindException}
- * ⇒ ⇒ 用 {@code grpc.server.port=0} 让 OS 分配 ⇒ 再用 {@link GrpcServerPortCapture}
+ * ⇒ ⇒ 用 {@code grpc.server.port=0} 让 OS 分配 ⇒ 再用 {@link GrpcServerPortCaptureTask}
  * 取<b>实际</b>端口（<b>不是</b> {@code event.getPort()} —— 那在 port=0 时返回 0）。</p>
  *
  * <h2>① 比 B 侧多做了什么</h2>
@@ -108,8 +108,8 @@ import org.springframework.test.context.DynamicPropertySource;
  * —— 但那一条目前只覆盖 <b>HTTP 面</b>）⇒ ⇒ <b>本类不冒充该证据</b>。</p>
  */
 @SpringBootTest(
-        classes = {TaskServiceApplication.class, NacosStubConfiguration.class,
-                GrpcServerPortCapture.class},
+        classes = {TaskServiceApplication.class, NacosStubConfigurationTask.class,
+                GrpcServerPortCaptureTask.class},
         properties = {
                 // ── Nacos 不触网（与 TaskRealInfraTestBase 同款）──
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:1",
@@ -150,8 +150,8 @@ class TaskGrpcNettyServerRealTest {
 
     @DynamicPropertySource
     static void infra(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresTask.register(registry);
+        TestRedisTask.register(registry);
         // ⚠️ 主 application.yml 里 `spring.datasource.password: ${POSTGRES_PASSWORD}` 是
         //    **裸占位符**（无默认值，fail-closed 纪律）⇒ 必须由外部注入，否则上下文起不来。
         registry.add("POSTGRES_PASSWORD", () -> "password");
@@ -164,7 +164,7 @@ class TaskGrpcNettyServerRealTest {
      */
     @BeforeEach
     void openNettyChannel() {
-        int port = GrpcServerPortCapture.port();
+        int port = GrpcServerPortCaptureTask.port();
         assertThat(port)
                 .as("必须先拿到 netty server 的实际绑定端口（>0）—— "
                         + "拿到 0 说明读的是 event.getPort()（配置值）而不是 event.getServer().getPort()")
@@ -202,13 +202,13 @@ class TaskGrpcNettyServerRealTest {
                 .contains("Netty")
                 .doesNotContain("InProcess");
 
-        assertThat(GrpcServerPortCapture.port())
+        assertThat(GrpcServerPortCaptureTask.port())
                 .as("实际绑定端口必须 > 0（in-process server 的 getPort() 恒为 -1）")
                 .isGreaterThan(0);
 
         // 🔴 真 socket 连一下 ⇒ 证明这是真的 TCP 监听（in-process 根本没有端口）
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress("127.0.0.1", GrpcServerPortCapture.port()), 3000);
+            socket.connect(new InetSocketAddress("127.0.0.1", GrpcServerPortCaptureTask.port()), 3000);
             assertThat(socket.isConnected())
                     .as("裸 TCP 连接必须成功 ⇒ 证明 netty server 真的在监听这个端口")
                     .isTrue();

@@ -132,7 +132,7 @@
 │       │               ├── mapper/
 │       │               │   └── AvatarTransactionWiringTest.java    # 「4 步 / 5 步原子」的事务边界真实测 —— 把 D-005 / D-015 从「源码上看着像」推到
 │       │               ├── support/
-│       │               │   └── TestPostgres.java    # 测试用真 PostgreSQL（进程内单例容器）。
+│       │               │   └── TestPostgresUser.java    # 测试用真 PostgreSQL（进程内单例容器）。
 │       │               ├── wiring/
 │       │               │   └── UserNacosRegistrationWiringTest.java    # 🔴 Nacos 注册面守门 —— 注册名、group、端口三样都必须是对的。
 │       │               └── UserServiceApplicationTests.java    # user 域上下文装配自检 —— 证明 D1 合并后的唯一入口真能把全链条装配起来。

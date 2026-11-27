@@ -34,7 +34,7 @@ import org.springframework.test.context.DynamicPropertySource;
  * <br>代价：多一次完整装配（连 PG、跑 Flyway、起 gRPC server）。
  * <br>好处：<b>不污染</b>其它测试类共享的那个上下文（那个上下文里 MinIO 端点是
  * {@code 127.0.0.1:1} ⇒ 启动期必失败 ⇒ 若复用，{@code MinioBucketBootstrap} 会打一条 error 日志）。
- * <br>⚠️ PG 容器仍是<b>同一个单例</b>（{@code support/TestPostgres}）⇒
+ * <br>⚠️ PG 容器仍是<b>同一个单例</b>（{@code support/TestPostgresArticle}）⇒
  * <b>数据必须用互不重叠的 uid 段</b>（本包用 {@code 904xxxxx}）。
  */
 public abstract class MinioSpringTestBase extends ArticleRealPgTestBase {

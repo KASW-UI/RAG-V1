@@ -3,9 +3,9 @@ package com.rag.like.service;
 import com.rag.like.LikeServiceApplication;
 import com.rag.like.domain.service.LikeDomainService;
 import com.rag.like.support.FakeMessageRpcServer;
-import com.rag.like.support.NacosStubConfiguration;
-import com.rag.like.support.TestPostgres;
-import com.rag.like.support.TestRedis;
+import com.rag.like.support.NacosStubConfigurationLike;
+import com.rag.like.support.TestPostgresLike;
+import com.rag.like.support.TestRedisLike;
 
 import com.rag.proto.like.ActionType;
 import com.rag.proto.like.LikeActionReq;
@@ -58,7 +58,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code Sea-message-rpc}（<b>跨 lane 依赖</b>，不进本域回归）⇒ 本类<b>不冒充</b>该证据。
  * <p>⇒ ⇒ 本类的命题是：「<b>like 域这条跨域调用，真的按 B 侧的规格把请求发出去了</b>」。
  */
-@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfiguration.class},
+@SpringBootTest(classes = {LikeServiceApplication.class, NacosStubConfigurationLike.class},
         properties = {
                 "spring.cloud.nacos.discovery.enabled=false",
                 "spring.cloud.service-registry.auto-registration.enabled=false",
@@ -81,8 +81,8 @@ class LikeMessageRpcCrossDomainRealTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresLike.register(registry);
+        TestRedisLike.register(registry);
     }
 
     @Autowired

@@ -70,7 +70,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  */
 @SpringBootTest(
         classes = {com.rag.favorite.FavoriteServiceApplication.class,
-                com.rag.favorite.support.NacosStubConfiguration.class},
+                com.rag.favorite.support.NacosStubConfigurationFavorite.class},
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
         properties = {
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:1",
@@ -175,7 +175,7 @@ class FavoriteApiRealTomcatGateTest {
     }
 
     /**
-     * 🔴 Nacos 桩 —— 见 {@link com.rag.favorite.support.NacosStubConfiguration} 的类注释。
+     * 🔴 Nacos 桩 —— 见 {@link com.rag.favorite.support.NacosStubConfigurationFavorite} 的类注释。
      *
      * <p>⚠️ <b>必须用 {@code @TestConfiguration} 而不是 {@code @MockitoBean} + {@code @BeforeEach}</b>：
      * 域内 {@code FavoriteNacosRegistration#register()} 挂在 {@code ApplicationReadyEvent} 上

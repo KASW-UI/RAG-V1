@@ -31,7 +31,7 @@ import java.nio.charset.StandardCharsets;
  *
  * <h2>③ 为什么 Redis 是<b>真容器</b>而不是 mock</h2>
  * <p>本域的三个 Lua 脚本 + ZSET 读写 + TTL 断言<b>只有在真 Redis 上才能验</b>
- * ⇒ 理由见 {@link TestRedis} 的类注释。
+ * ⇒ 理由见 {@link TestRedisHot} 的类注释。
  *
  * <h2>④ 为什么 article-rpc 是<b>真进程内 gRPC</b>而不是 mock</h2>
  * <p>「补全的 4 条 skip 分支」与「fatal / best-effort 不对称」这两组判据的输入源
@@ -52,7 +52,7 @@ import java.nio.charset.StandardCharsets;
  * {@code com.rag.hot.messaging.HotEventConsumerRealKafkaTest}）。
  */
 @SpringBootTest(
-        classes = {HotServiceApplication.class, NacosStubConfiguration.class},
+        classes = {HotServiceApplication.class, NacosStubConfigurationHot.class},
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 // ── Nacos 不触网 ──
@@ -83,7 +83,7 @@ public abstract class HotRealStackTestBase {
      */
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestRedis.register(registry);
+        TestRedisHot.register(registry);
         // ⚠️ devh 的 `in-process` scheme ⇒ 走 grpc-inprocess 传输（真 gRPC 栈，只是不走网络）
         registry.add("grpc.client.article-rpc.address",
                 () -> "in-process:" + ArticleRpcInProcessServer.IN_PROCESS_NAME);

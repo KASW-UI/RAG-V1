@@ -22,7 +22,7 @@ import org.springframework.context.ApplicationListener;
  * <p>⚠️ <b>若误用 {@code event.getPort()}</b> ⇒ 拿到 0 ⇒ 客户端会去连 0 号端口 ⇒
  * 「连接被拒」会被误读成「server 没起来」⇒ <b>假红</b>。</p>
  *
- * <h2>为什么它是<b>顶层 {@code @TestConfiguration}</b>（与 {@link NacosStubConfiguration} 同款）</h2>
+ * <h2>为什么它是<b>顶层 {@code @TestConfiguration}</b>（与 {@link NacosStubConfigurationTask} 同款）</h2>
  * <p>Boot 3.4 起嵌套 {@code @TestConfiguration} 默认<b>不再被自动发现</b>
  * ⇒ ⇒ 必须顶层 ＋ 在 {@code @SpringBootTest(classes = {...})} 里<b>显式点名</b>。</p>
  *
@@ -34,17 +34,17 @@ import org.springframework.context.ApplicationListener;
  *       {@code allowEagerInit=false} ⇒ 用 {@code @Bean} 方法的声明返回类型判定）⇒ 名字被记下；</li>
  *   <li>监听 bean 的<b>实例</b>在事件发布那一刻才被解析 ⇒ <b>必然早于第一次事件</b>。</li>
  * </ul>
- * ⇒ ⇒ 声明返回类型写成具体的 {@link GrpcServerPortCapture}（而不是裸 {@code ApplicationListener}）
+ * ⇒ ⇒ 声明返回类型写成具体的 {@link GrpcServerPortCaptureTask}（而不是裸 {@code ApplicationListener}）
  * ⇒ Spring 的泛型解析拿得到 {@code GrpcServerStartedEvent} 这个事件类型。</p>
  *
  * <h2>⚠️ 与 like 域的同名类是<b>同款复制</b>（不是共享）</h2>
- * <p>{@code service/like/src/test/java/com/rag/like/support/GrpcServerPortCapture.java}
+ * <p>{@code service/like/src/test/java/com/rag/like/support/GrpcServerPortCaptureTask.java}
  * 与本类<b>逐条同款</b> ⇒ 但**没有**上收到 {@code common/} ⇒ 原因：**本 lane 的写权边界**
  * （{@code common/**} 只读 · AGENTS.md §五.3 规则 3）⇒ ⇒ 待**合并收口执行者**把两个副本
  * 上收到共享测试 support（届时两个域各删本地副本）。</p>
  */
 @TestConfiguration(proxyBeanMethods = false)
-public class GrpcServerPortCapture implements ApplicationListener<GrpcServerStartedEvent> {
+public class GrpcServerPortCaptureTask implements ApplicationListener<GrpcServerStartedEvent> {
 
     /** 实际绑定端口（-1 = 尚未捕获）。 */
     private static final AtomicInteger PORT = new AtomicInteger(-1);

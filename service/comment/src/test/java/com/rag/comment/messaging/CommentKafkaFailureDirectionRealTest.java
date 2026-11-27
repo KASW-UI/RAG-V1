@@ -6,9 +6,9 @@ import com.rag.comment.client.MessageRpcClient;
 import com.rag.comment.contract.CommentKafkaMsg;
 import com.rag.comment.domain.service.CommentTransactionalService;
 import com.rag.comment.service.CommentCacheService;
-import com.rag.comment.support.NacosStubConfiguration;
-import com.rag.comment.support.TestPostgres;
-import com.rag.comment.support.TestRedis;
+import com.rag.comment.support.NacosStubConfigurationComment;
+import com.rag.comment.support.TestPostgresComment;
+import com.rag.comment.support.TestRedisComment;
 
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
@@ -127,7 +127,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>不改一行 {@code src/main/**}。</li>
  * </ul>
  */
-@SpringBootTest(classes = {CommentServiceApplication.class, NacosStubConfiguration.class},
+@SpringBootTest(classes = {CommentServiceApplication.class, NacosStubConfigurationComment.class},
         properties = {
                 // 🔴 测试专属消费组 ⇒ 位点可读且不与别的 lane / 探针抢同一 group
                 "spring.kafka.consumer.group-id=comment-audit-group-kafkafail",
@@ -181,8 +181,8 @@ class CommentKafkaFailureDirectionRealTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        TestPostgres.register(registry);
-        TestRedis.register(registry);
+        TestPostgresComment.register(registry);
+        TestRedisComment.register(registry);
         // ⚠️ 只在本类里覆盖 broker 地址（不改 application-test.properties —— 别人的写权）
         registry.add("spring.kafka.bootstrap-servers", () -> BOOTSTRAP);
     }

@@ -93,7 +93,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @SpringBootTest(
         classes = {com.rag.favorite.FavoriteServiceApplication.class,
-                com.rag.favorite.support.NacosStubConfiguration.class},
+                com.rag.favorite.support.NacosStubConfigurationFavorite.class},
         webEnvironment = SpringBootTest.WebEnvironment.MOCK,
         properties = {
                 "spring.cloud.nacos.discovery.server-addr=127.0.0.1:1",
@@ -137,7 +137,7 @@ class FavoriteApiProtectionWiringTest {
     private MaxBytesFilter maxBytesFilter;
 
     /**
-     * 🔴 Nacos 桩 —— 见 {@link com.rag.favorite.support.NacosStubConfiguration} 的类注释。
+     * 🔴 Nacos 桩 —— 见 {@link com.rag.favorite.support.NacosStubConfigurationFavorite} 的类注释。
      *
      * <p>⚠️ <b>本类刻意用 {@code @TestConfiguration} 桩，而不是 {@code @MockitoBean} + {@code @BeforeEach}</b>：
      * 域内 {@code FavoriteNacosRegistration#register()} 挂在 {@code ApplicationReadyEvent} 上
