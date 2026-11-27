@@ -1,16 +1,20 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<?xml version="1.0" encoding="UTF-8" ?>
+<project
+  xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+>
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.rag</groupId><artifactId>service</artifactId><version>1.0-SNAPSHOT</version>
+        <groupId>com.rag</groupId><artifactId>service</artifactId><version
+    >1.0-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
     <artifactId>article-service</artifactId>
     <name>article-service</name>
-    <description>article 域 —— api + rpc 合并后的单一 Spring Boot 应用</description>
+    <description
+  >article 域 —— api + rpc 合并后的单一 Spring Boot 应用</description>
 
     <properties>
         <!--
@@ -27,16 +31,20 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId>
+            <groupId>org.springframework.boot</groupId><artifactId
+      >spring-boot-starter-web</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId>
+            <groupId>org.springframework.boot</groupId><artifactId
+      >spring-boot-starter-validation</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId>
+            <groupId>org.springframework.boot</groupId><artifactId
+      >spring-boot-starter-actuator</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.micrometer</groupId><artifactId>micrometer-registry-prometheus</artifactId>
+            <groupId>io.micrometer</groupId><artifactId
+      >micrometer-registry-prometheus</artifactId>
         </dependency>
         <!--
             ⚠️ **Nacos 3.0.3 单一真源（D14）** —— 版本由**根 pom 的 `dependencyManagement`** 统一管
@@ -46,7 +54,8 @@
         -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
-            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+            <artifactId
+      >spring-cloud-starter-alibaba-nacos-discovery</artifactId>
         </dependency>
         <!-- ============ Flyway（DDL 迁移；**账本表名逐域独立** —— 见 docs/决策记录.md） ============ -->
         <!--
@@ -143,7 +152,8 @@
             <groupId>io.grpc</groupId><artifactId>grpc-core</artifactId>
         </dependency>
         <dependency>
-            <groupId>net.devh</groupId><artifactId>grpc-server-spring-boot-starter</artifactId>
+            <groupId>net.devh</groupId><artifactId
+      >grpc-server-spring-boot-starter</artifactId>
             <exclusions>
                 <exclusion>
                     <groupId>io.grpc</groupId>
@@ -152,7 +162,8 @@
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>net.devh</groupId><artifactId>grpc-client-spring-boot-starter</artifactId>
+            <groupId>net.devh</groupId><artifactId
+      >grpc-client-spring-boot-starter</artifactId>
             <exclusions>
                 <exclusion>
                     <groupId>io.grpc</groupId>
@@ -161,7 +172,8 @@
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>com.baomidou</groupId><artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <groupId>com.baomidou</groupId><artifactId
+      >mybatis-plus-spring-boot3-starter</artifactId>
         </dependency>
         <!--
             ⚠️ **scope 不能是 `runtime`**（照抄 B 侧 `article-rpc/pom.xml` 的同款注释）：
@@ -175,13 +187,16 @@
             <artifactId>postgresql</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.rag</groupId><artifactId>proto</artifactId><version>${project.version}</version>
+            <groupId>com.rag</groupId><artifactId>proto</artifactId><version
+      >${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.rag</groupId><artifactId>common</artifactId><version>${project.version}</version>
+            <groupId>com.rag</groupId><artifactId>common</artifactId><version
+      >${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.springframework.kafka</groupId><artifactId>spring-kafka</artifactId>
+            <groupId>org.springframework.kafka</groupId><artifactId
+      >spring-kafka</artifactId>
         </dependency>
 
         <!-- ============ Lombok（provided · **编译期依赖** · D18） ============ -->
@@ -281,7 +296,8 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <excludedGroups>${article.test.excludedGroups}</excludedGroups>
+                    <excludedGroups
+          >${article.test.excludedGroups}</excludedGroups>
                 </configuration>
             </plugin>
         </plugins>
@@ -296,7 +312,8 @@
         <profile>
             <id>external-env</id>
             <properties>
-                <article.test.excludedGroups>__none__</article.test.excludedGroups>
+                <article.test.excludedGroups
+        >__none__</article.test.excludedGroups>
             </properties>
             <build>
                 <plugins>

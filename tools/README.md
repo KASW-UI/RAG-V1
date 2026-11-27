@@ -128,7 +128,15 @@
 
 ## `difftest/follow/` 的约定（E-4 双侧活体对拍 · 2026-11-02）
 
-> 完整设计、HTTP 21 条 ＋ gRPC wire 13 条 ＋ 场景轮 6 类（＋ 过渡窗口分层采样）的用例清单、35 条踩坑 ⇒ [`difftest/follow/README.md`](difftest/follow/README.md)。
+> 完整设计、HTTP 21 条 ＋ gRPC wire 13 条 ＋ 场景轮 6 类（＋ 过渡窗口分层采样 ＋ **wire 第三方锚**）的用例清单、**43 条**踩坑 ⇒ [`difftest/follow/README.md`](difftest/follow/README.md)。
+>
+> 🔴 **2026-11-10 新增：gRPC wire 层的第三方锚**（`difftest/follow/grpc-wire/wire_anchor.py`）——
+> wire 层原本只做到「**双边一致**」（C == B）⇒ **只证「两侧一样」，不证「两侧都对」**；
+> ⚠️ Go 真源已被删除（B 仓只剩 `tools/**` 里的探针 `.go`）⇒ 「拿 Go 代码重生成字节」不可得
+> ⇒ ⇒ 改用**两个互相独立的第三方**：① **已冻结在仓里的 Go 字节**（`follow/expected.txt` · B 侧 2026-10-29 从 Go 侧录的 20 条 HTTP 用例）② **protobuf 参考实现**（`protoc` 35.0 生成 Python 绑定 ⇒ `google.protobuf` 7.36.2 · **与两侧 grpc-java 完全独立**）
+> ⇒ ⇒ 判据 = **wire 解出的语义**必须与 **Go 锚的 HTTP 语义**逐条对齐 ⇒ ⇒ **wire 层由「双边一致」升级为「三方一致」**（实测 **9/9 条**挂锚）⇒ ⇒ **「两侧一起错」类缺陷也能被抓**（双边一致抓不到）。
+> ⚠️ **错误态用例不挂 Go 锚**：Go 锚是 HTTP 层**业务码**，wire 错误态给的是 **gRPC status** ⇒ **不是同一码空间** ⇒ 只判「C == B 的 status 一致」。
+> ⚠️ **探针顺序约束（踩过的坑 #36）**：wire 段与 HTTP 矩阵**各自都会改库** ⇒ ⇒ 两段之间必须**重播**隔离 ⇒ 否则读到的是被污染的库 ⇒ **假红**（两侧同时偏离同一个冻结值 ⇒ 几乎总是状态/顺序问题，不是「两侧一起错」）。
 
 ### 目录名必须与派发器的约定一致
 

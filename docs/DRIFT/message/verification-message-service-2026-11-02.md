@@ -20,7 +20,7 @@
 | 仓库 | `/Users/pr/Documents/java&golang/RAG` | `/Users/pr/Documents/GitHub/RAG-V1.worktrees/message` |
 | 模块路径 | `service/message/`（**api + rpc 两个进程** ＋ `message-common` ＋ `message-proto`） | `service/message/`（**一个进程 · D1**） |
 | 包 | `com.rag.message.{message.api,message.rpc,message.common}.**` | `com.rag.message.**`（**单层技术角色包树** · D7 + D11） |
-| 源文件数 | **71** 个 `.java`（api **49** · common **3** · rpc **19**） | **53** 个 `.java`（主代码）· **0 空壳** |
+| 源文件数 | **71** 个 `.java`（api **49** · common **3** · rpc **19**） | **52** 个 `.java`（主代码）· **0 空壳** |
 | 主代码行数 | **9,381** 行 | **9,909** 行 |
 | 测试文件数 | **52** 个 `.java` / 12,945 行（B 侧既有） | **6** 个 `.java` / **1,765** 行 / **60 例** |
 | proto | `message-proto/src/main/proto/message.proto` | 根级 `proto/`（pb 包名 `com.rag.proto.message` · **不在本域文件数内**） |
@@ -403,7 +403,7 @@
   ④ C 列路径错误（误写 `service/users/common/...`）
   ⑤ Flyway 决策锁改判（见 §六·6-2）
   ⑥ §7.3 缺口 #1/#3/#4/#5/#6 关闭
-- **验证**：`check-mapping-coverage.py` ⇒ **C 53/53 · B 71/71 · EXIT=0**；
+- **验证**：`check-mapping-coverage.py` ⇒ **C 52/52 · B 71/71 · EXIT=0**；
   `_INDEX.md` 用 `sync-mapping-index.py --apply` **重算**（机器生成物按纪律不手改）⇒ diff 精确到 **3 行**。
 
 ### 5-⑧ ✅ 已收口（2026-11-03） · `JsonbMapTypeHandler` 在共享层**无对应物** ⇒ 域内副本
@@ -559,12 +559,23 @@
 **Reactor：16/16 SUCCESS · BUILD SUCCESS · EXIT=0**（`-fae` ⇒ 失败面**未被截断**）。
 📌 **本轮新增 43 例**（message 域 60 → 103）：B 侧期望值移植 **35 例** ＋ JSON 解析面 **7 例** ＋ 超时预算运行期断言 **1 例**。
 
+> ⚠️ **2026-11-10 复算（`main@3c9c516` 代码态）**：上表是 **2026-11-02 的历史快照**，此后全仓新增用例 ⇒ 数字已变。
+> **本域读数未变**：`message-service` **103 / 0 / 0 / 0**（2026-11-10 实测，模块级汇总行，**并行与串行各跑一次，两次都绿**）✅
+> **全仓分模块读数（串行 `mvn -o clean verify -fae` · 19:35 收尾）**：
+> `common` **255** ✅ · `article` 157（**1 error**）· `comment` 250（**8 errors**）· `favorite` **215** ✅ · `follow` **编译失败**（4.1s）· `hot` **102** ✅ · `like` 110（**1 failure**）· **`message` 103 ✅** · `task` **58** ✅ · `users-common` **46** ✅ · `user` **40** ✅ · `admin` 154（**1 F + 2 E**）
+> ⇒ ⇒ **全仓一次绿此刻不成立（5 域红）**，且**逐条归因后全部是「环境/并发」或「别域在途改动」，没有一条落在本域**：
+> ① `follow` = **编译错误**（`FollowMetricsContractTest.java:175` 无法访问 `com.rag.follow.metrics.FollowApiMetrics`）⇒ **别域在途改动**（follow 域源码与测试未同步）；
+> ② `comment` 的 8 errors = **`Container startup failed for image redis:7-alpine`（Docker `Broken pipe`）** ⇒ **Docker 资源耗尽**（同机多个 lane 同时起 kafka/nacos/pg/redis 容器）；
+> ③ `article` 1 error / `like` 1 failure = **真 Kafka 测试**（`ArticleKafkaSyncResultConsumerRealKafkaTest` · `LikeKafkaThreeFaceRealTest`）⇒ 环境敏感；
+> ④ `admin` 1 F + 2 E = **另一 lane 的在途改动**（yml 的 `register-enabled: true` 变异未还原 ＋ 新守卫的 Jackson `IntNode`→`Number` 强转 bug）⇒ 详见 admin 台账 §7.3.1 的「在途状态」块；
+> ⑤ 另：`common` 的 4 个类**孤立单跑 12 例全绿、全量跑必红** ⇒ **测试间顺序 / 端口争用**（同机并发 ⇒ 多域同抢 9090 等固定端口）⇒ ⇒ **全仓读数必须在「无并发」时串行取**。
+
 ### 7.3 三道守门（**EXIT=0**）
 
 | 守门 | 读数 | EXIT |
 |---|---|---|
-| `check-arch-invariants.py`（A1–A13） | **PASS 10 · FAIL 0 · N/A 2 · PENDING 1**（PENDING = like/comment/favorite 三个域的空壳日志载体 ⇒ **不属本域**） | **0** |
-| `check-mapping-coverage.py message` | **C 53/53 = 100% · B 71/71 = 100%** · 自报数字与实测一致 · B 列全局未覆盖 0 | **0** |
+| `check-arch-invariants.py`（A1–A13） | **PASS 10 · FAIL 0 · N/A 2 · PENDING 1**（PENDING = like/comment/favorite 三个域的空壳日志载体 ⇒ **不属本域**）<br>⚠️ **2026-11-10 订正（机器复算）**：全仓现为 **PASS 15 · FAIL 0 · N/A 2 · PENDING 0**（共 17 条）—— **A8 已转 PASS**（三个域的空壳日志载体已补齐 ⇒ 原 PENDING 1 消除）⇒ ⇒ **本行原读数为 2026-11-02 的历史快照** | **0** |
+| `check-mapping-coverage.py message` | **C 52/52 = 100% · B 71/71 = 100%** · 自报数字与实测一致 · B 列全局未覆盖 0 | **0** |
 | `check-docs-vs-tree.py` | File_Tree 双向 · 幂等 · 路径 · 落点计数 · 包名 全相符合 | **0** |
 
 ### 7.4 ⚠️ **证据强度的诚实边界**（**不计入 PASS 的部分**）
@@ -590,9 +601,9 @@
 
 | 指标 | 数 | 口径 |
 |---|---|---|
-| B 侧源文件 → C 侧承接 | **71 → 53**（api 49 · common 3 · rpc 19） | §二 |
-| C 侧主代码行数 | **9,909** | `find … -name '*.java' -exec cat` |
-| **空壳数** | **0** | 53/53 全部有实现 |
+| B 侧源文件 → C 侧承接 | **71 → 52**（api 49 · common 3 · rpc 19） | §二 |
+| C 侧主代码行数 | **9,776** | `find … -name '*.java' -exec cat` |
+| **空壳数** | **0** | 52/52 全部有实现 |
 | DTO 数 | **17**（B 侧 18 ⇒ `GoStyleStringInt64` 上收到共享层 `StringInt64`） | §二·2.1 |
 | 错误码 / 文案 | **20 / 20 · 逐字节一致** | §三·3.2 |
 | HTTP 端点 | **13/13 · 运行期注册表逐条相等** | §三·3.1 |
@@ -601,7 +612,7 @@
 | DDL | **5/5 逐字节一致（`cmp`）** | §三·3.3 |
 | 核心层主体差异行 | `MessageDomainService` **102** · `MessageRpcSupport` **16** · `MessageAtomicService` **12** —— **全部可解释为表达层改写** | §三·3.8 |
 | 本域测试 | **11 类 · 103 例 · 0 失败 · 0 错误 · 0 跳过**（其中 **35 例是 B 侧期望值移植**） | §七·7.1 |
-| 全仓回归 | **16/16 模块 SUCCESS · 451 例 · 0/0/0 · BUILD SUCCESS** | §七·7.2 |
+| 全仓回归 | **16/16 模块 SUCCESS · 451 例 · 0/0/0 · BUILD SUCCESS**（⚠️ **2026-11-02 的历史快照**；2026-11-10 复算时**本域 103 未变** ✅，但全仓总数已变 ⇒ 详见 §7.2 的复算块） | §七·7.2 |
 | 三道守门 | **3/3 EXIT=0** | §七·7.3 |
 | 本轮修掉的漂移 | **10 条**（P0 ×4 · P1 ×2 · P2 ×4） | §五 |
 | 登记的偏离 / 降级 | **9 条** | §六 |
@@ -624,7 +635,7 @@
 | # | 问题 | 回答 |
 |---|---|---|
 | 1 | C 是否完整承接 B 的全部实际职责？ | **是** —— 71 个源文件逐个有落点（§二），**0 空壳**；唯一的「删除」是 `MessageRpcClient`（D2 语义内联，B 侧 api→rpc 调用被 C 侧的「api 直连领域层」取代）。 |
-| 2 | Mapping_Table 的映射是否与真实代码一致？ | **是** —— C 53/53 · B 71/71（守门 EXIT=0）；本轮**改判了 6 处事实错误**（§五·5-⑦）。 |
+| 2 | Mapping_Table 的映射是否与真实代码一致？ | **是** —— C 52/52 · B 71/71（守门 EXIT=0）；本轮**改判了 6 处事实错误**（§五·5-⑦）。 |
 | 3 | File_Tree 规定的目标结构是否落地？ | **是** —— `gen-file-tree.py` 按实际文件系统重算，**只改 message + proto 两份**（域隔离干净）；`check-docs-vs-tree.py` EXIT=0。 |
 | 4 | 多文件合并是否造成职责 / 分支 / 异常路径遗漏？ | **否** —— 合并处（13→1 case service、3→1 拦截器、`auth/` 2 类 → 基类、B 2 个 metrics → 基座 + 2 子类）逐个核过；核心层**主体差异 130 行全部可解释**（§三·3.8）。 |
 | 5 | 文件拆分是否造成调用链 / 数据传递 / 事务边界断裂？ | **否** —— 事务边界由 `MessageAtomicService` 承载，**真 PG 用例靠真 UNIQUE 冲突证明回滚**（非 Mockito 桩）；`@Transactional` 自调用缺陷（B 侧 `DRIFT-MSG-001`）已按 B 侧形态继承。 |
@@ -645,7 +656,7 @@
 | 阶段 | 协议要求（章节） | 本域落点 | **判定** | 未闭合项 |
 |---|---|---|---|---|
 | **一** | 确认迁移范围和现状（§四） | 台账 **§一**（两侧坐标 · **实际解析版本** · 使用的资料）；B 侧 Boot **4.0.8** / C 侧 Boot **3.5.11** | ✅ **PASS** | 无 |
-| **二** | 建立 B → C 职责承接清单（§五） | 台账 **§二**：B 侧 **71** 个源文件（api 49 · common 3 · rpc 19）+ 5 份 DDL + 1 份 proto **逐个有落点**；C 侧 **53** 个文件、**0 空壳** | ✅ **PASS** | 无（唯一的「删除」是 M-10 `MessageRpcClient`，D2 决策锁 ⇒ 已登记 §六·6-9） |
+| **二** | 建立 B → C 职责承接清单（§五） | 台账 **§二**：B 侧 **71** 个源文件（api 49 · common 3 · rpc 19）+ 5 份 DDL + 1 份 proto **逐个有落点**；C 侧 **52** 个文件、**0 空壳** | ✅ **PASS** | 无（唯一的「删除」是 M-10 `MessageRpcClient`，D2 决策锁 ⇒ 已登记 §六·6-9） |
 | **三** | 完整行为审核（§六：外部契约 / 执行流程 / 异常语义 / 状态与副作用） | 台账 **§三**（13 端点运行期注册表 · 20 码 20 文案逐字节 · DDL `cmp` ×5 · 8 指标 · JWT 边界 · gRPC 通道与注册名 · 配置键名 · 核心层主体 diff） | ✅ **PASS** | 无（L1 全部有运行期或逐字节级证据） |
 | **四** | Boot 4 → 3.5 专项（§七） | 台账 **§四** F-1~F-7 **八字段齐全** | ✅ **PASS** | F-3（验签预算归属）与 F-7（Nacos 寻址）**分别以 §六·6-6 / 6-4 登记**，不计入「无差异」 |
 | **五** | 文件合并 / 拆分 / 架构调整（§八 · 报告项 §11.3） | 台账 **§九**（**本轮新写**）：§8.1 的 **10 个 N:1** ＋ §8.2 的 **4 个 1:N** ＋ §8.3 的 **9 项** ＋ §8.4 的 **8 项** ＋ §8.5 的 **9 项** ＋ §11.3 的 **7 类** —— **逐项有结论，无一处留空** | ✅ **PASS** | 本阶段**直接暴露并修掉 2 条真缺口**（§五·5-④ Nacos 双注册、§五·5-⑩ 超时预算缺失）＋ **更正 1 条错误表述**（§六·6-6） |

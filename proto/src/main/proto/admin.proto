@@ -1,14 +1,15 @@
 syntax = "proto3";
 
 package admin;
-option java_package = "com.rag.proto.admin";
-option java_multiple_files = true;
 
-message AdminInfo{
+option java_multiple_files = true;
+option java_package = "com.rag.proto.admin";
+
+message AdminInfo {
   int64 uid = 1;
   string username = 2;
   string email = 3;
-  map<string,string> extra_info = 4;
+  map<string, string> extra_info = 4;
 }
 
 message UserInfo {
@@ -17,19 +18,19 @@ message UserInfo {
   string username = 3;
   string email = 4;
   uint64 status = 5;
-  map<string,string> extra_info = 6;
+  map<string, string> extra_info = 6;
 }
 
-message GetUserReq{
+message GetUserReq {
   int64 uid = 1;
 }
 
-message GetUserResp{
+message GetUserResp {
   UserInfo user = 1;
   bool found = 2;
 }
 
-message GetSelfReq{
+message GetSelfReq {
   int64 uid = 1;
 }
 
@@ -41,7 +42,7 @@ message CreateAdminReq {
   string username = 1;
   string password = 2;
   string email = 3;
-  map<string,string> extra_info = 4;
+  map<string, string> extra_info = 4;
   string invite_code = 5;
 }
 
@@ -58,12 +59,12 @@ message CreateInviteCodeResp {
   int64 expires_at = 2;
 }
 
-message LoginReq{
+message LoginReq {
   string username = 1;
   string password = 2;
 }
 
-message LoginResp{
+message LoginResp {
   int64 uid = 1;
 }
 
@@ -85,7 +86,7 @@ message DeleteUserResp {
   bool success = 1;
 }
 
-message ResetUserPasswordReq{
+message ResetUserPasswordReq {
   int64 uid = 1;
   int64 operator_id = 2;
 }
@@ -99,7 +100,7 @@ message UpdateSelfReq {
   string username = 2;
   string password = 3;
   string email = 4;
-  map<string,string> extra_info = 5;
+  map<string, string> extra_info = 5;
 }
 
 message UpdateSelfResp {
@@ -112,7 +113,7 @@ message UpdateUserReq {
   string username = 2;
   string password = 3;
   string email = 4;
-  map<string,string> extra_info = 5;
+  map<string, string> extra_info = 5;
   int64 operator_id = 6;
 }
 
@@ -149,8 +150,6 @@ message UnBanUserReq {
 message UnBanUserResp {
   bool success = 1;
 }
-
-
 
 service AdminService {
   rpc GetUser(GetUserReq) returns (GetUserResp);
